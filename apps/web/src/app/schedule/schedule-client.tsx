@@ -37,10 +37,12 @@ export function ScheduleClient() {
 
   const fetchData = useCallback(async (initial = false) => {
     try {
-      const res = await fetch(`${API_BASE}/api/public/games`);
-      const data: Game[] = await res.json();
-      if (Array.isArray(data)) setGames(data);
-    } catch {}
+      const res = await fetch(`${API_BASE}/api/public/games`, { cache: 'no-store' });
+      const data = await res.json();
+      if (res.ok && Array.isArray(data)) setGames(data);
+    } catch {
+      // keep existing games on transient errors
+    }
     if (initial) setLoading(false);
   }, []);
 
@@ -54,8 +56,11 @@ export function ScheduleClient() {
   }, [games, fetchData]);
 
   const liveGames = games.filter(g => g.status === 'live');
-  const upcomingGames = games.filter(g => g.status === 'scheduled');
   const finishedGames = games.filter(g => g.status === 'final').reverse();
+  // Upcoming: scheduled, draft, postponed, suspended, or any other non-live/non-final
+  const upcomingGames = games.filter(
+    g => g.status !== 'live' && g.status !== 'final'
+  );
 
   return (
     <div>
