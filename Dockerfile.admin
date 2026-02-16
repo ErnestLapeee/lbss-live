@@ -26,5 +26,5 @@ RUN pnpm --filter @lbss/admin build
 ENV NODE_ENV=production
 EXPOSE 4173
 
-# Shell form so $PORT is expanded at runtime (Railway injects PORT)
-CMD pnpm --filter @lbss/admin start
+# Use Node script so PORT from Railway is always applied (no shell expansion)
+CMD ["node", "apps/admin/start.mjs"]
