@@ -164,37 +164,32 @@ interface SeasonContext {
 
 type Tab = 'plays' | 'boxscore' | 'pitching';
 
-export function LiveGameClient({ gameId, initialData }: { gameId: number; initialData: any }) {
+interface LiveGameClientProps {
+  gameId: number;
+  initialData: any;
+  initialEvents: GameEvent[];
+  initialLineups: LineupEntry[];
+  initialBatting: BattingBoxScore[];
+  initialPitching: PitchingBoxScore[];
+  initialSeasonCtx: SeasonContext;
+}
+
+export function LiveGameClient({
+  gameId, initialData, initialEvents, initialLineups,
+  initialBatting, initialPitching, initialSeasonCtx,
+}: LiveGameClientProps) {
   const apiBase = useApiBase();
   const [game, setGame] = useState<GameData | null>(initialData);
-  const [events, setEvents] = useState<GameEvent[]>([]);
-  const [lineups, setLineups] = useState<LineupEntry[]>([]);
-  const [battingBox, setBattingBox] = useState<BattingBoxScore[]>([]);
-  const [pitchingBox, setPitchingBox] = useState<PitchingBoxScore[]>([]);
-  const [seasonCtx, setSeasonCtx] = useState<SeasonContext>({ batting: [], pitching: [] });
-  const [loading, setLoading] = useState(true);
+  const [events, setEvents] = useState<GameEvent[]>(initialEvents);
+  const [lineups, setLineups] = useState<LineupEntry[]>(initialLineups);
+  const [battingBox, setBattingBox] = useState<BattingBoxScore[]>(initialBatting);
+  const [pitchingBox, setPitchingBox] = useState<PitchingBoxScore[]>(initialPitching);
+  const [seasonCtx, setSeasonCtx] = useState<SeasonContext>(initialSeasonCtx);
+  const [loading, setLoading] = useState(false);
   const [tab, setTab] = useState<Tab>('plays');
   const { connected, gameState, lastEvent, isFinal, viewerCount } = useGameSocket(gameId, apiBase);
 
-  // Fetch all data
-  useEffect(() => {
-    async function fetchAll() {
-      try {
-        const [evts, lnps, box, pbox, ctx] = await Promise.all([
-          fetch(`${apiBase}/api/public/games/${gameId}/events`).then(r => r.json()).catch(() => []),
-          fetch(`${apiBase}/api/public/games/${gameId}/lineups`).then(r => r.json()).catch(() => []),
-          fetch(`${apiBase}/api/public/games/${gameId}/boxscore`).then(r => r.json()).catch(() => []),
-          fetch(`${apiBase}/api/public/games/${gameId}/pitching-boxscore`).then(r => r.json()).catch(() => []),
-          fetch(`${apiBase}/api/public/games/${gameId}/season-context`).then(r => r.json()).catch(() => ({ batting: [], pitching: [] })),
-        ]);
-        setEvents(evts); setLineups(lnps); setBattingBox(box); setPitchingBox(pbox); setSeasonCtx(ctx);
-      } catch {}
-      setLoading(false);
-    }
-    fetchAll();
-  }, [gameId]);
-
-  // Re-fetch when new event arrives
+  // Re-fetch when new event arrives via WebSocket
   useEffect(() => {
     if (!lastEvent) return;
     Promise.all([
@@ -202,9 +197,32 @@ export function LiveGameClient({ gameId, initialData }: { gameId: number; initia
       fetch(`${apiBase}/api/public/games/${gameId}/boxscore`).then(r => r.json()).catch(() => []),
       fetch(`${apiBase}/api/public/games/${gameId}/pitching-boxscore`).then(r => r.json()).catch(() => []),
     ]).then(([evts, box, pbox]) => {
-      setEvents(evts); setBattingBox(box); setPitchingBox(pbox);
+      if (Array.isArray(evts)) setEvents(evts);
+      if (Array.isArray(box)) setBattingBox(box);
+      if (Array.isArray(pbox)) setPitchingBox(pbox);
     });
-  }, [lastEvent, gameId]);
+  }, [lastEvent, gameId, apiBase]);
+
+  // Polling fallback: refresh every 8s for live games when WebSocket isn't connected
+  useEffect(() => {
+    const isLive = game?.status === 'live' && !isFinal;
+    if (!isLive || connected) return;
+    const interval = setInterval(async () => {
+      try {
+        const [gData, evts, box, pbox] = await Promise.all([
+          fetch(`${apiBase}/api/public/games/${gameId}`).then(r => r.json()).catch(() => null),
+          fetch(`${apiBase}/api/public/games/${gameId}/events`).then(r => r.json()).catch(() => []),
+          fetch(`${apiBase}/api/public/games/${gameId}/boxscore`).then(r => r.json()).catch(() => []),
+          fetch(`${apiBase}/api/public/games/${gameId}/pitching-boxscore`).then(r => r.json()).catch(() => []),
+        ]);
+        if (gData && typeof gData === 'object' && gData.id) setGame(gData);
+        if (Array.isArray(evts)) setEvents(evts);
+        if (Array.isArray(box)) setBattingBox(box);
+        if (Array.isArray(pbox)) setPitchingBox(pbox);
+      } catch {}
+    }, 8000);
+    return () => clearInterval(interval);
+  }, [game?.status, isFinal, connected, apiBase, gameId]);
 
   const displayScore = {
     home: gameState?.homeScore ?? game?.homeScore ?? 0,

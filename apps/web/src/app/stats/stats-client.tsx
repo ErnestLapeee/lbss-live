@@ -263,7 +263,7 @@ export function StatsClient() {
         }
       })
       .catch(() => setLoading(false));
-  }, []);
+  }, [apiBase]);
 
   // Load all stats when season changes
   useEffect(() => {

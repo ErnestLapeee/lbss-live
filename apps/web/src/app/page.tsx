@@ -16,16 +16,16 @@ export default async function HomePage() {
   let teams: any[] = [];
 
   try { articles = toArray(await apiFetch('/api/public/articles')); } catch {}
-  try { games = toArray(await apiFetch('/api/public/games')); } catch {}
+  try { games = toArray(await apiFetch('/api/public/games', { noCache: true })); } catch {}
   try { teams = toArray(await apiFetch('/api/public/teams')); } catch {}
 
-  const recentGames = games
-    .filter((g: any) => g.status === 'final' || g.status === 'live')
-    .slice(0, 6);
+  const liveGames = games.filter((g: any) => g.status === 'live');
+  const finalGames = games.filter((g: any) => g.status === 'final');
+  const recentGames = [...liveGames, ...finalGames].slice(0, 6);
   const upcomingGames = games
     .filter((g: any) => g.status === 'scheduled')
     .slice(0, 4);
-  const scoreboardGames = [...games.filter((g: any) => g.status === 'live'), ...recentGames].slice(0, 6);
+  const scoreboardGames = recentGames.slice(0, 6);
   const recentArticles = articles.slice(0, 4);
 
   return (
