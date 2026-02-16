@@ -1,4 +1,7 @@
 {
   "$schema": "https://schema.railpack.com",
-  "secrets": []
+  "secrets": [],
+  "deploy": {
+    "startCommand": "pnpm --filter @lbss/admin start"
+  }
 }

@@ -1,9 +1,10 @@
 # pnpm monorepo Vite admin app for Railway (Node 20)
-# Use this Dockerfile ONLY for the @lbss/admin service. Avoids Railpack secrets/VITE_API_URL stat error.
+# Use this Dockerfile ONLY for the @lbss/admin service.
 #
 # In Railway for the admin service:
 #   - Root Directory: leave empty (or "/")
 #   - Dockerfile path: Dockerfile.admin
+#   - Do NOT set a custom start command; use the image CMD (production "start", not "dev").
 FROM node:20-slim
 
 RUN corepack enable && corepack prepare pnpm@10.6.0 --activate
@@ -26,5 +27,5 @@ RUN pnpm --filter @lbss/admin build
 ENV NODE_ENV=production
 EXPOSE 4173
 
-# Shell form so $PORT is expanded; start runs "serve -s dist -l $PORT" from apps/admin
+# Production only: run "start" (serve on 0.0.0.0:$PORT). Do not override with "dev" in Railway.
 CMD pnpm --filter @lbss/admin start
