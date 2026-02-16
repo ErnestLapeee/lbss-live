@@ -26,4 +26,5 @@ RUN pnpm --filter @lbss/admin build
 ENV NODE_ENV=production
 EXPOSE 4173
 
-CMD ["pnpm", "--filter", "@lbss/admin", "start"]
+# Shell form so $PORT is expanded at runtime (Railway injects PORT)
+CMD pnpm --filter @lbss/admin start
