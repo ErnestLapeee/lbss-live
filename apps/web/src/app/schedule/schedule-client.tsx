@@ -4,8 +4,6 @@ import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { PageHeader } from '@/components/ui/page-header';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
-
 interface Game {
   id: number;
   homeTeamId: number;
@@ -31,22 +29,23 @@ interface Game {
   savePitcher: { name: string; ip: string; h: number; er: number; bb: number; k: number } | null;
 }
 
-export function ScheduleClient() {
-  const [games, setGames] = useState<Game[]>([]);
-  const [loading, setLoading] = useState(true);
+interface ScheduleClientProps {
+  apiBase: string;
+  initialGames: Game[];
+}
 
-  const fetchData = useCallback(async (initial = false) => {
+export function ScheduleClient({ apiBase, initialGames }: ScheduleClientProps) {
+  const [games, setGames] = useState<Game[]>(initialGames);
+
+  const fetchData = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/public/games`, { cache: 'no-store' });
+      const res = await fetch(`${apiBase}/api/public/games`, { cache: 'no-store' });
       const data = await res.json();
       if (res.ok && Array.isArray(data)) setGames(data);
     } catch {
       // keep existing games on transient errors
     }
-    if (initial) setLoading(false);
-  }, []);
-
-  useEffect(() => { fetchData(true); }, [fetchData]);
+  }, [apiBase]);
 
   // Auto-refresh every 12s when live games exist
   useEffect(() => {
@@ -66,11 +65,7 @@ export function ScheduleClient() {
     <div>
       <PageHeader title="Schedule & Scores" />
       <div className="mx-auto max-w-3xl px-4 sm:px-6 py-6 space-y-8">
-        {loading ? (
-          <div className="flex justify-center py-20">
-            <div className="w-6 h-6 border-2 border-text-faint/30 border-t-accent rounded-full animate-spin" />
-          </div>
-        ) : games.length === 0 ? (
+        {games.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-border bg-surface-alt p-16 text-center">
             <p className="text-text-muted text-lg font-medium">No games scheduled yet</p>
             <p className="text-text-faint text-sm mt-2">Check back when the season begins.</p>
