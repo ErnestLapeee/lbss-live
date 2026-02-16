@@ -1,5 +1,0 @@
-# Railway config: pnpm monorepo — no global start/build.
-# Each service uses its own Root Directory and package.json scripts:
-#   packages/api  → build: tsc, start: node dist/index.js
-#   apps/web      → build: next build, start: next start
-#   apps/admin    → build: vite build, start: vite preview

@@ -1,9 +1,9 @@
-# pnpm monorepo API service for Railway (Node 20, no Nixpacks)
+# pnpm monorepo API service for Railway (Node 20)
+# Use this Dockerfile ONLY for the API service. Web and admin use Nixpacks + package.json.
 #
-# Build context MUST be the repository root. In Railway:
+# In Railway for the API service:
 #   - Root Directory: leave empty (or "/") so context is repo root
-#   - Dockerfile path: Dockerfile (at repo root)
-# If Root Directory is packages/api, COPY will fail (pnpm-workspace.yaml etc. missing).
+#   - Dockerfile path: Dockerfile.api
 FROM node:20-slim
 
 RUN corepack enable && corepack prepare pnpm@10.6.0 --activate
