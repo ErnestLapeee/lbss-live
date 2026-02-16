@@ -7,9 +7,9 @@ import {
   timestamp,
   index,
 } from 'drizzle-orm/pg-core';
-import { leagues } from './leagues';
-import { teams } from './teams';
-import { users } from './users';
+import { leagues } from './leagues.js';
+import { teams } from './teams.js';
+import { users } from './users.js';
 
 export const games = pgTable(
   'games',

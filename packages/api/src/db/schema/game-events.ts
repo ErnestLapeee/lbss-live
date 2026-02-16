@@ -11,9 +11,9 @@ import {
   uniqueIndex,
   index,
 } from 'drizzle-orm/pg-core';
-import { games } from './games';
-import { players } from './players';
-import { users } from './users';
+import { games } from './games.js';
+import { players } from './players.js';
+import { users } from './users.js';
 
 export const gameEvents = pgTable(
   'game_events',

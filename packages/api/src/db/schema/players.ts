@@ -9,8 +9,8 @@ import {
   timestamp,
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
-import { teams } from './teams';
-import { seasons } from './seasons';
+import { teams } from './teams.js';
+import { seasons } from './seasons.js';
 
 export const players = pgTable('players', {
   id: serial('id').primaryKey(),

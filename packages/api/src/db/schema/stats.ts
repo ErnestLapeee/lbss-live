@@ -8,11 +8,11 @@ import {
   timestamp,
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
-import { games } from './games';
-import { players } from './players';
-import { teams } from './teams';
-import { seasons } from './seasons';
-import { leagues } from './leagues';
+import { games } from './games.js';
+import { players } from './players.js';
+import { teams } from './teams.js';
+import { seasons } from './seasons.js';
+import { leagues } from './leagues.js';
 
 export const playerGameBatting = pgTable(
   'player_game_batting',

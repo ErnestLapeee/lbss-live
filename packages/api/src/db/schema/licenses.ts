@@ -8,9 +8,9 @@ import {
   timestamp,
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
-import { players } from './players';
-import { seasons } from './seasons';
-import { users } from './users';
+import { players } from './players.js';
+import { seasons } from './seasons.js';
+import { users } from './users.js';
 
 export const licenses = pgTable(
   'licenses',

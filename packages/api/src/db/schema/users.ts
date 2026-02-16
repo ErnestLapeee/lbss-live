@@ -6,7 +6,7 @@ import {
   boolean,
   timestamp,
 } from 'drizzle-orm/pg-core';
-import { players } from './players';
+import { players } from './players.js';
 
 export const users = pgTable('users', {
   id: serial('id').primaryKey(),

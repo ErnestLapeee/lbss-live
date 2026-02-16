@@ -7,7 +7,7 @@ import {
   index,
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
-import { seasons } from './seasons';
+import { seasons } from './seasons.js';
 
 export const leagues = pgTable(
   'leagues',

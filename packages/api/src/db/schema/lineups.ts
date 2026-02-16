@@ -7,9 +7,9 @@ import {
   uniqueIndex,
   index,
 } from 'drizzle-orm/pg-core';
-import { games } from './games';
-import { teams } from './teams';
-import { players } from './players';
+import { games } from './games.js';
+import { teams } from './teams.js';
+import { players } from './players.js';
 
 export const gameLineups = pgTable(
   'game_lineups',
