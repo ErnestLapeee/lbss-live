@@ -1,0 +1,19 @@
+# Dependencies and build output (reinstalled in image)
+node_modules
+**/node_modules
+
+# Apps not needed for API service
+apps
+
+# Git and env (never copy into image)
+.git
+.env
+.env.*
+
+# Misc
+*.log
+.DS_Store
+dist
+**/dist
+.turbo
+.next
