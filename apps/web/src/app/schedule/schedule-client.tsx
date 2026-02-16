@@ -23,6 +23,7 @@ interface Game {
   currentHalf: string | null;
   currentOuts: number | null;
   bases: { first: boolean; second: boolean; third: boolean } | null;
+  currentBatter: { name: string; battingOrder: number } | null;
   homeLineScore: number[] | null;
   awayLineScore: number[] | null;
   winPitcher: { name: string; ip: string; h: number; er: number; bb: number; k: number } | null;
@@ -141,6 +142,7 @@ function LiveCard({ game }: { game: Game }) {
   const homeLeading = homeScore > awayScore;
   const halfLabel = half === 'top' ? 'TOP' : 'BOT';
   const bases = game.bases ?? { first: false, second: false, third: false };
+  const batter = game.currentBatter;
 
   return (
     <Link href={`/games/${game.id}/live`} className="block group">
@@ -207,7 +209,9 @@ function LiveCard({ game }: { game: Game }) {
                 {half === 'top' && (
                   <span className="inline-flex items-center gap-1 mt-0.5">
                     <span className="w-1 h-1 rounded-full bg-live" />
-                    <span className="text-[8px] font-bold uppercase tracking-[0.15em] text-live">At Bat</span>
+                    <span className="text-[8px] font-bold uppercase tracking-[0.15em] text-live">
+                      {batter ? `#${batter.battingOrder} ${batter.name} up to bat` : 'At Bat'}
+                    </span>
                   </span>
                 )}
               </div>
@@ -237,7 +241,9 @@ function LiveCard({ game }: { game: Game }) {
                 {half === 'bot' && (
                   <span className="inline-flex items-center gap-1 mt-0.5">
                     <span className="w-1 h-1 rounded-full bg-live" />
-                    <span className="text-[8px] font-bold uppercase tracking-[0.15em] text-live">At Bat</span>
+                    <span className="text-[8px] font-bold uppercase tracking-[0.15em] text-live">
+                      {batter ? `#${batter.battingOrder} ${batter.name} up to bat` : 'At Bat'}
+                    </span>
                   </span>
                 )}
               </div>

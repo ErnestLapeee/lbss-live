@@ -455,17 +455,36 @@ export async function finalizeGame(gameId: number, userId?: number) {
   const seasonResult = await db.execute(
     sql`SELECT s.id FROM seasons s JOIN leagues l ON l.season_id = s.id WHERE l.id = ${game.leagueId} LIMIT 1`
   );
-  const seasonIdVal = ((seasonResult as any).rows?.[0] ?? (seasonResult as any)?.[0])?.id;
+  const rows = (seasonResult as any).rows ?? seasonResult;
+  const seasonIdVal = Array.isArray(rows) ? rows[0]?.id : undefined;
 
   if (seasonIdVal) {
-    await recomputeSeasonBatting(seasonIdVal);
-    await recomputeSeasonPitching(seasonIdVal);
-    await recomputeSeasonFielding(seasonIdVal);
+    try {
+      await recomputeSeasonBatting(seasonIdVal);
+    } catch (err) {
+      console.error('[finalize] recomputeSeasonBatting failed:', err);
+    }
+    try {
+      await recomputeSeasonPitching(seasonIdVal);
+    } catch (err) {
+      console.error('[finalize] recomputeSeasonPitching failed:', err);
+    }
+    try {
+      await recomputeSeasonFielding(seasonIdVal);
+    } catch (err) {
+      console.error('[finalize] recomputeSeasonFielding failed:', err);
+    }
+  } else {
+    console.error(`[finalize] Could not find seasonId for leagueId=${game.leagueId}. Season stats NOT recomputed.`);
   }
 
-  await recomputeStandings(game.leagueId);
+  try {
+    await recomputeStandings(game.leagueId);
+  } catch (err) {
+    console.error('[finalize] recomputeStandings failed:', err);
+  }
 
-  return { success: true, gameId };
+  return { success: true, gameId, seasonRecomputed: !!seasonIdVal };
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -661,6 +680,7 @@ export async function recomputeSeasonPitching(seasonId: number) {
         COUNT(DISTINCT CASE WHEN pgp.is_starter THEN pgp.game_id END) AS games_started,
         COALESCE(SUM(CASE WHEN pgp.decision = 'W' THEN 1 ELSE 0 END), 0) AS wins,
         COALESCE(SUM(CASE WHEN pgp.decision = 'L' THEN 1 ELSE 0 END), 0) AS losses,
+        COALESCE(SUM(CASE WHEN pgp.decision = 'S' THEN 1 ELSE 0 END), 0) AS saves,
         SUM(
           TRUNC(pgp.innings_pitched::numeric) * 3 +
           ROUND((pgp.innings_pitched::numeric - TRUNC(pgp.innings_pitched::numeric)) * 10)
@@ -686,14 +706,14 @@ export async function recomputeSeasonPitching(seasonId: number) {
     )
     INSERT INTO player_season_pitching (
       player_id, team_id, season_id, games, games_started,
-      wins, losses,
+      wins, losses, saves,
       innings_pitched, hits_allowed, runs_allowed, earned_runs, walks_allowed,
       strikeouts, home_runs_allowed, hit_batters, wild_pitches,
       batters_faced, balks, intentional_walks, ground_outs, fly_outs,
       era, whip, strikeout_rate, walk_rate, fip, k9, bb9, h9, babip,
       last_computed_at)
     SELECT
-      player_id, team_id, season_id, games, games_started, wins, losses,
+      player_id, team_id, season_id, games, games_started, wins, losses, saves,
       -- Convert total_outs back to baseball IP notation
       TRUNC(total_outs / 3) + (total_outs % 3) * 0.1,
       hits_allowed, runs_allowed, earned_runs, walks_allowed,
@@ -738,6 +758,7 @@ export async function recomputeSeasonPitching(seasonId: number) {
       games_started = EXCLUDED.games_started,
       wins = EXCLUDED.wins,
       losses = EXCLUDED.losses,
+      saves = EXCLUDED.saves,
       innings_pitched = EXCLUDED.innings_pitched,
       hits_allowed = EXCLUDED.hits_allowed,
       runs_allowed = EXCLUDED.runs_allowed,

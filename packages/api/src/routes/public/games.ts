@@ -108,11 +108,13 @@ export async function gamesRoutes(app: FastifyInstance) {
         }
       }
 
-      // Batch fetch base occupancy for live games from the latest result event
+      // Batch fetch base occupancy + current batter for live games
       const liveIds = gamesList.filter(g => g.status === 'live').map(g => g.id);
       const basesMap: Record<number, { first: boolean; second: boolean; third: boolean }> = {};
+      const currentBatterMap: Record<number, { name: string; battingOrder: number } | null> = {};
       if (liveIds.length > 0) {
         for (const gid of liveIds) {
+          // Get base state from last non-pitch event
           const [lastEvt] = await db.select({
             runnerFirstId: gameEvents.runnerFirstId,
             runnerSecondId: gameEvents.runnerSecondId,
@@ -131,6 +133,42 @@ export async function gamesRoutes(app: FastifyInstance) {
               second: !!lastEvt.runnerSecondId,
               third: !!lastEvt.runnerThirdId,
             };
+          }
+
+          // Get current batter from the most recent event with a batterId
+          const [lastBatterEvt] = await db.select({
+            batterId: gameEvents.batterId,
+          }).from(gameEvents)
+            .where(and(
+              eq(gameEvents.gameId, gid),
+              eq(gameEvents.isDeleted, false),
+              sql`${gameEvents.batterId} IS NOT NULL`,
+            ))
+            .orderBy(desc(gameEvents.eventNumber))
+            .limit(1);
+
+          if (lastBatterEvt?.batterId) {
+            // Get batter name and batting order
+            const [playerRow] = await db.select({
+              firstName: players.firstName,
+              lastName: players.lastName,
+            }).from(players).where(eq(players.id, lastBatterEvt.batterId)).limit(1);
+
+            const [lineupRow] = await db.select({
+              battingOrder: gameLineups.battingOrder,
+            }).from(gameLineups)
+              .where(and(
+                eq(gameLineups.gameId, gid),
+                eq(gameLineups.playerId, lastBatterEvt.batterId),
+              ))
+              .limit(1);
+
+            if (playerRow) {
+              currentBatterMap[gid] = {
+                name: `${playerRow.firstName.charAt(0)}. ${playerRow.lastName}`,
+                battingOrder: lineupRow?.battingOrder ?? 0,
+              };
+            }
           }
         }
       }
@@ -181,6 +219,7 @@ export async function gamesRoutes(app: FastifyInstance) {
         const lp = pitchers.find(p => p.decision === 'L');
         const sv = pitchers.find(p => p.decision === 'S');
         const bases = basesMap[g.id] ?? null;
+        const currentBatter = currentBatterMap[g.id] ?? null;
         return {
           ...g,
           homeTeamName: ht?.name ?? null,
@@ -190,6 +229,7 @@ export async function gamesRoutes(app: FastifyInstance) {
           homeLineScore: ls?.homeLineScore ?? null,
           awayLineScore: ls?.awayLineScore ?? null,
           bases,
+          currentBatter,
           winPitcher: wp ? { name: `${wp.firstName.charAt(0)}. ${wp.lastName}`, ip: wp.ip, h: wp.h, er: wp.er, bb: wp.bb, k: wp.k } : null,
           lossPitcher: lp ? { name: `${lp.firstName.charAt(0)}. ${lp.lastName}`, ip: lp.ip, h: lp.h, er: lp.er, bb: lp.bb, k: lp.k } : null,
           savePitcher: sv ? { name: `${sv.firstName.charAt(0)}. ${sv.lastName}`, ip: sv.ip, h: sv.h, er: sv.er, bb: sv.bb, k: sv.k } : null,
