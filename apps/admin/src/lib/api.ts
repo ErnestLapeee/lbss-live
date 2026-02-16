@@ -1,4 +1,11 @@
-const API_BASE = '/api';
+declare global {
+  interface Window {
+    __LBSS_API_URL__?: string;
+  }
+}
+const rawRuntime = typeof window !== 'undefined' ? window.__LBSS_API_URL__ : undefined;
+const rawBuild = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
+const API_BASE = (rawRuntime && rawRuntime.replace(/\/$/, '')) || rawBuild || '/api';
 
 export async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   const headers: Record<string, string> = { ...options?.headers as Record<string, string> };
