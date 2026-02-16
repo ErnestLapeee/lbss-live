@@ -163,9 +163,9 @@ export function formatPlayByPlay(
 
   // ── Base state after play (from runner IDs on event) ──
   const basesAfter = basesToken(
-    play.runnerFirstId ?? play.runnerFirstName,
-    play.runnerSecondId ?? play.runnerSecondName,
-    play.runnerThirdId ?? play.runnerThirdName,
+    (play.runnerFirstId ?? play.runnerFirstName) ?? null,
+    (play.runnerSecondId ?? play.runnerSecondName) ?? null,
+    (play.runnerThirdId ?? play.runnerThirdName) ?? null,
   );
 
   // ═══ WALKS ═══
