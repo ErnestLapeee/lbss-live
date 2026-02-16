@@ -18,6 +18,8 @@ export async function buildApp() {
   await app.register(cors, {
     origin: [process.env.WEB_URL || 'http://localhost:3000', process.env.ADMIN_URL || 'http://localhost:3001'],
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
   });
 
   await app.register(cookie);
