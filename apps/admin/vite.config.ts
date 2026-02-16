@@ -5,6 +5,10 @@ import path from 'path';
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  preview: {
+    host: '0.0.0.0',
+    port: Number(process.env.PORT) || 4173,
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),

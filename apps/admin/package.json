@@ -8,7 +8,7 @@
     "prepare": "node -e \"try{require('fs').mkdirSync('secrets',{recursive:true});require('fs').writeFileSync('secrets/VITE_API_URL',process.env.VITE_API_URL||'','utf8');}catch(e){}\"",
     "build": "node -e \"try{require('fs').mkdirSync('secrets',{recursive:true});require('fs').writeFileSync('secrets/VITE_API_URL',process.env.VITE_API_URL||'','utf8');}catch(e){}\" && tsc -b && vite build",
     "preview": "vite preview",
-    "start": "vite preview -p ${PORT:-4173}",
+    "start": "vite preview --host 0.0.0.0 -p ${PORT:-4173}",
     "lint": "tsc --noEmit"
   },
   "dependencies": {
