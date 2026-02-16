@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { SprayChart } from '@/components/stats/spray-chart';
-import { useApiBase } from '@/lib/api-context';
 
 type Tab = 'overview' | 'gamelog' | 'spraychart';
 
@@ -22,10 +21,10 @@ interface PlayerModalProps {
 }
 
 export function PlayerModal({ slug, firstName, lastName, onClose }: PlayerModalProps) {
-  const apiBase = useApiBase();
-
   async function fetchJson(path: string) {
-    const res = await fetch(`${apiBase}${path}`);
+    // Use same-origin proxy to avoid CORS issues with external API
+    const proxyPath = path.replace(/^\/api\//, '/api/proxy/');
+    const res = await fetch(proxyPath);
     if (!res.ok) return null;
     return res.json();
   }

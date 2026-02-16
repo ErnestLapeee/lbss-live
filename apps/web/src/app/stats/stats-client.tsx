@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { usePlayerModal } from '@/components/player-modal';
-import { useApiBase } from '@/lib/api-context';
+
 
 /* ── Types ── */
 
@@ -231,51 +231,56 @@ function TeamLogo({ name, shortName, logoUrl, size = 'sm' }: { name: string; sho
 
 /* ── Main Component ── */
 
-export function StatsClient() {
-  const apiBase = useApiBase();
+interface StatsClientProps {
+  initialSeasons: Season[];
+  initialSeasonId: number | null;
+  initialBatting: BattingStat[];
+  initialPitching: PitchingStat[];
+  initialFielding: FieldingStat[];
+  initialBattingLeaders: LeadersData | null;
+  initialPitchingLeaders: LeadersData | null;
+}
+
+export function StatsClient({
+  initialSeasons, initialSeasonId,
+  initialBatting, initialPitching, initialFielding,
+  initialBattingLeaders, initialPitchingLeaders,
+}: StatsClientProps) {
   const { openModal, renderModal } = usePlayerModal();
   const [tab, setTab] = useState<StatsTab>('batting');
-  const [seasons, setSeasons] = useState<Season[]>([]);
-  const [selectedSeasonId, setSelectedSeasonId] = useState<number | null>(null);
-  const [battingStats, setBattingStats] = useState<BattingStat[]>([]);
-  const [pitchingStats, setPitchingStats] = useState<PitchingStat[]>([]);
-  const [fieldingStats, setFieldingStats] = useState<FieldingStat[]>([]);
+  const [seasons, setSeasons] = useState<Season[]>(initialSeasons);
+  const [selectedSeasonId, setSelectedSeasonId] = useState<number | null>(initialSeasonId);
+  const [battingStats, setBattingStats] = useState<BattingStat[]>(initialBatting);
+  const [pitchingStats, setPitchingStats] = useState<PitchingStat[]>(initialPitching);
+  const [fieldingStats, setFieldingStats] = useState<FieldingStat[]>(
+    initialFielding.map((f: any) => ({ ...f, sba: (f.catcherStolenBases || 0) + (f.catcherCaughtStealing || 0) }))
+  );
   const [fieldingPosition, setFieldingPosition] = useState<string>('all');
   const [fieldingByPosLoading, setFieldingByPosLoading] = useState(false);
-  const [battingLeaders, setBattingLeaders] = useState<LeadersData | null>(null);
-  const [pitchingLeaders, setPitchingLeaders] = useState<LeadersData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [battingLeaders, setBattingLeaders] = useState<LeadersData | null>(initialBattingLeaders);
+  const [pitchingLeaders, setPitchingLeaders] = useState<LeadersData | null>(initialPitchingLeaders);
+  const [loading, setLoading] = useState(false);
   const [sortKey, setSortKey] = useState<string>('battingAvg');
   const [sortDir, setSortDir] = useState<SortDirection>('desc');
 
-  // Load seasons
-  useEffect(() => {
-    fetch(`${apiBase}/api/public/stats/seasons`)
-      .then(r => r.json())
-      .then((data: Season[]) => {
-        const list = Array.isArray(data) ? data : [];
-        setSeasons(list);
-        if (list.length > 0) {
-          const active = list.find(s => s.isActive) || list[0];
-          setSelectedSeasonId(active.id);
-        } else {
-          setLoading(false);
-        }
-      })
-      .catch(() => setLoading(false));
-  }, [apiBase]);
+  // Track whether this is the first render (skip initial fetch since data comes from server)
+  const isInitialLoad = useRef(true);
 
-  // Load all stats when season changes
+  // Re-fetch stats when season changes (but not on first mount — server already provided data)
   useEffect(() => {
+    if (isInitialLoad.current) {
+      isInitialLoad.current = false;
+      return;
+    }
     if (!selectedSeasonId) return;
     setLoading(true);
 
     Promise.all([
-      fetch(`${apiBase}/api/public/stats/batting?seasonId=${selectedSeasonId}`).then(r => r.json()).catch(() => []),
-      fetch(`${apiBase}/api/public/stats/leaders?seasonId=${selectedSeasonId}`).then(r => r.json()).catch(() => null),
-      fetch(`${apiBase}/api/public/stats/pitching?seasonId=${selectedSeasonId}`).then(r => r.json()).catch(() => []),
-      fetch(`${apiBase}/api/public/stats/pitching-leaders?seasonId=${selectedSeasonId}`).then(r => r.json()).catch(() => null),
-      fetch(`${apiBase}/api/public/stats/fielding?seasonId=${selectedSeasonId}`).then(r => r.json()).catch(() => []),
+      fetch(`/api/proxy/public/stats/batting?seasonId=${selectedSeasonId}`).then(r => r.json()).catch(() => []),
+      fetch(`/api/proxy/public/stats/leaders?seasonId=${selectedSeasonId}`).then(r => r.json()).catch(() => null),
+      fetch(`/api/proxy/public/stats/pitching?seasonId=${selectedSeasonId}`).then(r => r.json()).catch(() => []),
+      fetch(`/api/proxy/public/stats/pitching-leaders?seasonId=${selectedSeasonId}`).then(r => r.json()).catch(() => null),
+      fetch(`/api/proxy/public/stats/fielding?seasonId=${selectedSeasonId}`).then(r => r.json()).catch(() => []),
     ])
       .then(([batting, bLeaders, pitching, pLeaders, fielding]) => {
         setBattingStats(Array.isArray(batting) ? batting : []);
@@ -296,7 +301,7 @@ export function StatsClient() {
     if (fieldingPosition === 'all') {
       // Re-fetch the standard season totals
       setFieldingByPosLoading(true);
-      fetch(`${apiBase}/api/public/stats/fielding?seasonId=${selectedSeasonId}`)
+      fetch(`/api/proxy/public/stats/fielding?seasonId=${selectedSeasonId}`)
         .then(r => r.json())
         .then(data => {
           setFieldingStats(Array.isArray(data) ? data.map((f: any) => ({
@@ -309,7 +314,7 @@ export function StatsClient() {
       return;
     }
     setFieldingByPosLoading(true);
-    fetch(`${apiBase}/api/public/stats/fielding-by-position?seasonId=${selectedSeasonId}&position=${fieldingPosition}`)
+    fetch(`/api/proxy/public/stats/fielding-by-position?seasonId=${selectedSeasonId}&position=${fieldingPosition}`)
       .then(r => r.json())
       .then(data => {
         setFieldingStats(Array.isArray(data) ? data.map((f: any) => ({

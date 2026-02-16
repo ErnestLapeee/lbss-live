@@ -193,15 +193,15 @@ export function LiveGameClient({
   useEffect(() => {
     if (!lastEvent) return;
     Promise.all([
-      fetch(`${apiBase}/api/public/games/${gameId}/events`).then(r => r.json()).catch(() => []),
-      fetch(`${apiBase}/api/public/games/${gameId}/boxscore`).then(r => r.json()).catch(() => []),
-      fetch(`${apiBase}/api/public/games/${gameId}/pitching-boxscore`).then(r => r.json()).catch(() => []),
+      fetch(`/api/proxy/public/games/${gameId}/events`).then(r => r.json()).catch(() => []),
+      fetch(`/api/proxy/public/games/${gameId}/boxscore`).then(r => r.json()).catch(() => []),
+      fetch(`/api/proxy/public/games/${gameId}/pitching-boxscore`).then(r => r.json()).catch(() => []),
     ]).then(([evts, box, pbox]) => {
       if (Array.isArray(evts)) setEvents(evts);
       if (Array.isArray(box)) setBattingBox(box);
       if (Array.isArray(pbox)) setPitchingBox(pbox);
     });
-  }, [lastEvent, gameId, apiBase]);
+  }, [lastEvent, gameId]);
 
   // Polling fallback: refresh every 8s for live games when WebSocket isn't connected
   useEffect(() => {
@@ -210,10 +210,10 @@ export function LiveGameClient({
     const interval = setInterval(async () => {
       try {
         const [gData, evts, box, pbox] = await Promise.all([
-          fetch(`${apiBase}/api/public/games/${gameId}`).then(r => r.json()).catch(() => null),
-          fetch(`${apiBase}/api/public/games/${gameId}/events`).then(r => r.json()).catch(() => []),
-          fetch(`${apiBase}/api/public/games/${gameId}/boxscore`).then(r => r.json()).catch(() => []),
-          fetch(`${apiBase}/api/public/games/${gameId}/pitching-boxscore`).then(r => r.json()).catch(() => []),
+          fetch(`/api/proxy/public/games/${gameId}`).then(r => r.json()).catch(() => null),
+          fetch(`/api/proxy/public/games/${gameId}/events`).then(r => r.json()).catch(() => []),
+          fetch(`/api/proxy/public/games/${gameId}/boxscore`).then(r => r.json()).catch(() => []),
+          fetch(`/api/proxy/public/games/${gameId}/pitching-boxscore`).then(r => r.json()).catch(() => []),
         ]);
         if (gData && typeof gData === 'object' && gData.id) setGame(gData);
         if (Array.isArray(evts)) setEvents(evts);
@@ -222,7 +222,7 @@ export function LiveGameClient({
       } catch {}
     }, 8000);
     return () => clearInterval(interval);
-  }, [game?.status, isFinal, connected, apiBase, gameId]);
+  }, [game?.status, isFinal, connected, gameId]);
 
   const displayScore = {
     home: gameState?.homeScore ?? game?.homeScore ?? 0,

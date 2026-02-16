@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { PageHeader } from '@/components/ui/page-header';
-import { useApiBase } from '@/lib/api-context';
+
 
 interface Game {
   id: number;
@@ -36,18 +36,17 @@ interface ScheduleClientProps {
 }
 
 export function ScheduleClient({ initialGames }: ScheduleClientProps) {
-  const apiBase = useApiBase();
   const [games, setGames] = useState<Game[]>(initialGames);
 
   const fetchData = useCallback(async () => {
     try {
-      const res = await fetch(`${apiBase}/api/public/games`, { cache: 'no-store' });
+      const res = await fetch(`/api/proxy/public/games`, { cache: 'no-store' });
       const data = await res.json();
       if (res.ok && Array.isArray(data)) setGames(data);
     } catch {
       // keep existing games on transient errors
     }
-  }, [apiBase]);
+  }, []);
 
   // Auto-refresh every 12s when live games exist
   useEffect(() => {
