@@ -2,9 +2,6 @@
 node_modules
 **/node_modules
 
-# Apps not needed for API service
-apps
-
 # Git and env (never copy into image)
 .git
 .env

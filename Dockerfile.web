@@ -1,0 +1,32 @@
+# pnpm monorepo Next.js web app for Railway (Node 20)
+# Use this Dockerfile ONLY for the @lbss/web service. Build context = repo root.
+#
+# In Railway for the web service:
+#   - Root Directory: leave empty (or "/")
+#   - Dockerfile path: Dockerfile.web
+FROM node:20-slim
+
+RUN corepack enable && corepack prepare pnpm@10.6.0 --activate
+
+WORKDIR /app
+
+# Copy dependency manifests (repo root + shared + web)
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc tsconfig.base.json ./
+COPY packages/shared/package.json packages/shared/
+COPY apps/web/package.json apps/web/
+
+# Install dependencies so `next` and workspace deps exist before build
+RUN pnpm install --frozen-lockfile
+
+# Copy source
+COPY packages/shared packages/shared
+COPY apps/web apps/web
+
+# Build Next.js (must run after install)
+RUN pnpm --filter @lbss/web build
+
+ENV NODE_ENV=production
+EXPOSE 3000
+
+# Run from repo root; Next listens on PORT (Railway sets PORT)
+CMD ["pnpm", "--filter", "@lbss/web", "start"]
