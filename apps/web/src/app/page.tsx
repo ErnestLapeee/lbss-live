@@ -55,11 +55,6 @@ export default async function HomePage() {
               <span className="text-accent-bright">Liga</span>
             </h1>
 
-            <p className="mt-5 text-base sm:text-lg text-white/60 max-w-xl leading-relaxed">
-              The official home of Latvian baseball. Live scores, standings,
-              player statistics, and league news.
-            </p>
-
             <div className="mt-8 flex flex-wrap gap-3">
               <Link
                 href="/schedule"
