@@ -1,12 +1,5 @@
-# Railway config: use pnpm via Corepack so workspace:* works.
-# This file configures the API service. Root Directory = repo root.
-#
-# For a Web service (apps/web), in Railway dashboard set:
-#   Build: corepack enable && pnpm install --frozen-lockfile && pnpm --filter @lbss/web build
-#   Start: pnpm --filter @lbss/web start
-
-[build]
-buildCommand = "corepack enable && pnpm -v && pnpm install --frozen-lockfile && pnpm --dir packages/api build"
-
-[deploy]
-startCommand = "pnpm --dir packages/api start"
+# Railway config: pnpm monorepo — no global start/build.
+# Each service uses its own Root Directory and package.json scripts:
+#   packages/api  → build: tsc, start: node dist/index.js
+#   apps/web      → build: next build, start: next start
+#   apps/admin    → build: vite build, start: vite preview
