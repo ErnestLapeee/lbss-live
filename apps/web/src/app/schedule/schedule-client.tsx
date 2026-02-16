@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { PageHeader } from '@/components/ui/page-header';
+import { useApiBase } from '@/lib/api-context';
 
 interface Game {
   id: number;
@@ -30,11 +31,11 @@ interface Game {
 }
 
 interface ScheduleClientProps {
-  apiBase: string;
   initialGames: Game[];
 }
 
-export function ScheduleClient({ apiBase, initialGames }: ScheduleClientProps) {
+export function ScheduleClient({ initialGames }: ScheduleClientProps) {
+  const apiBase = useApiBase();
   const [games, setGames] = useState<Game[]>(initialGames);
 
   const fetchData = useCallback(async () => {

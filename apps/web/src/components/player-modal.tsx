@@ -2,16 +2,9 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { SprayChart } from '@/components/stats/spray-chart';
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
+import { useApiBase } from '@/lib/api-context';
 
 type Tab = 'overview' | 'gamelog' | 'spraychart';
-
-async function fetchJson(path: string) {
-  const res = await fetch(`${API_BASE}${path}`);
-  if (!res.ok) return null;
-  return res.json();
-}
 
 const n = (v: any) => v ?? 0;
 const fmtRate = (v: any) => (v != null && v !== '' ? Number(v).toFixed(3).replace(/^0/, '') : '—');
@@ -29,6 +22,14 @@ interface PlayerModalProps {
 }
 
 export function PlayerModal({ slug, firstName, lastName, onClose }: PlayerModalProps) {
+  const apiBase = useApiBase();
+
+  async function fetchJson(path: string) {
+    const res = await fetch(`${apiBase}${path}`);
+    if (!res.ok) return null;
+    return res.json();
+  }
+
   const [tab, setTab] = useState<Tab>('overview');
   const [player, setPlayer] = useState<any>(null);
   const [battingStats, setBattingStats] = useState<any[] | null>(null);

@@ -4,8 +4,7 @@ import { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
 import { useGameSocket } from '@/hooks/useGameSocket';
 import { formatPlayByPlay } from '@/lib/format-play';
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
+import { useApiBase } from '@/lib/api-context';
 
 const POS_LABELS: Record<number, string> = {
   1: 'P', 2: 'C', 3: '1B', 4: '2B', 5: '3B', 6: 'SS', 7: 'LF', 8: 'CF', 9: 'RF', 10: 'DH',
@@ -166,6 +165,7 @@ interface SeasonContext {
 type Tab = 'plays' | 'boxscore' | 'pitching';
 
 export function LiveGameClient({ gameId, initialData }: { gameId: number; initialData: any }) {
+  const apiBase = useApiBase();
   const [game, setGame] = useState<GameData | null>(initialData);
   const [events, setEvents] = useState<GameEvent[]>([]);
   const [lineups, setLineups] = useState<LineupEntry[]>([]);
@@ -174,18 +174,18 @@ export function LiveGameClient({ gameId, initialData }: { gameId: number; initia
   const [seasonCtx, setSeasonCtx] = useState<SeasonContext>({ batting: [], pitching: [] });
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<Tab>('plays');
-  const { connected, gameState, lastEvent, isFinal, viewerCount } = useGameSocket(gameId);
+  const { connected, gameState, lastEvent, isFinal, viewerCount } = useGameSocket(gameId, apiBase);
 
   // Fetch all data
   useEffect(() => {
     async function fetchAll() {
       try {
         const [evts, lnps, box, pbox, ctx] = await Promise.all([
-          fetch(`${API_BASE}/api/public/games/${gameId}/events`).then(r => r.json()).catch(() => []),
-          fetch(`${API_BASE}/api/public/games/${gameId}/lineups`).then(r => r.json()).catch(() => []),
-          fetch(`${API_BASE}/api/public/games/${gameId}/boxscore`).then(r => r.json()).catch(() => []),
-          fetch(`${API_BASE}/api/public/games/${gameId}/pitching-boxscore`).then(r => r.json()).catch(() => []),
-          fetch(`${API_BASE}/api/public/games/${gameId}/season-context`).then(r => r.json()).catch(() => ({ batting: [], pitching: [] })),
+          fetch(`${apiBase}/api/public/games/${gameId}/events`).then(r => r.json()).catch(() => []),
+          fetch(`${apiBase}/api/public/games/${gameId}/lineups`).then(r => r.json()).catch(() => []),
+          fetch(`${apiBase}/api/public/games/${gameId}/boxscore`).then(r => r.json()).catch(() => []),
+          fetch(`${apiBase}/api/public/games/${gameId}/pitching-boxscore`).then(r => r.json()).catch(() => []),
+          fetch(`${apiBase}/api/public/games/${gameId}/season-context`).then(r => r.json()).catch(() => ({ batting: [], pitching: [] })),
         ]);
         setEvents(evts); setLineups(lnps); setBattingBox(box); setPitchingBox(pbox); setSeasonCtx(ctx);
       } catch {}
@@ -198,9 +198,9 @@ export function LiveGameClient({ gameId, initialData }: { gameId: number; initia
   useEffect(() => {
     if (!lastEvent) return;
     Promise.all([
-      fetch(`${API_BASE}/api/public/games/${gameId}/events`).then(r => r.json()).catch(() => []),
-      fetch(`${API_BASE}/api/public/games/${gameId}/boxscore`).then(r => r.json()).catch(() => []),
-      fetch(`${API_BASE}/api/public/games/${gameId}/pitching-boxscore`).then(r => r.json()).catch(() => []),
+      fetch(`${apiBase}/api/public/games/${gameId}/events`).then(r => r.json()).catch(() => []),
+      fetch(`${apiBase}/api/public/games/${gameId}/boxscore`).then(r => r.json()).catch(() => []),
+      fetch(`${apiBase}/api/public/games/${gameId}/pitching-boxscore`).then(r => r.json()).catch(() => []),
     ]).then(([evts, box, pbox]) => {
       setEvents(evts); setBattingBox(box); setPitchingBox(pbox);
     });

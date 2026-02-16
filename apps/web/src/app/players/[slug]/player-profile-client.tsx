@@ -2,8 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { SprayChart } from '@/components/stats/spray-chart';
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
+import { useApiBase } from '@/lib/api-context';
 
 interface PlayerProfileClientProps {
   slug: string;
@@ -11,12 +10,6 @@ interface PlayerProfileClientProps {
 }
 
 type Tab = 'batting' | 'pitching' | 'fielding' | 'gamelog';
-
-async function fetchJson(path: string) {
-  const res = await fetch(`${API_BASE}${path}`);
-  if (!res.ok) return null;
-  return res.json();
-}
 
 const fmtRate = (v: any) => (v != null && v !== '' ? Number(v).toFixed(3).replace(/^0/, '') : '—');
 const fmtEra = (v: any) => (v != null && v !== '' ? Number(v).toFixed(2) : '—');
@@ -28,6 +21,14 @@ const POS_LABELS: Record<number, string> = {
 };
 
 export function PlayerProfileClient({ slug, battingStats }: PlayerProfileClientProps) {
+  const apiBase = useApiBase();
+
+  async function fetchJson(path: string) {
+    const res = await fetch(`${apiBase}${path}`);
+    if (!res.ok) return null;
+    return res.json();
+  }
+
   const [tab, setTab] = useState<Tab>('batting');
   const [pitchingStats, setPitchingStats] = useState<any[] | null>(null);
   const [fieldingStats, setFieldingStats] = useState<any[] | null>(null);

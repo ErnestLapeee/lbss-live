@@ -3,8 +3,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { io, Socket } from 'socket.io-client';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
-
 interface GameState {
   inning: number;
   half: 'top' | 'bot';
@@ -36,7 +34,7 @@ interface GameFinalPayload {
   status: 'final';
 }
 
-export function useGameSocket(gameId: number | null) {
+export function useGameSocket(gameId: number | null, apiUrl: string) {
   const socketRef = useRef<Socket | null>(null);
   const [connected, setConnected] = useState(false);
   const [gameState, setGameState] = useState<GameState | null>(null);
@@ -47,7 +45,7 @@ export function useGameSocket(gameId: number | null) {
   const connect = useCallback(() => {
     if (!gameId || socketRef.current?.connected) return;
 
-    const socket = io(API_URL, {
+    const socket = io(apiUrl, {
       path: '/ws',
       transports: ['websocket', 'polling'],
     });
@@ -76,7 +74,7 @@ export function useGameSocket(gameId: number | null) {
     });
 
     socketRef.current = socket;
-  }, [gameId]);
+  }, [gameId, apiUrl]);
 
   const disconnect = useCallback(() => {
     if (socketRef.current) {
