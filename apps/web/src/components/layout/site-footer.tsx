@@ -14,7 +14,7 @@ export function SiteFooter() {
               <img src="/lbss-logo.png" alt="LBSS" className="h-8 w-8 object-contain opacity-80" />
               <div>
                 <div className="font-heading text-sm font-bold text-white">LBSS</div>
-                <div className="text-[9px] uppercase tracking-[0.1em] text-white/40">Est. Latvia</div>
+                <div className="text-[9px] uppercase tracking-[0.1em] text-white/40">Est. ----</div>
               </div>
             </div>
             <p className="text-xs text-white/40 leading-relaxed">

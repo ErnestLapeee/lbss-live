@@ -274,7 +274,7 @@ export default async function HomePage() {
               <QuickLinkCard title="League Schedule" description="View all upcoming games and results" href="/schedule" />
               <QuickLinkCard title="Player Directory" description="Browse all registered players" href="/players" />
               <QuickLinkCard title="Leaderboards" description="Top performers and statistics" href="/leaderboards" />
-              <QuickLinkCard title="About LBSS" description="History and mission of the federation" href="/about" />
+              <QuickLinkCard title="About LBSS" description="About the federation" href="/about" />
             </section>
           </div>
         </div>
