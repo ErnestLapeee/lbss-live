@@ -24,6 +24,9 @@ COPY packages/api packages/api
 # Build the API (depends on shared)
 RUN pnpm --dir packages/api build
 
+# Fail fast if schema output is missing (avoids ERR_MODULE_NOT_FOUND at runtime)
+RUN test -f packages/api/dist/db/schema/index.js || (echo "Missing packages/api/dist/db/schema/index.js" && exit 1)
+
 # Listen on PORT (Railway injects process.env.PORT)
 ENV NODE_ENV=production
 EXPOSE 3000
