@@ -1,0 +1,101 @@
+@import "tailwindcss";
+
+@theme {
+  /* ── Brand palette ── */
+  --color-primary: #0c1220;
+  --color-primary-light: #162038;
+  --color-primary-mid: #1c2a4a;
+  --color-accent: #9b1b30;
+  --color-accent-light: #c42a42;
+  --color-accent-bright: #e63950;
+  --color-gold: #d4a843;
+  --color-gold-light: #e8c468;
+  --color-live: #22c55e;
+
+  /* ── Surfaces ── */
+  --color-surface: #ffffff;
+  --color-surface-alt: #f4f6f9;
+  --color-surface-raised: #ffffff;
+  --color-surface-inset: #edf0f4;
+
+  /* ── Text ── */
+  --color-text: #0c1220;
+  --color-text-muted: #5b6b82;
+  --color-text-faint: #94a3b8;
+
+  /* ── Borders ── */
+  --color-border: #e0e5ec;
+  --color-border-light: #eef1f5;
+
+  /* ── Typography ── */
+  --font-heading: 'Space Grotesk', system-ui, sans-serif;
+  --font-body: 'Inter', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+/* ── Dark mode overrides ── */
+@media (prefers-color-scheme: dark) {
+  @theme {
+    --color-surface: #0c1220;
+    --color-surface-alt: #121b2e;
+    --color-surface-raised: #162038;
+    --color-surface-inset: #0a0f1a;
+    --color-text: #edf2f7;
+    --color-text-muted: #8899ad;
+    --color-text-faint: #546378;
+    --color-border: #1e2d45;
+    --color-border-light: #162038;
+  }
+}
+
+/* ── Base ── */
+body {
+  font-family: var(--font-body);
+  background: var(--color-surface);
+  color: var(--color-text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-heading);
+  letter-spacing: -0.01em;
+}
+
+/* ── Live pulse animation — soft opacity breathing, no glow ── */
+@keyframes live-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+.live-badge {
+  animation: live-pulse 2s ease-in-out infinite;
+}
+
+/* ── Scoreboard strip scroll ── */
+.scoreboard-scroll {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.scoreboard-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+/* ── Hero background pattern ── */
+.hero-pattern {
+  background-image:
+    radial-gradient(ellipse 80% 60% at 70% 40%, rgba(155, 27, 48, 0.15) 0%, transparent 70%),
+    radial-gradient(ellipse 60% 50% at 20% 80%, rgba(212, 168, 67, 0.08) 0%, transparent 70%),
+    linear-gradient(180deg, #0c1220 0%, #162038 100%);
+}
+
+/* ── Section divider accent stripe ── */
+.accent-stripe {
+  background: linear-gradient(90deg, var(--color-accent), var(--color-gold), var(--color-accent));
+  height: 3px;
+}
+
+/* ── Stat highlight shimmer ── */
+.stat-value {
+  font-variant-numeric: tabular-nums;
+}

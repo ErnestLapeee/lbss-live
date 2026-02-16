@@ -1,0 +1,22 @@
+{
+  "name": "lbss",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Latvijas Beisbola Softbola Savieniba - Official Platform",
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "db:generate": "pnpm --filter @lbss/api db:generate",
+    "db:migrate": "pnpm --filter @lbss/api db:migrate",
+    "db:seed": "pnpm --filter @lbss/api db:seed",
+    "db:studio": "pnpm --filter @lbss/api db:studio"
+  },
+  "packageManager": "pnpm@10.6.0",
+  "pnpm": {
+    "onlyBuiltDependencies": ["argon2", "esbuild", "sharp"]
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
