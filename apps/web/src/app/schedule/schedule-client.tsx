@@ -59,14 +59,17 @@ export function ScheduleClient() {
 
   return (
     <div>
-      <PageHeader title="Schedule & Scores" description="Latvijas Beisbola liga — 2025 Season" />
+      <PageHeader title="Schedule & Scores" />
       <div className="mx-auto max-w-3xl px-4 sm:px-6 py-6 space-y-8">
         {loading ? (
           <div className="flex justify-center py-20">
             <div className="w-6 h-6 border-2 border-text-faint/30 border-t-accent rounded-full animate-spin" />
           </div>
         ) : games.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-border bg-surface-alt p-16 text-center" />
+          <div className="rounded-2xl border border-dashed border-border bg-surface-alt p-16 text-center">
+            <p className="text-text-muted text-lg font-medium">No games scheduled yet</p>
+            <p className="text-text-faint text-sm mt-2">Check back when the season begins.</p>
+          </div>
         ) : (
           <>
             {/* ── LIVE NOW ── */}

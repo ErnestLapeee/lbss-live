@@ -58,9 +58,14 @@ export function SiteFooter() {
           <p className="text-[11px] text-white/30">
             &copy; {new Date().getFullYear()} Latvijas Beisbola Softbola Savieniba. All rights reserved.
           </p>
-          <p className="text-[10px] text-white/20">
-            Powered by LBSS Stats Platform
-          </p>
+          <a
+            href={process.env.NEXT_PUBLIC_ADMIN_URL || '#'}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[10px] text-white/20 hover:text-white/40 transition-colors"
+          >
+            Admin
+          </a>
         </div>
       </div>
     </footer>
