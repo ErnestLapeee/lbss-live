@@ -43,7 +43,8 @@ export async function authRoutes(app: FastifyInstance) {
 
       reply.setCookie('session', sessionId, {
         httpOnly: true,
-        sameSite: 'lax',
+        sameSite: 'none',
+        secure: true,
         path: '/',
         expires: expiresAt,
       });
@@ -69,7 +70,7 @@ export async function authRoutes(app: FastifyInstance) {
       if (sessionId) {
         await db.delete(sessions).where(eq(sessions.id, sessionId));
       }
-      reply.clearCookie('session', { path: '/' });
+      reply.clearCookie('session', { path: '/', sameSite: 'none', secure: true });
       return reply.send({ message: 'Logged out' });
     } catch (err) {
       request.log.error(err);
