@@ -4,15 +4,16 @@ import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const port = String(process.env.PORT || '4173');
+const listen = `tcp://0.0.0.0:${port}`;
 
-// serve reads process.env.PORT when -l is omitted and listens on 0.0.0.0
 const child = spawn(
   'pnpm',
-  ['exec', 'serve', '-s', 'dist'],
+  ['exec', 'serve', '-s', 'dist', '-l', listen],
   {
     stdio: 'inherit',
     cwd: __dirname,
-    env: { ...process.env, PORT: process.env.PORT || '4173' },
+    env: { ...process.env, PORT: port },
   }
 );
 child.on('exit', (code, signal) => process.exit(code ?? (signal ? 1 : 0)));
