@@ -26,5 +26,5 @@ RUN pnpm --filter @lbss/admin build
 ENV NODE_ENV=production
 EXPOSE 4173
 
-# Use Node script so PORT from Railway is always applied (no shell expansion)
-CMD ["node", "apps/admin/start.mjs"]
+# Shell form so $PORT is expanded; start runs "serve -s dist -l $PORT" from apps/admin
+CMD pnpm --filter @lbss/admin start

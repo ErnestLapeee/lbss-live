@@ -14,9 +14,16 @@
   },
   "packageManager": "pnpm@10.6.0",
   "pnpm": {
-    "onlyBuiltDependencies": ["argon2", "esbuild", "sharp"]
+    "onlyBuiltDependencies": [
+      "argon2",
+      "esbuild",
+      "sharp"
+    ]
   },
   "engines": {
     "node": ">=20"
+  },
+  "dependencies": {
+    "serve": "^14.2.5"
   }
 }
