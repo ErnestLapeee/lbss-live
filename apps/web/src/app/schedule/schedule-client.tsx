@@ -1,7 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
-import Link from 'next/link';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { PageHeader } from '@/components/ui/page-header';
 
 
@@ -29,24 +28,48 @@ interface Game {
   winPitcher: { name: string; ip: string; h: number; er: number; bb: number; k: number } | null;
   lossPitcher: { name: string; ip: string; h: number; er: number; bb: number; k: number } | null;
   savePitcher: { name: string; ip: string; h: number; er: number; bb: number; k: number } | null;
+  seasonId?: number | null;
+  seasonYear?: number | null;
+  seasonName?: string | null;
+}
+
+interface Season {
+  id: number;
+  name: string;
+  year: number;
 }
 
 interface ScheduleClientProps {
   initialGames: Game[];
+  seasons: Season[];
+  defaultSeasonId: number | null;
 }
 
-export function ScheduleClient({ initialGames }: ScheduleClientProps) {
+export function ScheduleClient({ initialGames, seasons, defaultSeasonId }: ScheduleClientProps) {
   const [games, setGames] = useState<Game[]>(initialGames);
+  const [selectedSeasonId, setSelectedSeasonId] = useState<number | null>(defaultSeasonId);
+  const isFirstRun = useRef(true);
 
   const fetchData = useCallback(async () => {
     try {
-      const res = await fetch(`/api/proxy/public/games`, { cache: 'no-store' });
+      const url = selectedSeasonId
+        ? `/api/proxy/public/games?seasonId=${selectedSeasonId}`
+        : '/api/proxy/public/games';
+      const res = await fetch(url, { cache: 'no-store' });
       const data = await res.json();
       if (res.ok && Array.isArray(data)) setGames(data);
     } catch {
       // keep existing games on transient errors
     }
-  }, []);
+  }, [selectedSeasonId]);
+
+  useEffect(() => {
+    if (isFirstRun.current) {
+      isFirstRun.current = false;
+      return;
+    }
+    fetchData();
+  }, [selectedSeasonId, fetchData]);
 
   // Auto-refresh every 12s when live games exist
   useEffect(() => {
@@ -57,23 +80,94 @@ export function ScheduleClient({ initialGames }: ScheduleClientProps) {
 
   const liveGames = games.filter(g => g.status === 'live');
   const finishedGames = games.filter(g => g.status === 'final').reverse();
-  // Upcoming: scheduled, draft, postponed, suspended, or any other non-live/non-final
   const upcomingGames = games.filter(
     g => g.status !== 'live' && g.status !== 'final'
   );
+
+  // When "All seasons" is selected, group games by season (newest first)
+  const showGroupedBySeason = selectedSeasonId == null && games.some(g => g.seasonYear != null);
+  const gamesBySeason = showGroupedBySeason
+    ? (() => {
+        const byYear = new Map<number, Game[]>();
+        for (const g of games) {
+          const y = g.seasonYear ?? 0;
+          if (!byYear.has(y)) byYear.set(y, []);
+          byYear.get(y)!.push(g);
+        }
+        return Array.from(byYear.entries())
+          .sort(([a], [b]) => b - a)
+          .map(([year, list]) => ({ seasonYear: year, seasonName: list[0]?.seasonName ?? String(year), games: list }));
+      })()
+    : null;
 
   return (
     <div>
       <PageHeader title="Schedule & Scores" />
       <div className="mx-auto max-w-3xl px-4 sm:px-6 py-6 space-y-8">
+        {seasons.length > 0 && (
+          <div className="flex items-center gap-3 p-3 rounded-xl bg-surface-alt border border-border mb-4">
+            <label className="text-sm font-medium text-text-muted whitespace-nowrap">Season:</label>
+            <select
+              value={selectedSeasonId ?? 'all'}
+              onChange={(e) => setSelectedSeasonId(e.target.value === 'all' ? null : Number(e.target.value))}
+              className="rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-accent/50 min-w-[160px]"
+            >
+              <option value="all">All seasons</option>
+              {seasons.map(s => (
+                <option key={s.id} value={s.id}>{s.name}</option>
+              ))}
+            </select>
+            <span className="text-xs text-text-faint">
+              {selectedSeasonId != null ? 'Showing one season' : 'Showing all, grouped by season'}
+            </span>
+          </div>
+        )}
         {games.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-border bg-surface-alt p-16 text-center">
             <p className="text-text-muted text-lg font-medium">No games scheduled yet</p>
             <p className="text-text-faint text-sm mt-2">Check back when the season begins.</p>
           </div>
+        ) : showGroupedBySeason && gamesBySeason && gamesBySeason.length > 0 ? (
+          <>
+            {gamesBySeason.map(({ seasonYear, seasonName, games: seasonGames }) => {
+              const live = seasonGames.filter(g => g.status === 'live');
+              const upcoming = seasonGames.filter(g => g.status !== 'live' && g.status !== 'final');
+              const final = seasonGames.filter(g => g.status === 'final').reverse();
+              return (
+                <section key={seasonYear} className="space-y-6">
+                  <h2 className="font-heading text-sm font-bold uppercase tracking-wider text-text-muted border-b border-border pb-2">
+                    {seasonName}
+                  </h2>
+                  {live.length > 0 && (
+                    <>
+                      <SectionLabel color="live" pulse>Live Now</SectionLabel>
+                      <div className="space-y-4">
+                        {live.map(g => <LiveCard key={g.id} game={g} />)}
+                      </div>
+                    </>
+                  )}
+                  {upcoming.length > 0 && (
+                    <>
+                      <SectionLabel color="muted">Upcoming</SectionLabel>
+                      <div className="space-y-2">
+                        {upcoming.map(g => <UpcomingCard key={g.id} game={g} />)}
+                      </div>
+                    </>
+                  )}
+                  {final.length > 0 && (
+                    <>
+                      <SectionLabel color="faint">Final</SectionLabel>
+                      <div className="space-y-3">
+                        {final.map(g => <FinalCard key={g.id} game={g} />)}
+                      </div>
+                    </>
+                  )}
+                </section>
+              );
+            })}
+          </>
         ) : (
           <>
-            {/* ── LIVE NOW ── */}
             {liveGames.length > 0 && (
               <section>
                 <SectionLabel color="live" pulse>Live Now</SectionLabel>
@@ -82,8 +176,6 @@ export function ScheduleClient({ initialGames }: ScheduleClientProps) {
                 </div>
               </section>
             )}
-
-            {/* ── UPCOMING ── */}
             {upcomingGames.length > 0 && (
               <section>
                 <SectionLabel color="muted">Upcoming</SectionLabel>
@@ -92,8 +184,6 @@ export function ScheduleClient({ initialGames }: ScheduleClientProps) {
                 </div>
               </section>
             )}
-
-            {/* ── FINAL ── */}
             {finishedGames.length > 0 && (
               <section>
                 <SectionLabel color="faint">Final</SectionLabel>

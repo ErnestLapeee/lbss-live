@@ -4,6 +4,7 @@ import {
   games,
   teams,
   leagues,
+  seasons,
   playerGameBatting,
   playerGamePitching,
   playerSeasonBatting,
@@ -15,9 +16,10 @@ import {
 import { eq, and, gte, lte, sql, desc } from 'drizzle-orm';
 
 export async function gamesRoutes(app: FastifyInstance) {
-  // GET / - list games with optional filters: leagueId, status, from/to dates
+  // GET / - list games with optional filters: seasonId, leagueId, status, from/to dates
   app.get<{
     Querystring: {
+      seasonId?: string;
       leagueId?: string;
       status?: string;
       from?: string;
@@ -25,9 +27,15 @@ export async function gamesRoutes(app: FastifyInstance) {
     };
   }>('/', async (request, reply) => {
     try {
-      const { leagueId, status, from, to } = request.query;
+      const { seasonId, leagueId, status, from, to } = request.query;
 
       const conditions = [];
+      if (seasonId) {
+        const sid = parseInt(seasonId, 10);
+        if (!isNaN(sid)) {
+          conditions.push(sql`${games.leagueId} IN (SELECT id FROM leagues WHERE season_id = ${sid})`);
+        }
+      }
       if (leagueId) {
         const id = parseInt(leagueId, 10);
         if (!isNaN(id)) conditions.push(eq(games.leagueId, id));
@@ -58,9 +66,26 @@ export async function gamesRoutes(app: FastifyInstance) {
         isFinalized: games.isFinalized,
       };
 
-      const gamesList = conditions.length
+      const gamesList = conditions.length > 0
         ? await db.select(gameSelect).from(games).where(and(...conditions)).orderBy(games.scheduledAt)
         : await db.select(gameSelect).from(games).orderBy(games.scheduledAt);
+
+      // League -> season info for each game
+      const leagueIds = new Set<number>();
+      for (const g of gamesList) leagueIds.add(g.leagueId);
+      const leagueSeasonMap: Record<number, { seasonId: number; seasonYear: number; seasonName: string }> = {};
+      if (leagueIds.size > 0) {
+        const leagueRows = await db.select({
+          leagueId: leagues.id,
+          seasonId: seasons.id,
+          seasonYear: seasons.year,
+          seasonName: seasons.name,
+        })
+          .from(leagues)
+          .innerJoin(seasons, eq(leagues.seasonId, seasons.id))
+          .where(sql`${leagues.id} = ANY(${sql.raw(`ARRAY[${[...leagueIds].join(',')}]`)})`);
+        for (const r of leagueRows) leagueSeasonMap[r.leagueId] = { seasonId: r.seasonId, seasonYear: r.seasonYear, seasonName: r.seasonName };
+      }
 
       // Collect all team IDs for a single batch query
       const teamIds = new Set<number>();
@@ -220,8 +245,12 @@ export async function gamesRoutes(app: FastifyInstance) {
         const sv = pitchers.find(p => p.decision === 'S');
         const bases = basesMap[g.id] ?? null;
         const currentBatter = currentBatterMap[g.id] ?? null;
+        const seasonInfo = leagueSeasonMap[g.leagueId];
         return {
           ...g,
+          seasonId: seasonInfo?.seasonId ?? null,
+          seasonYear: seasonInfo?.seasonYear ?? null,
+          seasonName: seasonInfo?.seasonName ?? null,
           homeTeamName: ht?.name ?? null,
           awayTeamName: at?.name ?? null,
           homeTeamShort: ht?.shortName ?? null,

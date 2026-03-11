@@ -150,6 +150,10 @@ Admin routes (except auth) require a valid session cookie.
 | **Phase 2** | Planned | Live scoring engine, WebSocket real-time updates, license management |
 | **Phase 3** | Future | Payment integration, advanced sabermetrics, mobile PWA |
 
+## Deploying to Railway
+
+If the **web app** is deployed on Railway, you must set **`NEXT_PUBLIC_API_URL`** on the *web* service to your API’s public URL (e.g. `https://your-api.railway.app`). Otherwise the site will show no teams, no seasons, and no statistics because API calls default to `localhost:3002` and fail. See **[docs/DEPLOYMENT_RAILWAY.md](docs/DEPLOYMENT_RAILWAY.md)** for step-by-step instructions.
+
 ## License
 
 Private — Latvijas Beisbola Softbola Savienība

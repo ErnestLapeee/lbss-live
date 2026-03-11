@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import Link from 'next/link';
 import { usePlayerModal } from '@/components/player-modal';
 
 
@@ -412,22 +413,30 @@ export function StatsClient({
           </button>
         </div>
 
-        {/* Season selector */}
-        <div className="flex items-center gap-3">
-          <label className="text-sm font-medium text-text-muted">Season:</label>
-          <select
-            value={selectedSeasonId ?? 'all'}
-            onChange={(e) => {
-              const v = e.target.value;
-              setSelectedSeasonId(v === 'all' ? null : Number(v));
-            }}
-            className="rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-accent/50"
+        {/* Season selector + Legend link */}
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="flex items-center gap-3">
+            <label className="text-sm font-medium text-text-muted">Season:</label>
+            <select
+              value={selectedSeasonId ?? 'all'}
+              onChange={(e) => {
+                const v = e.target.value;
+                setSelectedSeasonId(v === 'all' ? null : Number(v));
+              }}
+              className="rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-accent/50"
+            >
+              <option value="all">All time</option>
+              {seasons.map(s => (
+                <option key={s.id} value={s.id}>{s.name}</option>
+              ))}
+            </select>
+          </div>
+          <Link
+            href="/stats/legend"
+            className="text-sm font-medium text-accent hover:text-accent-light transition-colors"
           >
-            <option value="all">All time</option>
-            {seasons.map(s => (
-              <option key={s.id} value={s.id}>{s.name}</option>
-            ))}
-          </select>
+            Legend
+          </Link>
         </div>
       </div>
 
