@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { PageHeader } from '@/components/ui/page-header';
 
