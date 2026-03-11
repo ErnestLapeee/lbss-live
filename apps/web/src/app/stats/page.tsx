@@ -16,9 +16,10 @@ export default async function StatsPage() {
     seasons = Array.isArray(data) ? data : [];
   } catch {}
 
-  // Determine active season and pre-fetch its stats
+  // Pre-fetch stats for active season (or all-time if no seasons)
   const activeSeason = seasons.find((s: any) => s.isActive) || seasons[0];
-  const seasonId = activeSeason?.id;
+  const seasonId = activeSeason?.id ?? null;
+  const initialSeasonParam = seasonId != null ? `seasonId=${seasonId}` : 'seasonId=all';
 
   let initialBatting: any[] = [];
   let initialPitching: any[] = [];
@@ -26,20 +27,18 @@ export default async function StatsPage() {
   let initialBattingLeaders: any = null;
   let initialPitchingLeaders: any = null;
 
-  if (seasonId) {
-    const [batting, bLeaders, pitching, pLeaders, fielding] = await Promise.all([
-      apiFetch(`/api/public/stats/batting?seasonId=${seasonId}`).catch(() => []),
-      apiFetch(`/api/public/stats/leaders?seasonId=${seasonId}`).catch(() => null),
-      apiFetch(`/api/public/stats/pitching?seasonId=${seasonId}`).catch(() => []),
-      apiFetch(`/api/public/stats/pitching-leaders?seasonId=${seasonId}`).catch(() => null),
-      apiFetch(`/api/public/stats/fielding?seasonId=${seasonId}`).catch(() => []),
-    ]);
-    initialBatting = Array.isArray(batting) ? batting : [];
-    initialPitching = Array.isArray(pitching) ? pitching : [];
-    initialFielding = Array.isArray(fielding) ? fielding : [];
-    initialBattingLeaders = bLeaders && typeof bLeaders === 'object' && !Array.isArray(bLeaders) ? bLeaders : null;
-    initialPitchingLeaders = pLeaders && typeof pLeaders === 'object' && !Array.isArray(pLeaders) ? pLeaders : null;
-  }
+  const [batting, bLeaders, pitching, pLeaders, fielding] = await Promise.all([
+    apiFetch(`/api/public/stats/batting?${initialSeasonParam}`).catch(() => []),
+    apiFetch(`/api/public/stats/leaders?${initialSeasonParam}`).catch(() => null),
+    apiFetch(`/api/public/stats/pitching?${initialSeasonParam}`).catch(() => []),
+    apiFetch(`/api/public/stats/pitching-leaders?${initialSeasonParam}`).catch(() => null),
+    apiFetch(`/api/public/stats/fielding?${initialSeasonParam}`).catch(() => []),
+  ]);
+  initialBatting = Array.isArray(batting) ? batting : [];
+  initialPitching = Array.isArray(pitching) ? pitching : [];
+  initialFielding = Array.isArray(fielding) ? fielding : [];
+  initialBattingLeaders = bLeaders && typeof bLeaders === 'object' && !Array.isArray(bLeaders) ? bLeaders : null;
+  initialPitchingLeaders = pLeaders && typeof pLeaders === 'object' && !Array.isArray(pLeaders) ? pLeaders : null;
 
   return (
     <div>

@@ -249,7 +249,7 @@ export function StatsClient({
   const { openModal, renderModal } = usePlayerModal();
   const [tab, setTab] = useState<StatsTab>('batting');
   const [seasons, setSeasons] = useState<Season[]>(initialSeasons);
-  const [selectedSeasonId, setSelectedSeasonId] = useState<number | null>(initialSeasonId);
+  const [selectedSeasonId, setSelectedSeasonId] = useState<number | null>(initialSeasonId); // null = All time
   const [battingStats, setBattingStats] = useState<BattingStat[]>(initialBatting);
   const [pitchingStats, setPitchingStats] = useState<PitchingStat[]>(initialPitching);
   const [fieldingStats, setFieldingStats] = useState<FieldingStat[]>(
@@ -266,21 +266,22 @@ export function StatsClient({
   // Track whether this is the first render (skip initial fetch since data comes from server)
   const isInitialLoad = useRef(true);
 
+  const seasonParam = selectedSeasonId != null ? `seasonId=${selectedSeasonId}` : 'seasonId=all';
+
   // Re-fetch stats when season changes (but not on first mount — server already provided data)
   useEffect(() => {
     if (isInitialLoad.current) {
       isInitialLoad.current = false;
       return;
     }
-    if (!selectedSeasonId) return;
     setLoading(true);
 
     Promise.all([
-      fetch(`/api/proxy/public/stats/batting?seasonId=${selectedSeasonId}`).then(r => r.json()).catch(() => []),
-      fetch(`/api/proxy/public/stats/leaders?seasonId=${selectedSeasonId}`).then(r => r.json()).catch(() => null),
-      fetch(`/api/proxy/public/stats/pitching?seasonId=${selectedSeasonId}`).then(r => r.json()).catch(() => []),
-      fetch(`/api/proxy/public/stats/pitching-leaders?seasonId=${selectedSeasonId}`).then(r => r.json()).catch(() => null),
-      fetch(`/api/proxy/public/stats/fielding?seasonId=${selectedSeasonId}`).then(r => r.json()).catch(() => []),
+      fetch(`/api/proxy/public/stats/batting?${seasonParam}`).then(r => r.json()).catch(() => []),
+      fetch(`/api/proxy/public/stats/leaders?${seasonParam}`).then(r => r.json()).catch(() => null),
+      fetch(`/api/proxy/public/stats/pitching?${seasonParam}`).then(r => r.json()).catch(() => []),
+      fetch(`/api/proxy/public/stats/pitching-leaders?${seasonParam}`).then(r => r.json()).catch(() => null),
+      fetch(`/api/proxy/public/stats/fielding?${seasonParam}`).then(r => r.json()).catch(() => []),
     ])
       .then(([batting, bLeaders, pitching, pLeaders, fielding]) => {
         setBattingStats(Array.isArray(batting) ? batting : []);
@@ -293,15 +294,14 @@ export function StatsClient({
         })) : []);
       })
       .finally(() => setLoading(false));
-  }, [selectedSeasonId]);
+  }, [seasonParam]);
 
   // Fetch fielding stats by position when filter changes
   useEffect(() => {
-    if (!selectedSeasonId || tab !== 'fielding') return;
+    if (tab !== 'fielding') return;
     if (fieldingPosition === 'all') {
-      // Re-fetch the standard season totals
       setFieldingByPosLoading(true);
-      fetch(`/api/proxy/public/stats/fielding?seasonId=${selectedSeasonId}`)
+      fetch(`/api/proxy/public/stats/fielding?${seasonParam}`)
         .then(r => r.json())
         .then(data => {
           setFieldingStats(Array.isArray(data) ? data.map((f: any) => ({
@@ -314,7 +314,7 @@ export function StatsClient({
       return;
     }
     setFieldingByPosLoading(true);
-    fetch(`/api/proxy/public/stats/fielding-by-position?seasonId=${selectedSeasonId}&position=${fieldingPosition}`)
+    fetch(`/api/proxy/public/stats/fielding-by-position?${seasonParam}&position=${fieldingPosition}`)
       .then(r => r.json())
       .then(data => {
         setFieldingStats(Array.isArray(data) ? data.map((f: any) => ({
@@ -324,7 +324,7 @@ export function StatsClient({
       })
       .catch(() => setFieldingStats([]))
       .finally(() => setFieldingByPosLoading(false));
-  }, [fieldingPosition, selectedSeasonId, tab]);
+  }, [fieldingPosition, seasonParam, tab]);
 
   // Reset fielding position filter when season changes
   useEffect(() => {
@@ -416,10 +416,14 @@ export function StatsClient({
         <div className="flex items-center gap-3">
           <label className="text-sm font-medium text-text-muted">Season:</label>
           <select
-            value={selectedSeasonId ?? ''}
-            onChange={(e) => setSelectedSeasonId(Number(e.target.value))}
+            value={selectedSeasonId ?? 'all'}
+            onChange={(e) => {
+              const v = e.target.value;
+              setSelectedSeasonId(v === 'all' ? null : Number(v));
+            }}
             className="rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-accent/50"
           >
+            <option value="all">All time</option>
             {seasons.map(s => (
               <option key={s.id} value={s.id}>{s.name}</option>
             ))}

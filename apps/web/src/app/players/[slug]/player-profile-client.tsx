@@ -1,12 +1,19 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { SprayChart } from '@/components/stats/spray-chart';
 
 
+interface Season {
+  id: number;
+  name: string;
+  year: number;
+}
+
 interface PlayerProfileClientProps {
   slug: string;
-  battingStats: any[];
+  initialBattingStats: any[];
+  seasons: Season[];
 }
 
 type Tab = 'batting' | 'pitching' | 'fielding' | 'gamelog';
@@ -20,7 +27,7 @@ const POS_LABELS: Record<number, string> = {
   1: 'P', 2: 'C', 3: '1B', 4: '2B', 5: '3B', 6: 'SS', 7: 'LF', 8: 'CF', 9: 'RF',
 };
 
-export function PlayerProfileClient({ slug, battingStats }: PlayerProfileClientProps) {
+export function PlayerProfileClient({ slug, initialBattingStats, seasons }: PlayerProfileClientProps) {
   async function fetchJson(path: string) {
     const proxyPath = path.replace(/^\/api\//, '/api/proxy/');
     const res = await fetch(proxyPath);
@@ -29,28 +36,54 @@ export function PlayerProfileClient({ slug, battingStats }: PlayerProfileClientP
   }
 
   const [tab, setTab] = useState<Tab>('batting');
+  const [selectedSeasonId, setSelectedSeasonId] = useState<number | null>(null); // null = All time
+  const [battingStats, setBattingStats] = useState<any[]>(initialBattingStats);
   const [pitchingStats, setPitchingStats] = useState<any[] | null>(null);
   const [fieldingStats, setFieldingStats] = useState<any[] | null>(null);
   const [fieldingByPos, setFieldingByPos] = useState<any[] | null>(null);
   const [gameLog, setGameLog] = useState<{ batting: any[]; pitching: any[] } | null>(null);
   const [sprayData, setSprayData] = useState<any[] | null>(null);
+  const [statsLoading, setStatsLoading] = useState(false);
+  const initialFetchDone = useRef(false);
+
+  const seasonParam = selectedSeasonId != null ? `seasonId=${selectedSeasonId}` : '';
 
   useEffect(() => {
-    if (tab === 'pitching' && !pitchingStats) {
-      fetchJson(`/api/public/players/${slug}/pitching-stats`).then(d => setPitchingStats(d || []));
+    if (!initialFetchDone.current && selectedSeasonId === null) {
+      initialFetchDone.current = true;
+      return;
     }
-    if (tab === 'fielding' && !fieldingStats) {
-      fetchJson(`/api/public/players/${slug}/fielding-stats`).then(d => setFieldingStats(d || []));
-      fetchJson(`/api/public/players/${slug}/fielding-by-position`).then(d => setFieldingByPos(d || []));
-    }
-    if (tab === 'gamelog' && !gameLog) {
-      fetchJson(`/api/public/players/${slug}/game-log`).then(d => setGameLog(d || { batting: [], pitching: [] }));
-    }
-  }, [tab, slug, pitchingStats, fieldingStats, gameLog]);
+    setStatsLoading(true);
+    const batUrl = seasonParam ? `/api/public/players/${slug}/stats?${seasonParam}` : `/api/public/players/${slug}/stats`;
+    fetchJson(batUrl).then(d => {
+      setBattingStats(Array.isArray(d) ? d : []);
+      setStatsLoading(false);
+    }).catch(() => setStatsLoading(false));
+  }, [slug, seasonParam]);
 
   useEffect(() => {
-    fetchJson(`/api/public/players/${slug}/spray-chart`).then(d => setSprayData(d || []));
-  }, [slug]);
+    if (tab !== 'pitching') return;
+    const url = seasonParam ? `/api/public/players/${slug}/pitching-stats?${seasonParam}` : `/api/public/players/${slug}/pitching-stats`;
+    fetchJson(url).then(d => setPitchingStats(Array.isArray(d) ? d : []));
+  }, [tab, slug, seasonParam]);
+
+  useEffect(() => {
+    if (tab !== 'fielding') return;
+    const url = seasonParam ? `/api/public/players/${slug}/fielding-stats?${seasonParam}` : `/api/public/players/${slug}/fielding-stats`;
+    fetchJson(url).then(d => setFieldingStats(Array.isArray(d) ? d : []));
+    fetchJson(`/api/public/players/${slug}/fielding-by-position${seasonParam ? `?${seasonParam}` : ''}`).then(d => setFieldingByPos(Array.isArray(d) ? d : []));
+  }, [tab, slug, seasonParam]);
+
+  useEffect(() => {
+    if (tab !== 'gamelog') return;
+    const url = seasonParam ? `/api/public/players/${slug}/game-log?${seasonParam}` : `/api/public/players/${slug}/game-log`;
+    fetchJson(url).then(d => setGameLog(d && typeof d === 'object' && !Array.isArray(d) ? d : { batting: [], pitching: [] }));
+  }, [tab, slug, seasonParam]);
+
+  useEffect(() => {
+    const url = seasonParam ? `/api/public/players/${slug}/spray-chart?${seasonParam}` : `/api/public/players/${slug}/spray-chart`;
+    fetchJson(url).then(d => setSprayData(Array.isArray(d) ? d : []));
+  }, [slug, seasonParam]);
 
   const tabs: { key: Tab; label: string }[] = [
     { key: 'batting', label: 'Batting' },
@@ -61,9 +94,10 @@ export function PlayerProfileClient({ slug, battingStats }: PlayerProfileClientP
 
   return (
     <div>
-      {/* Tab bar */}
-      <div className="flex gap-1 mb-6 border-b border-border">
-        {tabs.map(t => (
+      {/* Season filter + Tab bar */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+        <div className="flex gap-1 border-b border-border">
+          {tabs.map(t => (
           <button key={t.key} onClick={() => setTab(t.key)}
             className={`px-4 py-2.5 text-sm font-semibold transition-colors border-b-2 -mb-px ${
               tab === t.key
@@ -72,7 +106,21 @@ export function PlayerProfileClient({ slug, battingStats }: PlayerProfileClientP
             }`}>
             {t.label}
           </button>
-        ))}
+          ))}
+        </div>
+        <div className="flex items-center gap-2">
+          <label className="text-xs font-medium text-text-muted">Season:</label>
+          <select
+            value={selectedSeasonId ?? 'all'}
+            onChange={(e) => setSelectedSeasonId(e.target.value === 'all' ? null : Number(e.target.value))}
+            className="rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent/50"
+          >
+            <option value="all">All time</option>
+            {seasons.map(s => (
+              <option key={s.id} value={s.id}>{s.name}</option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {/* BATTING TAB */}
@@ -97,7 +145,7 @@ export function PlayerProfileClient({ slug, battingStats }: PlayerProfileClientP
                 <tbody>
                   {battingStats.map((s: any, i: number) => (
                     <tr key={i} className="border-b border-border last:border-0 hover:bg-surface-alt/50 transition-colors">
-                      <td className="px-2 py-2 font-semibold text-xs">{s.seasonYear ?? '—'}</td>
+                      <td className="px-2 py-2 font-semibold text-xs">{s.seasonYear != null ? s.seasonYear : 'All time'}</td>
                       <td className="px-2 py-2 text-xs text-text-muted">{s.teamName ?? '—'}</td>
                       <td className="px-2 py-2 text-right font-mono text-xs">{n(s.games)}</td>
                       <td className="px-2 py-2 text-right font-mono text-xs">{n(s.plateAppearances)}</td>
@@ -172,7 +220,7 @@ export function PlayerProfileClient({ slug, battingStats }: PlayerProfileClientP
                 <tbody>
                   {pitchingStats.map((s: any, i: number) => (
                     <tr key={i} className="border-b border-border last:border-0 hover:bg-surface-alt/50 transition-colors">
-                      <td className="px-2 py-2 font-semibold text-xs">{s.seasonYear ?? '—'}</td>
+                      <td className="px-2 py-2 font-semibold text-xs">{s.seasonYear != null ? s.seasonYear : 'All time'}</td>
                       <td className="px-2 py-2 text-xs text-text-muted">{s.teamName ?? '—'}</td>
                       <td className="px-2 py-2 text-right font-mono text-xs">{n(s.games)}</td>
                       <td className="px-2 py-2 text-right font-mono text-xs">{n(s.gamesStarted)}</td>
@@ -228,7 +276,7 @@ export function PlayerProfileClient({ slug, battingStats }: PlayerProfileClientP
                   <tbody>
                     {fieldingStats.map((s: any, i: number) => (
                       <tr key={i} className="border-b border-border last:border-0 hover:bg-surface-alt/50 transition-colors">
-                        <td className="px-2 py-2 font-semibold text-xs">{s.seasonYear ?? '—'}</td>
+                        <td className="px-2 py-2 font-semibold text-xs">{s.seasonYear != null ? s.seasonYear : 'All time'}</td>
                         <td className="px-2 py-2 text-xs text-text-muted">{s.teamName ?? '—'}</td>
                         <td className="px-2 py-2 text-right font-mono text-xs">{n(s.games)}</td>
                         <td className="px-2 py-2 text-right font-mono text-xs">{n(s.putouts)}</td>

@@ -26,9 +26,15 @@ export default async function PlayerProfilePage({ params }: Props) {
   } catch {
     notFound();
   }
+  let seasons: { id: number; name: string; year: number }[] = [];
   try {
-    battingStats = await apiFetch(`/api/public/players/${slug}/stats`);
+    seasons = await apiFetch('/api/public/stats/seasons');
+    seasons = Array.isArray(seasons) ? seasons : [];
   } catch {}
+  try {
+    battingStats = await apiFetch(`/api/public/players/${slug}/stats`); // all-time (one row)
+  } catch {}
+  battingStats = Array.isArray(battingStats) ? battingStats : [];
 
   const infoPills = [
     player.nationality,
@@ -62,7 +68,7 @@ export default async function PlayerProfilePage({ params }: Props) {
       </div>
 
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
-        <PlayerProfileClient slug={slug} battingStats={battingStats} />
+        <PlayerProfileClient slug={slug} initialBattingStats={battingStats} seasons={seasons} />
 
         {player.bio && (
           <div className="mt-8">
