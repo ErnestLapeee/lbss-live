@@ -5,13 +5,13 @@ import { ScheduleClient } from './schedule-client';
 export const metadata: Metadata = { title: 'Schedule & Scores' };
 
 export default async function SchedulePage() {
-  let seasons: { id: number; name: string; year: number }[] = [];
+  let seasons: { id: number; name: string; year: number; isActive?: boolean }[] = [];
   let initialGames: any[] = [];
   try {
     seasons = await apiFetch('/api/public/stats/seasons');
     seasons = Array.isArray(seasons) ? seasons : [];
   } catch {}
-  const activeSeason = seasons.find((s: { isActive?: boolean }) => s.isActive) || seasons[0];
+  const activeSeason = seasons.find((s) => s.isActive) || seasons[0];
   const defaultSeasonId = activeSeason?.id ?? null;
   try {
     const url = defaultSeasonId
