@@ -8,6 +8,7 @@ import {
   players,
   teams,
   licenses,
+  leagues,
 } from '../../db/schema/index.js';
 import { eq, and, desc, max, sql } from 'drizzle-orm';
 import { getIO } from '../../app.js';
@@ -172,23 +173,39 @@ export async function adminScoringRoutes(app: FastifyInstance) {
       const [game] = await db.select().from(games).where(eq(games.id, gameId)).limit(1);
       if (!game) return reply.status(404).send({ message: 'Game not found' });
 
-      // Get players on each team's roster for the season, with license status
-      const rosterQuery = await db.select({
-        playerId: playerSeasons.playerId,
-        teamId: playerSeasons.teamId,
-        firstName: players.firstName,
-        lastName: players.lastName,
-        jerseyNumber: playerSeasons.jerseyNumber,
-        licensePaid: licenses.paymentStatus,
-      })
+      // Get players on each team's roster for THIS game’s season, with license status.
+      // A player can appear for the same team in multiple seasons; we only want the season that matches the league.
+      const [league] = await db
+        .select({ seasonId: leagues.seasonId })
+        .from(leagues)
+        .where(eq(leagues.id, game.leagueId))
+        .limit(1);
+
+      const seasonId = league?.seasonId ?? null;
+
+      const rosterQuery = await db
+        .select({
+          playerId: playerSeasons.playerId,
+          teamId: playerSeasons.teamId,
+          firstName: players.firstName,
+          lastName: players.lastName,
+          jerseyNumber: playerSeasons.jerseyNumber,
+          licensePaid: licenses.paymentStatus,
+        })
         .from(playerSeasons)
         .innerJoin(players, eq(playerSeasons.playerId, players.id))
-        .leftJoin(licenses, and(
-          eq(licenses.playerId, playerSeasons.playerId),
-          eq(licenses.seasonId, playerSeasons.seasonId),
-        ))
+        .leftJoin(
+          licenses,
+          and(
+            eq(licenses.playerId, playerSeasons.playerId),
+            eq(licenses.seasonId, playerSeasons.seasonId),
+          ),
+        )
         .where(
-          sql`${playerSeasons.teamId} IN (${game.homeTeamId}, ${game.awayTeamId})`
+          and(
+            sql`${playerSeasons.teamId} IN (${game.homeTeamId}, ${game.awayTeamId})`,
+            seasonId != null ? eq(playerSeasons.seasonId, seasonId) : sql`true`,
+          ),
         );
 
       return reply.send({
