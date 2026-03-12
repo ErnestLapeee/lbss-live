@@ -5,11 +5,9 @@ import { SeasonSelect } from './season-select';
 
 export const metadata: Metadata = { title: 'Standings' };
 
-type StandingsPageProps = {
-  searchParams?: { season?: string };
-};
+type Props = { searchParams: Promise<{ season?: string }> };
 
-export default async function StandingsPage({ searchParams }: StandingsPageProps) {
+export default async function StandingsPage({ searchParams }: Props) {
   let allStandings: { leagueName: string; rows: any[] }[] = [];
   let seasons: any[] = [];
   let currentSeasonId: number | null = null;
@@ -18,7 +16,8 @@ export default async function StandingsPage({ searchParams }: StandingsPageProps
     // Align with stats/players pages: use stats seasons helper
     seasons = await apiFetch('/api/public/stats/seasons');
     seasons = Array.isArray(seasons) ? seasons : [];
-    const seasonFromUrl = searchParams?.season;
+    const params = await searchParams;
+    const seasonFromUrl = params.season;
     const explicit = seasons.find((s: any) => String(s.id) === seasonFromUrl);
     const activeSeason = explicit || seasons.find((s: any) => s.isActive) || seasons[0];
     if (activeSeason) {
