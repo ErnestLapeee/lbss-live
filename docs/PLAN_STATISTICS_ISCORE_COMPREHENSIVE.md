@@ -173,7 +173,7 @@ Match iScore’s **category dropdown** and **sub-tables**. Implement in phases: 
   - For “all time” we do not materialize a separate table; we aggregate from `player_season_*` on read.
 
 - **Backfill:**  
-  - One-time script `pnpm --filter @lbss/api backfill-game-stats` (or `npm run backfill-game-stats` in packages/api) recomputes game and season stats for all finalized games using `finalizeGame(id, undefined, { recompute: true })`. Run after adding new stat columns to backfill from `game_events`.
+  - You do **not** need to delete or re-add games. Run the one-time backfill to recompute stats from existing events: `pnpm --filter @lbss/api backfill-game-stats` (from repo root; needs `DATABASE_URL` in `.env`). This uses `finalizeGame(id, undefined, { recompute: true })` for every finalized game so new columns (e.g. Phase 2) get populated from `game_events`. If the stats table is empty but leaders show data, try refreshing the page; if it persists, run the backfill.
 
 ---
 

@@ -637,9 +637,10 @@ export function StatsClient({
                 value={battingCategory}
                 onChange={(e) => setBattingCategory(e.target.value as 'basic' | 'advanced' | 'hittype')}
                 className="rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-accent/50"
+                title="Basic = full counting stats; Advanced = rate stats (AVG, OBP, SLG, OPS, RC, GPA, BABIP)"
               >
-                <option value="basic">Basic</option>
-                <option value="advanced">Advanced</option>
+                <option value="basic">Basic (full stats)</option>
+                <option value="advanced">Advanced (rates &amp; RC, GPA, BABIP)</option>
                 <option value="hittype">Hit type &amp; power</option>
               </select>
             </div>
@@ -918,7 +919,14 @@ export function StatsClient({
                     {currentData.length === 0 && (
                       <tr>
                         <td colSpan={currentColumns.length + 1} className="px-4 py-12 text-center text-text-muted">
-                          No {tab} data available for this season.
+                          {currentLeaders && Object.keys(currentLeaders).length > 0 ? (
+                            <span>
+                              No {tab} table data for this season. Leaders above use the same source — try refreshing the page.
+                              {tab === 'batting' && ' If you added new stat columns recently, run the backfill script (see docs) to recompute existing games.'}
+                            </span>
+                          ) : (
+                            `No ${tab} data available for this season.`
+                          )}
                         </td>
                       </tr>
                     )}
