@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { db } from '../../db/index.js';
-import { leagues } from '../../db/schema/index.js';
+import { leagueTeams, leagues, standings } from '../../db/schema/index.js';
 import { eq } from 'drizzle-orm';
 
 export async function adminLeaguesRoutes(app: FastifyInstance) {
@@ -99,10 +99,16 @@ export async function adminLeaguesRoutes(app: FastifyInstance) {
         return reply.status(400).send({ message: 'Invalid league id' });
       }
 
-      const deleted = await db
-        .delete(leagues)
-        .where(eq(leagues.id, id))
-        .returning({ id: leagues.id });
+      const deleted = await db.transaction(async (tx) => {
+        // Remove dependent data that references this league so FK constraints don't block deletion.
+        await tx.delete(standings).where(eq(standings.leagueId, id));
+        await tx.delete(leagueTeams).where(eq(leagueTeams.leagueId, id));
+
+        return tx
+          .delete(leagues)
+          .where(eq(leagues.id, id))
+          .returning({ id: leagues.id });
+      });
 
       if (deleted.length === 0) {
         return reply.status(404).send({ message: 'League not found' });
