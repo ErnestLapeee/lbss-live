@@ -46,7 +46,7 @@ export function RosterTable({ roster }: { roster: RosterPlayer[] }) {
                   <td className="px-4 py-3">
                     <button
                       onClick={() => openModal(p.playerSlug || p.slug || '#', p.firstName, p.lastName)}
-                      className="font-semibold text-text hover:text-white hover:underline transition-colors text-left"
+                      className="font-semibold text-[#111] hover:text-[#136cb2] hover:underline transition-colors text-left"
                     >
                       {p.firstName} {p.lastName}
                     </button>

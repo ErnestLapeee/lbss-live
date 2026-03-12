@@ -34,51 +34,26 @@ export default async function HomePage() {
       <ScoreboardStrip games={scoreboardGames} />
 
       {/* ── Hero ── */}
-      <section className="hero-pattern relative overflow-hidden">
-        {/* Subtle grid overlay */}
-        <div className="absolute inset-0 opacity-[0.03]" style={{
-          backgroundImage: 'linear-gradient(rgba(255,255,255,.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.1) 1px, transparent 1px)',
-          backgroundSize: '40px 40px',
-        }} />
-
-        <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-16 sm:py-20 lg:py-24">
+      <section className="bg-white border-b border-[#ccc]">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-10">
           <div className="max-w-3xl">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/[0.06] border border-white/[0.08] mb-6">
-              <span className="w-1.5 h-1.5 rounded-full bg-gold" />
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-gold-light">
-                2026 Season
-              </span>
-            </div>
-
-            <h1 className="font-heading text-4xl sm:text-5xl lg:text-6xl font-bold text-white leading-[1.08] tracking-tight">
-              Latvijas Beisbola{' '}
-              <span className="text-accent-bright">Liga</span>
+            <p className="text-xs text-[#666] uppercase tracking-wider mb-2">2026 Season</p>
+            <h1 className="text-2xl sm:text-3xl font-bold text-[#111] leading-tight">
+              Latvijas Beisbola Liga
             </h1>
-
-            <div className="mt-8 flex flex-wrap gap-3">
-              <Link
-                href="/schedule"
-                className="inline-flex items-center gap-2 px-5 py-2.5 bg-accent hover:bg-accent-light text-white text-sm font-bold rounded-lg transition-all shadow-lg shadow-accent/20"
-              >
+            <div className="mt-6 flex flex-wrap gap-2">
+              <Link href="/schedule" className="px-4 py-2 bg-[#111] text-white text-sm font-medium hover:bg-[#333]">
                 Schedule & Scores
               </Link>
-              <Link
-                href="/standings"
-                className="inline-flex items-center gap-2 px-5 py-2.5 bg-white/[0.08] hover:bg-white/[0.14] text-white text-sm font-semibold rounded-lg transition-all border border-white/[0.1]"
-              >
+              <Link href="/standings" className="px-4 py-2 border border-[#ccc] text-[#111] text-sm font-medium hover:bg-[#f0f0f0]">
                 Standings
               </Link>
-              <Link
-                href="/teams"
-                className="inline-flex items-center gap-2 px-5 py-2.5 bg-white/[0.08] hover:bg-white/[0.14] text-white text-sm font-semibold rounded-lg transition-all border border-white/[0.1]"
-              >
+              <Link href="/teams" className="px-4 py-2 border border-[#ccc] text-[#111] text-sm font-medium hover:bg-[#f0f0f0]">
                 Teams
               </Link>
             </div>
           </div>
-
-          {/* Stats callout boxes */}
-          <div className="mt-12 grid grid-cols-3 gap-3">
+          <div className="mt-6 grid grid-cols-3 gap-3 max-w-md">
             <StatBox label="Teams" value={teams.length || '—'} />
             <StatBox label="Games" value={games.length || '—'} />
             <StatBox label="Season" value="2026" />
@@ -273,7 +248,7 @@ export default async function HomePage() {
               <h3 className="font-heading text-sm font-bold uppercase tracking-wider text-text-muted px-1">Quick Links</h3>
               <QuickLinkCard title="League Schedule" description="View all upcoming games and results" href="/schedule" />
               <QuickLinkCard title="Player Directory" description="Browse all registered players" href="/players" />
-              <QuickLinkCard title="Leaderboards" description="Top performers and statistics" href="/leaderboards" />
+              <QuickLinkCard title="Statistics" description="Top performers and statistics" href="/stats" />
               <QuickLinkCard title="About LBSS" description="About the federation" href="/about" />
             </section>
           </div>
@@ -287,9 +262,9 @@ export default async function HomePage() {
 
 function StatBox({ label, value }: { label: string; value: string | number }) {
   return (
-    <div className="rounded-lg bg-white/[0.05] border border-white/[0.08] px-4 py-3">
-      <div className="font-heading text-2xl font-bold text-white stat-value">{value}</div>
-      <div className="text-[11px] font-medium uppercase tracking-wider text-white/40 mt-0.5">{label}</div>
+    <div className="border border-[#ccc] bg-[#fafafa] px-4 py-3">
+      <div className="text-lg font-bold text-[#111] stat-value">{value}</div>
+      <div className="text-[11px] text-[#666] uppercase tracking-wider mt-0.5">{label}</div>
     </div>
   );
 }
@@ -299,8 +274,8 @@ function TeamBadge({ name }: { name: string }) {
     ? name.toUpperCase()
     : name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
   return (
-    <div className="w-6 h-6 rounded-md bg-primary-mid flex items-center justify-center shrink-0">
-      <span className="text-[9px] font-bold text-white/80">{abbr}</span>
+    <div className="w-6 h-6 rounded border border-[#ccc] bg-[#f0f0f0] flex items-center justify-center shrink-0">
+      <span className="text-[9px] font-bold text-[#333]">{abbr}</span>
     </div>
   );
 }

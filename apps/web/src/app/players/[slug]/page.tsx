@@ -47,18 +47,18 @@ export default async function PlayerProfilePage({ params }: Props) {
   return (
     <div>
       {/* Player header */}
-      <div className="bg-primary">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
-          <Link href="/players" className="text-xs text-white/40 hover:text-white/70 transition-colors mb-4 inline-block">
+      <div className="bg-white border-b border-[#ccc]">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6">
+          <Link href="/players" className="text-xs text-[#666] hover:text-[#111] mb-4 inline-block">
             &larr; All Players
           </Link>
-          <h1 className="font-heading text-2xl sm:text-3xl font-bold text-white tracking-tight">
+          <h1 className="font-heading text-2xl font-bold text-[#111] tracking-tight">
             {player.firstName} {player.lastName}
           </h1>
           {infoPills.length > 0 && (
             <div className="flex flex-wrap gap-2 mt-3">
               {infoPills.map((pill: string, i: number) => (
-                <span key={i} className="inline-flex px-2.5 py-0.5 rounded-md bg-white/[0.06] border border-white/[0.08] text-xs font-medium text-white/60">
+                <span key={i} className="inline-flex px-2.5 py-0.5 rounded border border-[#ccc] bg-[#f5f5f5] text-xs text-[#444]">
                   {pill}
                 </span>
               ))}

@@ -347,8 +347,8 @@ function TeamLogo({ name, shortName, logoUrl, size = 'sm' }: { name: string; sho
     : name.split(' ').map(w => w[0]).join('').slice(0, 3).toUpperCase());
 
   return (
-    <div className={`${dim} rounded bg-primary-mid flex items-center justify-center shrink-0`}>
-      <span className={`${textSize} font-bold text-white/80`}>{abbr}</span>
+    <div className={`${dim} rounded border border-[#ccc] bg-[#e8e8e8] flex items-center justify-center shrink-0`}>
+      <span className={`${textSize} font-bold text-[#333]`}>{abbr}</span>
     </div>
   );
 }
@@ -581,7 +581,7 @@ export function StatsClient({
             onClick={() => setTab('batting')}
             className={`px-5 py-2 text-sm font-semibold transition-colors ${
               tab === 'batting'
-                ? 'bg-accent text-white'
+                ? 'bg-[#136cb2] text-white'
                 : 'text-text-muted hover:text-text hover:bg-surface'
             }`}
           >
@@ -591,7 +591,7 @@ export function StatsClient({
             onClick={() => setTab('pitching')}
             className={`px-5 py-2 text-sm font-semibold transition-colors ${
               tab === 'pitching'
-                ? 'bg-accent text-white'
+                ? 'bg-[#136cb2] text-white'
                 : 'text-text-muted hover:text-text hover:bg-surface'
             }`}
           >
@@ -601,7 +601,7 @@ export function StatsClient({
             onClick={() => setTab('fielding')}
             className={`px-5 py-2 text-sm font-semibold transition-colors ${
               tab === 'fielding'
-                ? 'bg-accent text-white'
+                ? 'bg-[#136cb2] text-white'
                 : 'text-text-muted hover:text-text hover:bg-surface'
             }`}
           >
@@ -812,7 +812,7 @@ export function StatsClient({
                         onClick={() => setFieldingPosition(pf.value)}
                         className={`px-2 py-1 text-[11px] font-semibold transition-colors ${
                           fieldingPosition === pf.value
-                            ? 'bg-accent text-white'
+                            ? 'bg-[#136cb2] text-white'
                             : 'text-text-muted hover:text-text hover:bg-surface'
                         }`}
                       >
@@ -883,7 +883,7 @@ export function StatsClient({
                                 />
                                 <button
                                   onClick={() => openModal(stat.playerSlug || `player-${stat.playerId}`, stat.firstName, stat.lastName)}
-                                  className="font-semibold text-text hover:text-white hover:underline transition-colors text-left"
+                                  className="font-semibold text-[#111] hover:text-[#136cb2] hover:underline transition-colors text-left"
                                 >
                                   {stat.firstName} {stat.lastName}
                                 </button>

@@ -1,7 +1,6 @@
 import type { Metadata } from 'next';
 import './globals.css';
 import { SiteHeader } from '@/components/layout/site-header';
-import { SiteFooter } from '@/components/layout/site-footer';
 import { ApiBaseProvider } from '@/lib/api-context';
 
 export const metadata: Metadata = {
@@ -20,13 +19,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
       </head>
-      <body className="min-h-screen flex flex-col">
+      <body className="min-h-screen flex flex-col bg-[#f5f5f5] text-[#111]">
         <ApiBaseProvider apiBase={apiBase}>
           <SiteHeader />
           <main className="flex-1">{children}</main>
-          <SiteFooter />
         </ApiBaseProvider>
       </body>
     </html>

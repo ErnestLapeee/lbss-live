@@ -62,7 +62,7 @@ export default async function TeamsPage({ searchParams }: Props) {
                   href={href}
                   className="group flex items-center gap-4 rounded-xl border border-border bg-surface p-5 hover:border-accent/30 hover:shadow-md transition-all"
                 >
-                  <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-primary text-white font-heading text-lg font-bold shrink-0">
+                  <div className="flex h-14 w-14 items-center justify-center rounded border border-[#ccc] bg-[#f0f0f0] font-heading text-lg font-bold shrink-0 text-[#111]">
                     {abbr}
                   </div>
                   <div className="min-w-0 flex-1">

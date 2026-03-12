@@ -46,19 +46,19 @@ export default async function TeamDetailPage({ params, searchParams }: Props) {
 
   return (
     <div>
-      {/* Team header banner */}
-      <div className="bg-primary">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
-          <Link href="/teams" className="text-xs text-white/40 hover:text-white/70 transition-colors mb-4 inline-block">
+      {/* Team header */}
+      <div className="bg-white border-b border-[#ccc]">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6">
+          <Link href="/teams" className="text-xs text-[#666] hover:text-[#111] mb-4 inline-block">
             &larr; All Teams
           </Link>
-          <div className="flex items-center gap-5">
-            <div className="flex h-16 w-16 items-center justify-center rounded-xl bg-white/10 text-white font-heading text-2xl font-bold border border-white/[0.08]">
+          <div className="flex items-center gap-4">
+            <div className="flex h-14 w-14 items-center justify-center rounded border border-[#ccc] bg-[#f0f0f0] font-heading text-xl font-bold text-[#111]">
               {abbr}
             </div>
             <div>
-              <h1 className="font-heading text-2xl sm:text-3xl font-bold text-white tracking-tight">{team.name}</h1>
-              <p className="text-sm text-white/50 mt-0.5">
+              <h1 className="font-heading text-2xl font-bold text-[#111] tracking-tight">{team.name}</h1>
+              <p className="text-sm text-[#666] mt-0.5">
                 {[team.city, team.foundedYear && `Est. ${team.foundedYear}`].filter(Boolean).join(' · ')}
               </p>
             </div>
