@@ -8,6 +8,10 @@ import {
   players,
   teams,
   seasons,
+  gameEvents,
+  games,
+  leagues,
+  gameLineups,
 } from '../../db/schema/index.js';
 import { eq, desc, asc, and, sql } from 'drizzle-orm';
 
@@ -20,13 +24,25 @@ function computeBattingRates(t: {
 }) {
   const ab = t.atBats ?? 0;
   const h = t.hits ?? 0;
-  const obDenom = ab + (t.walks ?? 0) + (t.hitByPitch ?? 0) + (t.sacrificeFlies ?? 0);
-  const babipDenom = ab - (t.strikeouts ?? 0) - (t.homeRuns ?? 0) + (t.sacrificeFlies ?? 0);
+  const bb = t.walks ?? 0;
+  const hbp = t.hitByPitch ?? 0;
+  const sf = t.sacrificeFlies ?? 0;
+  const tb = t.totalBases ?? 0;
+  const hr = t.homeRuns ?? 0;
+  const so = t.strikeouts ?? 0;
+  const obDenom = ab + bb + hbp + sf;
+  const babipDenom = ab - so - hr + sf;
+  const obp = obDenom > 0 ? (h + bb + hbp) / obDenom : 0;
+  const slg = ab > 0 ? tb / ab : 0;
+  const rc = ab + bb > 0 ? ((h + bb) * tb) / (ab + bb) : 0;
+  const gpa = (1.8 * obp + slg) / 4;
   return {
     battingAvg: ab > 0 ? (h / ab).toFixed(3) : null,
-    onBasePct: obDenom > 0 ? ((h + (t.walks ?? 0) + (t.hitByPitch ?? 0)) / obDenom).toFixed(3) : null,
-    sluggingPct: ab > 0 ? ((t.totalBases ?? 0) / ab).toFixed(3) : null,
-    babip: babipDenom > 0 ? ((h - (t.homeRuns ?? 0)) / babipDenom).toFixed(3) : null,
+    onBasePct: obDenom > 0 ? obp.toFixed(3) : null,
+    sluggingPct: ab > 0 ? slg.toFixed(3) : null,
+    babip: babipDenom > 0 ? ((h - hr) / babipDenom).toFixed(3) : null,
+    runsCreated: rc > 0 ? rc.toFixed(1) : null,
+    gpa: (obp > 0 || slg > 0) ? gpa.toFixed(3) : null,
   };
 }
 
@@ -123,7 +139,20 @@ export async function statsRoutes(app: FastifyInstance) {
           .innerJoin(teams, eq(playerSeasonBatting.teamId, teams.id))
           .where(eq(playerSeasonBatting.seasonId, seasonIdNum))
           .orderBy(desc(playerSeasonBatting.battingAvg));
-        return reply.send(result);
+        const withRcGpa = result.map((row: Record<string, unknown>) => {
+          const rates = computeBattingRates({
+            atBats: Number(row.atBats ?? 0),
+            hits: Number(row.hits ?? 0),
+            walks: Number(row.walks ?? 0),
+            hitByPitch: Number(row.hitByPitch ?? 0),
+            sacrificeFlies: Number(row.sacrificeFlies ?? 0),
+            totalBases: Number(row.totalBases ?? 0),
+            homeRuns: Number(row.homeRuns ?? 0),
+            strikeouts: Number(row.strikeouts ?? 0),
+          });
+          return { ...row, runsCreated: rates.runsCreated, gpa: rates.gpa };
+        });
+        return reply.send(withRcGpa);
       }
 
       const rows = await db.execute(sql`
@@ -248,12 +277,216 @@ export async function statsRoutes(app: FastifyInstance) {
           sluggingPct: rates.sluggingPct,
           ops,
           babip: rates.babip,
+          runsCreated: rates.runsCreated,
+          gpa: rates.gpa,
         };
       }) : [];
       return reply.send(result);
     } catch (err) {
       request.log.error(err);
       return reply.status(500).send({ message: 'Failed to fetch batting stats' });
+    }
+  });
+
+  // GET /batting-contact?seasonId=X or omit for all-time — hit type × hardness from game_events
+  app.get<{ Querystring: { seasonId?: string } }>('/batting-contact', async (request, reply) => {
+    try {
+      const seasonId = request.query.seasonId;
+      const isAllTime = !seasonId || seasonId === ALL_TIME;
+      const seasonIdNum = seasonId && seasonId !== ALL_TIME ? parseInt(seasonId, 10) : null;
+      if (seasonId && seasonId !== ALL_TIME && (isNaN(seasonIdNum!) || seasonIdNum! <= 0)) {
+        return reply.status(400).send({ message: 'Invalid seasonId' });
+      }
+      const typeKey = (ht: string | null) => (ht && { grounder: 'gb', line_drive: 'ld', pop_up: 'pu', fly_ball: 'fb' }[ht]) || null;
+      const hardKey = (hh: string | null) => (hh && ['soft', 'medium', 'hard'].includes(hh) ? hh : null);
+
+      const rows = await db
+        .select({
+          batterId: gameEvents.batterId,
+          teamId: gameLineups.teamId,
+          hitType: gameEvents.hitType,
+          hitHardness: gameEvents.hitHardness,
+          cnt: sql<number>`count(*)::int`.as('cnt'),
+        })
+        .from(gameEvents)
+        .innerJoin(games, eq(gameEvents.gameId, games.id))
+        .innerJoin(leagues, eq(games.leagueId, leagues.id))
+        .innerJoin(gameLineups, and(eq(gameLineups.gameId, gameEvents.gameId), eq(gameLineups.playerId, gameEvents.batterId)))
+        .where(
+          isAllTime
+            ? sql`${gameEvents.hitType} IS NOT NULL AND ${gameEvents.hitHardness} IS NOT NULL AND ${gameEvents.batterId} IS NOT NULL`
+            : and(
+                sql`${gameEvents.hitType} IS NOT NULL AND ${gameEvents.hitHardness} IS NOT NULL AND ${gameEvents.batterId} IS NOT NULL`,
+                eq(leagues.seasonId, seasonIdNum!),
+              ),
+        )
+        .groupBy(gameEvents.batterId, gameLineups.teamId, gameEvents.hitType, gameEvents.hitHardness);
+
+      const byPlayer = new Map<number, { teamId: number; gbSoft: number; gbMedium: number; gbHard: number; ldSoft: number; ldMedium: number; ldHard: number; puSoft: number; puMedium: number; puHard: number; fbSoft: number; fbMedium: number; fbHard: number }>();
+      for (const r of rows) {
+        const pid = r.batterId!;
+        const tk = typeKey(r.hitType);
+        const hk = hardKey(r.hitHardness);
+        if (!tk || !hk) continue;
+        const key = `${tk}_${hk}` as keyof { gb_soft: number; gb_medium: number; gb_hard: number; ld_soft: number; ld_medium: number; ld_hard: number; pu_soft: number; pu_medium: number; pu_hard: number; fb_soft: number; fb_medium: number; fb_hard: number };
+        const camel = (key.replace(/_([a-z])/g, (_, c) => c.toUpperCase()) as string).replace('Gb', 'gb').replace('Ld', 'ld').replace('Pu', 'pu').replace('Fb', 'fb');
+        let entry = byPlayer.get(pid);
+        if (!entry) {
+          entry = { teamId: r.teamId, gbSoft: 0, gbMedium: 0, gbHard: 0, ldSoft: 0, ldMedium: 0, ldHard: 0, puSoft: 0, puMedium: 0, puHard: 0, fbSoft: 0, fbMedium: 0, fbHard: 0 };
+          byPlayer.set(pid, entry);
+        }
+        (entry as Record<string, number>)[camel] = ((entry as Record<string, number>)[camel] || 0) + Number(r.cnt);
+      }
+
+      if (byPlayer.size === 0) return reply.send([]);
+
+      const playerIds = [...byPlayer.keys()];
+      let teamForPlayer = new Map<number, number>();
+      if (isAllTime) {
+        const latest = await db.execute(sql`
+          SELECT DISTINCT ON (player_id) player_id, team_id
+          FROM game_lineups gl
+          INNER JOIN games g ON g.id = gl.game_id
+          ORDER BY player_id, g.id DESC
+        `);
+        const rows = (latest as { rows?: { player_id: number; team_id: number }[] }).rows ?? (Array.isArray(latest) ? latest : []);
+        teamForPlayer = new Map((rows as { player_id: number; team_id: number }[]).map(r => [r.player_id, r.team_id]));
+      } else {
+        for (const [pid, entry] of byPlayer) teamForPlayer.set(pid, entry.teamId);
+      }
+
+      const playerList = await db.select({
+        id: players.id,
+        slug: players.slug,
+        firstName: players.firstName,
+        lastName: players.lastName,
+      }).from(players).where(sql`${players.id} IN (${sql.join(playerIds.map(id => sql`${id}`, sql`, `))})`);
+      const teamIds = [...new Set(teamForPlayer.values())];
+      const teamList = teamIds.length ? await db.select({ id: teams.id, name: teams.name, shortName: teams.shortName, logoUrl: teams.logoUrl }).from(teams).where(sql`${teams.id} IN (${sql.join(teamIds.map(id => sql`${id}`, sql`, `))})`) : [];
+      const teamMap = new Map(teamList.map(t => [t.id, t]));
+
+      const result = playerList.map(p => {
+        const contact = byPlayer.get(p.id)!;
+        const teamId = teamForPlayer.get(p.id) ?? contact.teamId;
+        const team = teamMap.get(teamId);
+        const bip = contact.gbSoft + contact.gbMedium + contact.gbHard + contact.ldSoft + contact.ldMedium + contact.ldHard + contact.puSoft + contact.puMedium + contact.puHard + contact.fbSoft + contact.fbMedium + contact.fbHard;
+        return {
+          playerId: p.id,
+          playerSlug: p.slug,
+          firstName: p.firstName,
+          lastName: p.lastName,
+          teamName: team?.name ?? '',
+          teamShortName: team?.shortName ?? null,
+          teamLogoUrl: team?.logoUrl ?? null,
+          ...contact,
+          bip,
+        };
+      });
+      return reply.send(result);
+    } catch (err) {
+      request.log.error(err);
+      return reply.status(500).send({ message: 'Failed to fetch batting contact' });
+    }
+  });
+
+  // GET /pitching-contact?seasonId=X or omit for all-time — hit type × hardness allowed (from game_events)
+  app.get<{ Querystring: { seasonId?: string } }>('/pitching-contact', async (request, reply) => {
+    try {
+      const seasonId = request.query.seasonId;
+      const isAllTime = !seasonId || seasonId === ALL_TIME;
+      const seasonIdNum = seasonId && seasonId !== ALL_TIME ? parseInt(seasonId, 10) : null;
+      if (seasonId && seasonId !== ALL_TIME && (isNaN(seasonIdNum!) || seasonIdNum! <= 0)) {
+        return reply.status(400).send({ message: 'Invalid seasonId' });
+      }
+      const typeKey = (ht: string | null) => (ht && { grounder: 'gb', line_drive: 'ld', pop_up: 'pu', fly_ball: 'fb' }[ht]) || null;
+      const hardKey = (hh: string | null) => (hh && ['soft', 'medium', 'hard'].includes(hh) ? hh : null);
+
+      const rows = await db
+        .select({
+          pitcherId: gameEvents.pitcherId,
+          teamId: gameLineups.teamId,
+          hitType: gameEvents.hitType,
+          hitHardness: gameEvents.hitHardness,
+          cnt: sql<number>`count(*)::int`.as('cnt'),
+        })
+        .from(gameEvents)
+        .innerJoin(games, eq(gameEvents.gameId, games.id))
+        .innerJoin(leagues, eq(games.leagueId, leagues.id))
+        .innerJoin(gameLineups, and(eq(gameLineups.gameId, gameEvents.gameId), eq(gameLineups.playerId, gameEvents.pitcherId)))
+        .where(
+          isAllTime
+            ? sql`${gameEvents.hitType} IS NOT NULL AND ${gameEvents.hitHardness} IS NOT NULL AND ${gameEvents.pitcherId} IS NOT NULL`
+            : and(
+                sql`${gameEvents.hitType} IS NOT NULL AND ${gameEvents.hitHardness} IS NOT NULL AND ${gameEvents.pitcherId} IS NOT NULL`,
+                eq(leagues.seasonId, seasonIdNum!),
+              ),
+        )
+        .groupBy(gameEvents.pitcherId, gameLineups.teamId, gameEvents.hitType, gameEvents.hitHardness);
+
+      const byPlayer = new Map<number, { teamId: number; gbSoft: number; gbMedium: number; gbHard: number; ldSoft: number; ldMedium: number; ldHard: number; puSoft: number; puMedium: number; puHard: number; fbSoft: number; fbMedium: number; fbHard: number }>();
+      for (const r of rows) {
+        const pid = r.pitcherId!;
+        const tk = typeKey(r.hitType);
+        const hk = hardKey(r.hitHardness);
+        if (!tk || !hk) continue;
+        const key = `${tk}_${hk}`;
+        const camel = (key.replace(/_([a-z])/g, (_, c) => c.toUpperCase()) as string).replace('Gb', 'gb').replace('Ld', 'ld').replace('Pu', 'pu').replace('Fb', 'fb');
+        let entry = byPlayer.get(pid);
+        if (!entry) {
+          entry = { teamId: r.teamId, gbSoft: 0, gbMedium: 0, gbHard: 0, ldSoft: 0, ldMedium: 0, ldHard: 0, puSoft: 0, puMedium: 0, puHard: 0, fbSoft: 0, fbMedium: 0, fbHard: 0 };
+          byPlayer.set(pid, entry);
+        }
+        (entry as Record<string, number>)[camel] = ((entry as Record<string, number>)[camel] || 0) + Number(r.cnt);
+      }
+
+      if (byPlayer.size === 0) return reply.send([]);
+
+      const playerIds = [...byPlayer.keys()];
+      let teamForPlayer = new Map<number, number>();
+      if (isAllTime) {
+        const latest = await db.execute(sql`
+          SELECT DISTINCT ON (player_id) player_id, team_id
+          FROM game_lineups gl
+          INNER JOIN games g ON g.id = gl.game_id
+          ORDER BY player_id, g.id DESC
+        `);
+        const rowsLatest = (latest as { rows?: { player_id: number; team_id: number }[] }).rows ?? (Array.isArray(latest) ? latest : []);
+        teamForPlayer = new Map((rowsLatest as { player_id: number; team_id: number }[]).map(r => [r.player_id, r.team_id]));
+      } else {
+        for (const [pid, entry] of byPlayer) teamForPlayer.set(pid, entry.teamId);
+      }
+
+      const playerList = await db.select({
+        id: players.id,
+        slug: players.slug,
+        firstName: players.firstName,
+        lastName: players.lastName,
+      }).from(players).where(sql`${players.id} IN (${sql.join(playerIds.map(id => sql`${id}`, sql`, `))})`);
+      const teamIds = [...new Set(teamForPlayer.values())];
+      const teamList = teamIds.length ? await db.select({ id: teams.id, name: teams.name, shortName: teams.shortName, logoUrl: teams.logoUrl }).from(teams).where(sql`${teams.id} IN (${sql.join(teamIds.map(id => sql`${id}`, sql`, `))})`) : [];
+      const teamMap = new Map(teamList.map(t => [t.id, t]));
+
+      const result = playerList.map(p => {
+        const contact = byPlayer.get(p.id)!;
+        const teamId = teamForPlayer.get(p.id) ?? contact.teamId;
+        const team = teamMap.get(teamId);
+        const bip = contact.gbSoft + contact.gbMedium + contact.gbHard + contact.ldSoft + contact.ldMedium + contact.ldHard + contact.puSoft + contact.puMedium + contact.puHard + contact.fbSoft + contact.fbMedium + contact.fbHard;
+        return {
+          playerId: p.id,
+          playerSlug: p.slug,
+          firstName: p.firstName,
+          lastName: p.lastName,
+          teamName: team?.name ?? '',
+          teamShortName: team?.shortName ?? null,
+          teamLogoUrl: team?.logoUrl ?? null,
+          ...contact,
+          bip,
+        };
+      });
+      return reply.send(result);
+    } catch (err) {
+      request.log.error(err);
+      return reply.status(500).send({ message: 'Failed to fetch pitching contact' });
     }
   });
 
@@ -459,7 +692,12 @@ export async function statsRoutes(app: FastifyInstance) {
           .innerJoin(teams, eq(playerSeasonPitching.teamId, teams.id))
           .where(eq(playerSeasonPitching.seasonId, seasonIdNum))
           .orderBy(asc(playerSeasonPitching.era));
-        return reply.send(result);
+        const withGoAo = result.map((row: Record<string, unknown>) => {
+          const go = Number(row.groundOuts ?? 0);
+          const ao = Number(row.flyOuts ?? 0);
+          return { ...row, goAo: ao > 0 ? (go / ao).toFixed(2) : null };
+        });
+        return reply.send(withGoAo);
       }
 
       const rows = await db.execute(sql`
@@ -583,6 +821,7 @@ export async function statsRoutes(app: FastifyInstance) {
           bb9: rates.bb9,
           h9: rates.h9,
           babip: rates.babip,
+          goAo: Number(r.fly_outs ?? 0) > 0 ? (Number(r.ground_outs ?? 0) / Number(r.fly_outs ?? 0)).toFixed(2) : null,
         };
       }) : [];
       return reply.send(result);
@@ -838,13 +1077,14 @@ export async function statsRoutes(app: FastifyInstance) {
     }
   });
 
-  // GET /fielding-by-position?seasonId=X&position=N - seasonId optional for all-time
+  // GET /fielding-by-position?seasonId=X&position=N&category=infield|outfield - seasonId optional for all-time
   app.get<{
-    Querystring: { seasonId?: string; position?: string };
+    Querystring: { seasonId?: string; position?: string; category?: string };
   }>('/fielding-by-position', async (request, reply) => {
     try {
       const seasonId = request.query.seasonId;
       const positionStr = request.query.position;
+      const category = request.query.category;
       const isAllTime = !seasonId || seasonId === ALL_TIME;
       const seasonIdNum = seasonId && seasonId !== ALL_TIME ? parseInt(seasonId, 10) : null;
       if (seasonId && seasonId !== ALL_TIME && (isNaN(seasonIdNum!) || seasonIdNum! <= 0)) {
@@ -859,7 +1099,11 @@ export async function statsRoutes(app: FastifyInstance) {
           WHERE l.season_id = ${seasonIdNum}
         )`);
       }
-      if (positionStr) {
+      if (category === 'infield') {
+        conditions.push(sql`${playerGameFielding.position} IN (1, 2, 3, 4, 5, 6)`);
+      } else if (category === 'outfield') {
+        conditions.push(sql`${playerGameFielding.position} IN (7, 8, 9)`);
+      } else if (positionStr) {
         const posNum = parseInt(positionStr, 10);
         if (!isNaN(posNum)) {
           conditions.push(eq(playerGameFielding.position, posNum));
@@ -867,40 +1111,82 @@ export async function statsRoutes(app: FastifyInstance) {
       }
       const whereClause = conditions.length > 0 ? and(...conditions) : sql`1=1`;
 
-      const rows = await db
-        .select({
-          playerId: players.id,
-          playerSlug: players.slug,
-          firstName: players.firstName,
-          lastName: players.lastName,
-          teamName: teams.name,
-          teamShortName: teams.shortName,
-          teamLogoUrl: teams.logoUrl,
-          position: playerGameFielding.position,
-          games: sql<number>`count(*)`.as('games'),
-          innings: sql<string>`sum(${playerGameFielding.innings}::numeric)`.as('innings'),
-          putouts: sql<number>`sum(${playerGameFielding.putouts})`.as('putouts'),
-          assists: sql<number>`sum(${playerGameFielding.assists})`.as('assists'),
-          errors: sql<number>`sum(${playerGameFielding.errors})`.as('errors'),
-          doublePlays: sql<number>`sum(${playerGameFielding.doublePlays})`.as('double_plays'),
-          triplePlays: sql<number>`sum(${playerGameFielding.triplePlays})`.as('triple_plays'),
-          passedBalls: sql<number>`sum(${playerGameFielding.passedBalls})`.as('passed_balls'),
-          catcherStolenBases: sql<number>`sum(${playerGameFielding.catcherStolenBases})`.as('catcher_sb'),
-          catcherCaughtStealing: sql<number>`sum(${playerGameFielding.catcherCaughtStealing})`.as('catcher_cs'),
-          pickoffs: sql<number>`sum(${playerGameFielding.pickoffs})`.as('pickoffs'),
-        })
-        .from(playerGameFielding)
-        .innerJoin(players, eq(playerGameFielding.playerId, players.id))
-        .innerJoin(teams, eq(playerGameFielding.teamId, teams.id))
-        .where(whereClause)
-        .groupBy(
-          players.id, players.slug, players.firstName, players.lastName,
-          teams.name, teams.shortName, teams.logoUrl,
-          playerGameFielding.position,
-        )
-        .orderBy(sql`count(*) desc`);
+      const isCategoryView = category === 'infield' || category === 'outfield';
+      const rows = isCategoryView
+        ? await db
+            .select({
+              playerId: players.id,
+              playerSlug: players.slug,
+              firstName: players.firstName,
+              lastName: players.lastName,
+              teamName: teams.name,
+              teamShortName: teams.shortName,
+              teamLogoUrl: teams.logoUrl,
+              games: sql<number>`count(*)`.as('games'),
+              innings: sql<string>`sum(${playerGameFielding.innings}::numeric)`.as('innings'),
+              putouts: sql<number>`sum(${playerGameFielding.putouts})`.as('putouts'),
+              assists: sql<number>`sum(${playerGameFielding.assists})`.as('assists'),
+              errors: sql<number>`sum(${playerGameFielding.errors})`.as('errors'),
+              doublePlays: sql<number>`sum(${playerGameFielding.doublePlays})`.as('double_plays'),
+              triplePlays: sql<number>`sum(${playerGameFielding.triplePlays})`.as('triple_plays'),
+              passedBalls: sql<number>`sum(${playerGameFielding.passedBalls})`.as('passed_balls'),
+              catcherStolenBases: sql<number>`sum(${playerGameFielding.catcherStolenBases})`.as('catcher_sb'),
+              catcherCaughtStealing: sql<number>`sum(${playerGameFielding.catcherCaughtStealing})`.as('catcher_cs'),
+              pickoffs: sql<number>`sum(${playerGameFielding.pickoffs})`.as('pickoffs'),
+            })
+            .from(playerGameFielding)
+            .innerJoin(players, eq(playerGameFielding.playerId, players.id))
+            .innerJoin(teams, eq(playerGameFielding.teamId, teams.id))
+            .where(whereClause)
+            .groupBy(
+              players.id,
+              players.slug,
+              players.firstName,
+              players.lastName,
+              teams.name,
+              teams.shortName,
+              teams.logoUrl,
+            )
+            .orderBy(sql`count(*) desc`)
+        : await db
+            .select({
+              playerId: players.id,
+              playerSlug: players.slug,
+              firstName: players.firstName,
+              lastName: players.lastName,
+              teamName: teams.name,
+              teamShortName: teams.shortName,
+              teamLogoUrl: teams.logoUrl,
+              position: playerGameFielding.position,
+              games: sql<number>`count(*)`.as('games'),
+              innings: sql<string>`sum(${playerGameFielding.innings}::numeric)`.as('innings'),
+              putouts: sql<number>`sum(${playerGameFielding.putouts})`.as('putouts'),
+              assists: sql<number>`sum(${playerGameFielding.assists})`.as('assists'),
+              errors: sql<number>`sum(${playerGameFielding.errors})`.as('errors'),
+              doublePlays: sql<number>`sum(${playerGameFielding.doublePlays})`.as('double_plays'),
+              triplePlays: sql<number>`sum(${playerGameFielding.triplePlays})`.as('triple_plays'),
+              passedBalls: sql<number>`sum(${playerGameFielding.passedBalls})`.as('passed_balls'),
+              catcherStolenBases: sql<number>`sum(${playerGameFielding.catcherStolenBases})`.as('catcher_sb'),
+              catcherCaughtStealing: sql<number>`sum(${playerGameFielding.catcherCaughtStealing})`.as('catcher_cs'),
+              pickoffs: sql<number>`sum(${playerGameFielding.pickoffs})`.as('pickoffs'),
+            })
+            .from(playerGameFielding)
+            .innerJoin(players, eq(playerGameFielding.playerId, players.id))
+            .innerJoin(teams, eq(playerGameFielding.teamId, teams.id))
+            .where(whereClause)
+            .groupBy(
+              players.id,
+              players.slug,
+              players.firstName,
+              players.lastName,
+              teams.name,
+              teams.shortName,
+              teams.logoUrl,
+              playerGameFielding.position,
+            )
+            .orderBy(sql`count(*) desc`);
 
-      const result = rows.map(r => {
+      const result = rows.map((r: Record<string, unknown>) => {
         const po = Number(r.putouts) || 0;
         const a = Number(r.assists) || 0;
         const e = Number(r.errors) || 0;
@@ -940,6 +1226,53 @@ export async function statsRoutes(app: FastifyInstance) {
     } catch (err) {
       app.log.error(err);
       return reply.status(500).send({ message: 'Failed to fetch seasons' });
+    }
+  });
+
+  // GET /team-hit-locations?seasonId=X&teamId=Y - hit locations for a team in a season (for team spray chart)
+  app.get<{ Querystring: { seasonId?: string; teamId?: string } }>('/team-hit-locations', async (request, reply) => {
+    try {
+      const seasonId = request.query.seasonId;
+      const teamId = request.query.teamId;
+      const seasonIdNum = seasonId ? parseInt(seasonId, 10) : null;
+      const teamIdNum = teamId ? parseInt(teamId, 10) : null;
+      if (!seasonIdNum || !teamIdNum) {
+        return reply.send([]);
+      }
+      const rows = await db
+        .select({
+          hitLocationX: gameEvents.hitLocationX,
+          hitLocationY: gameEvents.hitLocationY,
+          hitType: gameEvents.hitType,
+          hitHardness: gameEvents.hitHardness,
+          eventType: gameEvents.eventType,
+          outsRecorded: gameEvents.outsRecorded,
+        })
+        .from(gameEvents)
+        .innerJoin(games, eq(gameEvents.gameId, games.id))
+        .innerJoin(leagues, eq(games.leagueId, leagues.id))
+        .innerJoin(gameLineups, and(eq(gameLineups.gameId, gameEvents.gameId), eq(gameLineups.playerId, gameEvents.batterId)))
+        .where(
+          and(
+            eq(leagues.seasonId, seasonIdNum),
+            eq(gameLineups.teamId, teamIdNum),
+            sql`${gameEvents.hitLocationX} IS NOT NULL`,
+            sql`${gameEvents.hitLocationY} IS NOT NULL`,
+            eq(gameEvents.isDeleted, false),
+          ),
+        );
+      const result = rows.map(r => ({
+        hitLocationX: Number(r.hitLocationX ?? 0),
+        hitLocationY: Number(r.hitLocationY ?? 0),
+        hitType: r.hitType,
+        hitHardness: r.hitHardness,
+        eventType: r.eventType ?? '',
+        isOut: (r.outsRecorded ?? 0) > 0,
+      }));
+      return reply.send(result);
+    } catch (err) {
+      request.log.error(err);
+      return reply.status(500).send({ message: 'Failed to fetch team hit locations' });
     }
   });
 }

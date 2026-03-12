@@ -173,7 +173,7 @@ Match iScore’s **category dropdown** and **sub-tables**. Implement in phases: 
   - For “all time” we do not materialize a separate table; we aggregate from `player_season_*` on read.
 
 - **Backfill:**  
-  - One-time migration or script to backfill new columns from existing `game_events` / box scores where possible (e.g. contact types, RISP if you have event context).
+  - One-time script `pnpm --filter @lbss/api backfill-game-stats` (or `npm run backfill-game-stats` in packages/api) recomputes game and season stats for all finalized games using `finalizeGame(id, undefined, { recompute: true })`. Run after adding new stat columns to backfill from `game_events`.
 
 ---
 
@@ -281,13 +281,15 @@ Match iScore’s **category dropdown** and **sub-tables**. Implement in phases: 
 
 - [x] **stats.ts** – `seasonId` optional; all-time aggregation for batting, pitching, fielding, leaders, fielding-by-position.  
 - [x] **players.ts** – `seasonId` optional for `/:slug/stats`, `pitching-stats`, `fielding-stats`, `fielding-by-position`; return one all-time row when no season.  
-- [x] **Schema** – New columns (Phase 2); new tables for contact (Phase 3) pending.  
-- [x] **finalize-game.ts** – Compute new stats (Phase 2); contact counts (Phase 3) pending.  
-- [x] **Migrations** – Phase 2 columns added (0004).
+- [x] **Schema** – New columns (Phase 2). Contact stats computed on read from game_events (Phase 3).  
+- [x] **finalize-game.ts** – Compute new stats (Phase 2).  
+- [x] **Migrations** – Phase 2 columns added (0004).  
+- [x] **Batting/Pitching contact** – GET `/batting-contact`, `/pitching-contact` (from game_events hit_type × hit_hardness).  
+- [x] **Team hit locations** – GET `/team-hit-locations?seasonId=&teamId=` for team spray chart.
 
 ### Frontend (apps/web)
 
-- [x] **Stats page** – Season dropdown with “All time”; Legend link; extended Basic columns. Category dropdown (Advanced, Infield/Outfield) pending.  
+- [x] **Stats page** – Season dropdown with “All time”; Legend + Team hit locations links; extended Basic columns. Category dropdown: Batting (Basic / Advanced / Hit type & power), Pitching (Basic / Hit type & power), Fielding (All / Infield / Outfield). URL `?season=all` or `?season=123` persisted.  
 - [x] **Player profile** – Stats (batting, pitching, fielding) always show **career (all-time)** without filter; season dropdown applies only to **Game Log** and **Spray Chart**.  
 - [x] **Legend page** – New route and content; link from stats header.  
 - [x] **Spray chart** – Respects season filter on player profile (game log & spray chart only).  
@@ -306,7 +308,7 @@ Match iScore’s **category dropdown** and **sub-tables**. Implement in phases: 
 - Users can select **season** or **All time** on **Player profile** and see that player’s batting, pitching, fielding, game log, and spray chart for that scope.  
 - Statistics layout and categories match iScore’s structure (Basic, Advanced, Hit type, etc.) as phases are implemented.  
 - A **Legend** page documents all displayed stat abbreviations and formulas.  
-- **Hit locations** (spray chart) respect the same season/all-time filter on the player profile and, if implemented, on a team-level hit locations view.
+- **Hit locations** (spray chart) respect the same season/all-time filter on the player profile. **Team hit locations** page at `/stats/hit-locations` with season + team selector.
 
 ---
 

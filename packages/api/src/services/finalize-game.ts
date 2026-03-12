@@ -76,10 +76,12 @@ function isAtBat(t: string): boolean {
    Main finalize function
    ═══════════════════════════════════════════════════════════════ */
 
-export async function finalizeGame(gameId: number, userId?: number) {
+export type FinalizeGameOptions = { recompute?: boolean };
+
+export async function finalizeGame(gameId: number, userId?: number, options?: FinalizeGameOptions) {
   const [game] = await db.select().from(games).where(eq(games.id, gameId)).limit(1);
   if (!game) throw new Error('Game not found');
-  if (game.isFinalized) throw new Error('Game already finalized');
+  if (game.isFinalized && !options?.recompute) throw new Error('Game already finalized');
 
   const events = await db
     .select()
@@ -484,17 +486,19 @@ export async function finalizeGame(gameId: number, userId?: number) {
       });
   }
 
-  /* ── Lock game ── */
-  await db
-    .update(games)
-    .set({
-      isFinalized: true,
-      status: 'final',
-      finalizedAt: new Date(),
-      finalizedBy: userId ?? null,
-      updatedAt: new Date(),
-    })
-    .where(eq(games.id, gameId));
+  /* ── Lock game (skip when recomputing already-finalized games) ── */
+  if (!options?.recompute) {
+    await db
+      .update(games)
+      .set({
+        isFinalized: true,
+        status: 'final',
+        finalizedAt: new Date(),
+        finalizedBy: userId ?? null,
+        updatedAt: new Date(),
+      })
+      .where(eq(games.id, gameId));
+  }
 
   /* ── Recompute season aggregates ── */
   const seasonResult = await db.execute(

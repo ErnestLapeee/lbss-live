@@ -8,7 +8,12 @@ export const metadata: Metadata = {
   description: 'Batting and pitching statistics for the Latvijas Beisbola Liga',
 };
 
-export default async function StatsPage() {
+type Props = { searchParams: Promise<{ season?: string }> };
+
+export default async function StatsPage({ searchParams }: Props) {
+  const params = await searchParams;
+  const seasonFromUrl = params.season;
+
   // Fetch seasons server-side so the page isn't blank
   let seasons: any[] = [];
   try {
@@ -16,9 +21,14 @@ export default async function StatsPage() {
     seasons = Array.isArray(data) ? data : [];
   } catch {}
 
-  // Pre-fetch stats for active season (or all-time if no seasons)
+  // Season from URL (?season=all or ?season=123), else active season
   const activeSeason = seasons.find((s: any) => s.isActive) || seasons[0];
-  const seasonId = activeSeason?.id ?? null;
+  let seasonId: number | null;
+  if (seasonFromUrl === 'all' || seasonFromUrl === '') seasonId = null;
+  else if (seasonFromUrl) {
+    const n = parseInt(seasonFromUrl, 10);
+    seasonId = !isNaN(n) && seasons.some((s: any) => s.id === n) ? n : (activeSeason?.id ?? null);
+  } else seasonId = activeSeason?.id ?? null;
   const initialSeasonParam = seasonId != null ? `seasonId=${seasonId}` : 'seasonId=all';
 
   let initialBatting: any[] = [];

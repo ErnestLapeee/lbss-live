@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import Link from 'next/link';
+import { useRouter, usePathname } from 'next/navigation';
 import { usePlayerModal } from '@/components/player-modal';
 
 
@@ -42,6 +43,9 @@ interface BattingStat {
   onBasePct: string | null;
   sluggingPct: string | null;
   ops: string | null;
+  runsCreated?: string | null;
+  gpa?: string | null;
+  babip?: string | null;
 }
 
 interface PitchingStat {
@@ -69,6 +73,9 @@ interface PitchingStat {
   whip: string | null;
   strikeoutRate: string | null;
   walkRate: string | null;
+  goAo?: string | null;
+  groundOuts?: number;
+  flyOuts?: number;
 }
 
 interface FieldingStat {
@@ -93,6 +100,35 @@ interface FieldingStat {
   position?: number | null;
   sba?: number;
 }
+
+interface BattingContactStat {
+  playerId: number;
+  playerSlug: string | null;
+  firstName: string;
+  lastName: string;
+  teamName: string;
+  teamShortName: string | null;
+  teamLogoUrl: string | null;
+  bip: number;
+  gbSoft: number;
+  gbMedium: number;
+  gbHard: number;
+  ldSoft: number;
+  ldMedium: number;
+  ldHard: number;
+  puSoft: number;
+  puMedium: number;
+  puHard: number;
+  fbSoft: number;
+  fbMedium: number;
+  fbHard: number;
+  gbPct?: string | null;
+  ldPct?: string | null;
+  puPct?: string | null;
+  fbPct?: string | null;
+}
+
+type PitchingContactStat = BattingContactStat;
 
 const POSITION_FILTERS: { value: string; label: string }[] = [
   { value: 'all', label: 'All' },
@@ -167,6 +203,51 @@ const BATTING_COLUMNS: Column[] = [
   { key: 'ops', label: 'OPS', align: 'right', highlight: true },
 ];
 
+const BATTING_ADVANCED_COLUMNS: Column[] = [
+  { key: 'name', label: 'Player', align: 'left', sticky: true },
+  { key: 'teamName', label: 'Team', align: 'left' },
+  { key: 'games', label: 'G', align: 'right' },
+  { key: 'plateAppearances', label: 'PA', align: 'right' },
+  { key: 'atBats', label: 'AB', align: 'right' },
+  { key: 'runs', label: 'R', align: 'right' },
+  { key: 'hits', label: 'H', align: 'right' },
+  { key: 'doubles', label: '2B', align: 'right' },
+  { key: 'triples', label: '3B', align: 'right' },
+  { key: 'homeRuns', label: 'HR', align: 'right' },
+  { key: 'rbi', label: 'RBI', align: 'right' },
+  { key: 'walks', label: 'BB', align: 'right' },
+  { key: 'strikeouts', label: 'SO', align: 'right' },
+  { key: 'battingAvg', label: 'AVG', align: 'right', highlight: true },
+  { key: 'onBasePct', label: 'OBP', align: 'right' },
+  { key: 'sluggingPct', label: 'SLG', align: 'right' },
+  { key: 'ops', label: 'OPS', align: 'right', highlight: true },
+  { key: 'runsCreated', label: 'RC', align: 'right' },
+  { key: 'gpa', label: 'GPA', align: 'right' },
+  { key: 'babip', label: 'BABIP', align: 'right' },
+];
+
+const BATTING_CONTACT_COLUMNS: Column[] = [
+  { key: 'name', label: 'Player', align: 'left', sticky: true },
+  { key: 'teamName', label: 'Team', align: 'left' },
+  { key: 'bip', label: 'BIP', align: 'right' },
+  { key: 'gbSoft', label: 'GBs', align: 'right' },
+  { key: 'gbMedium', label: 'GBm', align: 'right' },
+  { key: 'gbHard', label: 'GBh', align: 'right' },
+  { key: 'ldSoft', label: 'LDs', align: 'right' },
+  { key: 'ldMedium', label: 'LDm', align: 'right' },
+  { key: 'ldHard', label: 'LDh', align: 'right' },
+  { key: 'puSoft', label: 'PUs', align: 'right' },
+  { key: 'puMedium', label: 'PUm', align: 'right' },
+  { key: 'puHard', label: 'PUh', align: 'right' },
+  { key: 'fbSoft', label: 'FBs', align: 'right' },
+  { key: 'fbMedium', label: 'FBm', align: 'right' },
+  { key: 'fbHard', label: 'FBh', align: 'right' },
+  { key: 'gbPct', label: 'GB%', align: 'right' },
+  { key: 'ldPct', label: 'LD%', align: 'right' },
+  { key: 'puPct', label: 'PU%', align: 'right' },
+  { key: 'fbPct', label: 'FB%', align: 'right' },
+];
+
 const PITCHING_COLUMNS: Column[] = [
   { key: 'name', label: 'Player', align: 'left', sticky: true },
   { key: 'teamName', label: 'Team', align: 'left' },
@@ -193,8 +274,33 @@ const PITCHING_COLUMNS: Column[] = [
   { key: 'gameScore', label: 'GSc', align: 'right' },
   { key: 'strikeoutsLooking', label: 'Kc', align: 'right' },
   { key: 'strikeoutsSwinging', label: 'Ks', align: 'right' },
+  { key: 'groundOuts', label: 'GO', align: 'right' },
+  { key: 'flyOuts', label: 'AO', align: 'right' },
+  { key: 'goAo', label: 'GO/AO', align: 'right' },
   { key: 'era', label: 'ERA', align: 'right', highlight: true },
   { key: 'whip', label: 'WHIP', align: 'right', highlight: true },
+];
+
+const PITCHING_CONTACT_COLUMNS: Column[] = [
+  { key: 'name', label: 'Player', align: 'left', sticky: true },
+  { key: 'teamName', label: 'Team', align: 'left' },
+  { key: 'bip', label: 'BIP', align: 'right' },
+  { key: 'gbSoft', label: 'GBs', align: 'right' },
+  { key: 'gbMedium', label: 'GBm', align: 'right' },
+  { key: 'gbHard', label: 'GBh', align: 'right' },
+  { key: 'ldSoft', label: 'LDs', align: 'right' },
+  { key: 'ldMedium', label: 'LDm', align: 'right' },
+  { key: 'ldHard', label: 'LDh', align: 'right' },
+  { key: 'puSoft', label: 'PUs', align: 'right' },
+  { key: 'puMedium', label: 'PUm', align: 'right' },
+  { key: 'puHard', label: 'PUh', align: 'right' },
+  { key: 'fbSoft', label: 'FBs', align: 'right' },
+  { key: 'fbMedium', label: 'FBm', align: 'right' },
+  { key: 'fbHard', label: 'FBh', align: 'right' },
+  { key: 'gbPct', label: 'GB%', align: 'right' },
+  { key: 'ldPct', label: 'LD%', align: 'right' },
+  { key: 'puPct', label: 'PU%', align: 'right' },
+  { key: 'fbPct', label: 'FB%', align: 'right' },
 ];
 
 const FIELDING_COLUMNS: Column[] = [
@@ -265,6 +371,8 @@ export function StatsClient({
   initialBattingLeaders, initialPitchingLeaders,
 }: StatsClientProps) {
   const { openModal, renderModal } = usePlayerModal();
+  const router = useRouter();
+  const pathname = usePathname();
   const [tab, setTab] = useState<StatsTab>('batting');
   const [seasons, setSeasons] = useState<Season[]>(initialSeasons);
   const [selectedSeasonId, setSelectedSeasonId] = useState<number | null>(initialSeasonId); // null = All time
@@ -274,6 +382,11 @@ export function StatsClient({
     initialFielding.map((f: any) => ({ ...f, sba: (f.catcherStolenBases || 0) + (f.catcherCaughtStealing || 0) }))
   );
   const [fieldingPosition, setFieldingPosition] = useState<string>('all');
+  const [fieldingCategory, setFieldingCategory] = useState<'all' | 'infield' | 'outfield'>('all');
+  const [battingCategory, setBattingCategory] = useState<'basic' | 'advanced' | 'hittype'>('basic');
+  const [pitchingCategory, setPitchingCategory] = useState<'basic' | 'hittype'>('basic');
+  const [battingContactStats, setBattingContactStats] = useState<BattingContactStat[]>([]);
+  const [pitchingContactStats, setPitchingContactStats] = useState<PitchingContactStat[]>([]);
   const [fieldingByPosLoading, setFieldingByPosLoading] = useState(false);
   const [battingLeaders, setBattingLeaders] = useState<LeadersData | null>(initialBattingLeaders);
   const [pitchingLeaders, setPitchingLeaders] = useState<LeadersData | null>(initialPitchingLeaders);
@@ -314,19 +427,27 @@ export function StatsClient({
       .finally(() => setLoading(false));
   }, [seasonParam]);
 
-  // Fetch fielding stats by position when filter changes
+  // Fetch fielding stats by position/category when filter changes
   useEffect(() => {
     if (tab !== 'fielding') return;
+    const mapSba = (data: any[]) => Array.isArray(data) ? data.map((f: any) => ({
+      ...f,
+      sba: (f.catcherStolenBases || 0) + (f.catcherCaughtStealing || 0),
+    })) : [];
+    if (fieldingCategory === 'infield' || fieldingCategory === 'outfield') {
+      setFieldingByPosLoading(true);
+      fetch(`/api/proxy/public/stats/fielding-by-position?${seasonParam}&category=${fieldingCategory}`)
+        .then(r => r.json())
+        .then(data => setFieldingStats(mapSba(data)))
+        .catch(() => setFieldingStats([]))
+        .finally(() => setFieldingByPosLoading(false));
+      return;
+    }
     if (fieldingPosition === 'all') {
       setFieldingByPosLoading(true);
       fetch(`/api/proxy/public/stats/fielding?${seasonParam}`)
         .then(r => r.json())
-        .then(data => {
-          setFieldingStats(Array.isArray(data) ? data.map((f: any) => ({
-            ...f,
-            sba: (f.catcherStolenBases || 0) + (f.catcherCaughtStealing || 0),
-          })) : []);
-        })
+        .then(data => setFieldingStats(mapSba(data)))
         .catch(() => setFieldingStats([]))
         .finally(() => setFieldingByPosLoading(false));
       return;
@@ -334,34 +455,78 @@ export function StatsClient({
     setFieldingByPosLoading(true);
     fetch(`/api/proxy/public/stats/fielding-by-position?${seasonParam}&position=${fieldingPosition}`)
       .then(r => r.json())
-      .then(data => {
-        setFieldingStats(Array.isArray(data) ? data.map((f: any) => ({
-          ...f,
-          sba: (f.catcherStolenBases || 0) + (f.catcherCaughtStealing || 0),
-        })) : []);
-      })
+      .then(data => setFieldingStats(mapSba(data)))
       .catch(() => setFieldingStats([]))
       .finally(() => setFieldingByPosLoading(false));
-  }, [fieldingPosition, seasonParam, tab]);
+  }, [fieldingPosition, fieldingCategory, seasonParam, tab]);
 
-  // Reset fielding position filter when season changes
+  // Fetch batting/pitching contact when Hit type view is selected
+  useEffect(() => {
+    if (tab === 'batting' && battingCategory === 'hittype') {
+      fetch(`/api/proxy/public/stats/batting-contact?${seasonParam}`)
+        .then(r => r.json())
+        .then((data: BattingContactStat[]) => {
+          const withPct = (Array.isArray(data) ? data : []).map(row => {
+            const bip = row.bip ?? 0;
+            const gb = (row.gbSoft ?? 0) + (row.gbMedium ?? 0) + (row.gbHard ?? 0);
+            const ld = (row.ldSoft ?? 0) + (row.ldMedium ?? 0) + (row.ldHard ?? 0);
+            const pu = (row.puSoft ?? 0) + (row.puMedium ?? 0) + (row.puHard ?? 0);
+            const fb = (row.fbSoft ?? 0) + (row.fbMedium ?? 0) + (row.fbHard ?? 0);
+            return {
+              ...row,
+              gbPct: bip > 0 ? (gb / bip).toFixed(3) : null,
+              ldPct: bip > 0 ? (ld / bip).toFixed(3) : null,
+              puPct: bip > 0 ? (pu / bip).toFixed(3) : null,
+              fbPct: bip > 0 ? (fb / bip).toFixed(3) : null,
+            };
+          });
+          setBattingContactStats(withPct);
+        })
+        .catch(() => setBattingContactStats([]));
+    }
+    if (tab === 'pitching' && pitchingCategory === 'hittype') {
+      fetch(`/api/proxy/public/stats/pitching-contact?${seasonParam}`)
+        .then(r => r.json())
+        .then((data: PitchingContactStat[]) => {
+          const withPct = (Array.isArray(data) ? data : []).map(row => {
+            const bip = row.bip ?? 0;
+            const gb = (row.gbSoft ?? 0) + (row.gbMedium ?? 0) + (row.gbHard ?? 0);
+            const ld = (row.ldSoft ?? 0) + (row.ldMedium ?? 0) + (row.ldHard ?? 0);
+            const pu = (row.puSoft ?? 0) + (row.puMedium ?? 0) + (row.puHard ?? 0);
+            const fb = (row.fbSoft ?? 0) + (row.fbMedium ?? 0) + (row.fbHard ?? 0);
+            return {
+              ...row,
+              gbPct: bip > 0 ? (gb / bip).toFixed(3) : null,
+              ldPct: bip > 0 ? (ld / bip).toFixed(3) : null,
+              puPct: bip > 0 ? (pu / bip).toFixed(3) : null,
+              fbPct: bip > 0 ? (fb / bip).toFixed(3) : null,
+            };
+          });
+          setPitchingContactStats(withPct);
+        })
+        .catch(() => setPitchingContactStats([]));
+    }
+  }, [tab, battingCategory, pitchingCategory, seasonParam]);
+
+  // Reset fielding position/category when season changes
   useEffect(() => {
     setFieldingPosition('all');
+    setFieldingCategory('all');
   }, [selectedSeasonId]);
 
-  // Reset sort when tab changes
+  // Reset sort when tab or category changes
   useEffect(() => {
     if (tab === 'batting') {
-      setSortKey('battingAvg');
-      setSortDir('desc');
+      setSortKey(battingCategory === 'hittype' ? 'bip' : 'battingAvg');
+      setSortDir(battingCategory === 'hittype' ? 'desc' : 'desc');
     } else if (tab === 'pitching') {
-      setSortKey('era');
-      setSortDir('asc');
+      setSortKey(pitchingCategory === 'hittype' ? 'bip' : 'era');
+      setSortDir(pitchingCategory === 'hittype' ? 'desc' : 'asc');
     } else {
       setSortKey('fieldingPct');
       setSortDir('desc');
     }
-  }, [tab]);
+  }, [tab, battingCategory, pitchingCategory]);
 
   // Sort logic
   const handleSort = useCallback((key: string) => {
@@ -385,12 +550,26 @@ export function StatsClient({
   const sortedBatting = useMemo(() => sortData(battingStats, sortKey, sortDir), [battingStats, sortKey, sortDir]);
   const sortedPitching = useMemo(() => sortData(pitchingStats, sortKey, sortDir), [pitchingStats, sortKey, sortDir]);
   const sortedFielding = useMemo(() => sortData(fieldingStats, sortKey, sortDir), [fieldingStats, sortKey, sortDir]);
+  const sortedBattingContact = useMemo(() => sortData(battingContactStats, sortKey, sortDir), [battingContactStats, sortKey, sortDir]);
+  const sortedPitchingContact = useMemo(() => sortData(pitchingContactStats, sortKey, sortDir), [pitchingContactStats, sortKey, sortDir]);
 
-  const currentColumns = tab === 'batting' ? BATTING_COLUMNS : tab === 'pitching' ? PITCHING_COLUMNS : FIELDING_COLUMNS;
-  const currentData = tab === 'batting' ? sortedBatting : tab === 'pitching' ? sortedPitching : sortedFielding;
+  const currentColumns = tab === 'batting'
+    ? (battingCategory === 'advanced' ? BATTING_ADVANCED_COLUMNS : battingCategory === 'hittype' ? BATTING_CONTACT_COLUMNS : BATTING_COLUMNS)
+    : tab === 'pitching'
+      ? (pitchingCategory === 'hittype' ? PITCHING_CONTACT_COLUMNS : PITCHING_COLUMNS)
+      : FIELDING_COLUMNS;
+  const currentData = tab === 'batting'
+    ? (battingCategory === 'hittype' ? sortedBattingContact : sortedBatting)
+    : tab === 'pitching'
+      ? (pitchingCategory === 'hittype' ? sortedPitchingContact : sortedPitching)
+      : sortedFielding;
   const currentLeaders = tab === 'batting' ? battingLeaders : tab === 'pitching' ? pitchingLeaders : null;
   const currentLeaderCats = tab === 'batting' ? BATTING_LEADER_CATS : PITCHING_LEADER_CATS;
-  const hasData = tab === 'batting' ? battingStats.length > 0 : tab === 'pitching' ? pitchingStats.length > 0 : fieldingStats.length > 0;
+  const hasData = tab === 'batting'
+    ? (battingCategory === 'hittype' ? battingContactStats.length > 0 : battingStats.length > 0)
+    : tab === 'pitching'
+      ? (pitchingCategory === 'hittype' ? pitchingContactStats.length > 0 : pitchingStats.length > 0)
+      : fieldingStats.length > 0;
 
   return (
     <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
@@ -430,7 +609,7 @@ export function StatsClient({
           </button>
         </div>
 
-        {/* Season selector + Legend link */}
+        {/* Season + category + Legend */}
         <div className="flex flex-wrap items-center gap-4">
           <div className="flex items-center gap-3">
             <label className="text-sm font-medium text-text-muted">Season:</label>
@@ -438,7 +617,10 @@ export function StatsClient({
               value={selectedSeasonId ?? 'all'}
               onChange={(e) => {
                 const v = e.target.value;
-                setSelectedSeasonId(v === 'all' ? null : Number(v));
+                const newId = v === 'all' ? null : Number(v);
+                setSelectedSeasonId(newId);
+                const q = newId == null ? 'all' : String(newId);
+                router.replace(`${pathname}?season=${q}`, { scroll: false });
               }}
               className="rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-accent/50"
             >
@@ -448,11 +630,58 @@ export function StatsClient({
               ))}
             </select>
           </div>
+          {tab === 'batting' && (
+            <div className="flex items-center gap-2">
+              <label className="text-sm font-medium text-text-muted">View:</label>
+              <select
+                value={battingCategory}
+                onChange={(e) => setBattingCategory(e.target.value as 'basic' | 'advanced' | 'hittype')}
+                className="rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-accent/50"
+              >
+                <option value="basic">Basic</option>
+                <option value="advanced">Advanced</option>
+                <option value="hittype">Hit type &amp; power</option>
+              </select>
+            </div>
+          )}
+          {tab === 'pitching' && (
+            <div className="flex items-center gap-2">
+              <label className="text-sm font-medium text-text-muted">View:</label>
+              <select
+                value={pitchingCategory}
+                onChange={(e) => setPitchingCategory(e.target.value as 'basic' | 'hittype')}
+                className="rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-accent/50"
+              >
+                <option value="basic">Basic</option>
+                <option value="hittype">Hit type &amp; power</option>
+              </select>
+            </div>
+          )}
+          {tab === 'fielding' && (
+            <div className="flex items-center gap-2">
+              <label className="text-sm font-medium text-text-muted">View:</label>
+              <select
+                value={fieldingCategory}
+                onChange={(e) => setFieldingCategory(e.target.value as 'all' | 'infield' | 'outfield')}
+                className="rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-accent/50"
+              >
+                <option value="all">All positions</option>
+                <option value="infield">Infield (P, C, 1B, 2B, 3B, SS)</option>
+                <option value="outfield">Outfield (LF, CF, RF)</option>
+              </select>
+            </div>
+          )}
           <Link
             href="/stats/legend"
             className="text-sm font-medium text-accent hover:text-accent-light transition-colors"
           >
             Legend
+          </Link>
+          <Link
+            href="/stats/hit-locations"
+            className="text-sm font-medium text-accent hover:text-accent-light transition-colors"
+          >
+            Team hit locations
           </Link>
         </div>
       </div>
@@ -477,8 +706,8 @@ export function StatsClient({
         </div>
       ) : (
         <>
-          {/* ── Leaders ── */}
-          {currentLeaders && Object.keys(currentLeaders).length > 0 && (
+          {/* ── Leaders (hidden for Hit type & power view) ── */}
+          {currentLeaders && Object.keys(currentLeaders).length > 0 && (tab !== 'batting' || battingCategory !== 'hittype') && (tab !== 'pitching' || pitchingCategory !== 'hittype') && (
             <section className="mb-10">
               <div className="flex items-center gap-3 mb-5">
                 <div className="w-1 h-6 rounded-full bg-accent" />
@@ -571,8 +800,8 @@ export function StatsClient({
                 </span>
               </div>
 
-              {/* Position filter for fielding */}
-              {tab === 'fielding' && (
+              {/* Position filter for fielding (only when View = All positions) */}
+              {tab === 'fielding' && fieldingCategory === 'all' && (
                 <div className="flex items-center gap-1 sm:ml-auto">
                   <span className="text-[10px] font-medium text-text-faint mr-1.5">Position:</span>
                   <div className="flex rounded-lg border border-border overflow-hidden bg-surface-alt">
@@ -594,6 +823,9 @@ export function StatsClient({
                     <div className="w-3.5 h-3.5 border-2 border-accent border-t-transparent rounded-full animate-spin ml-2" />
                   )}
                 </div>
+              )}
+              {tab === 'fielding' && fieldingCategory !== 'all' && fieldingByPosLoading && (
+                <div className="w-3.5 h-3.5 border-2 border-accent border-t-transparent rounded-full animate-spin ml-2" />
               )}
             </div>
 

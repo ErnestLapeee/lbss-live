@@ -26,6 +26,8 @@ const BATTING = [
   { abbr: 'OBP', name: 'On Base Percentage', desc: '(H + BB + HBP) / (AB + BB + HBP + SF)' },
   { abbr: 'SLG', name: 'Slugging Percentage', desc: 'Total Bases / AB' },
   { abbr: 'OPS', name: 'On Base Plus Slugging', desc: 'OBP + SLG' },
+  { abbr: 'RC', name: 'Runs Created', desc: '(H + BB) × TB / (AB + BB)' },
+  { abbr: 'GPA', name: 'Gross Production Average', desc: '(1.8 × OBP + SLG) / 4' },
   { abbr: 'BABIP', name: 'Batting Avg. on Balls in Play', desc: '(H - HR) / (AB - SO - HR + SF)' },
   { abbr: 'B', name: 'Bunt Singles', desc: 'Singles on bunt hits' },
   { abbr: 'Kc', name: 'Strikeouts Looking', desc: 'Strikeouts called (looking)' },
@@ -68,6 +70,9 @@ const PITCHING = [
   { abbr: 'GSc', name: 'Game Score', desc: 'Bill James game score (start quality)' },
   { abbr: 'Kc', name: 'Strikeouts Looking', desc: 'Strikeouts called (looking)' },
   { abbr: 'Ks', name: 'Strikeouts Swinging', desc: 'Strikeouts swinging' },
+  { abbr: 'GO', name: 'Ground Outs', desc: 'Ground balls turned into outs' },
+  { abbr: 'AO', name: 'Air Outs', desc: 'Fly balls and line drives turned into outs' },
+  { abbr: 'GO/AO', name: 'Ground Out / Air Out ratio', desc: 'GO ÷ AO' },
 ];
 
 const FIELDING = [
