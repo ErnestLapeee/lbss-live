@@ -149,7 +149,7 @@ export function StandingsClient() {
             >
               {seasons.map((s) => (
                 <option key={s.id} value={s.id}>
-                  {s.name || s.year ?? s.id}
+                  {(s.name || s.year) ?? s.id}
                 </option>
               ))}
             </select>
