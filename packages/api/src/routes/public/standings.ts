@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { db } from '../../db/index.js';
 import { standings, teams } from '../../db/schema/index.js';
-import { eq, desc } from 'drizzle-orm';
+import { and, desc, eq, gt } from 'drizzle-orm';
 
 export async function standingsRoutes(app: FastifyInstance) {
   // GET /:leagueId - get standings for a league, ordered by winPct desc
@@ -31,7 +31,8 @@ export async function standingsRoutes(app: FastifyInstance) {
         })
         .from(standings)
         .innerJoin(teams, eq(standings.teamId, teams.id))
-        .where(eq(standings.leagueId, leagueId))
+        // Only show teams that have actually played at least one game.
+        .where(and(eq(standings.leagueId, leagueId), gt(standings.gamesPlayed, 0)))
         .orderBy(desc(standings.winPct));
 
       return reply.send(result);
