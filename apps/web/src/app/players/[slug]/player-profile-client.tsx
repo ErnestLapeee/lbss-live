@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { SprayChart } from '@/components/stats/spray-chart';
 
 
@@ -43,47 +43,37 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
   const [fieldingByPos, setFieldingByPos] = useState<any[] | null>(null);
   const [gameLog, setGameLog] = useState<{ batting: any[]; pitching: any[] } | null>(null);
   const [sprayData, setSprayData] = useState<any[] | null>(null);
-  const [statsLoading, setStatsLoading] = useState(false);
-  const initialFetchDone = useRef(false);
 
-  const seasonParam = selectedSeasonId != null ? `seasonId=${selectedSeasonId}` : '';
+  // Season filter applies only to game log and spray chart; stats tables are always all-time
+  const filterParam = selectedSeasonId != null ? `seasonId=${selectedSeasonId}` : '';
 
-  useEffect(() => {
-    if (!initialFetchDone.current && selectedSeasonId === null) {
-      initialFetchDone.current = true;
-      return;
-    }
-    setStatsLoading(true);
-    const batUrl = seasonParam ? `/api/public/players/${slug}/stats?${seasonParam}` : `/api/public/players/${slug}/stats`;
-    fetchJson(batUrl).then(d => {
-      setBattingStats(Array.isArray(d) ? d : []);
-      setStatsLoading(false);
-    }).catch(() => setStatsLoading(false));
-  }, [slug, seasonParam]);
-
+  // Batting: use server-provided all-time only (no refetch on season change)
+  // Pitching / fielding: fetch all-time once when tab is first viewed
   useEffect(() => {
     if (tab !== 'pitching') return;
-    const url = seasonParam ? `/api/public/players/${slug}/pitching-stats?${seasonParam}` : `/api/public/players/${slug}/pitching-stats`;
-    fetchJson(url).then(d => setPitchingStats(Array.isArray(d) ? d : []));
-  }, [tab, slug, seasonParam]);
+    if (pitchingStats !== null) return;
+    fetchJson(`/api/public/players/${slug}/pitching-stats`).then(d => setPitchingStats(Array.isArray(d) ? d : []));
+  }, [tab, slug, pitchingStats]);
 
   useEffect(() => {
     if (tab !== 'fielding') return;
-    const url = seasonParam ? `/api/public/players/${slug}/fielding-stats?${seasonParam}` : `/api/public/players/${slug}/fielding-stats`;
-    fetchJson(url).then(d => setFieldingStats(Array.isArray(d) ? d : []));
-    fetchJson(`/api/public/players/${slug}/fielding-by-position${seasonParam ? `?${seasonParam}` : ''}`).then(d => setFieldingByPos(Array.isArray(d) ? d : []));
-  }, [tab, slug, seasonParam]);
+    if (fieldingStats !== null) return;
+    fetchJson(`/api/public/players/${slug}/fielding-stats`).then(d => setFieldingStats(Array.isArray(d) ? d : []));
+    fetchJson(`/api/public/players/${slug}/fielding-by-position`).then(d => setFieldingByPos(Array.isArray(d) ? d : []));
+  }, [tab, slug, fieldingStats]);
 
+  // Game log: respects season filter
   useEffect(() => {
     if (tab !== 'gamelog') return;
-    const url = seasonParam ? `/api/public/players/${slug}/game-log?${seasonParam}` : `/api/public/players/${slug}/game-log`;
+    const url = filterParam ? `/api/public/players/${slug}/game-log?${filterParam}` : `/api/public/players/${slug}/game-log`;
     fetchJson(url).then(d => setGameLog(d && typeof d === 'object' && !Array.isArray(d) ? d : { batting: [], pitching: [] }));
-  }, [tab, slug, seasonParam]);
+  }, [tab, slug, filterParam]);
 
+  // Spray chart: respects season filter
   useEffect(() => {
-    const url = seasonParam ? `/api/public/players/${slug}/spray-chart?${seasonParam}` : `/api/public/players/${slug}/spray-chart`;
+    const url = filterParam ? `/api/public/players/${slug}/spray-chart?${filterParam}` : `/api/public/players/${slug}/spray-chart`;
     fetchJson(url).then(d => setSprayData(Array.isArray(d) ? d : []));
-  }, [slug, seasonParam]);
+  }, [slug, filterParam]);
 
   const tabs: { key: Tab; label: string }[] = [
     { key: 'batting', label: 'Batting' },
@@ -109,7 +99,9 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
           ))}
         </div>
         <div className="flex items-center gap-2">
-          <label className="text-xs font-medium text-text-muted">Season:</label>
+          <label className="text-xs font-medium text-text-muted" title="Filters Game Log and Spray Chart only. Stats above are always career (all-time).">
+            Season (game log & spray chart):
+          </label>
           <select
             value={selectedSeasonId ?? 'all'}
             onChange={(e) => setSelectedSeasonId(e.target.value === 'all' ? null : Number(e.target.value))}
@@ -126,6 +118,7 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
       {/* BATTING TAB */}
       {tab === 'batting' && (
         <div className="space-y-8">
+          <p className="text-[11px] text-text-faint">Career statistics (all-time). Use the season filter above to filter Game Log and Spray Chart.</p>
           {battingStats.length === 0 ? (
             <div className="rounded-xl border border-dashed border-border bg-surface-alt p-8 text-center">
               <p className="text-sm text-text-muted">No batting statistics recorded yet.</p>
@@ -199,6 +192,7 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
       {/* PITCHING TAB */}
       {tab === 'pitching' && (
         <div>
+          <p className="text-[11px] text-text-faint mb-3">Career statistics (all-time). Use the season filter above to filter Game Log and Spray Chart.</p>
           {pitchingStats === null ? (
             <p className="text-sm text-text-muted py-4">Loading...</p>
           ) : pitchingStats.length === 0 ? (
@@ -254,6 +248,7 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
       {/* FIELDING TAB */}
       {tab === 'fielding' && (
         <div>
+          <p className="text-[11px] text-text-faint mb-3">Career statistics (all-time). Use the season filter above to filter Game Log and Spray Chart.</p>
           {fieldingStats === null ? (
             <p className="text-sm text-text-muted py-4">Loading...</p>
           ) : fieldingStats.length === 0 ? (

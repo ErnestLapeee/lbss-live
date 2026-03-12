@@ -279,18 +279,18 @@ Match iScore’s **category dropdown** and **sub-tables**. Implement in phases: 
 
 ### Backend (packages/api)
 
-- [ ] **stats.ts** – `seasonId` optional; all-time aggregation for batting, pitching, fielding, leaders, fielding-by-position.  
-- [ ] **players.ts** – `seasonId` optional for `/:slug/stats`, `pitching-stats`, `fielding-stats`, `fielding-by-position`; return one all-time row when no season.  
-- [ ] **Schema** – New columns (see §3); new tables for contact (Phase 3).  
-- [ ] **finalize-game.ts** – Compute new stats and contact counts (Phases 2–3).  
-- [ ] **Migrations** – Add columns and tables.
+- [x] **stats.ts** – `seasonId` optional; all-time aggregation for batting, pitching, fielding, leaders, fielding-by-position.  
+- [x] **players.ts** – `seasonId` optional for `/:slug/stats`, `pitching-stats`, `fielding-stats`, `fielding-by-position`; return one all-time row when no season.  
+- [x] **Schema** – New columns (Phase 2); new tables for contact (Phase 3) pending.  
+- [x] **finalize-game.ts** – Compute new stats (Phase 2); contact counts (Phase 3) pending.  
+- [x] **Migrations** – Phase 2 columns added (0004).
 
 ### Frontend (apps/web)
 
-- [ ] **Stats page** – Season dropdown with “All time”; optional category dropdown; Legend link; optional Hit locations link.  
-- [ ] **Player profile** – Season dropdown; use `seasonId` in all stat and spray-chart requests; show one row for “All time”.  
-- [ ] **Legend page** – New route and content from CSV/analysis docs.  
-- [ ] **Spray chart** – Already supports season; ensure player profile passes season filter.  
+- [x] **Stats page** – Season dropdown with “All time”; Legend link; extended Basic columns. Category dropdown (Advanced, Infield/Outfield) pending.  
+- [x] **Player profile** – Stats (batting, pitching, fielding) always show **career (all-time)** without filter; season dropdown applies only to **Game Log** and **Spray Chart**.  
+- [x] **Legend page** – New route and content; link from stats header.  
+- [x] **Spray chart** – Respects season filter on player profile (game log & spray chart only).  
 - [x] **Box scores** – Game detail box score and pitching tabs show extended stats (PA, 2B, 3B, HBP, SF, SAC, SB, CS, Kc, Ks, B, GDP, FC, CI; GSc, Kc, Ks, BF, WP, etc.); AVG/OPS/ERA/WHIP computed for **this game only**.
 
 ### Shared
