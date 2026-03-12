@@ -4,7 +4,10 @@ import { apiFetch } from '@/lib/api';
 import { notFound } from 'next/navigation';
 import { RosterTable } from './roster-table';
 
-type Props = { params: Promise<{ slug: string }> };
+type Props = {
+  params: Promise<{ slug: string }>;
+  searchParams?: { season?: string };
+};
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
@@ -16,7 +19,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   }
 }
 
-export default async function TeamDetailPage({ params }: Props) {
+export default async function TeamDetailPage({ params, searchParams }: Props) {
   const { slug } = await params;
   let team: any;
   let roster: any[] = [];
@@ -29,7 +32,9 @@ export default async function TeamDetailPage({ params }: Props) {
   try {
     // Use the same seasons source as the stats and players pages
     const seasons: any[] = await apiFetch('/api/public/stats/seasons');
-    const activeSeason = seasons.find((s: any) => s.isActive) || seasons[0];
+    const seasonFromUrl = searchParams?.season;
+    const explicit = seasons.find((s: any) => String(s.id) === seasonFromUrl);
+    const activeSeason = explicit || seasons.find((s: any) => s.isActive) || seasons[0];
     if (activeSeason?.id) {
       const res = await apiFetch(`/api/public/teams/${slug}/roster?seasonId=${activeSeason.id}`);
       roster = Array.isArray(res) ? res : [];

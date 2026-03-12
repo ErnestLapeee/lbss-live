@@ -1,17 +1,28 @@
 import type { Metadata } from 'next';
 import { apiFetch } from '@/lib/api';
 import { PageHeader } from '@/components/ui/page-header';
+import { SeasonSelect } from './season-select';
 
 export const metadata: Metadata = { title: 'Standings' };
 
-export default async function StandingsPage() {
+type StandingsPageProps = {
+  searchParams?: { season?: string };
+};
+
+export default async function StandingsPage({ searchParams }: StandingsPageProps) {
   let allStandings: { leagueName: string; rows: any[] }[] = [];
+  let seasons: any[] = [];
+  let currentSeasonId: number | null = null;
 
   try {
     // Align with stats/players pages: use stats seasons helper
-    const seasons: any[] = await apiFetch('/api/public/stats/seasons');
-    const activeSeason = seasons.find((s: any) => s.isActive) || seasons[0];
+    seasons = await apiFetch('/api/public/stats/seasons');
+    seasons = Array.isArray(seasons) ? seasons : [];
+    const seasonFromUrl = searchParams?.season;
+    const explicit = seasons.find((s: any) => String(s.id) === seasonFromUrl);
+    const activeSeason = explicit || seasons.find((s: any) => s.isActive) || seasons[0];
     if (activeSeason) {
+      currentSeasonId = activeSeason.id;
       const seasonDetail: any = await apiFetch(`/api/public/seasons/${activeSeason.year}`);
       const leagueList: any[] = seasonDetail.leagues || [];
       for (const league of leagueList) {
@@ -27,8 +38,13 @@ export default async function StandingsPage() {
 
   return (
     <div>
-      <PageHeader title="Standings" description="Current season league standings" />
+      <PageHeader title="Standings" description="League standings by season" />
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
+        {seasons.length > 0 && (
+          <div className="mb-4 flex justify-end">
+            <SeasonSelect seasons={seasons} currentSeasonId={currentSeasonId} />
+          </div>
+        )}
         {allStandings.length === 0 ? (
           <div className="rounded-xl border border-dashed border-border bg-surface-alt p-12 text-center">
             <p className="text-text-muted text-lg font-medium">No standings data available yet</p>
