@@ -350,9 +350,9 @@ export function LiveGameClient({
 
   // Build live batting stats from events for live games (before finalization)
   const liveBattingMap = useMemo(() => {
-    const map: Record<number, { pa: number; ab: number; h: number; r: number; rbi: number; bb: number; so: number; hr: number; tb: number; hbp: number; sf: number }> = {};
+    const map: Record<number, { pa: number; ab: number; h: number; r: number; rbi: number; bb: number; so: number; hr: number; tb: number; hbp: number; sf: number; sb: number; cs: number }> = {};
     const getOrCreate = (id: number) => {
-      if (!map[id]) map[id] = { pa: 0, ab: 0, h: 0, r: 0, rbi: 0, bb: 0, so: 0, hr: 0, tb: 0, hbp: 0, sf: 0 };
+      if (!map[id]) map[id] = { pa: 0, ab: 0, h: 0, r: 0, rbi: 0, bb: 0, so: 0, hr: 0, tb: 0, hbp: 0, sf: 0, sb: 0, cs: 0 };
       return map[id];
     };
 
@@ -366,8 +366,8 @@ export function LiveGameClient({
     for (const evt of events) {
       if (evt.eventType === 'end_half_inning' || evt.eventType === 'pitch') continue;
       if (RUNNER_EVENT_TYPES.has(evt.eventType)) {
-        if (evt.eventType === 'stolen_base' && evt.batterId) getOrCreate(evt.batterId);
-        if (evt.eventType === 'caught_stealing' && evt.batterId) getOrCreate(evt.batterId);
+        if (evt.eventType === 'stolen_base' && evt.batterId) getOrCreate(evt.batterId).sb++;
+        if (evt.eventType === 'caught_stealing' && evt.batterId) getOrCreate(evt.batterId).cs++;
         if (evt.runnersScored && Array.isArray(evt.runnersScored)) {
           for (const rid of evt.runnersScored) getOrCreate(rid as number).r++;
         }
