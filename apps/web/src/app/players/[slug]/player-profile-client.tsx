@@ -16,12 +16,116 @@ interface PlayerProfileClientProps {
   seasons: Season[];
 }
 
-type Tab = 'batting' | 'pitching' | 'fielding' | 'gamelog';
+type Tab = 'batting' | 'pitching' | 'fielding' | 'gamelog' | 'spraychart';
 
 const fmtRate = (v: any) => (v != null && v !== '' ? Number(v).toFixed(3).replace(/^0/, '') : '—');
 const fmtEra = (v: any) => (v != null && v !== '' ? Number(v).toFixed(2) : '—');
 const fmtIp = (v: any) => (v != null ? v : '—');
 const n = (v: any) => v ?? 0;
+
+// Helpers to build TOTAL rows from per-season stats (Baseball-Reference style)
+const sumBattingRows = (rows: any[]) => {
+  if (!rows.length) return null;
+  const acc: any = {};
+  const keysToSum = [
+    'games',
+    'plateAppearances',
+    'atBats',
+    'runs',
+    'hits',
+    'doubles',
+    'triples',
+    'homeRuns',
+    'rbi',
+    'walks',
+    'strikeouts',
+    'stolenBases',
+    'caughtStealing',
+    'hitByPitch',
+    'sacrificeFlies',
+  ];
+  for (const r of rows) {
+    for (const k of keysToSum) acc[k] = (acc[k] || 0) + (Number(r[k] ?? 0) || 0);
+  }
+  const ab = acc.atBats || 0;
+  const h = acc.hits || 0;
+  const tb = rows.reduce((s, r) => s + Number(r.totalBases ?? 0), 0);
+  const hitByPitch = acc.hitByPitch || 0;
+  const sacrificeFlies = acc.sacrificeFlies || 0;
+  const obDenom = ab + acc.walks + hitByPitch + sacrificeFlies;
+  const obp = obDenom > 0 ? (h + acc.walks + hitByPitch) / obDenom : 0;
+  const slg = ab > 0 ? tb / ab : 0;
+  const babipDenom =
+    ab -
+    (acc.strikeouts || 0) -
+    rows.reduce((s, r) => s + Number(r.homeRuns ?? 0), 0) +
+    sacrificeFlies;
+  const babip =
+    babipDenom > 0
+      ? (h - rows.reduce((s, r) => s + Number(r.homeRuns ?? 0), 0)) / babipDenom
+      : 0;
+
+  return {
+    ...acc,
+    battingAvg: ab > 0 ? (h / ab).toFixed(3) : null,
+    onBasePct: obDenom > 0 ? obp.toFixed(3) : null,
+    sluggingPct: ab > 0 ? slg.toFixed(3) : null,
+    ops: (obp + slg).toFixed(3),
+    babip: babipDenom > 0 ? babip.toFixed(3) : null,
+  };
+};
+
+const sumPitchingRows = (rows: any[]) => {
+  if (!rows.length) return null;
+  const acc: any = {};
+  const keysToSum = [
+    'games',
+    'gamesStarted',
+    'wins',
+    'losses',
+    'saves',
+    'hitsAllowed',
+    'runsAllowed',
+    'earnedRuns',
+    'walksAllowed',
+    'strikeouts',
+    'homeRunsAllowed',
+  ];
+  for (const r of rows) {
+    for (const k of keysToSum) acc[k] = (acc[k] || 0) + (Number(r[k] ?? 0) || 0);
+  }
+  const ip = rows.reduce(
+    (s, r) => s + parseFloat(String(r.inningsPitched ?? 0)),
+    0,
+  );
+  const er = acc.earnedRuns || 0;
+  const h = acc.hitsAllowed || 0;
+  const bb = acc.walksAllowed || 0;
+  return {
+    ...acc,
+    inningsPitched: ip.toFixed(1),
+    era: ip > 0 ? ((er / ip) * 9).toFixed(2) : null,
+    whip: ip > 0 ? ((bb + h) / ip).toFixed(2) : null,
+  };
+};
+
+const sumFieldingRows = (rows: any[]) => {
+  if (!rows.length) return null;
+  const acc: any = {};
+  const keysToSum = ['games', 'putouts', 'assists', 'errors', 'doublePlays', 'triplePlays', 'pickoffs'];
+  for (const r of rows) {
+    for (const k of keysToSum) acc[k] = (acc[k] || 0) + (Number(r[k] ?? 0) || 0);
+  }
+  const po = acc.putouts || 0;
+  const a = acc.assists || 0;
+  const e = acc.errors || 0;
+  const tc = po + a + e;
+  const fp = tc > 0 ? ((po + a) / tc).toFixed(3) : null;
+  return {
+    ...acc,
+    fieldingPct: fp,
+  };
+};
 
 const POS_LABELS: Record<number, string> = {
   1: 'P', 2: 'C', 3: '1B', 4: '2B', 5: '3B', 6: 'SS', 7: 'LF', 8: 'CF', 9: 'RF',
@@ -44,7 +148,7 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
   const [gameLog, setGameLog] = useState<{ batting: any[]; pitching: any[] } | null>(null);
   const [sprayData, setSprayData] = useState<any[] | null>(null);
 
-  // Season filter applies only to game log and spray chart; stats tables are always all-time
+  // Season filter applies only to game log and spray chart; tables show season rows + TOTAL
   const filterParam = selectedSeasonId != null ? `seasonId=${selectedSeasonId}` : '';
 
   // Batting: use server-provided all-time only (no refetch on season change)
@@ -80,45 +184,34 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
     { key: 'pitching', label: 'Pitching' },
     { key: 'fielding', label: 'Fielding' },
     { key: 'gamelog', label: 'Game Log' },
+    { key: 'spraychart', label: 'Spray Chart' },
   ];
 
   return (
     <div>
-      {/* Season filter + Tab bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-        <div className="flex gap-1 border-b border-border">
-          {tabs.map(t => (
-          <button key={t.key} onClick={() => setTab(t.key)}
+      {/* Tab bar */}
+      <div className="flex gap-1 border-b border-border mb-6">
+        {tabs.map(t => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
             className={`px-4 py-2.5 text-sm font-semibold transition-colors border-b-2 -mb-px ${
               tab === t.key
                 ? 'border-accent text-accent'
                 : 'border-transparent text-text-muted hover:text-text-secondary'
-            }`}>
+            }`}
+          >
             {t.label}
           </button>
-          ))}
-        </div>
-        <div className="flex items-center gap-2">
-          <label className="text-xs font-medium text-text-muted" title="Filters Game Log and Spray Chart only. Stats above are always career (all-time).">
-            Season (game log & spray chart):
-          </label>
-          <select
-            value={selectedSeasonId ?? 'all'}
-            onChange={(e) => setSelectedSeasonId(e.target.value === 'all' ? null : Number(e.target.value))}
-            className="rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent/50"
-          >
-            <option value="all">All time</option>
-            {seasons.map(s => (
-              <option key={s.id} value={s.id}>{s.name}</option>
-            ))}
-          </select>
-        </div>
+        ))}
       </div>
 
       {/* BATTING TAB */}
       {tab === 'batting' && (
         <div className="space-y-8">
-          <p className="text-[11px] text-text-faint">Career statistics (all-time). Use the season filter above to filter Game Log and Spray Chart.</p>
+          <p className="text-[11px] text-text-faint">
+            Season rows with a bold TOTAL line at the bottom, similar to Baseball-Reference.
+          </p>
           {battingStats.length === 0 ? (
             <div className="rounded-xl border border-dashed border-border bg-surface-alt p-8 text-center">
               <p className="text-sm text-text-muted">No batting statistics recorded yet.</p>
@@ -162,6 +255,34 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
                       <td className="px-2 py-2 text-right font-mono text-xs">{fmtRate(s.babip)}</td>
                     </tr>
                   ))}
+                  {sumBattingRows(battingStats) && (() => {
+                    const total = sumBattingRows(battingStats)!;
+                    return (
+                      <tr className="bg-surface-alt border-t border-border/80">
+                        <td className="px-2 py-2 font-bold text-xs" colSpan={2}>TOTAL</td>
+                        <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.games)}</td>
+                        <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.plateAppearances)}</td>
+                        <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.atBats)}</td>
+                        <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.runs)}</td>
+                        <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.hits)}</td>
+                        <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.doubles)}</td>
+                        <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.triples)}</td>
+                        <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.homeRuns)}</td>
+                        <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.rbi)}</td>
+                        <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.walks)}</td>
+                        <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.hitByPitch)}</td>
+                        <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.strikeouts)}</td>
+                        <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.stolenBases)}</td>
+                        <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.caughtStealing)}</td>
+                        <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.sacrificeFlies)}</td>
+                        <td className="px-2 py-2 text-right font-mono text-xs font-bold">{fmtRate(total.battingAvg)}</td>
+                        <td className="px-2 py-2 text-right font-mono text-xs font-bold">{fmtRate(total.onBasePct)}</td>
+                        <td className="px-2 py-2 text-right font-mono text-xs font-bold">{fmtRate(total.sluggingPct)}</td>
+                        <td className="px-2 py-2 text-right font-mono text-xs font-bold">{fmtRate(total.ops)}</td>
+                        <td className="px-2 py-2 text-right font-mono text-xs font-bold">{fmtRate(total.babip)}</td>
+                      </tr>
+                    );
+                  })()}
                 </tbody>
               </table>
             </div>
@@ -192,7 +313,9 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
       {/* PITCHING TAB */}
       {tab === 'pitching' && (
         <div>
-          <p className="text-[11px] text-text-faint mb-3">Career statistics (all-time). Use the season filter above to filter Game Log and Spray Chart.</p>
+          <p className="text-[11px] text-text-faint mb-3">
+            Season rows with a bold TOTAL line at the bottom, similar to Baseball-Reference.
+          </p>
           {pitchingStats === null ? (
             <p className="text-sm text-text-muted py-4">Loading...</p>
           ) : pitchingStats.length === 0 ? (
@@ -238,6 +361,36 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
                       <td className="px-2 py-2 text-right font-mono text-xs">{fmtRate(s.babip)}</td>
                     </tr>
                   ))}
+                  {sumPitchingRows(pitchingStats) && (() => {
+                    const total = sumPitchingRows(pitchingStats)!;
+                    return (
+                      <tr className="bg-surface-alt border-t border-border/80">
+                        <td className="px-2 py-2 font-bold text-xs" colSpan={2}>TOTAL</td>
+                        <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.games)}</td>
+                        <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.gamesStarted)}</td>
+                        <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.wins)}</td>
+                        <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.losses)}</td>
+                        <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.saves)}</td>
+                        <td className="px-2 py-2 text-right font-mono text-xs font-bold">{fmtIp(total.inningsPitched)}</td>
+                        <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.hitsAllowed)}</td>
+                        <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.runsAllowed)}</td>
+                        <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.earnedRuns)}</td>
+                        <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.walksAllowed)}</td>
+                        <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.strikeouts)}</td>
+                        <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.homeRunsAllowed)}</td>
+                        <td className="px-2 py-2 text-right font-mono text-xs font-bold">{fmtEra(total.era)}</td>
+                        <td className="px-2 py-2 text-right font-mono text-xs font-bold">{fmtEra(total.whip)}</td>
+                        <td className="px-2 py-2 text-right font-mono text-xs font-bold">{fmtEra(total.fip)}</td>
+                        <td className="px-2 py-2 text-right font-mono text-xs font-bold">
+                          {total.k9 != null ? Number(total.k9).toFixed(1) : '—'}
+                        </td>
+                        <td className="px-2 py-2 text-right font-mono text-xs font-bold">
+                          {total.bb9 != null ? Number(total.bb9).toFixed(1) : '—'}
+                        </td>
+                        <td className="px-2 py-2 text-right font-mono text-xs font-bold">{fmtRate(total.babip)}</td>
+                      </tr>
+                    );
+                  })()}
                 </tbody>
               </table>
             </div>
@@ -248,7 +401,9 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
       {/* FIELDING TAB */}
       {tab === 'fielding' && (
         <div>
-          <p className="text-[11px] text-text-faint mb-3">Career statistics (all-time). Use the season filter above to filter Game Log and Spray Chart.</p>
+          <p className="text-[11px] text-text-faint mb-3">
+            Season rows with a bold TOTAL line at the bottom, similar to Baseball-Reference.
+          </p>
           {fieldingStats === null ? (
             <p className="text-sm text-text-muted py-4">Loading...</p>
           ) : fieldingStats.length === 0 ? (
@@ -287,6 +442,24 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
                         <td className="px-2 py-2 text-right font-mono text-xs font-bold">{fmtRate(s.fieldingPct)}</td>
                       </tr>
                     ))}
+                    {sumFieldingRows(fieldingStats) && (() => {
+                      const total = sumFieldingRows(fieldingStats)!;
+                      return (
+                        <tr className="bg-surface-alt border-t border-border/80">
+                          <td className="px-2 py-2 font-bold text-xs" colSpan={2}>TOTAL</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.games)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.putouts)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.assists)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.errors)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.doublePlays)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.triplePlays)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs font-bold">—</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs font-bold">—</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.pickoffs)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs font-bold">{fmtRate(total.fieldingPct)}</td>
+                        </tr>
+                      );
+                    })()}
                   </tbody>
                 </table>
               </div>
@@ -332,6 +505,24 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
       {/* GAME LOG TAB */}
       {tab === 'gamelog' && (
         <div className="space-y-6">
+          <div className="flex items-center gap-2">
+            <label
+              className="text-xs font-medium text-text-muted"
+              title="Filters the game log (per-game lines) for a specific season or all time."
+            >
+              Season (game log):
+            </label>
+            <select
+              value={selectedSeasonId ?? 'all'}
+              onChange={(e) => setSelectedSeasonId(e.target.value === 'all' ? null : Number(e.target.value))}
+              className="rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent/50"
+            >
+              <option value="all">All time</option>
+              {seasons.map(s => (
+                <option key={s.id} value={s.id}>{s.name}</option>
+              ))}
+            </select>
+          </div>
           {gameLog === null ? (
             <p className="text-sm text-text-muted py-4">Loading...</p>
           ) : (
@@ -434,6 +625,49 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
                 </div>
               )}
             </>
+          )}
+        </div>
+      )}
+
+      {/* SPRAY CHART TAB */}
+      {tab === 'spraychart' && (
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <label
+              className="text-xs font-medium text-text-muted"
+              title="Filters the spray chart for balls in play by season or all time."
+            >
+              Season (spray chart):
+            </label>
+            <select
+              value={selectedSeasonId ?? 'all'}
+              onChange={(e) => setSelectedSeasonId(e.target.value === 'all' ? null : Number(e.target.value))}
+              className="rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent/50"
+            >
+              <option value="all">All time</option>
+              {seasons.map(s => (
+                <option key={s.id} value={s.id}>{s.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {sprayData && sprayData.length > 0 ? (
+            <div className="rounded-xl border border-border bg-surface p-4">
+              <SprayChart
+                hits={sprayData.map((h: any) => ({
+                  hitLocationX: Number(h.hit_location_x),
+                  hitLocationY: Number(h.hit_location_y),
+                  hitType: h.hit_type,
+                  hitHardness: h.hit_hardness,
+                  eventType: h.event_type,
+                  isOut: (h.outs_recorded ?? 0) > 0,
+                }))}
+              />
+            </div>
+          ) : (
+            <div className="rounded-xl border border-dashed border-border bg-surface-alt p-8 text-center">
+              <p className="text-sm text-text-muted">No spray chart data available.</p>
+            </div>
           )}
         </div>
       )}
