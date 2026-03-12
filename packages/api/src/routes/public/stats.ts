@@ -105,6 +105,13 @@ export async function statsRoutes(app: FastifyInstance) {
             intentionalWalks: playerSeasonBatting.intentionalWalks,
             reachedOnError: playerSeasonBatting.reachedOnError,
             totalBases: playerSeasonBatting.totalBases,
+            buntSingles: playerSeasonBatting.buntSingles,
+            strikeoutsLooking: playerSeasonBatting.strikeoutsLooking,
+            strikeoutsSwinging: playerSeasonBatting.strikeoutsSwinging,
+            pickedOff: playerSeasonBatting.pickedOff,
+            fieldersChoice: playerSeasonBatting.fieldersChoice,
+            catcherInterference: playerSeasonBatting.catcherInterference,
+            groundedIntoTriplePlay: playerSeasonBatting.groundedIntoTriplePlay,
             battingAvg: playerSeasonBatting.battingAvg,
             onBasePct: playerSeasonBatting.onBasePct,
             sluggingPct: playerSeasonBatting.sluggingPct,
@@ -145,7 +152,14 @@ export async function statsRoutes(app: FastifyInstance) {
             SUM(COALESCE(grounded_into_double_plays, 0))::int AS grounded_into_double_plays,
             SUM(COALESCE(intentional_walks, 0))::int AS intentional_walks,
             SUM(COALESCE(reached_on_error, 0))::int AS reached_on_error,
-            SUM(COALESCE(total_bases, 0))::int AS total_bases
+            SUM(COALESCE(total_bases, 0))::int AS total_bases,
+            SUM(COALESCE(bunt_singles, 0))::int AS bunt_singles,
+            SUM(COALESCE(strikeouts_looking, 0))::int AS strikeouts_looking,
+            SUM(COALESCE(strikeouts_swinging, 0))::int AS strikeouts_swinging,
+            SUM(COALESCE(picked_off, 0))::int AS picked_off,
+            SUM(COALESCE(fielders_choice, 0))::int AS fielders_choice,
+            SUM(COALESCE(catcher_interference, 0))::int AS catcher_interference,
+            SUM(COALESCE(grounded_into_triple_play, 0))::int AS grounded_into_triple_play
           FROM player_season_batting
           GROUP BY player_id
         ),
@@ -162,6 +176,8 @@ export async function statsRoutes(app: FastifyInstance) {
           tot.hit_by_pitch, tot.stolen_bases, tot.caught_stealing, tot.sacrifice_flies,
           tot.sacrifice_bunts, tot.ground_outs, tot.fly_outs, tot.grounded_into_double_plays,
           tot.intentional_walks, tot.reached_on_error, tot.total_bases,
+          tot.bunt_singles, tot.strikeouts_looking, tot.strikeouts_swinging,
+          tot.picked_off, tot.fielders_choice, tot.catcher_interference, tot.grounded_into_triple_play,
           ls.team_id
         FROM totals tot
         JOIN latest ls ON tot.player_id = ls.player_id
@@ -220,6 +236,13 @@ export async function statsRoutes(app: FastifyInstance) {
           intentionalWalks: r.intentional_walks ?? 0,
           reachedOnError: r.reached_on_error ?? 0,
           totalBases: r.total_bases ?? 0,
+          buntSingles: r.bunt_singles ?? 0,
+          strikeoutsLooking: r.strikeouts_looking ?? 0,
+          strikeoutsSwinging: r.strikeouts_swinging ?? 0,
+          pickedOff: r.picked_off ?? 0,
+          fieldersChoice: r.fielders_choice ?? 0,
+          catcherInterference: r.catcher_interference ?? 0,
+          groundedIntoTriplePlay: r.grounded_into_triple_play ?? 0,
           battingAvg: rates.battingAvg,
           onBasePct: rates.onBasePct,
           sluggingPct: rates.sluggingPct,
@@ -410,6 +433,17 @@ export async function statsRoutes(app: FastifyInstance) {
             intentionalWalks: playerSeasonPitching.intentionalWalks,
             groundOuts: playerSeasonPitching.groundOuts,
             flyOuts: playerSeasonPitching.flyOuts,
+            holds: playerSeasonPitching.holds,
+            saveOpportunities: playerSeasonPitching.saveOpportunities,
+            blownSaves: playerSeasonPitching.blownSaves,
+            completeGames: playerSeasonPitching.completeGames,
+            gameScore: playerSeasonPitching.gameScore,
+            qualityStarts: playerSeasonPitching.qualityStarts,
+            shutouts: playerSeasonPitching.shutouts,
+            inheritedRunners: playerSeasonPitching.inheritedRunners,
+            inheritedRunnersScored: playerSeasonPitching.inheritedRunnersScored,
+            strikeoutsLooking: playerSeasonPitching.strikeoutsLooking,
+            strikeoutsSwinging: playerSeasonPitching.strikeoutsSwinging,
             era: playerSeasonPitching.era,
             whip: playerSeasonPitching.whip,
             strikeoutRate: playerSeasonPitching.strikeoutRate,
@@ -449,7 +483,18 @@ export async function statsRoutes(app: FastifyInstance) {
             SUM(COALESCE(balks, 0))::int AS balks,
             SUM(COALESCE(intentional_walks, 0))::int AS intentional_walks,
             SUM(COALESCE(ground_outs, 0))::int AS ground_outs,
-            SUM(COALESCE(fly_outs, 0))::int AS fly_outs
+            SUM(COALESCE(fly_outs, 0))::int AS fly_outs,
+            SUM(COALESCE(holds, 0))::int AS holds,
+            SUM(COALESCE(save_opportunities, 0))::int AS save_opportunities,
+            SUM(COALESCE(blown_saves, 0))::int AS blown_saves,
+            SUM(COALESCE(complete_games, 0))::int AS complete_games,
+            (AVG(game_score))::int AS game_score,
+            SUM(COALESCE(quality_starts, 0))::int AS quality_starts,
+            SUM(COALESCE(shutouts, 0))::int AS shutouts,
+            SUM(COALESCE(inherited_runners, 0))::int AS inherited_runners,
+            SUM(COALESCE(inherited_runners_scored, 0))::int AS inherited_runners_scored,
+            SUM(COALESCE(strikeouts_looking, 0))::int AS strikeouts_looking,
+            SUM(COALESCE(strikeouts_swinging, 0))::int AS strikeouts_swinging
           FROM player_season_pitching GROUP BY player_id
         ),
         latest AS (
@@ -461,7 +506,11 @@ export async function statsRoutes(app: FastifyInstance) {
           tot.innings_pitched, tot.hits_allowed, tot.runs_allowed, tot.earned_runs,
           tot.walks_allowed, tot.strikeouts, tot.home_runs_allowed, tot.hit_batters,
           tot.wild_pitches, tot.batters_faced, tot.balks, tot.intentional_walks,
-          tot.ground_outs, tot.fly_outs, ls.team_id
+          tot.ground_outs, tot.fly_outs,
+          tot.holds, tot.save_opportunities, tot.blown_saves, tot.complete_games, tot.game_score,
+          tot.quality_starts, tot.shutouts, tot.inherited_runners, tot.inherited_runners_scored,
+          tot.strikeouts_looking, tot.strikeouts_swinging,
+          ls.team_id
         FROM totals tot
         JOIN latest ls ON tot.player_id = ls.player_id
         JOIN players p ON p.id = tot.player_id
@@ -514,6 +563,17 @@ export async function statsRoutes(app: FastifyInstance) {
           intentionalWalks: r.intentional_walks ?? 0,
           groundOuts: r.ground_outs ?? 0,
           flyOuts: r.fly_outs ?? 0,
+          holds: r.holds ?? 0,
+          saveOpportunities: r.save_opportunities ?? 0,
+          blownSaves: r.blown_saves ?? 0,
+          completeGames: r.complete_games ?? 0,
+          gameScore: r.game_score ?? null,
+          qualityStarts: r.quality_starts ?? 0,
+          shutouts: r.shutouts ?? 0,
+          inheritedRunners: r.inherited_runners ?? 0,
+          inheritedRunnersScored: r.inherited_runners_scored ?? 0,
+          strikeoutsLooking: r.strikeouts_looking ?? 0,
+          strikeoutsSwinging: r.strikeouts_swinging ?? 0,
           era: rates.era,
           whip: rates.whip,
           strikeoutRate: rates.strikeoutRate,

@@ -25,6 +25,8 @@ const HIT_EVENTS = new Set([
   'home_run', 'inside_park_hr',
 ]);
 
+const STRIKEOUT_LOOKING = new Set(['strikeout_looking', 'caught_foul_tip', 'bunt_foul']);
+const STRIKEOUT_SWINGING = new Set(['strikeout_swinging', 'dropped_third_strike', 'dropped_third_strike_out', 'wild_pitch_third_strike']);
 const STRIKEOUT_EVENTS = new Set([
   'strikeout', 'strikeout_swinging', 'strikeout_looking',
   'caught_foul_tip', 'bunt_foul',
@@ -107,6 +109,8 @@ export async function finalizeGame(gameId: number, userId?: number) {
     let stolenBases = 0, caughtStealing = 0, errors = 0;
     let groundOuts = 0, flyOuts = 0, groundedIntoDoublePlays = 0;
     let intentionalWalks = 0, reachedOnError = 0;
+    let buntSingles = 0, strikeoutsLooking = 0, strikeoutsSwinging = 0;
+    let fieldersChoice = 0, catcherInterference = 0, groundedIntoTriplePlay = 0;
 
     for (const e of playerEvents) {
       const t = e.eventType;
@@ -116,13 +120,20 @@ export async function finalizeGame(gameId: number, userId?: number) {
 
       if (HIT_EVENTS.has(t)) {
         hits++;
-        if (t === 'single' || t === 'bunt_single') singles++;
-        else if (t === 'double' || t === 'ground_rule_double') doubles++;
+        if (t === 'single' || t === 'bunt_single') {
+          singles++;
+          if (t === 'bunt_single') buntSingles++;
+        } else if (t === 'double' || t === 'ground_rule_double') doubles++;
         else if (t === 'triple') triples++;
         else if (t === 'home_run' || t === 'inside_park_hr') homeRuns++;
       }
 
-      if (STRIKEOUT_EVENTS.has(t)) strikeouts++;
+      if (STRIKEOUT_EVENTS.has(t)) {
+        strikeouts++;
+        if (STRIKEOUT_LOOKING.has(t)) strikeoutsLooking++;
+        else if (STRIKEOUT_SWINGING.has(t)) strikeoutsSwinging++;
+        else strikeoutsSwinging++; // generic 'strikeout' counts as swinging
+      }
       if (WALK_EVENTS.has(t)) walks++;
       if (t === 'intentional_walk') intentionalWalks++;
       if (t === 'hit_by_pitch') hitByPitch++;
@@ -130,19 +141,28 @@ export async function finalizeGame(gameId: number, userId?: number) {
       if (SACRIFICE_BUNT_EVENTS.has(t)) sacrificeBunts++;
       if (t === 'error' || t === 'sac_bunt_error' || t === 'sac_fly_error' || t === 'catcher_obstruction') {
         if (t === 'error') reachedOnError++;
+        if (t === 'catcher_obstruction') catcherInterference++;
       }
 
       if (GROUND_BALL_OUTS.has(t)) groundOuts++;
       if (FLY_BALL_OUTS.has(t)) flyOuts++;
       if (t === 'fielders_choice') {
+        fieldersChoice++;
         const ht = e.hitType;
         if (ht === 'grounder') groundOuts++;
         else flyOuts++;
       }
 
-      if ((t === 'ground_out' || t === 'fielders_choice') && (e.outsRecorded ?? 0) >= 2) {
+      const outs = e.outsRecorded ?? 0;
+      if ((t === 'ground_out' || t === 'fielders_choice') && outs >= 2) {
         groundedIntoDoublePlays++;
+        if (outs >= 3) groundedIntoTriplePlay++;
       }
+    }
+
+    let pickedOff = 0;
+    for (const e of events) {
+      if (e.eventType === 'picked_off' && e.batterId === batterId) pickedOff++;
     }
 
     // Count SB/CS from runner events where this batter was involved
@@ -170,6 +190,8 @@ export async function finalizeGame(gameId: number, userId?: number) {
         errors: 0,
         groundOuts, flyOuts, groundedIntoDoublePlays,
         intentionalWalks, reachedOnError, totalBases,
+        buntSingles, strikeoutsLooking, strikeoutsSwinging, pickedOff,
+        fieldersChoice, catcherInterference, groundedIntoTriplePlay,
       })
       .onConflictDoUpdate({
         target: [playerGameBatting.gameId, playerGameBatting.playerId],
@@ -180,6 +202,8 @@ export async function finalizeGame(gameId: number, userId?: number) {
           errors: 0,
           groundOuts, flyOuts, groundedIntoDoublePlays,
           intentionalWalks, reachedOnError, totalBases,
+          buntSingles, strikeoutsLooking, strikeoutsSwinging, pickedOff,
+          fieldersChoice, catcherInterference, groundedIntoTriplePlay,
         },
       });
   }
@@ -197,11 +221,11 @@ export async function finalizeGame(gameId: number, userId?: number) {
     let hitBatters = 0, wildPitches = 0, totalPitches = 0;
     let battersFaced = 0, pBalks = 0, pIntentionalWalks = 0;
     let pGroundOuts = 0, pFlyOuts = 0;
+    let pStrikeoutsLooking = 0, pStrikeoutsSwinging = 0;
 
     for (const e of pitcherEvents) {
       const t = e.eventType;
 
-      // Individual pitch events: count toward total pitches only
       if (t === 'pitch') {
         totalPitches++;
         continue;
@@ -219,13 +243,11 @@ export async function finalizeGame(gameId: number, userId?: number) {
       }
 
       battersFaced++;
-      totalPitches++; // the result event itself counts as the final pitch of the AB
+      totalPitches++;
       outsRecorded += e.outsRecorded ?? 0;
 
-      // Runs against this pitcher
       const runsScoredOnPlay = e.runsScored ?? 0;
       runsAllowed += runsScoredOnPlay;
-      // Simplified earned runs: subtract runs on plays with errors
       if ((e.errorsOnPlay ?? 0) > 0) {
         earnedRuns += Math.max(0, runsScoredOnPlay - (e.errorsOnPlay ?? 0));
       } else {
@@ -235,7 +257,12 @@ export async function finalizeGame(gameId: number, userId?: number) {
       if (HIT_EVENTS.has(t)) hitsAllowed++;
       if (WALK_EVENTS.has(t)) walksAllowed++;
       if (t === 'intentional_walk') pIntentionalWalks++;
-      if (STRIKEOUT_EVENTS.has(t)) pStrikeouts++;
+      if (STRIKEOUT_EVENTS.has(t)) {
+        pStrikeouts++;
+        if (STRIKEOUT_LOOKING.has(t)) pStrikeoutsLooking++;
+        else if (STRIKEOUT_SWINGING.has(t)) pStrikeoutsSwinging++;
+        else pStrikeoutsSwinging++;
+      }
       if (t === 'home_run' || t === 'inside_park_hr') homeRunsAllowed++;
       if (t === 'hit_by_pitch') hitBatters++;
 
@@ -250,8 +277,14 @@ export async function finalizeGame(gameId: number, userId?: number) {
     const fullInnings = Math.floor(outsRecorded / 3);
     const partialOuts = outsRecorded % 3;
     const ip = fullInnings + partialOuts * 0.1;
+    const ipNum = fullInnings + partialOuts / 3;
 
     const isStarter = lineups.some(l => l.playerId === pitcherId && l.isStarter && l.position === 1);
+    const isCompleteGame = outsRecorded >= 27;
+    const qualityStart = isStarter && ipNum >= 6 && earnedRuns <= 3 ? 1 : 0;
+    const shutout = isCompleteGame && earnedRuns === 0 ? 1 : 0;
+    const completeGames = isCompleteGame ? 1 : 0;
+    const gameScoreVal = 50 + outsRecorded - 2 * (hitsAllowed + walksAllowed) - earnedRuns + pStrikeouts;
 
     await db
       .insert(playerGamePitching)
@@ -266,6 +299,12 @@ export async function finalizeGame(gameId: number, userId?: number) {
         battersFaced, balks: pBalks,
         intentionalWalks: pIntentionalWalks,
         groundOuts: pGroundOuts, flyOuts: pFlyOuts,
+        strikeoutsLooking: pStrikeoutsLooking,
+        strikeoutsSwinging: pStrikeoutsSwinging,
+        qualityStarts: qualityStart,
+        shutouts: shutout,
+        completeGames,
+        gameScore: Math.max(0, Math.round(gameScoreVal)),
       })
       .onConflictDoUpdate({
         target: [playerGamePitching.gameId, playerGamePitching.playerId],
@@ -278,6 +317,12 @@ export async function finalizeGame(gameId: number, userId?: number) {
           battersFaced, balks: pBalks,
           intentionalWalks: pIntentionalWalks,
           groundOuts: pGroundOuts, flyOuts: pFlyOuts,
+          strikeoutsLooking: pStrikeoutsLooking,
+          strikeoutsSwinging: pStrikeoutsSwinging,
+          qualityStarts: qualityStart,
+          shutouts: shutout,
+          completeGames,
+          gameScore: Math.max(0, Math.round(gameScoreVal)),
         },
       });
   }
@@ -582,6 +627,8 @@ export async function recomputeSeasonBatting(seasonId: number) {
       hit_by_pitch, stolen_bases, caught_stealing, sacrifice_flies, sacrifice_bunts,
       ground_outs, fly_outs, grounded_into_double_plays,
       intentional_walks, reached_on_error, total_bases,
+      bunt_singles, strikeouts_looking, strikeouts_swinging, picked_off,
+      fielders_choice, catcher_interference, grounded_into_triple_play,
       batting_avg, on_base_pct, slugging_pct, ops, babip, last_computed_at)
     SELECT
       pgb.player_id, pgb.team_id, l.season_id,
@@ -597,6 +644,13 @@ export async function recomputeSeasonBatting(seasonId: number) {
       COALESCE(SUM(pgb.intentional_walks), 0),
       COALESCE(SUM(pgb.reached_on_error), 0),
       COALESCE(SUM(pgb.total_bases), 0),
+      COALESCE(SUM(pgb.bunt_singles), 0),
+      COALESCE(SUM(pgb.strikeouts_looking), 0),
+      COALESCE(SUM(pgb.strikeouts_swinging), 0),
+      COALESCE(SUM(pgb.picked_off), 0),
+      COALESCE(SUM(pgb.fielders_choice), 0),
+      COALESCE(SUM(pgb.catcher_interference), 0),
+      COALESCE(SUM(pgb.grounded_into_triple_play), 0),
       -- AVG
       CASE WHEN SUM(pgb.at_bats) > 0
         THEN ROUND(SUM(pgb.hits)::numeric / SUM(pgb.at_bats), 3) ELSE 0 END,
@@ -657,6 +711,13 @@ export async function recomputeSeasonBatting(seasonId: number) {
       intentional_walks = EXCLUDED.intentional_walks,
       reached_on_error = EXCLUDED.reached_on_error,
       total_bases = EXCLUDED.total_bases,
+      bunt_singles = EXCLUDED.bunt_singles,
+      strikeouts_looking = EXCLUDED.strikeouts_looking,
+      strikeouts_swinging = EXCLUDED.strikeouts_swinging,
+      picked_off = EXCLUDED.picked_off,
+      fielders_choice = EXCLUDED.fielders_choice,
+      catcher_interference = EXCLUDED.catcher_interference,
+      grounded_into_triple_play = EXCLUDED.grounded_into_triple_play,
       batting_avg = EXCLUDED.batting_avg,
       on_base_pct = EXCLUDED.on_base_pct,
       slugging_pct = EXCLUDED.slugging_pct,
@@ -697,7 +758,18 @@ export async function recomputeSeasonPitching(seasonId: number) {
         COALESCE(SUM(pgp.balks), 0) AS balks,
         COALESCE(SUM(pgp.intentional_walks), 0) AS intentional_walks,
         COALESCE(SUM(pgp.ground_outs), 0) AS ground_outs,
-        COALESCE(SUM(pgp.fly_outs), 0) AS fly_outs
+        COALESCE(SUM(pgp.fly_outs), 0) AS fly_outs,
+        COALESCE(SUM(pgp.holds), 0) AS holds,
+        COALESCE(SUM(pgp.save_opportunities), 0) AS save_opportunities,
+        COALESCE(SUM(pgp.blown_saves), 0) AS blown_saves,
+        COALESCE(SUM(pgp.complete_games), 0) AS complete_games,
+        SUM(pgp.game_score) AS game_score_sum,
+        COALESCE(SUM(pgp.quality_starts), 0) AS quality_starts,
+        COALESCE(SUM(pgp.shutouts), 0) AS shutouts,
+        COALESCE(SUM(pgp.inherited_runners), 0) AS inherited_runners,
+        COALESCE(SUM(pgp.inherited_runners_scored), 0) AS inherited_runners_scored,
+        COALESCE(SUM(pgp.strikeouts_looking), 0) AS strikeouts_looking,
+        COALESCE(SUM(pgp.strikeouts_swinging), 0) AS strikeouts_swinging
       FROM player_game_pitching pgp
       JOIN games g ON pgp.game_id = g.id
       JOIN leagues l ON g.league_id = l.id
@@ -710,6 +782,9 @@ export async function recomputeSeasonPitching(seasonId: number) {
       innings_pitched, hits_allowed, runs_allowed, earned_runs, walks_allowed,
       strikeouts, home_runs_allowed, hit_batters, wild_pitches,
       batters_faced, balks, intentional_walks, ground_outs, fly_outs,
+      holds, save_opportunities, blown_saves, complete_games, game_score,
+      quality_starts, shutouts, inherited_runners, inherited_runners_scored,
+      strikeouts_looking, strikeouts_swinging,
       era, whip, strikeout_rate, walk_rate, fip, k9, bb9, h9, babip,
       last_computed_at)
     SELECT
@@ -719,6 +794,10 @@ export async function recomputeSeasonPitching(seasonId: number) {
       hits_allowed, runs_allowed, earned_runs, walks_allowed,
       strikeouts, home_runs_allowed, hit_batters, wild_pitches,
       batters_faced, balks, intentional_walks, ground_outs, fly_outs,
+      holds, save_opportunities, blown_saves, complete_games,
+      CASE WHEN games > 0 THEN ROUND(game_score_sum::numeric / games, 0)::int ELSE NULL END,
+      quality_starts, shutouts, inherited_runners, inherited_runners_scored,
+      strikeouts_looking, strikeouts_swinging,
       -- ERA = ER * 27 / total_outs  (equivalent to ER * 9 / actual_IP)
       CASE WHEN total_outs > 0
         THEN ROUND(earned_runs::numeric * 27 / total_outs, 2) ELSE 0 END,
@@ -773,6 +852,17 @@ export async function recomputeSeasonPitching(seasonId: number) {
       intentional_walks = EXCLUDED.intentional_walks,
       ground_outs = EXCLUDED.ground_outs,
       fly_outs = EXCLUDED.fly_outs,
+      holds = EXCLUDED.holds,
+      save_opportunities = EXCLUDED.save_opportunities,
+      blown_saves = EXCLUDED.blown_saves,
+      complete_games = EXCLUDED.complete_games,
+      game_score = EXCLUDED.game_score,
+      quality_starts = EXCLUDED.quality_starts,
+      shutouts = EXCLUDED.shutouts,
+      inherited_runners = EXCLUDED.inherited_runners,
+      inherited_runners_scored = EXCLUDED.inherited_runners_scored,
+      strikeouts_looking = EXCLUDED.strikeouts_looking,
+      strikeouts_swinging = EXCLUDED.strikeouts_swinging,
       era = EXCLUDED.era,
       whip = EXCLUDED.whip,
       strikeout_rate = EXCLUDED.strikeout_rate,

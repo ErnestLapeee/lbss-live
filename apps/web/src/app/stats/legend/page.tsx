@@ -27,6 +27,14 @@ const BATTING = [
   { abbr: 'SLG', name: 'Slugging Percentage', desc: 'Total Bases / AB' },
   { abbr: 'OPS', name: 'On Base Plus Slugging', desc: 'OBP + SLG' },
   { abbr: 'BABIP', name: 'Batting Avg. on Balls in Play', desc: '(H - HR) / (AB - SO - HR + SF)' },
+  { abbr: 'B', name: 'Bunt Singles', desc: 'Singles on bunt hits' },
+  { abbr: 'Kc', name: 'Strikeouts Looking', desc: 'Strikeouts called (looking)' },
+  { abbr: 'Ks', name: 'Strikeouts Swinging', desc: 'Strikeouts swinging' },
+  { abbr: 'PK', name: 'Picked Off', desc: 'Times picked off base' },
+  { abbr: 'FC', name: "Fielder's Choice", desc: 'Reached on fielder\'s choice' },
+  { abbr: 'CI', name: 'Catcher Interference', desc: 'Reached on catcher interference' },
+  { abbr: 'GDP', name: 'Grounded into Double Play', desc: 'Grounded into double play' },
+  { abbr: 'GTP', name: 'Grounded into Triple Play', desc: 'Grounded into triple play' },
 ];
 
 const PITCHING = [
@@ -51,6 +59,15 @@ const PITCHING = [
   { abbr: 'BB/9', name: 'Walks per 9', desc: '(BB / IP) × 9' },
   { abbr: 'H/9', name: 'Hits per 9', desc: '(H / IP) × 9' },
   { abbr: 'BABIP', name: 'BABIP Against', desc: 'Batting average on balls in play allowed' },
+  { abbr: 'HLD', name: 'Holds', desc: 'Hold (relief appearance preserving lead)' },
+  { abbr: 'SVOP', name: 'Save Opportunities', desc: 'Save opportunities' },
+  { abbr: 'BS', name: 'Blown Saves', desc: 'Save opportunities blown' },
+  { abbr: 'QS', name: 'Quality Starts', desc: 'Start with ≥6 IP and ≤3 ER' },
+  { abbr: 'CMP', name: 'Complete Games', desc: 'Complete games pitched' },
+  { abbr: 'ShO', name: 'Shutouts', desc: 'Complete game with 0 runs allowed' },
+  { abbr: 'GSc', name: 'Game Score', desc: 'Bill James game score (start quality)' },
+  { abbr: 'Kc', name: 'Strikeouts Looking', desc: 'Strikeouts called (looking)' },
+  { abbr: 'Ks', name: 'Strikeouts Swinging', desc: 'Strikeouts swinging' },
 ];
 
 const FIELDING = [
