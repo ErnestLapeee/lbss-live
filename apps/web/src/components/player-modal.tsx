@@ -38,6 +38,7 @@ export function PlayerModal({ slug, firstName, lastName, onClose }: PlayerModalP
   const [gameLog, setGameLog] = useState<{ batting: any[]; pitching: any[] } | null>(null);
   const [sprayData, setSprayData] = useState<any[] | null>(null);
   const [loading, setLoading] = useState(true);
+  // Season filter is used only for game log and spray chart views
   const [seasonFilter, setSeasonFilter] = useState<'all' | number>('all');
   const [seasons, setSeasons] = useState<{ id: number; year: number }[]>([]);
   const backdropRef = useRef<HTMLDivElement>(null);
@@ -87,6 +88,24 @@ export function PlayerModal({ slug, firstName, lastName, onClose }: PlayerModalP
       );
     }).finally(() => setLoading(false));
   }, [slug]);
+
+  // Re-fetch game log when season filter changes while on Game Log tab
+  useEffect(() => {
+    if (tab !== 'gamelog') return;
+    const query = seasonFilter === 'all' ? '' : `?seasonId=${seasonFilter}`;
+    fetchJson(`/api/public/players/${slug}/game-log${query}`).then(gl =>
+      setGameLog(gl || { batting: [], pitching: [] }),
+    );
+  }, [tab, seasonFilter, slug]);
+
+  // Re-fetch spray chart when season filter changes while on Spray Chart tab
+  useEffect(() => {
+    if (tab !== 'spraychart') return;
+    const query = seasonFilter === 'all' ? '' : `?seasonId=${seasonFilter}`;
+    fetchJson(`/api/public/players/${slug}/spray-chart${query}`).then(spray =>
+      setSprayData(Array.isArray(spray) ? spray : []),
+    );
+  }, [tab, seasonFilter, slug]);
 
   // Close on Escape
   useEffect(() => {
@@ -205,7 +224,7 @@ export function PlayerModal({ slug, firstName, lastName, onClose }: PlayerModalP
           </button>
         </div>
 
-        {/* Tab bar + season selector */}
+        {/* Tab bar */}
         <div className="flex border-b border-white/[0.06] bg-[#131c2e]">
           {tabs.map(t => (
             <button
@@ -220,22 +239,6 @@ export function PlayerModal({ slug, firstName, lastName, onClose }: PlayerModalP
               {t.label}
             </button>
           ))}
-          <div className="ml-auto flex items-center gap-2 px-4 py-2.5">
-            <span className="text-[10px] text-[#64748b]">Season:</span>
-            <select
-              value={seasonFilter === 'all' ? 'all' : String(seasonFilter)}
-              onChange={e => {
-                const v = e.target.value;
-                setSeasonFilter(v === 'all' ? 'all' : Number(v));
-              }}
-              className="bg-[#0b1220] border border-white/[0.12] rounded px-2 py-1 text-[10px] text-[#e2e8f0]"
-            >
-              <option value="all">All time</option>
-              {seasons.map(s => (
-                <option key={s.id} value={s.id}>{s.year}</option>
-              ))}
-            </select>
-          </div>
           <a
             href={`/players/${slug}`}
             className="ml-auto px-4 py-2.5 text-[10px] text-[#475569] hover:text-[#64748b] transition-colors flex items-center gap-1"
@@ -252,14 +255,9 @@ export function PlayerModal({ slug, firstName, lastName, onClose }: PlayerModalP
             </div>
           ) : (
             <>
-              {/* BATTING TAB */}
+              {/* BATTING TAB – always show all seasons + TOTAL */}
               {tab === 'batting' && battingStats && battingStats.length > 0 && (() => {
-                const rows = seasonFilter === 'all'
-                  ? battingStats
-                  : battingStats.filter((r: any) => r.seasonId === seasonFilter);
-                if (!rows.length) {
-                  return <p className="text-xs text-[#64748b]">No batting stats for this season.</p>;
-                }
+                const rows = battingStats;
                 const total = sumBattingRows(rows);
                 return (
                   <div className="space-y-3">
@@ -333,14 +331,9 @@ export function PlayerModal({ slug, firstName, lastName, onClose }: PlayerModalP
                 );
               })()}
 
-              {/* PITCHING TAB */}
+              {/* PITCHING TAB – always show all seasons + TOTAL */}
               {tab === 'pitching' && pitchingStats && pitchingStats.length > 0 && (() => {
-                const rows = seasonFilter === 'all'
-                  ? pitchingStats
-                  : pitchingStats.filter((r: any) => r.seasonId === seasonFilter);
-                if (!rows.length) {
-                  return <p className="text-xs text-[#64748b]">No pitching stats for this season.</p>;
-                }
+                const rows = pitchingStats;
                 const total = sumPitchingRows(rows);
                 return (
                   <div className="space-y-3">
@@ -408,14 +401,9 @@ export function PlayerModal({ slug, firstName, lastName, onClose }: PlayerModalP
                 );
               })()}
 
-              {/* FIELDING TAB */}
+              {/* FIELDING TAB – always show all seasons + TOTAL */}
               {tab === 'fielding' && fieldingStats && fieldingStats.length > 0 && (() => {
-                const rows = seasonFilter === 'all'
-                  ? fieldingStats
-                  : fieldingStats.filter((r: any) => r.seasonId === seasonFilter);
-                if (!rows.length) {
-                  return <p className="text-xs text-[#64748b]">No fielding stats for this season.</p>;
-                }
+                const rows = fieldingStats;
                 const total: any = {};
                 const keysToSum = ['games','putouts','assists','errors','doublePlays','triplePlays'];
                 for (const r of rows) {
@@ -477,9 +465,25 @@ export function PlayerModal({ slug, firstName, lastName, onClose }: PlayerModalP
                 );
               })()}
 
-              {/* GAME LOG TAB */}
+              {/* GAME LOG TAB – season filter lives here */}
               {tab === 'gamelog' && gameLog && (
                 <div className="space-y-5">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-[10px] text-[#64748b]">Season (game log):</span>
+                    <select
+                      value={seasonFilter === 'all' ? 'all' : String(seasonFilter)}
+                      onChange={e => {
+                        const v = e.target.value;
+                        setSeasonFilter(v === 'all' ? 'all' : Number(v));
+                      }}
+                      className="bg-[#0b1220] border border-white/[0.12] rounded px-2 py-1 text-[10px] text-[#e2e8f0]"
+                    >
+                      <option value="all">All time</option>
+                      {seasons.map(s => (
+                        <option key={s.id} value={s.id}>{s.year}</option>
+                      ))}
+                    </select>
+                  </div>
                   {gameLog.batting.length > 0 && (
                     <div>
                       <h3 className="text-[10px] font-bold uppercase tracking-wider text-[#475569] mb-2">Batting Game Log</h3>
@@ -568,12 +572,27 @@ export function PlayerModal({ slug, firstName, lastName, onClose }: PlayerModalP
                 </div>
               )}
 
-              {/* SPRAY CHART TAB */}
+              {/* SPRAY CHART TAB – season filter lives here */}
               {tab === 'spraychart' && (
                 <div>
                   <div className="flex items-baseline justify-between mb-2">
                     <h3 className="text-[10px] font-bold uppercase tracking-wider text-[#475569]">Spray Chart</h3>
-                    <span className="text-[10px] text-[#475569]">Balls in play</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-[#64748b]">Season:</span>
+                      <select
+                        value={seasonFilter === 'all' ? 'all' : String(seasonFilter)}
+                        onChange={e => {
+                          const v = e.target.value;
+                          setSeasonFilter(v === 'all' ? 'all' : Number(v));
+                        }}
+                        className="bg-[#0b1220] border border-white/[0.12] rounded px-2 py-1 text-[10px] text-[#e2e8f0]"
+                      >
+                        <option value="all">All time</option>
+                        {seasons.map(s => (
+                          <option key={s.id} value={s.id}>{s.year}</option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
                   {sprayData && sprayData.length > 0 ? (
                     <div className="-mx-2">

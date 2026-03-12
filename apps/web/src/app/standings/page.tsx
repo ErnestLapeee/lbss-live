@@ -8,7 +8,8 @@ export default async function StandingsPage() {
   let allStandings: { leagueName: string; rows: any[] }[] = [];
 
   try {
-    const seasons: any[] = await apiFetch('/api/public/seasons');
+    // Align with stats/players pages: use stats seasons helper
+    const seasons: any[] = await apiFetch('/api/public/stats/seasons');
     const activeSeason = seasons.find((s: any) => s.isActive) || seasons[0];
     if (activeSeason) {
       const seasonDetail: any = await apiFetch(`/api/public/seasons/${activeSeason.year}`);

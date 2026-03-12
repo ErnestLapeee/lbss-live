@@ -27,7 +27,8 @@ export default async function TeamDetailPage({ params }: Props) {
     notFound();
   }
   try {
-    const seasons: any[] = await apiFetch('/api/public/seasons');
+    // Use the same seasons source as the stats and players pages
+    const seasons: any[] = await apiFetch('/api/public/stats/seasons');
     const activeSeason = seasons.find((s: any) => s.isActive) || seasons[0];
     if (activeSeason?.id) {
       const res = await apiFetch(`/api/public/teams/${slug}/roster?seasonId=${activeSeason.id}`);
