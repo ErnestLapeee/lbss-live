@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { SprayChart } from '@/components/stats/spray-chart';
 
-type Tab = 'overview' | 'gamelog' | 'spraychart';
+type Tab = 'batting' | 'pitching' | 'fielding' | 'gamelog' | 'spraychart';
 
 const n = (v: any) => v ?? 0;
 const fmtRate = (v: any) => (v != null && v !== '' ? Number(v).toFixed(3).replace(/^0/, '') : '—');
@@ -29,7 +29,7 @@ export function PlayerModal({ slug, firstName, lastName, onClose }: PlayerModalP
     return res.json();
   }
 
-  const [tab, setTab] = useState<Tab>('overview');
+  const [tab, setTab] = useState<Tab>('batting');
   const [player, setPlayer] = useState<any>(null);
   const [battingStats, setBattingStats] = useState<any[] | null>(null);
   const [pitchingStats, setPitchingStats] = useState<any[] | null>(null);
@@ -38,6 +38,8 @@ export function PlayerModal({ slug, firstName, lastName, onClose }: PlayerModalP
   const [gameLog, setGameLog] = useState<{ batting: any[]; pitching: any[] } | null>(null);
   const [sprayData, setSprayData] = useState<any[] | null>(null);
   const [loading, setLoading] = useState(true);
+  const [seasonFilter, setSeasonFilter] = useState<'all' | number>('all');
+  const [seasons, setSeasons] = useState<{ id: number; year: number }[]>([]);
   const backdropRef = useRef<HTMLDivElement>(null);
 
   // Load all data on mount
@@ -52,13 +54,37 @@ export function PlayerModal({ slug, firstName, lastName, onClose }: PlayerModalP
       fetchJson(`/api/public/players/${slug}/spray-chart`),
       fetchJson(`/api/public/players/${slug}/fielding-by-position`),
     ]).then(([p, bat, pitch, field, gl, spray, fbp]) => {
+      const batting = Array.isArray(bat) ? bat : [];
+      const pitching = Array.isArray(pitch) ? pitch : [];
+      const fielding = Array.isArray(field) ? field : [];
+
       setPlayer(p);
-      setBattingStats(Array.isArray(bat) ? bat : []);
-      setPitchingStats(Array.isArray(pitch) ? pitch : []);
-      setFieldingStats(Array.isArray(field) ? field : []);
+      setBattingStats(batting);
+      setPitchingStats(pitching);
+      setFieldingStats(fielding);
       setGameLog(gl || { batting: [], pitching: [] });
       setSprayData(Array.isArray(spray) ? spray : []);
       setFieldingByPos(Array.isArray(fbp) ? fbp : []);
+
+      const seasonMap = new Map<number, number>();
+      batting.forEach((s: any) => {
+        if (s.seasonId && s.seasonYear) seasonMap.set(s.seasonId, s.seasonYear);
+      });
+      pitching.forEach((s: any) => {
+        if (s.seasonId && s.seasonYear && !seasonMap.has(s.seasonId)) {
+          seasonMap.set(s.seasonId, s.seasonYear);
+        }
+      });
+      fielding.forEach((s: any) => {
+        if (s.seasonId && s.seasonYear && !seasonMap.has(s.seasonId)) {
+          seasonMap.set(s.seasonId, s.seasonYear);
+        }
+      });
+      setSeasons(
+        Array.from(seasonMap.entries())
+          .map(([id, year]) => ({ id, year }))
+          .sort((a, b) => a.year - b.year),
+      );
     }).finally(() => setLoading(false));
   }, [slug]);
 
@@ -78,6 +104,56 @@ export function PlayerModal({ slug, firstName, lastName, onClose }: PlayerModalP
   const pitchTotals = pitchingStats && pitchingStats.length > 0 ? pitchingStats[0] : null;
   const fieldTotals = fieldingStats && fieldingStats.length > 0 ? fieldingStats[0] : null;
 
+  const sumBattingRows = (rows: any[]) => {
+    if (!rows.length) return null;
+    const acc: any = {};
+    const keysToSum = [
+      'games','plateAppearances','atBats','runs','hits','doubles','triples',
+      'homeRuns','rbi','walks','strikeouts','stolenBases','caughtStealing',
+    ];
+    for (const r of rows) {
+      for (const k of keysToSum) acc[k] = (acc[k] || 0) + (Number(r[k] ?? 0) || 0);
+    }
+    const ab = acc.atBats || 0;
+    const h = acc.hits || 0;
+    const tb = rows.reduce((s, r) => s + Number(r.totalBases ?? 0), 0);
+    const hitByPitch = rows.reduce((s, r) => s + Number(r.hitByPitch ?? 0), 0);
+    const sacrificeFlies = rows.reduce((s, r) => s + Number(r.sacrificeFlies ?? 0), 0);
+    const obDenom = ab + acc.walks + hitByPitch + sacrificeFlies;
+    const obp = obDenom > 0 ? (h + acc.walks + hitByPitch) / obDenom : 0;
+    const slg = ab > 0 ? tb / ab : 0;
+    return {
+      ...acc,
+      battingAvg: ab > 0 ? (h / ab).toFixed(3) : null,
+      onBasePct: obDenom > 0 ? obp.toFixed(3) : null,
+      sluggingPct: ab > 0 ? slg.toFixed(3) : null,
+      ops: (obp + slg).toFixed(3),
+    };
+  };
+
+  const sumPitchingRows = (rows: any[]) => {
+    if (!rows.length) return null;
+    const acc: any = {};
+    const keysToSum = [
+      'games','gamesStarted','wins','losses','saves',
+      'hitsAllowed','runsAllowed','earnedRuns','walksAllowed',
+      'strikeouts','homeRunsAllowed',
+    ];
+    for (const r of rows) {
+      for (const k of keysToSum) acc[k] = (acc[k] || 0) + (Number(r[k] ?? 0) || 0);
+    }
+    const ip = rows.reduce((s, r) => s + parseFloat(String(r.inningsPitched ?? 0)), 0);
+    const er = acc.earnedRuns || 0;
+    const h = acc.hitsAllowed || 0;
+    const bb = acc.walksAllowed || 0;
+    return {
+      ...acc,
+      inningsPitched: ip.toFixed(1),
+      era: ip > 0 ? ((er / ip) * 9).toFixed(2) : null,
+      whip: ip > 0 ? ((bb + h) / ip).toFixed(2) : null,
+    };
+  };
+
   // Derive primary position from fielding-by-position data
   const derivedPosition = (() => {
     if (!fieldingByPos || fieldingByPos.length === 0) return null;
@@ -93,7 +169,9 @@ export function PlayerModal({ slug, firstName, lastName, onClose }: PlayerModalP
   })();
 
   const tabs: { key: Tab; label: string }[] = [
-    { key: 'overview', label: 'Overview' },
+    { key: 'batting', label: 'Batting' },
+    { key: 'pitching', label: 'Pitching' },
+    { key: 'fielding', label: 'Fielding' },
     { key: 'gamelog', label: 'Game Log' },
     { key: 'spraychart', label: 'Spray Chart' },
   ];
@@ -127,7 +205,7 @@ export function PlayerModal({ slug, firstName, lastName, onClose }: PlayerModalP
           </button>
         </div>
 
-        {/* Tab bar */}
+        {/* Tab bar + season selector */}
         <div className="flex border-b border-white/[0.06] bg-[#131c2e]">
           {tabs.map(t => (
             <button
@@ -142,6 +220,22 @@ export function PlayerModal({ slug, firstName, lastName, onClose }: PlayerModalP
               {t.label}
             </button>
           ))}
+          <div className="ml-auto flex items-center gap-2 px-4 py-2.5">
+            <span className="text-[10px] text-[#64748b]">Season:</span>
+            <select
+              value={seasonFilter === 'all' ? 'all' : String(seasonFilter)}
+              onChange={e => {
+                const v = e.target.value;
+                setSeasonFilter(v === 'all' ? 'all' : Number(v));
+              }}
+              className="bg-[#0b1220] border border-white/[0.12] rounded px-2 py-1 text-[10px] text-[#e2e8f0]"
+            >
+              <option value="all">All time</option>
+              {seasons.map(s => (
+                <option key={s.id} value={s.id}>{s.year}</option>
+              ))}
+            </select>
+          </div>
           <a
             href={`/players/${slug}`}
             className="ml-auto px-4 py-2.5 text-[10px] text-[#475569] hover:text-[#64748b] transition-colors flex items-center gap-1"
@@ -158,82 +252,230 @@ export function PlayerModal({ slug, firstName, lastName, onClose }: PlayerModalP
             </div>
           ) : (
             <>
-              {/* OVERVIEW TAB */}
-              {tab === 'overview' && (
-                <div className="space-y-5">
-                  {/* Key batting stats */}
-                  {batTotals && (
-                    <div>
-                      <h3 className="text-[10px] font-bold uppercase tracking-wider text-[#475569] mb-2">Batting</h3>
-                      <div className="grid grid-cols-4 sm:grid-cols-7 gap-1.5">
-                        {[
-                          { label: 'G', value: n(batTotals.games), primary: false },
-                          { label: 'AVG', value: fmtRate(batTotals.battingAvg), primary: true },
-                          { label: 'HR', value: n(batTotals.homeRuns), primary: false },
-                          { label: 'RBI', value: n(batTotals.rbi), primary: false },
-                          { label: 'H', value: n(batTotals.hits), primary: false },
-                          { label: 'OBP', value: fmtRate(batTotals.onBasePct), primary: true },
-                          { label: 'OPS', value: fmtRate(batTotals.ops), primary: true },
-                        ].map(s => (
-                          <div key={s.label} className="rounded-lg px-2 py-2 text-center bg-[#1a2642] ring-1 ring-inset ring-white/[0.06]">
-                            <div className="text-[9px] font-medium text-[#64748b]">{s.label}</div>
-                            <div className={`font-mono font-bold mt-0.5 ${s.primary ? 'text-[15px] text-accent' : 'text-sm text-[#e2e8f0]'}`}>{s.value}</div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+              {/* BATTING TAB */}
+              {tab === 'batting' && battingStats && battingStats.length > 0 && (() => {
+                const rows = seasonFilter === 'all'
+                  ? battingStats
+                  : battingStats.filter((r: any) => r.seasonId === seasonFilter);
+                if (!rows.length) {
+                  return <p className="text-xs text-[#64748b]">No batting stats for this season.</p>;
+                }
+                const total = sumBattingRows(rows);
+                return (
+                  <div className="space-y-3">
+                    <table className="w-full text-[11px] border-collapse">
+                      <thead>
+                        <tr className="bg-[#111827] text-[#9ca3af] border-b border-white/5">
+                          {['Season','Team','G','PA','AB','R','H','2B','3B','HR','RBI','BB','SO','SB','CS','AVG','OBP','SLG','OPS'].map(col => (
+                            <th
+                              key={col}
+                              className={`px-2 py-1.5 font-semibold ${
+                                col === 'Season' || col === 'Team' ? 'text-left' : 'text-right'
+                              }`}
+                            >
+                              {col}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rows
+                          .slice()
+                          .sort((a: any, b: any) => (a.seasonYear ?? 0) - (b.seasonYear ?? 0))
+                          .map((r: any) => (
+                            <tr key={`${r.seasonId ?? ''}-${r.teamName ?? ''}`} className="border-b border-white/[0.03]">
+                              <td className="px-2 py-1.5 text-left">{r.seasonYear ?? '—'}</td>
+                              <td className="px-2 py-1.5 text-left">{r.teamName ?? '—'}</td>
+                              <td className="px-2 py-1.5 text-right">{r.games}</td>
+                              <td className="px-2 py-1.5 text-right">{r.plateAppearances}</td>
+                              <td className="px-2 py-1.5 text-right">{r.atBats}</td>
+                              <td className="px-2 py-1.5 text-right">{r.runs}</td>
+                              <td className="px-2 py-1.5 text-right">{r.hits}</td>
+                              <td className="px-2 py-1.5 text-right">{r.doubles}</td>
+                              <td className="px-2 py-1.5 text-right">{r.triples}</td>
+                              <td className="px-2 py-1.5 text-right">{r.homeRuns}</td>
+                              <td className="px-2 py-1.5 text-right">{r.rbi}</td>
+                              <td className="px-2 py-1.5 text-right">{r.walks}</td>
+                              <td className="px-2 py-1.5 text-right">{r.strikeouts}</td>
+                              <td className="px-2 py-1.5 text-right">{r.stolenBases}</td>
+                              <td className="px-2 py-1.5 text-right">{r.caughtStealing}</td>
+                              <td className="px-2 py-1.5 text-right">{fmtRate(r.battingAvg)}</td>
+                              <td className="px-2 py-1.5 text-right">{fmtRate(r.onBasePct)}</td>
+                              <td className="px-2 py-1.5 text-right">{fmtRate(r.sluggingPct)}</td>
+                              <td className="px-2 py-1.5 text-right">{fmtRate(r.ops)}</td>
+                            </tr>
+                          ))}
+                        {total && (
+                          <tr className="bg-[#020617] border-t border-white/10">
+                            <td className="px-2 py-1.5 font-semibold text-left" colSpan={2}>TOTAL</td>
+                            <td className="px-2 py-1.5 font-semibold text-right">{total.games}</td>
+                            <td className="px-2 py-1.5 font-semibold text-right">{total.plateAppearances}</td>
+                            <td className="px-2 py-1.5 font-semibold text-right">{total.atBats}</td>
+                            <td className="px-2 py-1.5 font-semibold text-right">{total.runs}</td>
+                            <td className="px-2 py-1.5 font-semibold text-right">{total.hits}</td>
+                            <td className="px-2 py-1.5 font-semibold text-right">{total.doubles}</td>
+                            <td className="px-2 py-1.5 font-semibold text-right">{total.triples}</td>
+                            <td className="px-2 py-1.5 font-semibold text-right">{total.homeRuns}</td>
+                            <td className="px-2 py-1.5 font-semibold text-right">{total.rbi}</td>
+                            <td className="px-2 py-1.5 font-semibold text-right">{total.walks}</td>
+                            <td className="px-2 py-1.5 font-semibold text-right">{total.strikeouts}</td>
+                            <td className="px-2 py-1.5 font-semibold text-right">{total.stolenBases}</td>
+                            <td className="px-2 py-1.5 font-semibold text-right">{total.caughtStealing}</td>
+                            <td className="px-2 py-1.5 font-semibold text-right">{fmtRate(total.battingAvg)}</td>
+                            <td className="px-2 py-1.5 font-semibold text-right">{fmtRate(total.onBasePct)}</td>
+                            <td className="px-2 py-1.5 font-semibold text-right">{fmtRate(total.sluggingPct)}</td>
+                            <td className="px-2 py-1.5 font-semibold text-right">{fmtRate(total.ops)}</td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })()}
 
-                  {/* Key pitching stats */}
-                  {pitchTotals && n(pitchTotals.games) > 0 && (
-                    <div>
-                      <h3 className="text-[10px] font-bold uppercase tracking-wider text-[#475569] mb-2">Pitching</h3>
-                      <div className="grid grid-cols-4 sm:grid-cols-7 gap-1.5">
-                        {[
-                          { label: 'W-L', value: `${n(pitchTotals.wins)}-${n(pitchTotals.losses)}`, primary: false },
-                          { label: 'ERA', value: fmtEra(pitchTotals.era), primary: true },
-                          { label: 'G', value: n(pitchTotals.games), primary: false },
-                          { label: 'IP', value: pitchTotals.inningsPitched ?? '—', primary: false },
-                          { label: 'SO', value: n(pitchTotals.strikeouts), primary: false },
-                          { label: 'WHIP', value: fmtEra(pitchTotals.whip), primary: true },
-                          { label: 'K/9', value: pitchTotals.k9 ? fmtEra(pitchTotals.k9) : '—', primary: false },
-                        ].map(s => (
-                          <div key={s.label} className="rounded-lg px-2 py-2 text-center bg-[#1a2642] ring-1 ring-inset ring-white/[0.06]">
-                            <div className="text-[9px] font-medium text-[#64748b]">{s.label}</div>
-                            <div className={`font-mono font-bold mt-0.5 ${s.primary ? 'text-[15px] text-accent' : 'text-sm text-[#e2e8f0]'}`}>{s.value}</div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+              {/* PITCHING TAB */}
+              {tab === 'pitching' && pitchingStats && pitchingStats.length > 0 && (() => {
+                const rows = seasonFilter === 'all'
+                  ? pitchingStats
+                  : pitchingStats.filter((r: any) => r.seasonId === seasonFilter);
+                if (!rows.length) {
+                  return <p className="text-xs text-[#64748b]">No pitching stats for this season.</p>;
+                }
+                const total = sumPitchingRows(rows);
+                return (
+                  <div className="space-y-3">
+                    <table className="w-full text-[11px] border-collapse">
+                      <thead>
+                        <tr className="bg-[#111827] text-[#9ca3af] border-b border-white/5">
+                          {['Season','Team','G','GS','W','L','SV','IP','H','R','ER','BB','SO','HR','ERA','WHIP'].map(col => (
+                            <th
+                              key={col}
+                              className={`px-2 py-1.5 font-semibold ${
+                                col === 'Season' || col === 'Team' ? 'text-left' : 'text-right'
+                              }`}
+                            >
+                              {col}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rows
+                          .slice()
+                          .sort((a: any, b: any) => (a.seasonYear ?? 0) - (b.seasonYear ?? 0))
+                          .map((r: any) => (
+                            <tr key={`${r.seasonId ?? ''}-${r.teamName ?? ''}`} className="border-b border-white/[0.03]">
+                              <td className="px-2 py-1.5 text-left">{r.seasonYear ?? '—'}</td>
+                              <td className="px-2 py-1.5 text-left">{r.teamName ?? '—'}</td>
+                              <td className="px-2 py-1.5 text-right">{r.games}</td>
+                              <td className="px-2 py-1.5 text-right">{r.gamesStarted}</td>
+                              <td className="px-2 py-1.5 text-right">{r.wins}</td>
+                              <td className="px-2 py-1.5 text-right">{r.losses}</td>
+                              <td className="px-2 py-1.5 text-right">{r.saves}</td>
+                              <td className="px-2 py-1.5 text-right">{r.inningsPitched}</td>
+                              <td className="px-2 py-1.5 text-right">{r.hitsAllowed}</td>
+                              <td className="px-2 py-1.5 text-right">{r.runsAllowed}</td>
+                              <td className="px-2 py-1.5 text-right">{r.earnedRuns}</td>
+                              <td className="px-2 py-1.5 text-right">{r.walksAllowed}</td>
+                              <td className="px-2 py-1.5 text-right">{r.strikeouts}</td>
+                              <td className="px-2 py-1.5 text-right">{r.homeRunsAllowed}</td>
+                              <td className="px-2 py-1.5 text-right">{fmtEra(r.era)}</td>
+                              <td className="px-2 py-1.5 text-right">{fmtEra(r.whip)}</td>
+                            </tr>
+                          ))}
+                        {total && (
+                          <tr className="bg-[#020617] border-t border-white/10">
+                            <td className="px-2 py-1.5 font-semibold text-left" colSpan={2}>TOTAL</td>
+                            <td className="px-2 py-1.5 font-semibold text-right">{total.games}</td>
+                            <td className="px-2 py-1.5 font-semibold text-right">{total.gamesStarted}</td>
+                            <td className="px-2 py-1.5 font-semibold text-right">{total.wins}</td>
+                            <td className="px-2 py-1.5 font-semibold text-right">{total.losses}</td>
+                            <td className="px-2 py-1.5 font-semibold text-right">{total.saves}</td>
+                            <td className="px-2 py-1.5 font-semibold text-right">{total.inningsPitched}</td>
+                            <td className="px-2 py-1.5 font-semibold text-right">{total.hitsAllowed}</td>
+                            <td className="px-2 py-1.5 font-semibold text-right">{total.runsAllowed}</td>
+                            <td className="px-2 py-1.5 font-semibold text-right">{total.earnedRuns}</td>
+                            <td className="px-2 py-1.5 font-semibold text-right">{total.walksAllowed}</td>
+                            <td className="px-2 py-1.5 font-semibold text-right">{total.strikeouts}</td>
+                            <td className="px-2 py-1.5 font-semibold text-right">{total.homeRunsAllowed}</td>
+                            <td className="px-2 py-1.5 font-semibold text-right">{fmtEra(total.era)}</td>
+                            <td className="px-2 py-1.5 font-semibold text-right">{fmtEra(total.whip)}</td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })()}
 
-                  {/* Key fielding stats — lower visual weight */}
-                  {fieldTotals && n(fieldTotals.games) > 0 && (
-                    <div>
-                      <h3 className="text-[10px] font-bold uppercase tracking-wider text-[#475569] mb-1.5">Fielding</h3>
-                      <div className="grid grid-cols-6 gap-1.5">
-                        {[
-                          { label: 'G', value: n(fieldTotals.games) },
-                          { label: 'PO', value: n(fieldTotals.putouts) },
-                          { label: 'A', value: n(fieldTotals.assists) },
-                          { label: 'E', value: n(fieldTotals.errors) },
-                          { label: 'DP', value: n(fieldTotals.doublePlays) },
-                          { label: 'FP%', value: fmtRate(fieldTotals.fieldingPct) },
-                        ].map(s => (
-                          <div key={s.label} className="rounded bg-[#172033] ring-1 ring-inset ring-white/[0.05] px-2 py-1.5 text-center">
-                            <div className="text-[8px] font-medium text-[#64748b]">{s.label}</div>
-                            <div className="text-xs font-mono font-bold text-[#94a3b8] mt-0.5">{s.value}</div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+              {/* FIELDING TAB */}
+              {tab === 'fielding' && fieldingStats && fieldingStats.length > 0 && (() => {
+                const rows = seasonFilter === 'all'
+                  ? fieldingStats
+                  : fieldingStats.filter((r: any) => r.seasonId === seasonFilter);
+                if (!rows.length) {
+                  return <p className="text-xs text-[#64748b]">No fielding stats for this season.</p>;
+                }
+                const total: any = {};
+                const keysToSum = ['games','putouts','assists','errors','doublePlays','triplePlays'];
+                for (const r of rows) {
+                  for (const k of keysToSum) total[k] = (total[k] || 0) + (Number(r[k] ?? 0) || 0);
+                }
+                const tc = (total.putouts || 0) + (total.assists || 0) + (total.errors || 0);
+                const fpct = tc > 0 ? (((total.putouts || 0) + (total.assists || 0)) / tc).toFixed(3) : null;
 
-                  {!batTotals && !pitchTotals && !fieldTotals && (
-                    <p className="text-sm text-[#64748b] text-center py-6">No statistics recorded yet.</p>
-                  )}
-                </div>
-              )}
+                return (
+                  <div className="space-y-3">
+                    <table className="w-full text-[11px] border-collapse">
+                      <thead>
+                        <tr className="bg-[#111827] text-[#9ca3af] border-b border-white/5">
+                          {['Season','Team','Pos','G','Inn','PO','A','E','DP','FP%'].map(col => (
+                            <th
+                              key={col}
+                              className={`px-2 py-1.5 font-semibold ${
+                                col === 'Season' || col === 'Team' || col === 'Pos' ? 'text-left' : 'text-right'
+                              }`}
+                            >
+                              {col}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rows
+                          .slice()
+                          .sort((a: any, b: any) => (a.seasonYear ?? 0) - (b.seasonYear ?? 0))
+                          .map((r: any) => (
+                            <tr key={`${r.seasonId ?? ''}-${r.teamName ?? ''}-${r.position ?? ''}`} className="border-b border-white/[0.03]">
+                              <td className="px-2 py-1.5 text-left">{r.seasonYear ?? '—'}</td>
+                              <td className="px-2 py-1.5 text-left">{r.teamName ?? '—'}</td>
+                              <td className="px-2 py-1.5 text-left">
+                                {r.position != null ? (POS_LABELS[r.position] || String(r.position)) : '—'}
+                              </td>
+                              <td className="px-2 py-1.5 text-right">{r.games}</td>
+                              <td className="px-2 py-1.5 text-right">{r.innings ?? '—'}</td>
+                              <td className="px-2 py-1.5 text-right">{r.putouts}</td>
+                              <td className="px-2 py-1.5 text-right">{r.assists}</td>
+                              <td className="px-2 py-1.5 text-right">{r.errors}</td>
+                              <td className="px-2 py-1.5 text-right">{r.doublePlays}</td>
+                              <td className="px-2 py-1.5 text-right">{fmtRate(r.fieldingPct)}</td>
+                            </tr>
+                          ))}
+                        <tr className="bg-[#020617] border-t border-white/10">
+                          <td className="px-2 py-1.5 font-semibold text-left" colSpan={3}>TOTAL</td>
+                          <td className="px-2 py-1.5 font-semibold text-right">{total.games || 0}</td>
+                          <td className="px-2 py-1.5 font-semibold text-right">—</td>
+                          <td className="px-2 py-1.5 font-semibold text-right">{total.putouts || 0}</td>
+                          <td className="px-2 py-1.5 font-semibold text-right">{total.assists || 0}</td>
+                          <td className="px-2 py-1.5 font-semibold text-right">{total.errors || 0}</td>
+                          <td className="px-2 py-1.5 font-semibold text-right">{total.doublePlays || 0}</td>
+                          <td className="px-2 py-1.5 font-semibold text-right">{fmtRate(fpct)}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })()}
 
               {/* GAME LOG TAB */}
               {tab === 'gamelog' && gameLog && (
