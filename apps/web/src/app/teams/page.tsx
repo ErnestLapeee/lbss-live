@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { apiFetch } from '@/lib/api';
 import { PageHeader } from '@/components/ui/page-header';
+import { SeasonSelect } from '../standings/season-select';
 
 export const metadata: Metadata = { title: 'Teams' };
 
@@ -11,14 +12,37 @@ function toArray<T>(v: unknown): T[] {
   return [];
 }
 
-export default async function TeamsPage() {
+type Props = { searchParams: Promise<{ season?: string }> };
+
+export default async function TeamsPage({ searchParams }: Props) {
   let teams: any[] = [];
-  try { teams = toArray(await apiFetch('/api/public/teams')); } catch {}
+  let seasons: any[] = [];
+  let currentSeasonId: number | null = null;
+
+  try {
+    const params = await searchParams;
+    const seasonFromUrl = params.season;
+
+    seasons = await apiFetch('/api/public/stats/seasons');
+    seasons = Array.isArray(seasons) ? seasons : [];
+    const explicit = seasons.find((s: any) => String(s.id) === seasonFromUrl);
+    const activeSeason = explicit || seasons.find((s: any) => s.isActive) || seasons[0];
+    currentSeasonId = activeSeason?.id ?? null;
+  } catch {}
+
+  try {
+    teams = toArray(await apiFetch('/api/public/teams'));
+  } catch {}
 
   return (
     <div>
       <PageHeader title="Teams" description="All teams competing in the Latvijas Beisbola Liga" />
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
+        {seasons.length > 0 && (
+          <div className="mb-4 flex justify-end">
+            <SeasonSelect seasons={seasons} currentSeasonId={currentSeasonId} />
+          </div>
+        )}
         {teams.length === 0 ? (
           <div className="rounded-xl border border-dashed border-border bg-surface-alt p-12 text-center">
             <p className="text-text-muted text-lg font-medium">No teams registered yet</p>
@@ -28,10 +52,14 @@ export default async function TeamsPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {teams.map((team: any) => {
               const abbr = team.shortName || team.name.split(' ').map((w: string) => w[0]).join('').slice(0, 3);
+              const href =
+                currentSeasonId != null
+                  ? `/teams/${team.slug}?season=${currentSeasonId}`
+                  : `/teams/${team.slug}`;
               return (
                 <Link
                   key={team.id}
-                  href={`/teams/${team.slug}`}
+                  href={href}
                   className="group flex items-center gap-4 rounded-xl border border-border bg-surface p-5 hover:border-accent/30 hover:shadow-md transition-all"
                 >
                   <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-primary text-white font-heading text-lg font-bold shrink-0">
