@@ -290,7 +290,8 @@ Match iScore’s **category dropdown** and **sub-tables**. Implement in phases: 
 - [ ] **Stats page** – Season dropdown with “All time”; optional category dropdown; Legend link; optional Hit locations link.  
 - [ ] **Player profile** – Season dropdown; use `seasonId` in all stat and spray-chart requests; show one row for “All time”.  
 - [ ] **Legend page** – New route and content from CSV/analysis docs.  
-- [ ] **Spray chart** – Already supports season; ensure player profile passes season filter.
+- [ ] **Spray chart** – Already supports season; ensure player profile passes season filter.  
+- [x] **Box scores** – Game detail box score and pitching tabs show extended stats (PA, 2B, 3B, HBP, SF, SAC, SB, CS, Kc, Ks, B, GDP, FC, CI; GSc, Kc, Ks, BF, WP, etc.); AVG/OPS/ERA/WHIP computed for **this game only**.
 
 ### Shared
 
