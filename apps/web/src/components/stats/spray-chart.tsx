@@ -58,52 +58,97 @@ export function SprayChart({ hits, width = 300, height = 200 }: SprayChartProps)
             <stop offset="100%" stopColor="#0f2e1a" />
           </radialGradient>
         </defs>
-        {/* Outfield */}
-        <path d="M 10,95 Q 150,-30 290,95 L 220,140 L 150,80 L 80,140 Z" fill="url(#sprayGrad)" />
+        {/* Outfield – symmetric arc so the field looks straight */}
+        <path d="M 20,105 Q 150,10 280,105 L 220,145 L 150,80 L 80,145 Z" fill="url(#sprayGrad)" />
         {/* Infield dirt */}
-        <polygon points="150,80 220,140 150,195 80,140" fill="#5a3a1a" opacity="0.7" />
+        <polygon points="150,80 220,145 150,195 80,145" fill="#5a3a1a" opacity="0.7" />
         {/* Baselines */}
-        <line x1="150" y1="195" x2="225" y2="140" stroke="rgba(255,255,255,0.15)" strokeWidth="0.8" />
-        <line x1="150" y1="195" x2="75" y2="140" stroke="rgba(255,255,255,0.15)" strokeWidth="0.8" />
-        <line x1="75" y1="140" x2="150" y2="80" stroke="rgba(255,255,255,0.15)" strokeWidth="0.8" />
-        <line x1="225" y1="140" x2="150" y2="80" stroke="rgba(255,255,255,0.15)" strokeWidth="0.8" />
+        <line x1="150" y1="195" x2="225" y2="145" stroke="rgba(255,255,255,0.25)" strokeWidth="0.8" />
+        <line x1="150" y1="195" x2="75" y2="145" stroke="rgba(255,255,255,0.25)" strokeWidth="0.8" />
+        <line x1="75" y1="145" x2="150" y2="80" stroke="rgba(255,255,255,0.25)" strokeWidth="0.8" />
+        <line x1="225" y1="145" x2="150" y2="80" stroke="rgba(255,255,255,0.25)" strokeWidth="0.8" />
         {/* Foul lines */}
-        <line x1="150" y1="195" x2="10" y2="95" stroke="rgba(255,255,255,0.1)" strokeWidth="0.5" />
-        <line x1="150" y1="195" x2="290" y2="95" stroke="rgba(255,255,255,0.1)" strokeWidth="0.5" />
+        <line x1="150" y1="195" x2="20" y2="105" stroke="rgba(255,255,255,0.3)" strokeWidth="0.6" />
+        <line x1="150" y1="195" x2="280" y2="105" stroke="rgba(255,255,255,0.3)" strokeWidth="0.6" />
+        {/* Guide lines to help see trajectory */}
+        {[
+          { x2: 150, y2: 20 },
+          { x2: 115, y2: 40 },
+          { x2: 185, y2: 40 },
+          { x2: 100, y2: 65 },
+          { x2: 200, y2: 65 },
+        ].map((p, idx) => (
+          <line
+            // key is safe here because this is a fixed list
+            // eslint-disable-next-line react/no-array-index-key
+            key={idx}
+            x1="150"
+            y1="195"
+            x2={p.x2}
+            y2={p.y2}
+            stroke="rgba(255,255,255,0.18)"
+            strokeWidth="0.5"
+          />
+        ))}
 
-        {/* Hit dots */}
+        {/* Hit trajectories + dots */}
         {hits.map((hit, i) => {
           const color = getDotColor(hit);
           const shape = getDotShape(hit);
           const size = getDotSize(hit);
 
-          if (shape === 'square') {
-            return (
-              <rect key={i}
-                x={hit.hitLocationX - size} y={hit.hitLocationY - size}
-                width={size * 2} height={size * 2}
-                fill={color} opacity="0.85"
-                stroke="rgba(0,0,0,0.4)" strokeWidth="0.5"
-              />
-            );
-          }
-          if (shape === 'diamond') {
-            return (
-              <rect key={i}
-                x={hit.hitLocationX - size} y={hit.hitLocationY - size}
-                width={size * 2} height={size * 2}
-                fill={color} opacity="0.85"
-                stroke="rgba(0,0,0,0.4)" strokeWidth="0.5"
-                transform={`rotate(45 ${hit.hitLocationX} ${hit.hitLocationY})`}
-              />
-            );
-          }
+          // Each batted ball gets a faint line from home plate to its location
+          const homeX = 150;
+          const homeY = 195;
+
           return (
-            <circle key={i}
-              cx={hit.hitLocationX} cy={hit.hitLocationY}
-              r={size} fill={color} opacity="0.85"
-              stroke="rgba(0,0,0,0.4)" strokeWidth="0.5"
-            />
+            <g key={i}>
+              <line
+                x1={homeX}
+                y1={homeY}
+                x2={hit.hitLocationX}
+                y2={hit.hitLocationY}
+                stroke={color}
+                strokeWidth={0.7}
+                strokeOpacity={0.35}
+              />
+              {shape === 'square' && (
+                <rect
+                  x={hit.hitLocationX - size}
+                  y={hit.hitLocationY - size}
+                  width={size * 2}
+                  height={size * 2}
+                  fill={color}
+                  opacity="0.9"
+                  stroke="rgba(0,0,0,0.35)"
+                  strokeWidth="0.5"
+                />
+              )}
+              {shape === 'diamond' && (
+                <rect
+                  x={hit.hitLocationX - size}
+                  y={hit.hitLocationY - size}
+                  width={size * 2}
+                  height={size * 2}
+                  fill={color}
+                  opacity="0.9"
+                  stroke="rgba(0,0,0,0.35)"
+                  strokeWidth="0.5"
+                  transform={`rotate(45 ${hit.hitLocationX} ${hit.hitLocationY})`}
+                />
+              )}
+              {shape === 'circle' && (
+                <circle
+                  cx={hit.hitLocationX}
+                  cy={hit.hitLocationY}
+                  r={size}
+                  fill={color}
+                  opacity="0.9"
+                  stroke="rgba(0,0,0,0.35)"
+                  strokeWidth="0.5"
+                />
+              )}
+            </g>
           );
         })}
       </svg>
