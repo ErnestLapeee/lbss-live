@@ -58,67 +58,52 @@ export function SprayChart({ hits, width = 300, height = 200 }: SprayChartProps)
             <stop offset="100%" stopColor="#0f2e1a" />
           </radialGradient>
         </defs>
-        {/* Simple, clean field layout */}
-        {/* Outfield arc */}
-        <path d="M 30,110 Q 150,20 270,110 L 210,150 L 150,85 L 90,150 Z" fill="url(#sprayGrad)" />
-        {/* Warning track */}
-        <path d="M 42,110 Q 150,32 258,110 L 210,145 L 150,92 L 90,145 Z" fill="rgba(0,0,0,0.08)" />
-        {/* Infield dirt (square rotated 45°) */}
-        <polygon points="150,85 215,150 150,190 85,150" fill="#c89a5b" opacity="0.9" />
+        {/* Outfield */}
+        <path d="M 10,95 Q 150,-30 290,95 L 220,140 L 150,80 L 80,140 Z" fill="url(#sprayGrad)" />
+        {/* Infield dirt */}
+        <polygon points="150,80 220,140 150,195 80,140" fill="#5a3a1a" opacity="0.7" />
         {/* Baselines */}
-        <line x1="150" y1="190" x2="215" y2="150" stroke="#ffffff" strokeWidth="1" />
-        <line x1="150" y1="190" x2="85" y2="150" stroke="#ffffff" strokeWidth="1" />
-        <line x1="85" y1="150" x2="150" y2="85" stroke="#ffffff" strokeWidth="1" />
-        <line x1="215" y1="150" x2="150" y2="85" stroke="#ffffff" strokeWidth="1" />
+        <line x1="150" y1="195" x2="225" y2="140" stroke="rgba(255,255,255,0.15)" strokeWidth="0.8" />
+        <line x1="150" y1="195" x2="75" y2="140" stroke="rgba(255,255,255,0.15)" strokeWidth="0.8" />
+        <line x1="75" y1="140" x2="150" y2="80" stroke="rgba(255,255,255,0.15)" strokeWidth="0.8" />
+        <line x1="225" y1="140" x2="150" y2="80" stroke="rgba(255,255,255,0.15)" strokeWidth="0.8" />
         {/* Foul lines */}
-        <line x1="150" y1="190" x2="30" y2="110" stroke="#ffffff" strokeWidth="1" />
-        <line x1="150" y1="190" x2="270" y2="110" stroke="#ffffff" strokeWidth="1" />
+        <line x1="150" y1="195" x2="10" y2="95" stroke="rgba(255,255,255,0.1)" strokeWidth="0.5" />
+        <line x1="150" y1="195" x2="290" y2="95" stroke="rgba(255,255,255,0.1)" strokeWidth="0.5" />
 
-        {/* Hit markers only (no trajectory lines) */}
+        {/* Hit dots */}
         {hits.map((hit, i) => {
           const color = getDotColor(hit);
           const shape = getDotShape(hit);
           const size = getDotSize(hit);
 
+          if (shape === 'square') {
+            return (
+              <rect key={i}
+                x={hit.hitLocationX - size} y={hit.hitLocationY - size}
+                width={size * 2} height={size * 2}
+                fill={color} opacity="0.85"
+                stroke="rgba(0,0,0,0.4)" strokeWidth="0.5"
+              />
+            );
+          }
+          if (shape === 'diamond') {
+            return (
+              <rect key={i}
+                x={hit.hitLocationX - size} y={hit.hitLocationY - size}
+                width={size * 2} height={size * 2}
+                fill={color} opacity="0.85"
+                stroke="rgba(0,0,0,0.4)" strokeWidth="0.5"
+                transform={`rotate(45 ${hit.hitLocationX} ${hit.hitLocationY})`}
+              />
+            );
+          }
           return (
-            <g key={i}>
-              {shape === 'square' && (
-                <rect
-                  x={hit.hitLocationX - size}
-                  y={hit.hitLocationY - size}
-                  width={size * 2}
-                  height={size * 2}
-                  fill={color}
-                  opacity="0.9"
-                  stroke="rgba(0,0,0,0.35)"
-                  strokeWidth="0.5"
-                />
-              )}
-              {shape === 'diamond' && (
-                <rect
-                  x={hit.hitLocationX - size}
-                  y={hit.hitLocationY - size}
-                  width={size * 2}
-                  height={size * 2}
-                  fill={color}
-                  opacity="0.9"
-                  stroke="rgba(0,0,0,0.35)"
-                  strokeWidth="0.5"
-                  transform={`rotate(45 ${hit.hitLocationX} ${hit.hitLocationY})`}
-                />
-              )}
-              {shape === 'circle' && (
-                <circle
-                  cx={hit.hitLocationX}
-                  cy={hit.hitLocationY}
-                  r={size}
-                  fill={color}
-                  opacity="0.9"
-                  stroke="rgba(0,0,0,0.35)"
-                  strokeWidth="0.5"
-                />
-              )}
-            </g>
+            <circle key={i}
+              cx={hit.hitLocationX} cy={hit.hitLocationY}
+              r={size} fill={color} opacity="0.85"
+              stroke="rgba(0,0,0,0.4)" strokeWidth="0.5"
+            />
           );
         })}
       </svg>
