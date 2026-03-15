@@ -58,60 +58,30 @@ export function SprayChart({ hits, width = 300, height = 200 }: SprayChartProps)
             <stop offset="100%" stopColor="#0f2e1a" />
           </radialGradient>
         </defs>
-        {/* Outfield – symmetric arc so the field looks straight */}
-        <path d="M 20,105 Q 150,10 280,105 L 220,145 L 150,80 L 80,145 Z" fill="url(#sprayGrad)" />
-        {/* Infield dirt */}
-        <polygon points="150,80 220,145 150,195 80,145" fill="#5a3a1a" opacity="0.7" />
+        {/* Simple, clean field layout */}
+        {/* Outfield arc */}
+        <path d="M 30,110 Q 150,20 270,110 L 210,150 L 150,85 L 90,150 Z" fill="url(#sprayGrad)" />
+        {/* Warning track */}
+        <path d="M 42,110 Q 150,32 258,110 L 210,145 L 150,92 L 90,145 Z" fill="rgba(0,0,0,0.08)" />
+        {/* Infield dirt (square rotated 45°) */}
+        <polygon points="150,85 215,150 150,190 85,150" fill="#c89a5b" opacity="0.9" />
         {/* Baselines */}
-        <line x1="150" y1="195" x2="225" y2="145" stroke="rgba(255,255,255,0.25)" strokeWidth="0.8" />
-        <line x1="150" y1="195" x2="75" y2="145" stroke="rgba(255,255,255,0.25)" strokeWidth="0.8" />
-        <line x1="75" y1="145" x2="150" y2="80" stroke="rgba(255,255,255,0.25)" strokeWidth="0.8" />
-        <line x1="225" y1="145" x2="150" y2="80" stroke="rgba(255,255,255,0.25)" strokeWidth="0.8" />
+        <line x1="150" y1="190" x2="215" y2="150" stroke="#ffffff" strokeWidth="1" />
+        <line x1="150" y1="190" x2="85" y2="150" stroke="#ffffff" strokeWidth="1" />
+        <line x1="85" y1="150" x2="150" y2="85" stroke="#ffffff" strokeWidth="1" />
+        <line x1="215" y1="150" x2="150" y2="85" stroke="#ffffff" strokeWidth="1" />
         {/* Foul lines */}
-        <line x1="150" y1="195" x2="20" y2="105" stroke="rgba(255,255,255,0.3)" strokeWidth="0.6" />
-        <line x1="150" y1="195" x2="280" y2="105" stroke="rgba(255,255,255,0.3)" strokeWidth="0.6" />
-        {/* Guide lines to help see trajectory */}
-        {[
-          { x2: 150, y2: 20 },
-          { x2: 115, y2: 40 },
-          { x2: 185, y2: 40 },
-          { x2: 100, y2: 65 },
-          { x2: 200, y2: 65 },
-        ].map((p, idx) => (
-          <line
-            // key is safe here because this is a fixed list
-            // eslint-disable-next-line react/no-array-index-key
-            key={idx}
-            x1="150"
-            y1="195"
-            x2={p.x2}
-            y2={p.y2}
-            stroke="rgba(255,255,255,0.18)"
-            strokeWidth="0.5"
-          />
-        ))}
+        <line x1="150" y1="190" x2="30" y2="110" stroke="#ffffff" strokeWidth="1" />
+        <line x1="150" y1="190" x2="270" y2="110" stroke="#ffffff" strokeWidth="1" />
 
-        {/* Hit trajectories + dots */}
+        {/* Hit markers only (no trajectory lines) */}
         {hits.map((hit, i) => {
           const color = getDotColor(hit);
           const shape = getDotShape(hit);
           const size = getDotSize(hit);
 
-          // Each batted ball gets a faint line from home plate to its location
-          const homeX = 150;
-          const homeY = 195;
-
           return (
             <g key={i}>
-              <line
-                x1={homeX}
-                y1={homeY}
-                x2={hit.hitLocationX}
-                y2={hit.hitLocationY}
-                stroke={color}
-                strokeWidth={0.7}
-                strokeOpacity={0.35}
-              />
               {shape === 'square' && (
                 <rect
                   x={hit.hitLocationX - size}
