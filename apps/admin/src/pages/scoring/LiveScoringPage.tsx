@@ -10,9 +10,9 @@ interface GameEvent { id: number; eventNumber: number; eventType: string; batter
 interface GameData { id: number; status: string; homeTeamId: number; awayTeamId: number; homeTeamName: string; awayTeamName: string; isFinalized: boolean }
 
 const POS_LABELS: Record<number, string> = { 1:'P',2:'C',3:'1B',4:'2B',5:'3B',6:'SS',7:'LF',8:'CF',9:'RF',10:'DH' };
-const OUT_EVENTS = ['ground_out','fly_out','line_out','pop_out','strikeout_swinging','strikeout_looking','sacrifice_fly','sacrifice_bunt','bunt_out','infield_fly','dropped_third_strike_out','caught_foul_tip','bunt_foul'];
+const OUT_EVENTS = ['ground_out','fly_out','line_out','pop_out','strikeout_swinging','strikeout_looking','sacrifice_fly','sacrifice_bunt','bunt_out','infield_fly','dropped_third_strike_out','caught_foul_tip','bunt_foul','hit_by_batted_ball','runner_interference_batter','offensive_interference_batter','batting_out_of_turn','fan_interference','thrown_bat','out_of_box','left_base_path_batter','other_out'];
 
-const SAFE_OUTCOMES = [
+const SAFE_OUTCOMES_P1 = [
   { key: 'walk', label: 'BASE ON BALLS (WALK)' },
   { key: 'intentional_walk', label: 'INTENTIONAL WALK' },
   { key: 'single', label: 'HIT SINGLE' },
@@ -23,22 +23,39 @@ const SAFE_OUTCOMES = [
   { key: 'bunt_single', label: 'BUNT' },
   { key: 'error', label: 'ERROR' },
   { key: 'hit_by_pitch', label: 'HIT BY PITCH' },
+  { key: 'dropped_third_strike', label: 'DROPPED 3RD STRIKE' },
   { key: 'wild_pitch_third_strike', label: 'WILD PITCH 3RD STRIKE' },
   { key: 'fielders_choice', label: "FIELDER'S CHOICE" },
-  { key: 'ground_rule_double', label: 'GROUND RULE DOUBLE' },
+];
+const SAFE_OUTCOMES_P2 = [
   { key: 'sac_bunt_error', label: 'SAC BUNT WITH ERROR' },
   { key: 'sac_fly_error', label: 'SAC FLY WITH ERROR' },
   { key: 'catcher_obstruction', label: 'CATCHER OBSTRUCTION' },
+  { key: 'ground_rule_double', label: 'GROUND RULE DOUBLE' },
 ];
 
-const OUT_OUTCOMES = [
+const OUT_OUTCOMES_P1 = [
+  { key: 'strikeout_looking', label: 'STRIKEOUT LOOKING' },
+  { key: 'strikeout_swinging', label: 'STRIKEOUT SWINGING' },
   { key: 'ground_out', label: 'GROUND OUT' },
-  { key: 'line_out', label: 'LINE DRIVE OUT' },
+  { key: 'line_out', label: 'LINE DRIVE' },
   { key: 'fly_out', label: 'POPUP / FLY OUT' },
-  { key: 'bunt_out', label: 'BUNT OUT' },
+  { key: 'bunt_out', label: 'BUNT' },
   { key: 'sacrifice_fly', label: 'SACRIFICE FLY' },
   { key: 'sacrifice_bunt', label: 'SACRIFICE BUNT' },
   { key: 'infield_fly', label: 'INFIELD FLY' },
+  { key: 'hit_by_batted_ball', label: 'HIT BY BALL' },
+  { key: 'dropped_third_strike_out', label: 'DROPPED 3RD STRIKE' },
+  { key: 'runner_interference_batter', label: 'RUNNER INTERFERENCE' },
+  { key: 'offensive_interference_batter', label: 'OFFENSIVE INTERFERENCE' },
+];
+const OUT_OUTCOMES_P2 = [
+  { key: 'batting_out_of_turn', label: 'BATTING OUT OF TURN' },
+  { key: 'fan_interference', label: 'FAN INTERFERENCE' },
+  { key: 'thrown_bat', label: 'THROWN BAT' },
+  { key: 'out_of_box', label: 'OUT OF BOX' },
+  { key: 'left_base_path_batter', label: 'LEFT BASE PATH' },
+  { key: 'other_out', label: 'OTHER' },
 ];
 
 const RUNNER_OUT_TYPES = [
@@ -174,6 +191,7 @@ export function LiveScoringPage() {
   const [step, setStep] = useState<ScoringStep>('pitch');
   const [selectedEvent, setSelectedEvent] = useState<string | null>(null);
   const [outSafeTab, setOutSafeTab] = useState<'out' | 'safe'>('safe');
+  const [outSafeMorePage, setOutSafeMorePage] = useState(false);
   const [fieldingPositions, setFieldingPositions] = useState<number[]>([]);
   const [runnerQuestions, setRunnerQuestions] = useState<RunnerQuestion[]>([]);
   const [currentRunnerIdx, setCurrentRunnerIdx] = useState(0);
@@ -362,10 +380,15 @@ export function LiveScoringPage() {
 
   const ERROR_EVENTS = new Set(['error', 'sac_bunt_error', 'sac_fly_error']);
 
+  const NO_FIELDING_OUTS = new Set(['strikeout_swinging', 'strikeout_looking', 'caught_foul_tip', 'bunt_foul',
+    'hit_by_batted_ball', 'runner_interference_batter', 'offensive_interference_batter',
+    'batting_out_of_turn', 'fan_interference', 'thrown_bat', 'out_of_box', 'left_base_path_batter', 'other_out']);
+
   const selectOutcome = (eventType: string) => {
     setSelectedEvent(eventType);
+    setOutSafeMorePage(false);
     const isOut = OUT_EVENTS.includes(eventType);
-    const needsFielding = isOut && !['strikeout_swinging', 'strikeout_looking', 'caught_foul_tip', 'bunt_foul'].includes(eventType);
+    const needsFielding = isOut && !NO_FIELDING_OUTS.has(eventType);
     const needsErrorFielder = ERROR_EVENTS.has(eventType);
     if (needsFielding || needsErrorFielder) { setFieldingPositions([]); setStep('fielding'); }
     else goToHitLocationOrRunners(eventType);
@@ -485,7 +508,7 @@ export function LiveScoringPage() {
 
   const MULTI_RUNNER_EVENTS = new Set(['wild_pitch', 'passed_ball', 'balk', 'advance_on_error']);
 
-  const startBetweenPitchRunnerCheck = (action: string) => {
+  const startBetweenPitchRunnerCheck = (action: string, initiatingBase?: 'first' | 'second' | 'third' | null, initiatingDest?: string | null) => {
     if (!gameState) return;
     setBetweenPitchEvent(action);
     const runners: RunnerQuestion[] = [];
@@ -494,9 +517,27 @@ export function LiveScoringPage() {
     if (gameState.bases.first) runners.push({ base: 'first', playerId: gameState.bases.first, playerName: getPlayerName(gameState.bases.first), outcome: null, destination: null, minDestination: 'first' });
 
     if (runners.length === 0) return;
+
+    if (initiatingBase && initiatingDest) {
+      for (const r of runners) {
+        if (r.base === initiatingBase) {
+          r.outcome = 'safe';
+          r.destination = initiatingDest as any;
+          r.advanceReason = action;
+          break;
+        }
+      }
+    }
+
+    const firstUnanswered = runners.findIndex(r => r.outcome === null);
+    if (firstUnanswered === -1) {
+      submitBetweenPitchPlay(action, runners);
+      return;
+    }
+
     setRunnerQuestions(runners);
-    setCurrentRunnerIdx(0);
-    setRunnerSafeDest(runners[0].minDestination);
+    setCurrentRunnerIdx(firstUnanswered);
+    setRunnerSafeDest(runners[firstUnanswered].minDestination);
     setRunnerOutSafeTab('safe');
     setActiveRunnerBase(null);
     setStep('runner');
@@ -558,7 +599,7 @@ export function LiveScoringPage() {
 
     // For multi-runner events (WP, PB, balk, advance on error), prompt for ALL runners
     if (MULTI_RUNNER_EVENTS.has(action)) {
-      startBetweenPitchRunnerCheck(action);
+      startBetweenPitchRunnerCheck(action, activeRunnerBase, dest);
       return;
     }
 
@@ -854,7 +895,7 @@ export function LiveScoringPage() {
       cancelWizard(); await loadState();
     } catch (err: any) { alert(err.message || 'Failed'); } finally { setSubmitting(false); }
   };
-  const cancelWizard = () => { setStep('pitch'); setSelectedEvent(null); setFieldingPositions([]); setRunnerQuestions([]); setCurrentRunnerIdx(0); setActiveRunnerBase(null); setRunnerActionType(null); setRunnerActionDest(null); setRunnerActionOutType(null); setRunnerActionFielding([]); setSubPosition(null); setSubBattingSlot(null); setRunnerOutSafeTab('safe'); setRunnerSafeDest(null); setHitLocationX(null); setHitLocationY(null); setHitType(null); setHitHardness(null); setBetweenPitchEvent(null); };
+  const cancelWizard = () => { setStep('pitch'); setSelectedEvent(null); setFieldingPositions([]); setRunnerQuestions([]); setCurrentRunnerIdx(0); setActiveRunnerBase(null); setRunnerActionType(null); setRunnerActionDest(null); setRunnerActionOutType(null); setRunnerActionFielding([]); setSubPosition(null); setSubBattingSlot(null); setRunnerOutSafeTab('safe'); setRunnerSafeDest(null); setHitLocationX(null); setHitLocationY(null); setHitType(null); setHitHardness(null); setBetweenPitchEvent(null); setOutSafeMorePage(false); };
 
   if (loading) return <div className="flex items-center justify-center h-screen bg-[#0c1220]"><span className="text-gray-400">Loading...</span></div>;
   if (!game) return <div className="flex items-center justify-center h-screen bg-[#0c1220]"><span className="text-red-400">Game not found</span></div>;
@@ -1195,23 +1236,23 @@ export function LiveScoringPage() {
             {step === 'pitch' && currentBatter && (
               <div className="grid grid-cols-5 gap-1.5">
                 <button onClick={handleBall} disabled={submitting}
-                  className="py-3.5 bg-green-800 hover:bg-green-700 text-white font-bold text-xs rounded transition-all disabled:opacity-30">
+                  className="py-4 bg-[#1a6b3a] hover:bg-[#20804a] text-white font-bold text-sm rounded-lg transition-all disabled:opacity-30 border border-[#20804a]/50">
                   BALL
                 </button>
                 <button onClick={handleStrike} disabled={submitting}
-                  className="py-3.5 bg-red-900 hover:bg-red-800 text-white font-bold text-xs rounded transition-all disabled:opacity-30">
+                  className="py-4 bg-[#8b2020] hover:bg-[#a02828] text-white font-bold text-sm rounded-lg transition-all disabled:opacity-30 border border-[#a02828]/50">
                   STRIKE
                 </button>
                 <button onClick={handleFoul} disabled={submitting}
-                  className="py-3.5 bg-yellow-900 hover:bg-yellow-800 text-white font-bold text-xs rounded transition-all disabled:opacity-30">
+                  className="py-4 bg-[#8b7020] hover:bg-[#a08428] text-white font-bold text-sm rounded-lg transition-all disabled:opacity-30 border border-[#a08428]/50">
                   FOUL
                 </button>
                 <button onClick={handleOut} disabled={submitting}
-                  className="py-3.5 bg-[#1a5c3a] hover:bg-[#237548] text-white font-bold text-xs rounded transition-all disabled:opacity-30">
+                  className="py-4 bg-[#1a5c3a] hover:bg-[#237548] text-white font-bold text-sm rounded-lg transition-all disabled:opacity-30 border border-[#237548]/50">
                   OUT
                 </button>
                 <button onClick={handleInPlay} disabled={submitting}
-                  className="py-3.5 bg-blue-900 hover:bg-blue-800 text-white font-bold text-xs rounded transition-all disabled:opacity-30">
+                  className="py-4 bg-[#1a3a8b] hover:bg-[#2248a0] text-white font-bold text-sm rounded-lg transition-all disabled:opacity-30 border border-[#2248a0]/50">
                   IN PLAY
                 </button>
               </div>
@@ -1271,22 +1312,31 @@ export function LiveScoringPage() {
 
             {/* OUT / SAFE panels */}
             {(step === 'out_type' || step === 'safe_type') && (
-              <div className="bg-[#111d30] rounded-lg border border-white/10 overflow-hidden">
+              <div className="bg-[#111d30] rounded-xl border border-white/10 overflow-hidden">
                 <div className="flex border-b border-white/10">
-                  <button onClick={() => { setOutSafeTab('out'); setStep('out_type'); }}
-                    className={`flex-1 py-2 text-xs font-bold ${outSafeTab === 'out' ? 'bg-white/10 text-white' : 'text-white/30'}`}>Out</button>
-                  <button onClick={() => { setOutSafeTab('safe'); setStep('safe_type'); }}
-                    className={`flex-1 py-2 text-xs font-bold ${outSafeTab === 'safe' ? 'bg-white/10 text-white' : 'text-white/30'}`}>Safe</button>
+                  <button onClick={() => { setOutSafeTab('out'); setStep('out_type'); setOutSafeMorePage(false); }}
+                    className={`flex-1 py-2.5 text-sm font-bold transition-colors ${outSafeTab === 'out' ? 'bg-white/10 text-white border-b-2 border-white' : 'text-white/40 hover:text-white/60'}`}>Out</button>
+                  <button onClick={() => { setOutSafeTab('safe'); setStep('safe_type'); setOutSafeMorePage(false); }}
+                    className={`flex-1 py-2.5 text-sm font-bold transition-colors ${outSafeTab === 'safe' ? 'bg-white/10 text-white border-b-2 border-white' : 'text-white/40 hover:text-white/60'}`}>Safe</button>
                 </div>
-                <div className="p-2 grid grid-cols-2 gap-1.5 max-h-60 overflow-y-auto">
-                  {(outSafeTab === 'safe' ? SAFE_OUTCOMES : OUT_OUTCOMES).map(o => (
-                    <button key={o.key} onClick={() => selectOutcome(o.key)}
-                      className="py-2.5 bg-[#1e2d48] hover:bg-[#283a58] text-white text-[10px] font-bold rounded transition-all uppercase">
-                      {o.label}
+                <div className="p-3">
+                  <div className="grid grid-cols-2 gap-2">
+                    {(outSafeTab === 'safe'
+                      ? (outSafeMorePage ? SAFE_OUTCOMES_P2 : SAFE_OUTCOMES_P1)
+                      : (outSafeMorePage ? OUT_OUTCOMES_P2 : OUT_OUTCOMES_P1)
+                    ).map(o => (
+                      <button key={o.key} onClick={() => selectOutcome(o.key)}
+                        className="py-3 bg-[#1e2d48]/80 hover:bg-[#283a58] text-white text-xs font-bold rounded-lg transition-all uppercase border border-white/[0.06]">
+                        {o.label}
+                      </button>
+                    ))}
+                    <button onClick={() => setOutSafeMorePage(!outSafeMorePage)}
+                      className="py-3 bg-white/[0.04] hover:bg-white/[0.08] text-white/50 text-xs font-bold rounded-lg transition-all uppercase border border-white/[0.06]">
+                      {outSafeMorePage ? '← BACK' : 'MORE ...'}
                     </button>
-                  ))}
+                  </div>
                 </div>
-                <button onClick={cancelWizard} className="w-full py-2 text-white/40 text-[10px] font-bold uppercase border-t border-white/5 hover:text-white/60">CANCEL</button>
+                <button onClick={cancelWizard} className="w-full py-3 text-white/40 text-xs font-bold uppercase border-t border-white/10 hover:text-white/60 transition-colors">CANCEL</button>
               </div>
             )}
 
@@ -1308,7 +1358,7 @@ export function LiveScoringPage() {
 
             {/* HIT LOCATION step */}
             {step === 'hit_location' && (
-              <div className="bg-[#111d30] rounded-lg border border-white/10 p-3">
+              <div className="bg-[#111d30] rounded-xl border border-white/10 p-3">
                 <p className="text-[10px] text-white/40 uppercase font-bold text-center mb-2">Tap where the ball was hit</p>
                 <div className="flex justify-center mb-2">
                   <svg viewBox="0 0 300 200" className="w-full max-w-sm cursor-crosshair"
@@ -1320,49 +1370,42 @@ export function LiveScoringPage() {
                       setHitLocationX(Math.round(x * 10) / 10);
                       setHitLocationY(Math.round(y * 10) / 10);
                     }}>
-                    {(() => {
-                      const cx = 150, hp = 195, infR = 57, outR = 130;
-                      const sin45 = Math.sin(Math.PI / 4), cos45 = Math.cos(Math.PI / 4);
-                      return (
-                        <>
-                          <path
-                            d={`M ${cx - outR * sin45},${hp - outR * cos45} A ${outR},${outR} 0 0,1 ${cx + outR * sin45},${hp - outR * cos45}
-                                L ${cx + infR * sin45},${hp - infR * cos45}
-                                A ${infR},${infR} 0 0,0 ${cx - infR * sin45},${hp - infR * cos45} Z`}
-                            fill="#2c8f3a"
-                          />
-                          <path
-                            d={`M ${cx - infR * 1.6},${hp - infR * 0.2}
-                                A ${infR * 1.6},${infR * 1.1} 0 0,1 ${cx + infR * 1.6},${hp - infR * 0.2}
-                                L ${cx + infR * sin45},${hp - infR * cos45}
-                                L ${cx - infR * sin45},${hp - infR * cos45} Z`}
-                            fill="#d6a365"
-                          />
-                          <polygon
-                            points={`${cx},${hp} ${cx + infR * sin45},${hp - infR * cos45} ${cx},${hp - infR} ${cx - infR * sin45},${hp - infR * cos45}`}
-                            fill="#d6a365"
-                          />
-                          <polygon
-                            points={`${cx},${hp - infR * 0.4} ${cx + infR * 0.6},${hp - infR * 0.1} ${cx},${hp + infR * 0.2 - infR} ${cx - infR * 0.6},${hp - infR * 0.1}`}
-                            fill="#2c8f3a"
-                          />
-                          <circle cx={cx} cy={hp - infR * 0.6} r={infR * 0.18} fill="#2c8f3a" stroke="#d6a365" strokeWidth={2} />
-                          <polygon
-                            points={`${cx - 3},${hp} ${cx + 3},${hp} ${cx + infR * sin45 + 3},${hp - infR * cos45 + 1} ${cx + infR * sin45 - 3},${hp - infR * cos45 - 1}`}
-                            fill="#e4b978"
-                          />
-                          <polygon
-                            points={`${cx - 3},${hp} ${cx + 3},${hp} ${cx - infR * sin45 + 3},${hp - infR * cos45 + 1} ${cx - infR * sin45 - 3},${hp - infR * cos45 - 1}`}
-                            fill="#e4b978"
-                          />
-                          <line x1={cx} y1={hp} x2={cx - outR * sin45} y2={hp - outR * cos45} stroke="#000" strokeWidth={2} />
-                          <line x1={cx} y1={hp} x2={cx + outR * sin45} y2={hp - outR * cos45} stroke="#000" strokeWidth={2} />
-                          <rect x={cx - 3} y={hp - 4} width={6} height={6} fill="white" />
-                        </>
-                      );
-                    })()}
+                    <defs>
+                      <radialGradient id="hlFg" cx="50%" cy="82%" r="58%">
+                        <stop offset="0%" stopColor="#1b5e30" />
+                        <stop offset="100%" stopColor="#0d3018" />
+                      </radialGradient>
+                      <radialGradient id="hlDg" cx="50%" cy="50%" r="50%">
+                        <stop offset="0%" stopColor="#704828" />
+                        <stop offset="100%" stopColor="#4e3015" />
+                      </radialGradient>
+                    </defs>
+                    {/* Outfield grass */}
+                    <path d="M 45,78 Q 150,-20 255,78 L 202,130 L 150,78 L 98,130 Z" fill="url(#hlFg)" />
+                    {/* Infield dirt */}
+                    <polygon points="150,78 202,130 150,182 98,130" fill="url(#hlDg)" />
+                    {/* Grass cutout */}
+                    <circle cx="150" cy="130" r="10" fill="#1b5e30" />
+                    {/* Mound rubber */}
+                    <rect x="147" y="129" width="6" height="2" rx="1" fill="rgba(255,255,255,0.4)" />
+                    {/* Baselines */}
+                    <line x1="150" y1="182" x2="202" y2="130" stroke="rgba(255,255,255,0.25)" strokeWidth="0.8" />
+                    <line x1="150" y1="182" x2="98" y2="130" stroke="rgba(255,255,255,0.25)" strokeWidth="0.8" />
+                    <line x1="98" y1="130" x2="150" y2="78" stroke="rgba(255,255,255,0.25)" strokeWidth="0.8" />
+                    <line x1="202" y1="130" x2="150" y2="78" stroke="rgba(255,255,255,0.25)" strokeWidth="0.8" />
+                    {/* Foul lines */}
+                    <line x1="150" y1="182" x2="45" y2="78" stroke="rgba(255,255,255,0.15)" strokeWidth="0.8" />
+                    <line x1="150" y1="182" x2="255" y2="78" stroke="rgba(255,255,255,0.15)" strokeWidth="0.8" />
+                    {/* Fence arc */}
+                    <path d="M 46,77 Q 150,-18 254,77" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="4" />
+                    {/* Bases */}
+                    <rect x="147" y="76" width="6" height="6" rx="0.5" transform="rotate(45 150 79)" fill="#ffffff20" stroke="white" strokeWidth="0.5" />
+                    <rect x="199" y="128" width="6" height="6" rx="0.5" transform="rotate(45 202 131)" fill="#ffffff20" stroke="white" strokeWidth="0.5" />
+                    <rect x="95" y="128" width="6" height="6" rx="0.5" transform="rotate(45 98 131)" fill="#ffffff20" stroke="white" strokeWidth="0.5" />
+                    {/* Home plate */}
+                    <polygon points="150,180 147,184 150,188 153,184" fill="#ddd" />
                     {hitLocationX != null && hitLocationY != null && (
-                      <circle cx={hitLocationX} cy={hitLocationY} r="6" fill="#ef4444" stroke="white" strokeWidth="1.5" opacity="0.9" />
+                      <circle cx={hitLocationX} cy={hitLocationY} r="5" fill="#ef4444" stroke="white" strokeWidth="1.5" opacity="0.9" />
                     )}
                   </svg>
                 </div>
@@ -1371,7 +1414,7 @@ export function LiveScoringPage() {
                   <div className="flex gap-1">
                     {(['grounder', 'line_drive', 'fly_ball', 'pop_up'] as const).map(t => (
                       <button key={t} onClick={() => setHitType(t)}
-                        className={`flex-1 py-1.5 text-[9px] font-bold rounded uppercase transition-all ${hitType === t ? 'bg-accent text-white' : 'bg-white/10 text-white/50 hover:bg-white/15'}`}>
+                        className={`flex-1 py-2 text-[10px] font-bold rounded-lg uppercase transition-all ${hitType === t ? 'bg-white/20 text-white border border-white/30' : 'bg-white/5 text-white/50 hover:bg-white/10 border border-white/[0.06]'}`}>
                         {t.replace(/_/g, ' ')}
                       </button>
                     ))}
@@ -1382,16 +1425,16 @@ export function LiveScoringPage() {
                   <div className="flex gap-1">
                     {(['soft', 'medium', 'hard'] as const).map(h => (
                       <button key={h} onClick={() => setHitHardness(h)}
-                        className={`flex-1 py-1.5 text-[9px] font-bold rounded uppercase transition-all ${hitHardness === h ? 'bg-accent text-white' : 'bg-white/10 text-white/50 hover:bg-white/15'}`}>
+                        className={`flex-1 py-2 text-[10px] font-bold rounded-lg uppercase transition-all ${hitHardness === h ? 'bg-white/20 text-white border border-white/30' : 'bg-white/5 text-white/50 hover:bg-white/10 border border-white/[0.06]'}`}>
                         {h}
                       </button>
                     ))}
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  <button onClick={cancelWizard} className="flex-1 py-2 text-white/40 text-[10px] font-bold uppercase hover:text-white/60">SKIP</button>
+                  <button onClick={cancelWizard} className="flex-1 py-2.5 text-white/40 text-xs font-bold uppercase hover:text-white/60">SKIP</button>
                   <button onClick={finishHitLocation}
-                    className="flex-1 py-2 bg-green-700 hover:bg-green-600 text-white text-[10px] font-bold rounded uppercase">NEXT</button>
+                    className="flex-1 py-2.5 bg-green-700 hover:bg-green-600 text-white text-xs font-bold rounded-lg uppercase transition-colors">NEXT</button>
                 </div>
               </div>
             )}
@@ -1496,60 +1539,52 @@ export function LiveScoringPage() {
                       <div className="grid grid-cols-2 gap-2">
                         {RUNNER_OUT_TYPES.map(t => (
                           <button key={t.key} onClick={() => markRunnerOut(t.key)}
-                            className="py-3 bg-[#2a5a3a] hover:bg-[#3a7a4a] text-white text-xs font-bold rounded-lg uppercase transition-colors border border-[#3a7a4a]/50">
+                            className="py-3 bg-[#1e2d48]/80 hover:bg-[#283a58] text-white text-xs font-bold rounded-lg uppercase transition-colors border border-white/[0.06]">
                             {t.label}
                           </button>
                         ))}
                       </div>
                     </div>
                   ) : (
-                    /* SAFE tab - click action submits with selected base + tracks advance reason */
+                    /* SAFE tab - iScore layout */
                     <div className="p-3 max-h-72 overflow-y-auto">
                       <div className="grid grid-cols-2 gap-2">
-                        {minOrder <= BASE_ORDER[q.base] && (
-                          <button onClick={() => answerRunner('safe', q.base, 'held')}
-                            className="py-3 bg-[#3a4a2a] hover:bg-[#4a5a3a] text-white text-xs font-bold rounded-lg uppercase col-span-2 transition-colors border border-[#4a5a3a]/50">
-                            HELD AT {q.base.toUpperCase()}
-                          </button>
-                        )}
                         {(() => {
                           const isBatterError = ERROR_EVENTS.has(selectedEvent || '') || ERROR_EVENTS.has(betweenPitchEvent || '');
                           const isBetweenPitch = !!betweenPitchEvent;
-                          const options: { key: string; label: string }[] = [];
+                          const dest = runnerSafeDest || q.minDestination;
+                          const options: { key: string; label: string; action: () => void }[] = [];
 
                           if (isBetweenPitch) {
-                            options.push({ key: betweenPitchEvent!, label: betweenPitchEvent!.replace(/_/g, ' ').toUpperCase() });
-                            options.push({ key: 'held', label: 'NO ADVANCE' });
+                            options.push({ key: 'advance', label: 'ADVANCE', action: () => answerRunner('safe', dest, betweenPitchEvent!) });
+                            if (minOrder <= BASE_ORDER[q.base]) {
+                              options.push({ key: 'held', label: 'HELD UP', action: () => answerRunner('safe', q.base, 'held') });
+                            }
                           } else {
-                            options.push({ key: 'on_play', label: 'ADVANCED ON PLAY' });
+                            options.push({ key: 'on_play', label: 'ADVANCED BY BATTER', action: () => answerRunner('safe', dest, 'on_play') });
+                            if (minOrder <= BASE_ORDER[q.base]) {
+                              options.push({ key: 'held', label: 'HELD UP', action: () => answerRunner('safe', q.base, 'held') });
+                            }
                             if (isBatterError) {
-                              options.push({ key: 'advance_on_error', label: 'ADVANCED ON SAME ERROR' });
+                              options.push({ key: 'advance_on_error', label: 'ADVANCED ON SAME ERROR', action: () => answerRunner('safe', dest, 'advance_on_error') });
                             }
-                            options.push({ key: 'stolen_base', label: 'STOLEN BASE' });
-                            options.push({ key: 'error', label: 'REACHED ON ERROR' });
-                            options.push({ key: 'wild_pitch', label: 'WILD PITCH' });
-                            options.push({ key: 'passed_ball', label: 'PASSED BALL' });
-                            options.push({ key: 'balk', label: 'BALK' });
-                            options.push({ key: 'fielders_choice', label: "FIELDER'S CHOICE" });
-                            options.push({ key: 'defensive_indifference', label: 'DEF. INDIFFERENCE' });
-                            options.push({ key: 'obstruction', label: 'OBSTRUCTION' });
+                            options.push({ key: 'stolen_base', label: 'STOLEN BASE', action: () => answerRunner('safe', dest, 'stolen_base') });
+                            options.push({ key: 'error', label: 'ERROR', action: () => answerRunner('safe', dest, 'error') });
+                            options.push({ key: 'passed_ball', label: 'PASSED BALL', action: () => answerRunner('safe', dest, 'passed_ball') });
+                            options.push({ key: 'wild_pitch', label: 'WILD PITCH', action: () => answerRunner('safe', dest, 'wild_pitch') });
+                            options.push({ key: 'defensive_indifference', label: 'DEF. INDIFFERENCE', action: () => answerRunner('safe', dest, 'defensive_indifference') });
+                            options.push({ key: 'on_throw', label: 'ON THE THROW', action: () => answerRunner('safe', dest, 'on_throw') });
+                            if (dest === 'home') {
+                              options.push({ key: 'run_not_scored', label: 'RUN NOT SCORED', action: () => answerRunner('safe', q.base, 'held') });
+                            }
                           }
-                          return options.map(r => {
-                            if (r.key === 'held') {
-                              return (
-                                <button key={r.key} onClick={() => answerRunner('safe', q.base, 'held')}
-                                  className="py-3 bg-[#3a4a2a] hover:bg-[#4a5a3a] text-white text-xs font-bold rounded-lg uppercase transition-colors border border-[#4a5a3a]/50">
-                                  {r.label}
-                                </button>
-                              );
-                            }
-                            return (
-                              <button key={r.key} onClick={() => answerRunner('safe', runnerSafeDest || q.minDestination, r.key)}
-                                className="py-3 bg-[#2a5a3a] hover:bg-[#3a7a4a] text-white text-xs font-bold rounded-lg uppercase transition-colors border border-[#3a7a4a]/50">
-                                {r.label}
-                              </button>
-                            );
-                          });
+
+                          return options.map(r => (
+                            <button key={r.key} onClick={r.action}
+                              className="py-3 bg-[#1e2d48]/80 hover:bg-[#283a58] text-white text-xs font-bold rounded-lg uppercase transition-colors border border-white/[0.06]">
+                              {r.label}
+                            </button>
+                          ));
                         })()}
                       </div>
                     </div>
@@ -1605,7 +1640,7 @@ export function LiveScoringPage() {
                       ))}
                     </div>
 
-                    {/* Safe action buttons - submit with selected base */}
+                    {/* Safe action buttons - iScore style */}
                     <div className="p-3 max-h-72 overflow-y-auto">
                       <div className="grid grid-cols-2 gap-2">
                         {[
@@ -1614,19 +1649,20 @@ export function LiveScoringPage() {
                           { key: 'passed_ball', label: 'PASSED BALL' },
                           { key: 'balk', label: 'BALK' },
                           { key: 'defensive_indifference', label: 'DEF. INDIFFERENCE' },
+                          { key: 'advance', label: 'ON THE THROW' },
                         ].map(a => (
                           <button key={a.key} onClick={() => handleRunnerActionSubmit(a.key, selectedDest)}
-                            className="py-3 bg-[#2a5a3a] hover:bg-[#3a7a4a] border border-[#3a7a4a]/50 text-white text-xs font-bold rounded-lg uppercase transition-colors">
+                            className="py-3 bg-[#1e2d48]/80 hover:bg-[#283a58] border border-white/[0.06] text-white text-xs font-bold rounded-lg uppercase transition-colors">
                             {a.label}
                           </button>
                         ))}
                         <button onClick={() => { setRunnerActionType('__error__'); setRunnerActionDest(selectedDest); setRunnerActionFielding([]); }}
-                          className="py-3 bg-[#5a4a2a] hover:bg-[#6a5a3a] border border-[#6a5a3a]/50 text-white text-xs font-bold rounded-lg uppercase transition-colors">
+                          className="py-3 bg-[#1e2d48]/80 hover:bg-[#283a58] border border-white/[0.06] text-white text-xs font-bold rounded-lg uppercase transition-colors">
                           ERROR
                         </button>
                         <button onClick={() => handleRunnerActionSubmit('advance', selectedDest)}
-                          className="py-3 bg-[#2a5a3a] hover:bg-[#3a7a4a] border border-[#3a7a4a]/50 text-white text-xs font-bold rounded-lg uppercase col-span-2 transition-colors">
-                          OTHER
+                          className="py-3 bg-[#1e2d48]/80 hover:bg-[#283a58] border border-white/[0.06] text-white text-xs font-bold rounded-lg uppercase transition-colors">
+                          PICKOFF ATTEMPT
                         </button>
                       </div>
                     </div>
@@ -1716,7 +1752,7 @@ export function LiveScoringPage() {
                       <div className="grid grid-cols-2 gap-2">
                         {RUNNER_OUT_TYPES.map(a => (
                           <button key={a.key} onClick={() => { setRunnerActionOutType(a.key); setRunnerActionFielding([]); }}
-                            className="py-3 bg-[#5a2a2a] hover:bg-[#7a3a3a] border border-[#7a3a3a]/50 text-white text-xs font-bold rounded-lg uppercase transition-colors">
+                            className="py-3 bg-[#1e2d48]/80 hover:bg-[#283a58] border border-white/[0.06] text-white text-xs font-bold rounded-lg uppercase transition-colors">
                             {a.label}
                           </button>
                         ))}
