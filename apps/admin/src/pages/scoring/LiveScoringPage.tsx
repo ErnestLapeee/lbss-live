@@ -1320,20 +1320,22 @@ export function LiveScoringPage() {
                       setHitLocationX(Math.round(x * 10) / 10);
                       setHitLocationY(Math.round(y * 10) / 10);
                     }}>
-                    <defs>
-                      <radialGradient id="hitFieldGrad" cx="50%" cy="90%" r="65%">
-                        <stop offset="0%" stopColor="#1a4d2e" />
-                        <stop offset="100%" stopColor="#0f2e1a" />
-                      </radialGradient>
-                    </defs>
-                    <path d="M 10,95 Q 150,-30 290,95 L 220,140 L 150,80 L 80,140 Z" fill="url(#hitFieldGrad)" />
-                    <polygon points="150,80 220,140 150,195 80,140" fill="#5a3a1a" />
-                    <line x1="150" y1="195" x2="225" y2="140" stroke="rgba(255,255,255,0.15)" strokeWidth="0.8" />
-                    <line x1="150" y1="195" x2="75" y2="140" stroke="rgba(255,255,255,0.15)" strokeWidth="0.8" />
-                    <line x1="75" y1="140" x2="150" y2="80" stroke="rgba(255,255,255,0.15)" strokeWidth="0.8" />
-                    <line x1="225" y1="140" x2="150" y2="80" stroke="rgba(255,255,255,0.15)" strokeWidth="0.8" />
-                    <line x1="150" y1="195" x2="10" y2="95" stroke="rgba(255,255,255,0.1)" strokeWidth="0.5" />
-                    <line x1="150" y1="195" x2="290" y2="95" stroke="rgba(255,255,255,0.1)" strokeWidth="0.5" />
+                    {(() => {
+                      const cx = 150, hp = 195, infR = 57, outR = 130;
+                      const sin45 = Math.sin(Math.PI / 4), cos45 = Math.cos(Math.PI / 4);
+                      return (<>
+                        <path d={`M ${cx - outR * sin45},${hp - outR * cos45} A ${outR},${outR} 0 0,1 ${cx + outR * sin45},${hp - outR * cos45} L ${cx + infR * sin45},${hp - infR * cos45} A ${infR},${infR} 0 0,0 ${cx - infR * sin45},${hp - infR * cos45} Z`} fill="#1a5e2e" />
+                        <polygon points={`${cx},${hp} ${cx + infR * sin45},${hp - infR * cos45} ${cx},${hp - infR} ${cx - infR * sin45},${hp - infR * cos45}`} fill="#8B6914" opacity="0.55" />
+                        <circle cx={cx} cy={hp - infR * 0.52} r={infR * 0.32} fill="#1a5e2e" />
+                        <line x1={cx} y1={hp} x2={cx + infR * sin45} y2={hp - infR * cos45} stroke="rgba(255,255,255,0.3)" strokeWidth="0.7" />
+                        <line x1={cx} y1={hp} x2={cx - infR * sin45} y2={hp - infR * cos45} stroke="rgba(255,255,255,0.3)" strokeWidth="0.7" />
+                        <line x1={cx - infR * sin45} y1={hp - infR * cos45} x2={cx} y2={hp - infR} stroke="rgba(255,255,255,0.2)" strokeWidth="0.5" />
+                        <line x1={cx + infR * sin45} y1={hp - infR * cos45} x2={cx} y2={hp - infR} stroke="rgba(255,255,255,0.2)" strokeWidth="0.5" />
+                        <line x1={cx} y1={hp} x2={cx - outR * sin45} y2={hp - outR * cos45} stroke="rgba(255,255,255,0.15)" strokeWidth="0.5" />
+                        <line x1={cx} y1={hp} x2={cx + outR * sin45} y2={hp - outR * cos45} stroke="rgba(255,255,255,0.15)" strokeWidth="0.5" />
+                        <rect x={cx - 2} y={hp - 3} width={4} height={4} fill="white" opacity="0.6" />
+                      </>);
+                    })()}
                     {hitLocationX != null && hitLocationY != null && (
                       <circle cx={hitLocationX} cy={hitLocationY} r="6" fill="#ef4444" stroke="white" strokeWidth="1.5" opacity="0.9" />
                     )}

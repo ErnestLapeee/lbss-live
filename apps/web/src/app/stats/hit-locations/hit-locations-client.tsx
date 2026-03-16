@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { SprayChart } from '@/components/stats/spray-chart';
+import type { SprayChartHit } from '@/components/stats/spray-chart';
 
 interface Season {
   id: number;
@@ -15,13 +16,11 @@ interface Team {
   shortName: string | null;
 }
 
-interface SprayChartHit {
-  hitLocationX: number;
-  hitLocationY: number;
-  hitType: string | null;
-  hitHardness: string | null;
-  eventType: string;
-  isOut: boolean;
+interface PlayerHitData {
+  playerId: number;
+  name: string;
+  atBats: number;
+  hits: SprayChartHit[];
 }
 
 interface HitLocationsClientProps {
@@ -32,80 +31,71 @@ interface HitLocationsClientProps {
 export function HitLocationsClient({ seasons, teams }: HitLocationsClientProps) {
   const [seasonId, setSeasonId] = useState<number | null>(seasons.length > 0 ? seasons[0].id : null);
   const [teamId, setTeamId] = useState<number | null>(teams.length > 0 ? teams[0].id : null);
-  const [hits, setHits] = useState<SprayChartHit[]>([]);
+  const [teamHits, setTeamHits] = useState<SprayChartHit[]>([]);
+  const [playerData, setPlayerData] = useState<PlayerHitData[]>([]);
   const [loading, setLoading] = useState(false);
+  const [view, setView] = useState<'team' | 'players'>('team');
 
   useEffect(() => {
-    if (!seasonId || !teamId) {
-      setHits([]);
-      setLoading(false);
-      return;
-    }
+    if (!seasonId || !teamId) { setTeamHits([]); setPlayerData([]); return; }
     setLoading(true);
-    fetch(`/api/proxy/public/stats/team-hit-locations?seasonId=${seasonId}&teamId=${teamId}`)
-      .then(r => r.json())
-      .then((data: SprayChartHit[]) => {
-        setHits(Array.isArray(data) ? data : []);
-      })
-      .catch(() => setHits([]))
-      .finally(() => setLoading(false));
+    Promise.all([
+      fetch(`/api/proxy/public/stats/team-hit-locations?seasonId=${seasonId}&teamId=${teamId}`).then(r => r.json()).catch(() => []),
+      fetch(`/api/proxy/public/stats/team-hit-locations-by-player?seasonId=${seasonId}&teamId=${teamId}`).then(r => r.json()).catch(() => []),
+    ]).then(([team, players]) => {
+      setTeamHits(Array.isArray(team) ? team : []);
+      setPlayerData(Array.isArray(players) ? players : []);
+    }).finally(() => setLoading(false));
   }, [seasonId, teamId]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-4">
         <div className="flex items-center gap-2">
-          <label className="text-sm font-medium text-text-muted">Season:</label>
-          <select
-            value={seasonId ?? ''}
-            onChange={(e) => setSeasonId(e.target.value ? Number(e.target.value) : null)}
-            className="rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-accent/50"
-            aria-label="Select season"
-          >
-            {seasons.length === 0 ? (
-              <option value="">Select season</option>
-            ) : (
-              seasons.map(s => (
-                <option key={s.id} value={s.id}>{s.name}</option>
-              ))
-            )}
+          <label className="text-sm font-medium text-[#666]">Season:</label>
+          <select value={seasonId ?? ''} onChange={(e) => setSeasonId(e.target.value ? Number(e.target.value) : null)}
+            className="border border-[#ccc] bg-white px-2 py-1 text-sm">
+            {seasons.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
         </div>
         <div className="flex items-center gap-2">
-          <label className="text-sm font-medium text-text-muted">Team:</label>
-          <select
-            value={teamId ?? ''}
-            onChange={(e) => setTeamId(e.target.value ? Number(e.target.value) : null)}
-            className="rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-accent/50"
-            aria-label="Select team"
-          >
-            {teams.length === 0 ? (
-              <option value="">Select team</option>
-            ) : (
-              teams.map(t => (
-                <option key={t.id} value={t.id}>{t.shortName || t.name}</option>
-              ))
-            )}
+          <label className="text-sm font-medium text-[#666]">Team:</label>
+          <select value={teamId ?? ''} onChange={(e) => setTeamId(e.target.value ? Number(e.target.value) : null)}
+            className="border border-[#ccc] bg-white px-2 py-1 text-sm">
+            {teams.map(t => <option key={t.id} value={t.id}>{t.shortName || t.name}</option>)}
           </select>
+        </div>
+        <div className="flex border border-[#ccc] text-xs">
+          <button onClick={() => setView('team')}
+            className={`px-3 py-1 ${view === 'team' ? 'bg-[#333] text-white' : 'bg-white text-[#333] hover:bg-[#eee]'}`}>
+            Team
+          </button>
+          <button onClick={() => setView('players')}
+            className={`px-3 py-1 border-l border-[#ccc] ${view === 'players' ? 'bg-[#333] text-white' : 'bg-white text-[#333] hover:bg-[#eee]'}`}>
+            Per Player
+          </button>
         </div>
       </div>
 
       {loading ? (
         <div className="flex justify-center py-12">
-          <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+          <div className="w-6 h-6 border-2 border-[#333] border-t-transparent rounded-full animate-spin" />
+        </div>
+      ) : view === 'team' ? (
+        <div className="border border-[#ccc] bg-white p-6">
+          <SprayChart hits={teamHits} width={400} height={290} />
         </div>
       ) : (
-        <div className="rounded-xl border border-border bg-surface p-6">
-          <SprayChart hits={hits} width={400} height={280} />
-          {hits.length > 0 && (
-            <p className="text-[10px] text-text-faint mt-3 text-center">
-              Green = hit, Red = out, Blue = error. Shape: square = ground ball, diamond = line drive, circle = fly/pop.
-            </p>
-          )}
-          {!loading && hits.length === 0 && seasonId && teamId && (
-            <p className="text-sm text-text-muted text-center mt-4">
-              No hit location data for this team and season. Data appears when games have hit locations recorded for batted balls.
-            </p>
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+          {playerData.map(p => (
+            <div key={p.playerId} className="border border-[#ccc] bg-white p-2">
+              <div className="text-xs font-bold text-[#111] truncate">{p.name}</div>
+              <div className="text-[10px] text-[#888] mb-1">{p.atBats} AB &middot; {p.hits.length} batted</div>
+              <SprayChart hits={p.hits} width={160} height={120} compact showLegend={false} />
+            </div>
+          ))}
+          {playerData.length === 0 && (
+            <div className="col-span-full text-sm text-[#999] text-center py-8">No data</div>
           )}
         </div>
       )}

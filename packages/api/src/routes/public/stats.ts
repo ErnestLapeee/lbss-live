@@ -1275,4 +1275,86 @@ export async function statsRoutes(app: FastifyInstance) {
       return reply.status(500).send({ message: 'Failed to fetch team hit locations' });
     }
   });
+
+  // GET /team-hit-locations-by-player?seasonId=X&teamId=Y
+  app.get<{ Querystring: { seasonId?: string; teamId?: string } }>('/team-hit-locations-by-player', async (request, reply) => {
+    try {
+      const seasonIdNum = request.query.seasonId ? parseInt(request.query.seasonId, 10) : null;
+      const teamIdNum = request.query.teamId ? parseInt(request.query.teamId, 10) : null;
+      if (!seasonIdNum || !teamIdNum) return reply.send([]);
+
+      const rows = await db
+        .select({
+          playerId: gameEvents.batterId,
+          firstName: players.firstName,
+          lastName: players.lastName,
+          hitLocationX: gameEvents.hitLocationX,
+          hitLocationY: gameEvents.hitLocationY,
+          hitType: gameEvents.hitType,
+          hitHardness: gameEvents.hitHardness,
+          eventType: gameEvents.eventType,
+          outsRecorded: gameEvents.outsRecorded,
+        })
+        .from(gameEvents)
+        .innerJoin(games, eq(gameEvents.gameId, games.id))
+        .innerJoin(leagues, eq(games.leagueId, leagues.id))
+        .innerJoin(gameLineups, and(eq(gameLineups.gameId, gameEvents.gameId), eq(gameLineups.playerId, gameEvents.batterId)))
+        .innerJoin(players, eq(players.id, gameEvents.batterId))
+        .where(
+          and(
+            eq(leagues.seasonId, seasonIdNum),
+            eq(gameLineups.teamId, teamIdNum),
+            sql`${gameEvents.hitLocationX} IS NOT NULL`,
+            sql`${gameEvents.hitLocationY} IS NOT NULL`,
+            eq(gameEvents.isDeleted, false),
+          ),
+        );
+
+      // Also get AB counts per player for sorting
+      const abRows = await db
+        .select({
+          playerId: playerSeasonBatting.playerId,
+          atBats: playerSeasonBatting.atBats,
+          hits: playerSeasonBatting.hits,
+          rbi: playerSeasonBatting.rbi,
+        })
+        .from(playerSeasonBatting)
+        .where(eq(playerSeasonBatting.seasonId, seasonIdNum));
+
+      const abMap = new Map<number, { atBats: number; hits: number; rbi: number }>();
+      for (const r of abRows) {
+        abMap.set(r.playerId, { atBats: r.atBats ?? 0, hits: r.hits ?? 0, rbi: r.rbi ?? 0 });
+      }
+
+      // Group hits by player
+      const playerMap = new Map<number, { playerId: number; name: string; atBats: number; hits: SprayHit[] }>();
+      type SprayHit = { hitLocationX: number; hitLocationY: number; hitType: string | null; hitHardness: string | null; eventType: string; isOut: boolean };
+      for (const r of rows) {
+        const pid = r.playerId!;
+        if (!playerMap.has(pid)) {
+          const stats = abMap.get(pid);
+          playerMap.set(pid, {
+            playerId: pid,
+            name: `${r.firstName} ${r.lastName}`,
+            atBats: stats?.atBats ?? 0,
+            hits: [],
+          });
+        }
+        playerMap.get(pid)!.hits.push({
+          hitLocationX: Number(r.hitLocationX ?? 0),
+          hitLocationY: Number(r.hitLocationY ?? 0),
+          hitType: r.hitType,
+          hitHardness: r.hitHardness,
+          eventType: r.eventType ?? '',
+          isOut: (r.outsRecorded ?? 0) > 0,
+        });
+      }
+
+      const result = Array.from(playerMap.values()).sort((a, b) => b.atBats - a.atBats);
+      return reply.send(result);
+    } catch (err) {
+      request.log.error(err);
+      return reply.status(500).send({ message: 'Failed' });
+    }
+  });
 }
