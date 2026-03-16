@@ -78,7 +78,7 @@ const RUNNER_OUT_TYPES = [
 
 /* ── (Field positions are defined inline in the SVG) ── */
 
-type ScoringStep = 'pitch' | 'strikeout_type' | 'out_type' | 'safe_type' | 'fielding' | 'hit_location' | 'runner' | 'runner_out_detail' | 'runner_action' | 'sub_defense' | 'sub_offense' | 'swap_position' | 'swap_position_pick' | 'misc' | 'adjust_score';
+type ScoringStep = 'pitch' | 'strikeout_type' | 'out_type' | 'safe_type' | 'fielding' | 'hit_location' | 'runner' | 'runner_out_detail' | 'runner_out_fielding' | 'runner_action' | 'sub_defense' | 'sub_offense' | 'swap_position' | 'swap_position_pick' | 'misc' | 'adjust_score';
 
 const BATTED_BALL_EVENTS = new Set([
   'single', 'double', 'triple', 'home_run', 'inside_park_hr', 'ground_rule_double',
@@ -95,7 +95,12 @@ interface RunnerQuestion {
   destination: 'first' | 'second' | 'third' | 'home' | null;
   minDestination: 'first' | 'second' | 'third' | 'home';
   advanceReason?: string;
+  fielding?: number[];
 }
+
+const RUNNER_OUTS_NEED_FIELDING = new Set([
+  'caught_stealing', 'picked_off', 'tagged_out', 'force_out', 'double_play', 'triple_play',
+]);
 
 const NO_RBI_REASONS = new Set(['error', 'wild_pitch', 'passed_ball', 'balk', 'defensive_indifference', 'advance_on_error', 'obstruction']);
 const NO_RBI_BATTER_EVENTS = new Set(['error', 'sac_bunt_error', 'sac_fly_error']);
@@ -206,6 +211,10 @@ export function LiveScoringPage() {
   // Runner out detail tab
   const [runnerOutSafeTab, setRunnerOutSafeTab] = useState<'out' | 'safe'>('safe');
   const [runnerSafeDest, setRunnerSafeDest] = useState<'first' | 'second' | 'third' | 'home' | null>(null);
+
+  // Runner out fielding sub-step (after picking out type in runner resolution)
+  const [runnerOutPendingType, setRunnerOutPendingType] = useState<string | null>(null);
+  const [runnerOutFielding, setRunnerOutFielding] = useState<number[]>([]);
 
   // Hit location state
   const [hitLocationX, setHitLocationX] = useState<number | null>(null);
@@ -574,7 +583,8 @@ export function LiveScoringPage() {
           if (r.base === 'first') runnerFirstId = null;
           else if (r.base === 'second') runnerSecondId = null;
           else if (r.base === 'third') runnerThirdId = null;
-          detailParts.push(`${r.playerName} out`);
+          const fldStr = r.fielding?.length ? ` (${r.fielding.join('-')})` : '';
+          detailParts.push(`${r.playerName} out${fldStr}`);
         } else {
           detailParts.push(`${r.playerName} stays`);
         }
@@ -820,7 +830,8 @@ export function LiveScoringPage() {
         } else if (r.outcome === 'safe' && r.destination && r.destination !== r.base) {
           runnerParts.push(`${r.playerName} to ${DEST_SHORT[r.destination] || r.destination}`);
         } else if (r.outcome === 'out') {
-          runnerParts.push(`${r.playerName} out`);
+          const fldStr = r.fielding?.length ? ` (${r.fielding.join('-')})` : '';
+          runnerParts.push(`${r.playerName} out${fldStr}`);
         }
       }
       const runnerSuffix = runnerParts.length > 0 ? `. ${runnerParts.join(', ')}` : '';
@@ -894,7 +905,7 @@ export function LiveScoringPage() {
       cancelWizard(); await loadState();
     } catch (err: any) { alert(err.message || 'Failed'); } finally { setSubmitting(false); }
   };
-  const cancelWizard = () => { setStep('pitch'); setSelectedEvent(null); setFieldingPositions([]); setRunnerQuestions([]); setCurrentRunnerIdx(0); setActiveRunnerBase(null); setRunnerActionType(null); setRunnerActionDest(null); setRunnerActionOutType(null); setRunnerActionFielding([]); setSubPosition(null); setSubBattingSlot(null); setRunnerOutSafeTab('safe'); setRunnerSafeDest(null); setHitLocationX(null); setHitLocationY(null); setHitType(null); setHitHardness(null); setBetweenPitchEvent(null); setOutSafeMorePage(false); };
+  const cancelWizard = () => { setStep('pitch'); setSelectedEvent(null); setFieldingPositions([]); setRunnerQuestions([]); setCurrentRunnerIdx(0); setActiveRunnerBase(null); setRunnerActionType(null); setRunnerActionDest(null); setRunnerActionOutType(null); setRunnerActionFielding([]); setSubPosition(null); setSubBattingSlot(null); setRunnerOutSafeTab('safe'); setRunnerSafeDest(null); setHitLocationX(null); setHitLocationY(null); setHitType(null); setHitHardness(null); setBetweenPitchEvent(null); setOutSafeMorePage(false); setRunnerOutPendingType(null); setRunnerOutFielding([]); };
 
   if (loading) return <div className="flex items-center justify-center h-screen bg-[#0c1220]"><span className="text-gray-400">Loading...</span></div>;
   if (!game) return <div className="flex items-center justify-center h-screen bg-[#0c1220]"><span className="text-red-400">Game not found</span></div>;
@@ -1438,15 +1449,17 @@ export function LiveScoringPage() {
             )}
 
             {/* RUNNER step (after play) - iScore style */}
-            {(step === 'runner' || step === 'runner_out_detail') && runnerQuestions.length > 0 && (() => {
+            {(step === 'runner' || step === 'runner_out_detail' || step === 'runner_out_fielding') && runnerQuestions.length > 0 && (() => {
               const q = runnerQuestions[currentRunnerIdx];
               const baseLabel = q.base === 'first' ? 'FIRST' : q.base === 'second' ? 'SECOND' : 'THIRD';
 
-              const markRunnerOut = (outType: string) => {
+              const markRunnerOut = (outType: string, fielding?: number[]) => {
                 const updated = [...runnerQuestions];
-                updated[currentRunnerIdx] = { ...updated[currentRunnerIdx], outcome: 'out', destination: null, advanceReason: outType };
+                updated[currentRunnerIdx] = { ...updated[currentRunnerIdx], outcome: 'out', destination: null, advanceReason: outType, fielding };
                 setRunnerQuestions(updated);
                 setRunnerOutSafeTab('safe');
+                setRunnerOutPendingType(null);
+                setRunnerOutFielding([]);
                 const nextIdx = currentRunnerIdx + 1;
                 if (nextIdx < runnerQuestions.length) {
                   setCurrentRunnerIdx(nextIdx);
@@ -1462,7 +1475,70 @@ export function LiveScoringPage() {
                 }
               };
 
+              const startRunnerOutFielding = (outType: string) => {
+                if (RUNNER_OUTS_NEED_FIELDING.has(outType)) {
+                  setRunnerOutPendingType(outType);
+                  setRunnerOutFielding([]);
+                  setStep('runner_out_fielding');
+                } else {
+                  markRunnerOut(outType);
+                }
+              };
+
               const minOrder = BASE_ORDER[q.minDestination] || 1;
+
+              // Runner out fielding sub-step
+              if (step === 'runner_out_fielding' && runnerOutPendingType) {
+                const fld = runnerOutFielding;
+                const POS_GRID = [
+                  { pos: 1, label: 'P' },  { pos: 2, label: 'C' },  { pos: 3, label: '1B' },
+                  { pos: 4, label: '2B' }, { pos: 5, label: '3B' }, { pos: 6, label: 'SS' },
+                  { pos: 7, label: 'LF' }, { pos: 8, label: 'CF' }, { pos: 9, label: 'RF' },
+                ];
+                return (
+                  <div className="bg-[#111d30] rounded-xl border border-white/10 overflow-hidden">
+                    <div className="px-4 py-3 border-b border-white/5 text-center">
+                      <p className="text-[10px] text-red-400 font-bold uppercase mb-1 tracking-widest">{runnerOutPendingType.replace(/_/g, ' ')}</p>
+                      <p className="text-xs text-white/50 uppercase font-bold tracking-wide">
+                        {q.playerName} — Fielding sequence
+                      </p>
+                      {fld.length > 0 && (
+                        <p className="text-sm text-white font-bold mt-2 tracking-wider">{fld.join(' – ')}</p>
+                      )}
+                    </div>
+
+                    <div className="p-3">
+                      <div className="grid grid-cols-3 gap-2">
+                        {POS_GRID.map(p => {
+                          const fielder = fieldingLineup.find(l => l.position === p.pos);
+                          return (
+                            <button key={p.pos} onClick={() => setRunnerOutFielding([...runnerOutFielding, p.pos])}
+                              className="py-3 bg-white/5 hover:bg-white/10 border border-white/10 text-white text-xs font-bold rounded-lg transition-colors">
+                              <span className="block text-base">{p.label}</span>
+                              {fielder && <span className="block text-[9px] text-white/40 mt-0.5">{fielder.lastName}</span>}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="flex gap-2 px-3 pb-3">
+                      <button onClick={() => setRunnerOutFielding(runnerOutFielding.slice(0, -1))}
+                        disabled={fld.length === 0}
+                        className="flex-1 py-2.5 bg-white/5 hover:bg-white/10 text-white/60 text-xs font-bold rounded-lg uppercase disabled:opacity-30 transition-colors">
+                        UNDO
+                      </button>
+                      <button onClick={() => markRunnerOut(runnerOutPendingType!, fld.length > 0 ? fld : undefined)}
+                        className="flex-[2] py-2.5 bg-red-700 hover:bg-red-600 text-white text-xs font-bold rounded-lg uppercase transition-colors">
+                        {fld.length > 0 ? `SUBMIT (${fld.join('-')})` : 'SUBMIT (no fielding)'}
+                      </button>
+                    </div>
+
+                    <button onClick={() => { setRunnerOutPendingType(null); setRunnerOutFielding([]); setStep('runner_out_detail'); }}
+                      className="w-full py-3 text-white/40 text-xs font-bold uppercase border-t border-white/10 hover:text-white/60 transition-colors">← BACK</button>
+                  </div>
+                );
+              }
 
               return (
                 <div className="bg-[#111d30] rounded-xl border border-white/10 overflow-hidden">
@@ -1523,7 +1599,7 @@ export function LiveScoringPage() {
                     <div className="p-3 max-h-72 overflow-y-auto">
                       <div className="grid grid-cols-2 gap-2">
                         {RUNNER_OUT_TYPES.map(t => (
-                          <button key={t.key} onClick={() => markRunnerOut(t.key)}
+                          <button key={t.key} onClick={() => startRunnerOutFielding(t.key)}
                             className="py-3 bg-[#1e2d48]/80 hover:bg-[#283a58] text-white text-xs font-bold rounded-lg uppercase transition-colors border border-white/[0.06]">
                             {t.label}
                           </button>
@@ -1542,9 +1618,13 @@ export function LiveScoringPage() {
 
                           if (isBetweenPitch) {
                             options.push({ key: 'advance', label: 'ADVANCE', action: () => answerRunner('safe', dest, betweenPitchEvent!) });
+                            options.push({ key: 'stolen_base', label: 'STOLEN BASE', action: () => answerRunner('safe', dest, 'stolen_base') });
+                            options.push({ key: 'on_throw', label: 'ADVANCED ON THROW', action: () => answerRunner('safe', dest, 'on_throw') });
                             if (minOrder <= BASE_ORDER[q.base]) {
                               options.push({ key: 'held', label: 'HELD UP', action: () => answerRunner('safe', q.base, 'held') });
                             }
+                            options.push({ key: 'error', label: 'ERROR', action: () => answerRunner('safe', dest, 'error') });
+                            options.push({ key: 'defensive_indifference', label: 'DEF. INDIFFERENCE', action: () => answerRunner('safe', dest, 'defensive_indifference') });
                           } else {
                             options.push({ key: 'on_play', label: 'ADVANCED BY BATTER', action: () => answerRunner('safe', dest, 'on_play') });
                             if (minOrder <= BASE_ORDER[q.base]) {
