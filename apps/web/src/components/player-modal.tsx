@@ -199,25 +199,25 @@ export function PlayerModal({ slug, firstName, lastName, onClose }: PlayerModalP
     <div
       ref={backdropRef}
       onClick={handleBackdropClick}
-      className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh] bg-black/75 backdrop-blur-sm overflow-y-auto"
+      className="fixed inset-0 z-50 flex items-start justify-center pt-[4vh] bg-black/55 overflow-y-auto"
     >
-      <div className="bg-[#131c2e] border border-white/[0.06] rounded-2xl shadow-2xl w-full max-w-2xl mx-4 mb-8 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-200">
+      <div className="bg-white border border-[#ccc] rounded-xl shadow-xl w-[min(1200px,96vw)] mx-4 mb-8 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-200">
         {/* Header — player identity block */}
-        <div className="bg-[#0f1626] px-6 py-5 flex items-start justify-between border-b border-white/[0.06]">
+        <div className="bg-[#3a3a3a] px-6 py-4 flex items-start justify-between border-b border-black/30">
           <div>
-            <h2 className="text-xl font-heading font-black text-[#f1f5f9] tracking-tight leading-none">
+            <h2 className="text-2xl font-heading font-black text-white tracking-tight leading-none">
               {firstName} {lastName}
             </h2>
             {(player || derivedPosition) && (
-              <p className="text-[11px] text-[#94a3b8] mt-1.5 font-medium">
-                {player?.jerseyNumber && <span className="text-[#cbd5e1] font-bold mr-1.5">#{player.jerseyNumber}</span>}
-                {derivedPosition && <span className="text-[#94a3b8] mr-1.5">{derivedPosition}</span>}
-                {derivedPosition && (player?.bats || player?.throws) && <span className="text-white/20 mr-1.5">·</span>}
-                {[player?.bats && `Bats: ${player.bats}`, player?.throws && `Throws: ${player.throws}`].filter(Boolean).join(' · ')}
+              <p className="text-[12px] text-white/80 mt-1.5 font-medium">
+                {player?.jerseyNumber && <span className="text-white font-bold mr-2">#{player.jerseyNumber}</span>}
+                {derivedPosition && <span className="text-white/80 mr-2">{derivedPosition}</span>}
+                {derivedPosition && (player?.bats || player?.throws) && <span className="text-white/30 mr-2">·</span>}
+                {[player?.bats && `B:${player.bats}`, player?.throws && `T:${player.throws}`].filter(Boolean).join(' · ')}
               </p>
             )}
           </div>
-          <button onClick={onClose} className="text-[#64748b] hover:text-[#f1f5f9] transition-colors p-1.5 rounded-lg hover:bg-white/[0.06] -mt-1 -mr-1">
+          <button onClick={onClose} className="text-white/70 hover:text-white transition-colors p-1.5 rounded hover:bg-black/10 -mt-1 -mr-1">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -225,15 +225,15 @@ export function PlayerModal({ slug, firstName, lastName, onClose }: PlayerModalP
         </div>
 
         {/* Tab bar */}
-        <div className="flex border-b border-white/[0.06] bg-[#131c2e]">
+        <div className="flex border-b border-[#ccc] bg-[#f3f3f3]">
           {tabs.map(t => (
             <button
               key={t.key}
               onClick={() => setTab(t.key)}
               className={`px-4 py-2.5 text-xs font-semibold transition-colors border-b-2 -mb-px ${
                 tab === t.key
-                  ? 'border-accent text-accent'
-                  : 'border-transparent text-[#64748b] hover:text-[#94a3b8]'
+                  ? 'border-[#136cb2] text-[#136cb2]'
+                  : 'border-transparent text-[#333] hover:text-[#111]'
               }`}
             >
               {t.label}
@@ -241,17 +241,17 @@ export function PlayerModal({ slug, firstName, lastName, onClose }: PlayerModalP
           ))}
           <a
             href={`/players/${slug}`}
-            className="ml-auto px-4 py-2.5 text-[10px] text-[#475569] hover:text-[#64748b] transition-colors flex items-center gap-1"
+            className="ml-auto px-4 py-2.5 text-[10px] text-[#444] hover:text-[#111] transition-colors flex items-center gap-1"
           >
             Full Profile →
           </a>
         </div>
 
         {/* Content — modal mid surface */}
-        <div className="p-5 max-h-[65vh] overflow-y-auto bg-[#131c2e]">
+        <div className="p-5 max-h-[72vh] overflow-y-auto bg-white">
           {loading ? (
             <div className="flex items-center justify-center py-12">
-              <div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+              <div className="w-6 h-6 border-2 border-[#136cb2] border-t-transparent rounded-full animate-spin" />
             </div>
           ) : (
             <>

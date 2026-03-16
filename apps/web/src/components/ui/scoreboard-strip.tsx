@@ -13,11 +13,9 @@ export function ScoreboardStrip({ games }: { games: ScoreGame[] }) {
 
   return (
     <div className="bg-white border-b border-[#ccc]">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-none px-4 sm:px-6 lg:px-10">
         <div className="flex items-center gap-1 py-2 overflow-x-auto scoreboard-scroll">
-          <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-[#666] mr-3">
-            Scores
-          </span>
+          <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-[#666] mr-3" />
           {games.map((g) => {
             const isLive = g.status === 'live';
             const isFinal = g.status === 'final';

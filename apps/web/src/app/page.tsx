@@ -246,10 +246,9 @@ export default async function HomePage() {
             {/* Quick Links */}
             <section className="space-y-2">
               <h3 className="font-heading text-sm font-bold uppercase tracking-wider text-text-muted px-1">Quick Links</h3>
-              <QuickLinkCard title="League Schedule" description="View all upcoming games and results" href="/schedule" />
-              <QuickLinkCard title="Player Directory" description="Browse all registered players" href="/players" />
-              <QuickLinkCard title="Statistics" description="Top performers and statistics" href="/stats" />
-              <QuickLinkCard title="About LBSS" description="About the federation" href="/about" />
+              <QuickLinkCard title="League Schedule" description="" href="/schedule" />
+              <QuickLinkCard title="Player Directory" description="" href="/players" />
+              <QuickLinkCard title="Statistics" description="" href="/stats" />
             </section>
           </div>
         </div>
@@ -283,7 +282,7 @@ function TeamBadge({ name }: { name: string }) {
 function EmptyCard({ message }: { message: string }) {
   return (
     <div className="rounded-xl border border-dashed border-border bg-surface-alt p-8 text-center">
-      <p className="text-sm text-text-muted">{message}</p>
+      <p className="text-sm text-text-muted">{''}</p>
     </div>
   );
 }
