@@ -1229,6 +1229,13 @@ export async function statsRoutes(app: FastifyInstance) {
     }
   });
 
+  const BATTED_BALL_TYPES = [
+    'single', 'double', 'triple', 'home_run', 'inside_park_hr', 'ground_rule_double',
+    'ground_out', 'fly_out', 'line_out', 'pop_out', 'bunt_out', 'bunt_single',
+    'sacrifice_fly', 'sacrifice_bunt', 'infield_fly', 'fielders_choice',
+    'error', 'sac_bunt_error', 'sac_fly_error',
+  ];
+
   // GET /team-hit-locations?seasonId=X&teamId=Y - hit locations for a team in a season (for team spray chart)
   app.get<{ Querystring: { seasonId?: string; teamId?: string } }>('/team-hit-locations', async (request, reply) => {
     try {
@@ -1240,7 +1247,8 @@ export async function statsRoutes(app: FastifyInstance) {
         return reply.send([]);
       }
       const rows = await db
-        .select({
+        .selectDistinctOn([gameEvents.id], {
+          eventId: gameEvents.id,
           hitLocationX: gameEvents.hitLocationX,
           hitLocationY: gameEvents.hitLocationY,
           hitType: gameEvents.hitType,
@@ -1259,6 +1267,7 @@ export async function statsRoutes(app: FastifyInstance) {
             sql`${gameEvents.hitLocationX} IS NOT NULL`,
             sql`${gameEvents.hitLocationY} IS NOT NULL`,
             eq(gameEvents.isDeleted, false),
+            sql`${gameEvents.eventType} IN (${sql.join(BATTED_BALL_TYPES.map(t => sql`${t}`), sql`, `)})`,
           ),
         );
       const result = rows.map(r => ({
@@ -1284,7 +1293,8 @@ export async function statsRoutes(app: FastifyInstance) {
       if (!seasonIdNum || !teamIdNum) return reply.send([]);
 
       const rows = await db
-        .select({
+        .selectDistinctOn([gameEvents.id], {
+          eventId: gameEvents.id,
           playerId: gameEvents.batterId,
           firstName: players.firstName,
           lastName: players.lastName,
@@ -1307,6 +1317,7 @@ export async function statsRoutes(app: FastifyInstance) {
             sql`${gameEvents.hitLocationX} IS NOT NULL`,
             sql`${gameEvents.hitLocationY} IS NOT NULL`,
             eq(gameEvents.isDeleted, false),
+            sql`${gameEvents.eventType} IN (${sql.join(BATTED_BALL_TYPES.map(t => sql`${t}`), sql`, `)})`,
           ),
         );
 

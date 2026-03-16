@@ -352,6 +352,12 @@ export async function playersRoutes(app: FastifyInstance) {
           AND ge.is_deleted = false
           AND ge.hit_location_x IS NOT NULL
           AND ge.hit_location_y IS NOT NULL
+          AND ge.event_type IN (
+            'single', 'double', 'triple', 'home_run', 'inside_park_hr', 'ground_rule_double',
+            'ground_out', 'fly_out', 'line_out', 'pop_out', 'bunt_out', 'bunt_single',
+            'sacrifice_fly', 'sacrifice_bunt', 'infield_fly', 'fielders_choice',
+            'error', 'sac_bunt_error', 'sac_fly_error'
+          )
           ${seasonFilter ? sql`AND l.season_id = ${seasonFilter}` : sql``}
         ORDER BY ge.created_at DESC
       `);

@@ -852,6 +852,7 @@ export function LiveScoringPage() {
       setBalls(0); setStrikes(0); setStep('pitch'); setSelectedEvent(null);
       setFieldingPositions([]); setRunnerQuestions([]); setCurrentRunnerIdx(0);
       setBetweenPitchEvent(null);
+      setHitLocationX(null); setHitLocationY(null); setHitType(null); setHitHardness(null);
       await loadState();
     } catch (err: any) { alert(err.message || 'Failed'); } finally { setSubmitting(false); }
   };
