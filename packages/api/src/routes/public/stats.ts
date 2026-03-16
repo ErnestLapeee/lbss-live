@@ -300,27 +300,29 @@ export async function statsRoutes(app: FastifyInstance) {
       const typeKey = (ht: string | null) => (ht && { grounder: 'gb', line_drive: 'ld', pop_up: 'pu', fly_ball: 'fb' }[ht]) || null;
       const hardKey = (hh: string | null) => (hh && ['soft', 'medium', 'hard'].includes(hh) ? hh : null);
 
+      const battedBallFilter = sql`${gameEvents.eventType} IN (${sql.join(BATTED_BALL_TYPES.map(t => sql`${t}`), sql`, `)})`;
+
       const rows = await db
         .select({
           batterId: gameEvents.batterId,
-          teamId: gameLineups.teamId,
+          teamId: sql<number>`MIN(${gameLineups.teamId})`.as('teamId'),
           hitType: gameEvents.hitType,
           hitHardness: gameEvents.hitHardness,
-          cnt: sql<number>`count(*)::int`.as('cnt'),
+          cnt: sql<number>`count(DISTINCT ${gameEvents.id})::int`.as('cnt'),
         })
         .from(gameEvents)
         .innerJoin(games, eq(gameEvents.gameId, games.id))
         .innerJoin(leagues, eq(games.leagueId, leagues.id))
         .innerJoin(gameLineups, and(eq(gameLineups.gameId, gameEvents.gameId), eq(gameLineups.playerId, gameEvents.batterId)))
         .where(
-          isAllTime
-            ? sql`${gameEvents.hitType} IS NOT NULL AND ${gameEvents.hitHardness} IS NOT NULL AND ${gameEvents.batterId} IS NOT NULL`
-            : and(
-                sql`${gameEvents.hitType} IS NOT NULL AND ${gameEvents.hitHardness} IS NOT NULL AND ${gameEvents.batterId} IS NOT NULL`,
-                eq(leagues.seasonId, seasonIdNum!),
-              ),
+          and(
+            sql`${gameEvents.hitType} IS NOT NULL AND ${gameEvents.hitHardness} IS NOT NULL AND ${gameEvents.batterId} IS NOT NULL`,
+            eq(gameEvents.isDeleted, false),
+            battedBallFilter,
+            ...(isAllTime ? [] : [eq(leagues.seasonId, seasonIdNum!)]),
+          ),
         )
-        .groupBy(gameEvents.batterId, gameLineups.teamId, gameEvents.hitType, gameEvents.hitHardness);
+        .groupBy(gameEvents.batterId, gameEvents.hitType, gameEvents.hitHardness);
 
       const byPlayer = new Map<number, { teamId: number; gbSoft: number; gbMedium: number; gbHard: number; ldSoft: number; ldMedium: number; ldHard: number; puSoft: number; puMedium: number; puHard: number; fbSoft: number; fbMedium: number; fbHard: number }>();
       for (const r of rows) {
@@ -401,27 +403,29 @@ export async function statsRoutes(app: FastifyInstance) {
       const typeKey = (ht: string | null) => (ht && { grounder: 'gb', line_drive: 'ld', pop_up: 'pu', fly_ball: 'fb' }[ht]) || null;
       const hardKey = (hh: string | null) => (hh && ['soft', 'medium', 'hard'].includes(hh) ? hh : null);
 
+      const battedBallFilter = sql`${gameEvents.eventType} IN (${sql.join(BATTED_BALL_TYPES.map(t => sql`${t}`), sql`, `)})`;
+
       const rows = await db
         .select({
           pitcherId: gameEvents.pitcherId,
-          teamId: gameLineups.teamId,
+          teamId: sql<number>`MIN(${gameLineups.teamId})`.as('teamId'),
           hitType: gameEvents.hitType,
           hitHardness: gameEvents.hitHardness,
-          cnt: sql<number>`count(*)::int`.as('cnt'),
+          cnt: sql<number>`count(DISTINCT ${gameEvents.id})::int`.as('cnt'),
         })
         .from(gameEvents)
         .innerJoin(games, eq(gameEvents.gameId, games.id))
         .innerJoin(leagues, eq(games.leagueId, leagues.id))
         .innerJoin(gameLineups, and(eq(gameLineups.gameId, gameEvents.gameId), eq(gameLineups.playerId, gameEvents.pitcherId)))
         .where(
-          isAllTime
-            ? sql`${gameEvents.hitType} IS NOT NULL AND ${gameEvents.hitHardness} IS NOT NULL AND ${gameEvents.pitcherId} IS NOT NULL`
-            : and(
-                sql`${gameEvents.hitType} IS NOT NULL AND ${gameEvents.hitHardness} IS NOT NULL AND ${gameEvents.pitcherId} IS NOT NULL`,
-                eq(leagues.seasonId, seasonIdNum!),
-              ),
+          and(
+            sql`${gameEvents.hitType} IS NOT NULL AND ${gameEvents.hitHardness} IS NOT NULL AND ${gameEvents.pitcherId} IS NOT NULL`,
+            eq(gameEvents.isDeleted, false),
+            battedBallFilter,
+            ...(isAllTime ? [] : [eq(leagues.seasonId, seasonIdNum!)]),
+          ),
         )
-        .groupBy(gameEvents.pitcherId, gameLineups.teamId, gameEvents.hitType, gameEvents.hitHardness);
+        .groupBy(gameEvents.pitcherId, gameEvents.hitType, gameEvents.hitHardness);
 
       const byPlayer = new Map<number, { teamId: number; gbSoft: number; gbMedium: number; gbHard: number; ldSoft: number; ldMedium: number; ldHard: number; puSoft: number; puMedium: number; puHard: number; fbSoft: number; fbMedium: number; fbHard: number }>();
       for (const r of rows) {

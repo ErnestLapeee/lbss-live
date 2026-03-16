@@ -935,63 +935,6 @@ export function StatsClient({
               </div>
             </div>
 
-            {/* Table legend */}
-            <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-text-faint">
-              {tab === 'batting' ? (
-                <>
-                  <span><strong>G</strong> Games</span>
-                  <span><strong>PA</strong> Plate Appearances</span>
-                  <span><strong>AB</strong> At Bats</span>
-                  <span><strong>R</strong> Runs</span>
-                  <span><strong>H</strong> Hits</span>
-                  <span><strong>2B</strong> Doubles</span>
-                  <span><strong>3B</strong> Triples</span>
-                  <span><strong>HR</strong> Home Runs</span>
-                  <span><strong>RBI</strong> Runs Batted In</span>
-                  <span><strong>BB</strong> Walks</span>
-                  <span><strong>HBP</strong> Hit By Pitch</span>
-                  <span><strong>SO</strong> Strikeouts</span>
-                  <span><strong>SB</strong> Stolen Bases</span>
-                  <span><strong>AVG</strong> Batting Average</span>
-                  <span><strong>OBP</strong> On-Base Pct</span>
-                  <span><strong>SLG</strong> Slugging Pct</span>
-                  <span><strong>OPS</strong> On-Base + Slugging</span>
-                </>
-              ) : tab === 'pitching' ? (
-                <>
-                  <span><strong>G</strong> Games</span>
-                  <span><strong>GS</strong> Games Started</span>
-                  <span><strong>W</strong> Wins</span>
-                  <span><strong>L</strong> Losses</span>
-                  <span><strong>SV</strong> Saves</span>
-                  <span><strong>IP</strong> Innings Pitched</span>
-                  <span><strong>H</strong> Hits Allowed</span>
-                  <span><strong>R</strong> Runs Allowed</span>
-                  <span><strong>ER</strong> Earned Runs</span>
-                  <span><strong>BB</strong> Walks</span>
-                  <span><strong>SO</strong> Strikeouts</span>
-                  <span><strong>HR</strong> Home Runs Allowed</span>
-                  <span><strong>HBP</strong> Hit Batters</span>
-                  <span><strong>WP</strong> Wild Pitches</span>
-                  <span><strong>ERA</strong> Earned Run Average</span>
-                  <span><strong>WHIP</strong> Walks + Hits / IP</span>
-                </>
-              ) : (
-                <>
-                  <span><strong>G</strong> Games</span>
-                  <span><strong>PO</strong> Putouts</span>
-                  <span><strong>A</strong> Assists</span>
-                  <span><strong>E</strong> Errors</span>
-                  <span><strong>DP</strong> Double Plays</span>
-                  <span><strong>PB</strong> Passed Balls</span>
-                  <span><strong>SB</strong> Stolen Bases Allowed</span>
-                  <span><strong>CS</strong> Caught Stealing</span>
-                  <span><strong>SBA</strong> Stolen Base Attempts (SB + CS)</span>
-                  <span><strong>PK</strong> Pickoffs</span>
-                  <span><strong>FP%</strong> Fielding Percentage</span>
-                </>
-              )}
-            </div>
           </section>
         </>
       )}
