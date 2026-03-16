@@ -90,6 +90,12 @@ const STRIKEOUT_TYPES = new Set([
   'dropped_third_strike_out',
 ]);
 
+const MISC_OUT_TYPES = new Set([
+  'hit_by_batted_ball', 'runner_interference_batter', 'offensive_interference_batter',
+  'batting_out_of_turn', 'fan_interference', 'thrown_bat', 'out_of_box',
+  'left_base_path_batter', 'other_out',
+]);
+
 const WALK_TYPES = new Set(['walk', 'intentional_walk']);
 
 const ERROR_TYPES = new Set(['error', 'sac_bunt_error', 'sac_fly_error']);
@@ -264,8 +270,12 @@ export function formatPlayByPlay(
 
   // ═══ FIELDER'S CHOICE ═══
   else if (play.eventType === 'fielders_choice') {
-    title = `${batter} reaches on fielder's choice${fsPhrase(fs)}`;
-    if (scored.length > 0) {
+    title = `${batter}: fielder's choice${fsPhrase(fs)}`;
+    const detail = play.eventDetail || '';
+    const runnerInfo = detail.includes('. ') ? detail.substring(detail.indexOf('. ') + 2) : '';
+    if (runnerInfo) {
+      title += `. ${runnerInfo}`;
+    } else if (scored.length > 0) {
       title += `. ${scoredPhrase(scored)}`;
     }
   }
@@ -290,19 +300,14 @@ export function formatPlayByPlay(
     const who = errPos ? `error by ${errPos}` : 'error';
 
     if (play.eventType === 'sac_bunt_error') {
-      title = `${batter} reaches on ${who} on sacrifice bunt attempt`;
+      title = `${batter} reaches on ${who} (sac bunt)`;
     } else if (play.eventType === 'sac_fly_error') {
-      title = `${batter} reaches on ${who} on sacrifice fly attempt`;
+      title = `${batter} reaches on ${who} (sac fly)`;
     } else {
       title = `${batter} reaches on ${who}`;
     }
 
-    // Use eventDetail for multi-runner info (e.g., "Y scores on error. Z advances to third on error.")
-    const detail = play.eventDetail || '';
-    const runnerDetail = detail.includes('. ') ? detail.substring(detail.indexOf('. ') + 2) : '';
-    if (runnerDetail) {
-      title += `. ${runnerDetail}`;
-    } else if (scored.length > 0) {
+    if (scored.length > 0) {
       title += `. ${scoredPhrase(scored)}`;
     }
   }
@@ -319,57 +324,45 @@ export function formatPlayByPlay(
   else if (RUNNER_TYPES.has(play.eventType)) {
     const runner = lastName(play.batterName);
     const detail = play.eventDetail || '';
-    const isMultiRunner = !play.batterName && detail.includes(':');
+
+    // Extract runner movement summary from detail (format: "event: X scores, Y to 3rd")
+    const movementSuffix = detail.includes(': ') ? detail.substring(detail.indexOf(': ') + 2) : '';
+    const capitalize = (s: string) => s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
+
+    const EVENT_LABELS: Record<string, string> = {
+      stolen_base: 'Stolen base',
+      wild_pitch: 'Wild pitch',
+      passed_ball: 'Passed ball',
+      balk: 'Balk',
+      advance_on_error: 'Error',
+      defensive_indifference: 'Defensive indifference',
+    };
+
+    const label = EVENT_LABELS[play.eventType];
 
     switch (play.eventType) {
       case 'stolen_base':
-        title = `${runner} steals a base`;
+      case 'wild_pitch':
+      case 'passed_ball':
+      case 'balk':
+      case 'advance_on_error':
+      case 'defensive_indifference': {
+        if (movementSuffix) {
+          title = `${label}. ${capitalize(movementSuffix)}`;
+        } else if (scored.length > 0) {
+          title = `${label}. ${scoredPhrase(scored)}`;
+        } else if (runner && runner !== 'Unknown') {
+          title = `${label}, ${runner} advances`;
+        } else {
+          title = label || play.eventType.replace(/_/g, ' ');
+        }
         break;
+      }
       case 'caught_stealing':
         title = `${runner} caught stealing${fsPhrase(fs)}`;
         break;
       case 'picked_off':
         title = `${runner} picked off${fsPhrase(fs)}`;
-        break;
-      case 'wild_pitch': {
-        if (isMultiRunner) {
-          const after = detail.split(':').slice(1).join(':').trim();
-          title = `Wild pitch. ${after.charAt(0).toUpperCase() + after.slice(1)}`;
-        } else {
-          title = scored.length > 0 ? `Wild pitch. ${scoredPhrase(scored)}` : `Wild pitch, ${runner} advances`;
-        }
-        break;
-      }
-      case 'passed_ball': {
-        if (isMultiRunner) {
-          const after = detail.split(':').slice(1).join(':').trim();
-          title = `Passed ball. ${after.charAt(0).toUpperCase() + after.slice(1)}`;
-        } else {
-          title = scored.length > 0 ? `Passed ball. ${scoredPhrase(scored)}` : `Passed ball, ${runner} advances`;
-        }
-        break;
-      }
-      case 'balk': {
-        if (isMultiRunner) {
-          const after = detail.split(':').slice(1).join(':').trim();
-          title = `Balk. ${after.charAt(0).toUpperCase() + after.slice(1)}`;
-        } else {
-          title = scored.length > 0 ? `Balk. ${scoredPhrase(scored)}` : `Balk, ${runner} advances`;
-        }
-        break;
-      }
-      case 'advance_on_error': {
-        if (isMultiRunner) {
-          const after = detail.split(':').slice(1).join(':').trim();
-          title = `Error. ${after.charAt(0).toUpperCase() + after.slice(1)}`;
-        } else {
-          title = `${runner} advances on error`;
-          if (scored.length > 0) title += `. ${scoredPhrase(scored)}`;
-        }
-        break;
-      }
-      case 'defensive_indifference':
-        title = `${runner} advances on defensive indifference`;
         break;
       case 'tagged_out':
         title = `${runner} tagged out${fsPhrase(fs)}`;
@@ -378,8 +371,24 @@ export function formatPlayByPlay(
         title = `${runner} forced out${fsPhrase(fs)}`;
         break;
       default:
-        title = `${runner}: ${play.eventType.replace(/_/g, ' ')}`;
+        title = movementSuffix ? `${capitalize(movementSuffix)}` : `${runner}: ${play.eventType.replace(/_/g, ' ')}`;
     }
+  }
+
+  // ═══ MISC OUTS (hit by ball, interference, etc.) ═══
+  else if (MISC_OUT_TYPES.has(play.eventType)) {
+    const MISC_VERBS: Record<string, string> = {
+      hit_by_batted_ball: 'out, hit by batted ball',
+      runner_interference_batter: 'out on runner interference',
+      offensive_interference_batter: 'out on offensive interference',
+      batting_out_of_turn: 'out, batting out of turn',
+      fan_interference: 'out on fan interference',
+      thrown_bat: 'out, thrown bat',
+      out_of_box: 'out, left batter\'s box',
+      left_base_path_batter: 'out, left base path',
+      other_out: 'out',
+    };
+    title = `${batter} ${MISC_VERBS[play.eventType] || 'out'}`;
   }
 
   // ═══ FALLBACK ═══
