@@ -1,12 +1,12 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { apiGet, apiPost, apiPut } from '@/lib/api';
+import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
 
 /* ── Types ── */
 interface Player { playerId: number; firstName: string; lastName: string; jerseyNumber?: string; teamId: number; licensePaid?: string | null }
 interface LineupEntry { id: number; playerId: number; battingOrder: number; position: number; isActive: boolean; isStarter: boolean; firstName: string; lastName: string; teamId: number }
 interface GameState { inning: number; half: 'top' | 'bot'; outs: number; homeScore: number; awayScore: number; bases: { first: number | null; second: number | null; third: number | null }; homeLineScore: number[]; awayLineScore: number[]; eventCount: number; balls: number; strikes: number }
-interface GameEvent { id: number; eventNumber: number; eventType: string; batterId?: number; pitcherId?: number; inning: number; half: string; runsScored?: number; rbi?: number; outsRecorded?: number; eventDetail?: string }
+interface GameEvent { id: number; eventNumber: number; eventType: string; batterId?: number; pitcherId?: number; inning: number; half: string; runsScored?: number; rbi?: number; outsRecorded?: number; eventDetail?: string; fieldingSequence?: string; hitLocationX?: string | null; hitLocationY?: string | null; hitType?: string | null; hitHardness?: string | null; runnerFirstId?: number | null; runnerSecondId?: number | null; runnerThirdId?: number | null; runnersScored?: number[] }
 interface GameData { id: number; status: string; homeTeamId: number; awayTeamId: number; homeTeamName: string; awayTeamName: string; isFinalized: boolean }
 
 const POS_LABELS: Record<number, string> = { 1:'P',2:'C',3:'1B',4:'2B',5:'3B',6:'SS',7:'LF',8:'CF',9:'RF',10:'DH' };
@@ -226,6 +226,9 @@ export function LiveScoringPage() {
   const [adjustHome, setAdjustHome] = useState(0);
   const [adjustAway, setAdjustAway] = useState(0);
 
+  // Event timeline panel
+  const [showEventTimeline, setShowEventTimeline] = useState(false);
+
   // Per-pitcher pitch count derived from events
   const pitcherPitchCounts = useMemo(() => {
     const counts: Record<number, { total: number; balls: number; strikes: number }> = {};
@@ -439,7 +442,6 @@ export function LiveScoringPage() {
 
   const checkRunners = (eventType: string) => {
     if (!gameState) return;
-
     const hasRunners = gameState.bases.first || gameState.bases.second || gameState.bases.third;
 
     // Walks / HBP / IBB: auto-advance forced runners, no questions needed
@@ -856,8 +858,14 @@ export function LiveScoringPage() {
 
   const handleUndo = async () => {
     try {
-      const res: any = await apiPost(`/admin/scoring/${gameId}/undo`, {});
-      // If we undid an at-bat result (not a pitch or runner event), go back one batter
+      await apiPost(`/admin/scoring/${gameId}/undo`, {});
+      await loadState();
+      cancelWizard();
+    } catch (err: any) { alert(err.message); }
+  };
+  const handleRedo = async () => {
+    try {
+      await apiPost(`/admin/scoring/${gameId}/redo`, {});
       await loadState();
       cancelWizard();
     } catch (err: any) { alert(err.message); }
@@ -2049,6 +2057,8 @@ export function LiveScoringPage() {
             <div className="flex items-center justify-between text-[10px] font-bold uppercase">
               <button onClick={() => navigate('/games')} className="px-3 py-1.5 text-white/40 hover:text-white">Exit</button>
               <button onClick={handleUndo} className="px-3 py-1.5 text-white/40 hover:text-white">Undo</button>
+              <button onClick={handleRedo} className="px-3 py-1.5 text-white/40 hover:text-white">Redo</button>
+              <button onClick={() => setShowEventTimeline(v => !v)} className="px-3 py-1.5 text-white/40 hover:text-white">Log</button>
               <button onClick={cancelWizard} className="px-3 py-1.5 text-white/40 hover:text-white">Reset</button>
               <button onClick={() => setStep('misc')} className="px-3 py-1.5 text-white/40 hover:text-white">Misc</button>
             </div>
@@ -2087,6 +2097,200 @@ export function LiveScoringPage() {
             ))}
             {events.length === 0 && <p className="text-white/15">No plays yet</p>}
           </div>
+        </div>
+      </div>
+
+      {/* ── Event Timeline Panel (modal overlay) ── */}
+      {showEventTimeline && (
+        <EventTimelinePanel
+          gameId={gameId}
+          events={events}
+          homeLineup={homeLineup}
+          awayLineup={awayLineup}
+          onClose={() => setShowEventTimeline(false)}
+          onRefresh={async () => { await loadState(); cancelWizard(); }}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Event Timeline Panel – overlay for viewing/editing/deleting events
+   ══════════════════════════════════════════════════════════════════════════ */
+
+interface TimelinePanelProps {
+  gameId: number;
+  events: GameEvent[];
+  homeLineup: LineupEntry[];
+  awayLineup: LineupEntry[];
+  onClose: () => void;
+  onRefresh: () => Promise<void>;
+}
+
+function EventTimelinePanel({ gameId, events, homeLineup, awayLineup, onClose, onRefresh }: TimelinePanelProps) {
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editForm, setEditForm] = useState<Record<string, any>>({});
+  const [previewState, setPreviewState] = useState<{ eventNumber: number; state: any } | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const allPlayers = useMemo(() => {
+    const map = new Map<number, string>();
+    for (const p of [...homeLineup, ...awayLineup]) {
+      map.set(p.playerId, `${p.firstName} ${p.lastName}`);
+    }
+    return map;
+  }, [homeLineup, awayLineup]);
+
+  const playerName = (id?: number | null) => id ? (allPlayers.get(id) || `#${id}`) : '';
+
+  const eventColor = (type: string) => {
+    if (type === 'pitch') return 'text-white/25';
+    if (['single', 'double', 'triple', 'home_run', 'inside_park_hr', 'bunt_single', 'ground_rule_double', 'walk', 'intentional_walk', 'hit_by_pitch'].includes(type)) return 'text-green-400';
+    if (['ground_out', 'fly_out', 'line_out', 'pop_out', 'strikeout_swinging', 'strikeout_looking', 'sacrifice_fly', 'sacrifice_bunt', 'bunt_out', 'infield_fly', 'dropped_third_strike_out'].includes(type)) return 'text-red-400';
+    if (['stolen_base', 'caught_stealing', 'picked_off', 'wild_pitch', 'passed_ball', 'balk', 'advance', 'advance_on_error', 'tagged_out', 'force_out'].includes(type)) return 'text-orange-400';
+    if (['end_half_inning', 'substitution'].includes(type)) return 'text-blue-400';
+    return 'text-white/40';
+  };
+
+  const handlePreview = async (eventNumber: number) => {
+    if (previewState?.eventNumber === eventNumber) { setPreviewState(null); return; }
+    try {
+      const res = await apiGet<{ state: any; eventCount: number }>(`/admin/scoring/${gameId}/state-at/${eventNumber}`);
+      setPreviewState({ eventNumber, state: res.state });
+    } catch { /* ignore */ }
+  };
+
+  const handleDelete = async (eventId: number) => {
+    if (!confirm('Delete this event? Game state will be recomputed.')) return;
+    setBusy(true);
+    try {
+      await apiDelete(`/admin/scoring/${gameId}/event/${eventId}`);
+      await onRefresh();
+    } catch (err: any) { alert(err.message); }
+    finally { setBusy(false); }
+  };
+
+  const startEdit = (evt: GameEvent) => {
+    setEditingId(evt.id);
+    setEditForm({
+      eventType: evt.eventType,
+      eventDetail: evt.eventDetail || '',
+      rbi: evt.rbi ?? 0,
+      runsScored: evt.runsScored ?? 0,
+      outsRecorded: evt.outsRecorded ?? 0,
+    });
+  };
+
+  const saveEdit = async () => {
+    if (!editingId) return;
+    setBusy(true);
+    try {
+      await apiPut(`/admin/scoring/${gameId}/event/${editingId}`, editForm);
+      setEditingId(null);
+      await onRefresh();
+    } catch (err: any) { alert(err.message); }
+    finally { setBusy(false); }
+  };
+
+  const BASE_NAMES: Record<string, string> = { first: '1B', second: '2B', third: '3B' };
+
+  return (
+    <div className="fixed inset-0 z-50 flex">
+      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
+      <div className="relative ml-auto w-full max-w-lg bg-[#0a1628] border-l border-white/10 h-full flex flex-col overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
+          <h2 className="text-white font-bold text-sm uppercase tracking-wider">Game Log</h2>
+          <button onClick={onClose} className="text-white/40 hover:text-white text-lg font-bold">&times;</button>
+        </div>
+
+        {/* State preview bar */}
+        {previewState && (
+          <div className="px-4 py-2 bg-blue-900/30 border-b border-blue-500/20 text-[10px]">
+            <div className="flex items-center gap-3 text-white/70">
+              <span className="font-bold text-blue-400">State @ event #{previewState.eventNumber}</span>
+              <span>{previewState.state.half === 'top' ? '▲' : '▼'}{previewState.state.inning}</span>
+              <span>{previewState.state.outs} out{previewState.state.outs !== 1 ? 's' : ''}</span>
+              <span>Score: {previewState.state.awayScore}-{previewState.state.homeScore}</span>
+              <span>
+                {previewState.state.bases.first ? '1B' : ''}{' '}
+                {previewState.state.bases.second ? '2B' : ''}{' '}
+                {previewState.state.bases.third ? '3B' : ''}
+                {!previewState.state.bases.first && !previewState.state.bases.second && !previewState.state.bases.third ? 'Empty' : ''}
+              </span>
+            </div>
+            <button onClick={() => setPreviewState(null)} className="text-blue-400 hover:text-blue-300 mt-0.5">Close preview</button>
+          </div>
+        )}
+
+        {/* Event list */}
+        <div className="flex-1 overflow-y-auto">
+          {events.length === 0 && <p className="text-white/20 text-center mt-8 text-xs">No events yet</p>}
+          {events.map((evt, i) => {
+            const showInningDivider = i === 0 || evt.inning !== events[i - 1].inning || evt.half !== events[i - 1].half;
+            return (
+              <div key={evt.id}>
+                {showInningDivider && (
+                  <div className="px-4 py-1 bg-white/[0.03] text-[9px] text-white/30 font-bold uppercase tracking-wider border-b border-white/5">
+                    {evt.half === 'top' ? '▲' : '▼'} Inning {evt.inning}
+                  </div>
+                )}
+                <div className={`px-4 py-1.5 border-b border-white/[0.04] hover:bg-white/[0.03] ${previewState?.eventNumber === evt.eventNumber ? 'bg-blue-900/20' : ''}`}>
+                  {editingId === evt.id ? (
+                    <div className="space-y-1.5 py-1">
+                      <div className="flex gap-2 text-[10px]">
+                        <label className="text-white/40 w-16 shrink-0">Type:</label>
+                        <input value={editForm.eventType || ''} onChange={e => setEditForm(f => ({ ...f, eventType: e.target.value }))} className="flex-1 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-[10px]" />
+                      </div>
+                      <div className="flex gap-2 text-[10px]">
+                        <label className="text-white/40 w-16 shrink-0">Detail:</label>
+                        <input value={editForm.eventDetail || ''} onChange={e => setEditForm(f => ({ ...f, eventDetail: e.target.value }))} className="flex-1 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-[10px]" />
+                      </div>
+                      <div className="flex gap-2 text-[10px]">
+                        <label className="text-white/40 w-16 shrink-0">RBI:</label>
+                        <input type="number" value={editForm.rbi ?? 0} onChange={e => setEditForm(f => ({ ...f, rbi: parseInt(e.target.value) || 0 }))} className="w-12 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-[10px]" />
+                        <label className="text-white/40 w-10 shrink-0 ml-2">Runs:</label>
+                        <input type="number" value={editForm.runsScored ?? 0} onChange={e => setEditForm(f => ({ ...f, runsScored: parseInt(e.target.value) || 0 }))} className="w-12 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-[10px]" />
+                        <label className="text-white/40 w-10 shrink-0 ml-2">Outs:</label>
+                        <input type="number" value={editForm.outsRecorded ?? 0} onChange={e => setEditForm(f => ({ ...f, outsRecorded: parseInt(e.target.value) || 0 }))} className="w-12 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-[10px]" />
+                      </div>
+                      <div className="flex gap-1.5 mt-1">
+                        <button onClick={saveEdit} disabled={busy} className="px-2 py-0.5 bg-green-700 hover:bg-green-600 text-white text-[9px] font-bold rounded uppercase">Save</button>
+                        <button onClick={() => setEditingId(null)} className="px-2 py-0.5 bg-white/10 hover:bg-white/20 text-white/60 text-[9px] font-bold rounded uppercase">Cancel</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-start gap-2">
+                      <span className="text-white/15 text-[9px] w-5 shrink-0 text-right mt-0.5">#{evt.eventNumber}</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className={`text-[10px] font-bold ${eventColor(evt.eventType)}`}>{evt.eventType.replace(/_/g, ' ').toUpperCase()}</span>
+                          {evt.batterId ? <span className="text-white/25 text-[9px]">{playerName(evt.batterId)}</span> : null}
+                        </div>
+                        {evt.eventDetail && <div className="text-white/30 text-[9px] truncate">{evt.eventDetail}</div>}
+                        <div className="flex gap-2 text-[8px] text-white/15 mt-0.5">
+                          {(evt.runsScored ?? 0) > 0 && <span className="text-green-500/60">{evt.runsScored}R</span>}
+                          {(evt.rbi ?? 0) > 0 && <span className="text-green-500/60">{evt.rbi}RBI</span>}
+                          {(evt.outsRecorded ?? 0) > 0 && <span className="text-red-400/60">{evt.outsRecorded}OUT</span>}
+                        </div>
+                      </div>
+                      <div className="flex gap-0.5 shrink-0">
+                        <button onClick={() => handlePreview(evt.eventNumber)} title="Preview state" className={`px-1 py-0.5 text-[8px] rounded ${previewState?.eventNumber === evt.eventNumber ? 'bg-blue-600 text-white' : 'bg-white/5 text-white/30 hover:text-white/60'}`}>&#9654;</button>
+                        <button onClick={() => startEdit(evt)} title="Edit" className="px-1 py-0.5 text-[8px] bg-white/5 text-white/30 hover:text-white/60 rounded">&#9998;</button>
+                        <button onClick={() => handleDelete(evt.id)} title="Delete" disabled={busy} className="px-1 py-0.5 text-[8px] bg-white/5 text-red-400/50 hover:text-red-400 rounded">&times;</button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Footer */}
+        <div className="px-4 py-2 border-t border-white/10 text-[9px] text-white/20">
+          {events.length} event{events.length !== 1 ? 's' : ''}
         </div>
       </div>
     </div>

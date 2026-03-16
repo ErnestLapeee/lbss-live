@@ -464,6 +464,176 @@ export async function adminScoringRoutes(app: FastifyInstance) {
     }
   });
 
+  // ── POST /:gameId/redo ── Un-delete last soft-deleted event
+  app.post<{ Params: { gameId: string } }>('/:gameId/redo', async (request, reply) => {
+    try {
+      const gameId = parseInt(request.params.gameId, 10);
+
+      const [lastDeleted] = await db.select()
+        .from(gameEvents)
+        .where(and(eq(gameEvents.gameId, gameId), eq(gameEvents.isDeleted, true)))
+        .orderBy(desc(gameEvents.eventNumber))
+        .limit(1);
+
+      if (!lastDeleted) return reply.status(400).send({ message: 'No events to redo' });
+
+      await db.update(gameEvents)
+        .set({ isDeleted: false })
+        .where(eq(gameEvents.id, lastDeleted.id));
+
+      const allEvents = await db.select().from(gameEvents)
+        .where(and(eq(gameEvents.gameId, gameId), eq(gameEvents.isDeleted, false)))
+        .orderBy(gameEvents.eventNumber);
+
+      const state = computeGameState(allEvents);
+
+      await db.update(games).set({
+        homeScore: state.homeScore,
+        awayScore: state.awayScore,
+        currentInning: state.inning,
+        currentHalf: state.half,
+        currentOuts: state.outs,
+        updatedAt: new Date(),
+      }).where(eq(games.id, gameId));
+
+      try { getIO().to(`game:${gameId}`).emit('game:update', { state }); } catch {}
+
+      return reply.send({ redone: lastDeleted.eventNumber, redoneType: lastDeleted.eventType, state });
+    } catch (err) {
+      request.log.error(err);
+      return reply.status(500).send({ message: 'Failed to redo' });
+    }
+  });
+
+  // ── PUT /:gameId/event/:eventId ── Edit an existing event
+  app.put<{
+    Params: { gameId: string; eventId: string };
+    Body: Record<string, any>;
+  }>('/:gameId/event/:eventId', async (request, reply) => {
+    try {
+      const gameId = parseInt(request.params.gameId, 10);
+      const eventId = parseInt(request.params.eventId, 10);
+      const body = request.body;
+
+      const [existing] = await db.select().from(gameEvents)
+        .where(and(eq(gameEvents.id, eventId), eq(gameEvents.gameId, gameId)))
+        .limit(1);
+      if (!existing) return reply.status(404).send({ message: 'Event not found' });
+
+      const allowedFields: Record<string, (v: any) => any> = {
+        eventType: (v) => v,
+        eventDetail: (v) => v ?? null,
+        rbi: (v) => v ?? 0,
+        runsScored: (v) => v ?? 0,
+        outsRecorded: (v) => v ?? 0,
+        errorsOnPlay: (v) => v ?? 0,
+        fieldingSequence: (v) => v ?? null,
+        hitLocationX: (v) => v != null ? String(v) : null,
+        hitLocationY: (v) => v != null ? String(v) : null,
+        hitType: (v) => v ?? null,
+        hitHardness: (v) => v ?? null,
+        runnerFirstId: (v) => v ?? null,
+        runnerSecondId: (v) => v ?? null,
+        runnerThirdId: (v) => v ?? null,
+        runnersScored: (v) => v ?? [],
+        batterId: (v) => v ?? null,
+        pitcherId: (v) => v ?? null,
+      };
+
+      const updates: Record<string, any> = {};
+      for (const [key, transform] of Object.entries(allowedFields)) {
+        if (key in body) updates[key] = transform(body[key]);
+      }
+
+      if (Object.keys(updates).length === 0) {
+        return reply.status(400).send({ message: 'No valid fields to update' });
+      }
+
+      await db.update(gameEvents).set(updates).where(eq(gameEvents.id, eventId));
+
+      const allEvents = await db.select().from(gameEvents)
+        .where(and(eq(gameEvents.gameId, gameId), eq(gameEvents.isDeleted, false)))
+        .orderBy(gameEvents.eventNumber);
+
+      const state = computeGameState(allEvents);
+
+      await db.update(games).set({
+        homeScore: state.homeScore,
+        awayScore: state.awayScore,
+        currentInning: state.inning,
+        currentHalf: state.half,
+        currentOuts: state.outs,
+        updatedAt: new Date(),
+      }).where(eq(games.id, gameId));
+
+      try { getIO().to(`game:${gameId}`).emit('game:update', { state }); } catch {}
+
+      return reply.send({ updated: eventId, state });
+    } catch (err) {
+      request.log.error(err);
+      return reply.status(500).send({ message: 'Failed to edit event' });
+    }
+  });
+
+  // ── DELETE /:gameId/event/:eventId ── Soft-delete a specific event
+  app.delete<{ Params: { gameId: string; eventId: string } }>('/:gameId/event/:eventId', async (request, reply) => {
+    try {
+      const gameId = parseInt(request.params.gameId, 10);
+      const eventId = parseInt(request.params.eventId, 10);
+
+      const [existing] = await db.select().from(gameEvents)
+        .where(and(eq(gameEvents.id, eventId), eq(gameEvents.gameId, gameId)))
+        .limit(1);
+      if (!existing) return reply.status(404).send({ message: 'Event not found' });
+
+      await db.update(gameEvents)
+        .set({ isDeleted: true })
+        .where(eq(gameEvents.id, eventId));
+
+      const allEvents = await db.select().from(gameEvents)
+        .where(and(eq(gameEvents.gameId, gameId), eq(gameEvents.isDeleted, false)))
+        .orderBy(gameEvents.eventNumber);
+
+      const state = computeGameState(allEvents);
+
+      await db.update(games).set({
+        homeScore: state.homeScore,
+        awayScore: state.awayScore,
+        currentInning: state.inning,
+        currentHalf: state.half,
+        currentOuts: state.outs,
+        updatedAt: new Date(),
+      }).where(eq(games.id, gameId));
+
+      try { getIO().to(`game:${gameId}`).emit('game:update', { state }); } catch {}
+
+      return reply.send({ deleted: eventId, state });
+    } catch (err) {
+      request.log.error(err);
+      return reply.status(500).send({ message: 'Failed to delete event' });
+    }
+  });
+
+  // ── GET /:gameId/state-at/:eventNumber ── Time-travel preview
+  app.get<{ Params: { gameId: string; eventNumber: string } }>('/:gameId/state-at/:eventNumber', async (request, reply) => {
+    try {
+      const gameId = parseInt(request.params.gameId, 10);
+      const upTo = parseInt(request.params.eventNumber, 10);
+
+      const allEvents = await db.select().from(gameEvents)
+        .where(and(eq(gameEvents.gameId, gameId), eq(gameEvents.isDeleted, false)))
+        .orderBy(gameEvents.eventNumber);
+
+      const sliced = allEvents.filter(e => e.eventNumber <= upTo);
+      const state = computeGameState(sliced);
+
+      return reply.send({ state, eventCount: sliced.length });
+    } catch (err) {
+      request.log.error(err);
+      return reply.status(500).send({ message: 'Failed to get state at event' });
+    }
+  });
+
   // ── PUT /:gameId/substitute ── Substitute a player
   app.put<{
     Params: { gameId: string };

@@ -597,7 +597,7 @@ export function LiveGameClient({
                 const gdp = box?.groundedIntoDoublePlays ?? 0;
                 const fc = box?.fieldersChoice ?? 0;
                 const ci = box?.catcherInterference ?? 0;
-                const tb = box?.totalBases ?? (live?.tb ?? (h ? (box?.singles ?? 0) + dbl * 2 + trp * 3 + hr * 4 : 0));
+                const tb = box?.totalBases ?? live?.tb ?? 0;
                 const displayAvg = fmtAvg(h, ab);
                 const displayOps = fmtOps(h, ab, bb, hbp, sf, tb);
                 return (
@@ -632,76 +632,64 @@ export function LiveGameClient({
                 );
               })}
             </tbody>
-            <tfoot>
-              <tr className="border-t border-white/10 text-white/60 font-bold">
-                <td className="py-1.5 pl-2" colSpan={3}>Totals</td>
-                <td className="text-center font-mono">
-                  {rows.reduce((s, p) => s + (battingMap[p.playerId]?.plateAppearances ?? 0), 0)}
-                </td>
-                <td className="text-center font-mono">
-                  {rows.reduce((s, p) => s + (battingMap[p.playerId]?.atBats ?? liveBattingMap[p.playerId]?.ab ?? 0), 0)}
-                </td>
-                <td className="text-center font-mono">
-                  {rows.reduce((s, p) => s + (battingMap[p.playerId]?.runs ?? liveBattingMap[p.playerId]?.r ?? 0), 0)}
-                </td>
-                <td className="text-center font-mono">
-                  {rows.reduce((s, p) => s + (battingMap[p.playerId]?.hits ?? liveBattingMap[p.playerId]?.h ?? 0), 0)}
-                </td>
-                <td className="text-center font-mono">
-                  {rows.reduce((s, p) => s + (battingMap[p.playerId]?.doubles ?? 0), 0)}
-                </td>
-                <td className="text-center font-mono">
-                  {rows.reduce((s, p) => s + (battingMap[p.playerId]?.triples ?? 0), 0)}
-                </td>
-                <td className="text-center font-mono">
-                  {rows.reduce((s, p) => s + (battingMap[p.playerId]?.homeRuns ?? liveBattingMap[p.playerId]?.hr ?? 0), 0)}
-                </td>
-                <td className="text-center font-mono">
-                  {rows.reduce((s, p) => s + (battingMap[p.playerId]?.rbi ?? liveBattingMap[p.playerId]?.rbi ?? 0), 0)}
-                </td>
-                <td className="text-center font-mono">
-                  {rows.reduce((s, p) => s + (battingMap[p.playerId]?.walks ?? liveBattingMap[p.playerId]?.bb ?? 0), 0)}
-                </td>
-                <td className="text-center font-mono">
-                  {rows.reduce((s, p) => s + (battingMap[p.playerId]?.hitByPitch ?? 0), 0)}
-                </td>
-                <td className="text-center font-mono">
-                  {rows.reduce((s, p) => s + (battingMap[p.playerId]?.strikeouts ?? liveBattingMap[p.playerId]?.so ?? 0), 0)}
-                </td>
-                <td className="text-center font-mono">
-                  {rows.reduce((s, p) => s + (battingMap[p.playerId]?.strikeoutsLooking ?? 0), 0)}
-                </td>
-                <td className="text-center font-mono">
-                  {rows.reduce((s, p) => s + (battingMap[p.playerId]?.strikeoutsSwinging ?? 0), 0)}
-                </td>
-                <td className="text-center font-mono">
-                  {rows.reduce((s, p) => s + (battingMap[p.playerId]?.stolenBases ?? liveBattingMap[p.playerId]?.sb ?? 0), 0)}
-                </td>
-                <td className="text-center font-mono">
-                  {rows.reduce((s, p) => s + (battingMap[p.playerId]?.caughtStealing ?? 0), 0)}
-                </td>
-                <td className="text-center font-mono">
-                  {rows.reduce((s, p) => s + ((battingMap[p.playerId]?.sacrificeFlies ?? liveBattingMap[p.playerId]?.sf ?? 0)), 0)}
-                </td>
-                <td className="text-center font-mono">
-                  {rows.reduce((s, p) => s + (battingMap[p.playerId]?.sacrificeBunts ?? 0), 0)}
-                </td>
-                <td className="text-center font-mono">
-                  {rows.reduce((s, p) => s + (battingMap[p.playerId]?.buntSingles ?? 0), 0)}
-                </td>
-                <td className="text-center font-mono">
-                  {rows.reduce((s, p) => s + (battingMap[p.playerId]?.groundedIntoDoublePlays ?? 0), 0)}
-                </td>
-                <td className="text-center font-mono">
-                  {rows.reduce((s, p) => s + (battingMap[p.playerId]?.fieldersChoice ?? 0), 0)}
-                </td>
-                <td className="text-center font-mono">
-                  {rows.reduce((s, p) => s + (battingMap[p.playerId]?.catcherInterference ?? 0), 0)}
-                </td>
-                <td className="text-center font-mono text-cyan-400/70 text-[10px]">—</td>
-                <td className="text-center font-mono text-cyan-400/70 text-[10px]">—</td>
-              </tr>
-            </tfoot>
+            {(() => {
+              const tPA = rows.reduce((s, p) => s + (battingMap[p.playerId]?.plateAppearances ?? liveBattingMap[p.playerId]?.pa ?? 0), 0);
+              const tAB = rows.reduce((s, p) => s + (battingMap[p.playerId]?.atBats ?? liveBattingMap[p.playerId]?.ab ?? 0), 0);
+              const tR = rows.reduce((s, p) => s + (battingMap[p.playerId]?.runs ?? liveBattingMap[p.playerId]?.r ?? 0), 0);
+              const tH = rows.reduce((s, p) => s + (battingMap[p.playerId]?.hits ?? liveBattingMap[p.playerId]?.h ?? 0), 0);
+              const tDbl = rows.reduce((s, p) => s + (battingMap[p.playerId]?.doubles ?? 0), 0);
+              const tTrp = rows.reduce((s, p) => s + (battingMap[p.playerId]?.triples ?? 0), 0);
+              const tHR = rows.reduce((s, p) => s + (battingMap[p.playerId]?.homeRuns ?? liveBattingMap[p.playerId]?.hr ?? 0), 0);
+              const tRBI = rows.reduce((s, p) => s + (battingMap[p.playerId]?.rbi ?? liveBattingMap[p.playerId]?.rbi ?? 0), 0);
+              const tBB = rows.reduce((s, p) => s + (battingMap[p.playerId]?.walks ?? liveBattingMap[p.playerId]?.bb ?? 0), 0);
+              const tHBP = rows.reduce((s, p) => s + (battingMap[p.playerId]?.hitByPitch ?? liveBattingMap[p.playerId]?.hbp ?? 0), 0);
+              const tSO = rows.reduce((s, p) => s + (battingMap[p.playerId]?.strikeouts ?? liveBattingMap[p.playerId]?.so ?? 0), 0);
+              const tKc = rows.reduce((s, p) => s + (battingMap[p.playerId]?.strikeoutsLooking ?? 0), 0);
+              const tKs = rows.reduce((s, p) => s + (battingMap[p.playerId]?.strikeoutsSwinging ?? 0), 0);
+              const tSB = rows.reduce((s, p) => s + (battingMap[p.playerId]?.stolenBases ?? liveBattingMap[p.playerId]?.sb ?? 0), 0);
+              const tCS = rows.reduce((s, p) => s + (battingMap[p.playerId]?.caughtStealing ?? 0), 0);
+              const tSF = rows.reduce((s, p) => s + (battingMap[p.playerId]?.sacrificeFlies ?? liveBattingMap[p.playerId]?.sf ?? 0), 0);
+              const tSAC = rows.reduce((s, p) => s + (battingMap[p.playerId]?.sacrificeBunts ?? 0), 0);
+              const tB = rows.reduce((s, p) => s + (battingMap[p.playerId]?.buntSingles ?? 0), 0);
+              const tGDP = rows.reduce((s, p) => s + (battingMap[p.playerId]?.groundedIntoDoublePlays ?? 0), 0);
+              const tFC = rows.reduce((s, p) => s + (battingMap[p.playerId]?.fieldersChoice ?? 0), 0);
+              const tCI = rows.reduce((s, p) => s + (battingMap[p.playerId]?.catcherInterference ?? 0), 0);
+              const tTB = rows.reduce((s, p) => {
+                const box = battingMap[p.playerId];
+                const live = liveBattingMap[p.playerId];
+                return s + (box?.totalBases ?? live?.tb ?? 0);
+              }, 0);
+              return (
+                <tfoot>
+                  <tr className="border-t border-white/10 text-white/60 font-bold">
+                    <td className="py-1.5 pl-2" colSpan={3}>Totals</td>
+                    <td className="text-center font-mono">{tPA}</td>
+                    <td className="text-center font-mono">{tAB}</td>
+                    <td className="text-center font-mono">{tR}</td>
+                    <td className="text-center font-mono">{tH}</td>
+                    <td className="text-center font-mono">{tDbl}</td>
+                    <td className="text-center font-mono">{tTrp}</td>
+                    <td className="text-center font-mono">{tHR}</td>
+                    <td className="text-center font-mono">{tRBI}</td>
+                    <td className="text-center font-mono">{tBB}</td>
+                    <td className="text-center font-mono">{tHBP}</td>
+                    <td className="text-center font-mono">{tSO}</td>
+                    <td className="text-center font-mono">{tKc}</td>
+                    <td className="text-center font-mono">{tKs}</td>
+                    <td className="text-center font-mono">{tSB}</td>
+                    <td className="text-center font-mono">{tCS}</td>
+                    <td className="text-center font-mono">{tSF}</td>
+                    <td className="text-center font-mono">{tSAC}</td>
+                    <td className="text-center font-mono">{tB}</td>
+                    <td className="text-center font-mono">{tGDP}</td>
+                    <td className="text-center font-mono">{tFC}</td>
+                    <td className="text-center font-mono">{tCI}</td>
+                    <td className="text-center font-mono text-cyan-400/70 text-[10px]">{fmtAvg(tH, tAB)}</td>
+                    <td className="text-center font-mono text-cyan-400/70 text-[10px]">{fmtOps(tH, tAB, tBB, tHBP, tSF, tTB)}</td>
+                  </tr>
+                </tfoot>
+              );
+            })()}
           </table>
         </div>
       </div>
@@ -791,6 +779,63 @@ export function LiveGameClient({
                 );
               })}
             </tbody>
+            {(() => {
+              const sumIp = (arr: PitchingBoxScore[]) => {
+                let thirds = 0;
+                for (const p of arr) {
+                  const s = String(p.inningsPitched || '0');
+                  const parts = s.split('.');
+                  thirds += parseInt(parts[0] || '0') * 3 + parseInt(parts[1] || '0');
+                }
+                const full = Math.floor(thirds / 3);
+                const rem = thirds % 3;
+                return { display: rem > 0 ? `${full}.${rem}` : `${full}`, ip: thirds / 3 };
+              };
+              const ipResult = sumIp(pitchers);
+              const tH = pitchers.reduce((s, p) => s + (p.hits ?? 0), 0);
+              const tR = pitchers.reduce((s, p) => s + (p.runs ?? 0), 0);
+              const tER = pitchers.reduce((s, p) => s + (p.earnedRuns ?? 0), 0);
+              const tBB = pitchers.reduce((s, p) => s + (p.walks ?? 0), 0);
+              const tK = pitchers.reduce((s, p) => s + (p.strikeouts ?? 0), 0);
+              const tKc = pitchers.reduce((s, p) => s + (p.strikeoutsLooking ?? 0), 0);
+              const tKs = pitchers.reduce((s, p) => s + (p.strikeoutsSwinging ?? 0), 0);
+              const tHR = pitchers.reduce((s, p) => s + (p.homeRuns ?? 0), 0);
+              const tHBP = pitchers.reduce((s, p) => s + (p.hitBatters ?? 0), 0);
+              const tWP = pitchers.reduce((s, p) => s + (p.wildPitches ?? 0), 0);
+              const tBF = pitchers.reduce((s, p) => s + (p.battersFaced ?? 0), 0);
+              const tNP = pitchers.reduce((s, p) => s + (p.pitchesThrown ?? 0), 0);
+              const tBalls = pitchers.reduce((s, p) => s + (p.balls ?? 0), 0);
+              const tStrikes = pitchers.reduce((s, p) => s + (p.strikes ?? 0), 0);
+              const tERA = ipResult.ip > 0 ? ((tER / ipResult.ip) * 9).toFixed(2) : '—';
+              const tWHIP = ipResult.ip > 0 ? ((tH + tBB) / ipResult.ip).toFixed(2) : '—';
+              return (
+                <tfoot>
+                  <tr className="border-t border-white/10 text-white/60 font-bold">
+                    <td className="py-1.5 pl-2">Totals</td>
+                    <td></td>
+                    <td className="text-center font-mono">{ipResult.display}</td>
+                    <td className="text-center font-mono">{tH}</td>
+                    <td className="text-center font-mono">{tR}</td>
+                    <td className="text-center font-mono">{tER}</td>
+                    <td className="text-center font-mono">{tBB}</td>
+                    <td className="text-center font-mono">{tK}</td>
+                    <td className="text-center font-mono">{tKc}</td>
+                    <td className="text-center font-mono">{tKs}</td>
+                    <td className="text-center font-mono">{tHR}</td>
+                    <td className="text-center font-mono">{tHBP}</td>
+                    <td className="text-center font-mono">{tWP}</td>
+                    <td className="text-center font-mono">{tBF}</td>
+                    <td className="text-center font-mono">{tNP}</td>
+                    <td className="text-center font-mono">{tBalls}</td>
+                    <td className="text-center font-mono">{tStrikes}</td>
+                    <td className="text-center font-mono">{strikePct(tBalls, tStrikes)}</td>
+                    <td></td>
+                    <td className="text-center text-amber-400/70 font-mono text-[10px]">{tERA}</td>
+                    <td className="text-center text-amber-400/70 font-mono text-[10px]">{tWHIP}</td>
+                  </tr>
+                </tfoot>
+              );
+            })()}
           </table>
         </div>
       </div>
