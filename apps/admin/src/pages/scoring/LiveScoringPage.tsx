@@ -185,7 +185,7 @@ export function LiveScoringPage() {
 
   const [balls, setBalls] = useState(0);
   const [strikes, setStrikes] = useState(0);
-  const [currentBatterIdx, setCurrentBatterIdx] = useState<Record<string, number>>({ home: 0, away: 0 });
+  const [skipOffset, setSkipOffset] = useState<Record<string, number>>({ home: 0, away: 0 });
   const [submitting, setSubmitting] = useState(false);
 
   const [step, setStep] = useState<ScoringStep>('pitch');
@@ -261,7 +261,7 @@ export function LiveScoringPage() {
 
   useEffect(() => { loadState(); loadRosters(); }, [loadState, loadRosters]);
 
-  // Derive current batter position from events (survives page refresh, always correct)
+  // Derive current batter position from events (computed during render, always in sync)
   const NON_AB_EVENTS = useMemo(() => new Set([
     'pitch', 'stolen_base', 'caught_stealing', 'picked_off', 'wild_pitch', 'passed_ball',
     'balk', 'advance', 'advance_on_error', 'defensive_indifference',
@@ -271,7 +271,7 @@ export function LiveScoringPage() {
     'end_half_inning', 'adjust_score', 'illegal_pitch',
   ]), []);
 
-  useEffect(() => {
+  const derivedBatterIdx = useMemo(() => {
     let awayABs = 0;
     let homeABs = 0;
     for (const e of events) {
@@ -279,11 +279,12 @@ export function LiveScoringPage() {
       if (e.half === 'top') awayABs++;
       else if (e.half === 'bot') homeABs++;
     }
-    setCurrentBatterIdx(prev => {
-      if (prev.away === awayABs && prev.home === homeABs) return prev;
-      return { away: awayABs, home: homeABs };
-    });
+    return { away: awayABs, home: homeABs };
   }, [events, NON_AB_EVENTS]);
+
+  // Reset skip offset whenever events change (loadState brings fresh truth)
+  const prevEventCount = useMemo(() => events.length, [events]);
+  useEffect(() => { setSkipOffset({ home: 0, away: 0 }); }, [prevEventCount]);
 
   // Derived
   const battingTeamId = gameState?.half === 'top' ? game?.awayTeamId : game?.homeTeamId;
@@ -295,7 +296,7 @@ export function LiveScoringPage() {
   const currentPitcher = fieldingLineup.find(l => l.position === 1);
 
   const battingSide = gameState?.half === 'top' ? 'away' : 'home';
-  const rawIdx = currentBatterIdx[battingSide] || 0;
+  const rawIdx = (derivedBatterIdx[battingSide] || 0) + (skipOffset[battingSide] || 0);
 
   const battingOrderSlot = (rawIdx % 9) + 1;
   const currentBatter = battingLineup.find(l => l.battingOrder === battingOrderSlot) ?? null;
@@ -835,7 +836,6 @@ export function LiveScoringPage() {
         hitLocationX, hitLocationY, hitType, hitHardness,
         putoutFielderIds, assistFielderIds, errorFielderIds,
       });
-      setCurrentBatterIdx(prev => ({ ...prev, [battingSide]: (prev[battingSide] || 0) + 1 }));
       setBalls(0); setStrikes(0); setStep('pitch'); setSelectedEvent(null);
       setFieldingPositions([]); setRunnerQuestions([]); setCurrentRunnerIdx(0);
       setBetweenPitchEvent(null);
@@ -847,11 +847,6 @@ export function LiveScoringPage() {
     try {
       const res: any = await apiPost(`/admin/scoring/${gameId}/undo`, {});
       // If we undid an at-bat result (not a pitch or runner event), go back one batter
-      const undoneType = res?.undoneType;
-      const RUNNER_SET = new Set(['stolen_base','caught_stealing','picked_off','wild_pitch','passed_ball','balk','advance','advance_on_error','defensive_indifference','runner_interference','appeal_play','tagged_out','force_out','hit_by_ball','missed_base','left_base_early','left_base_path','offensive_interference','passed_runner','hesitation','double_play','triple_play','end_half_inning','illegal_pitch','pitch']);
-      if (undoneType && !RUNNER_SET.has(undoneType)) {
-        setCurrentBatterIdx(prev => ({ ...prev, [battingSide]: Math.max(0, (prev[battingSide] || 0) - 1) }));
-      }
       await loadState();
       cancelWizard();
     } catch (err: any) { alert(err.message); }
@@ -861,7 +856,7 @@ export function LiveScoringPage() {
     try { await apiPost(`/admin/scoring/${gameId}/finalize`, {}); alert('Game finalized!'); navigate('/games'); } catch (err: any) { alert(err.message); }
   };
   const handleSkipBatter = () => {
-    setCurrentBatterIdx(prev => ({ ...prev, [battingSide]: (prev[battingSide] || 0) + 1 }));
+    setSkipOffset(prev => ({ ...prev, [battingSide]: (prev[battingSide] || 0) + 1 }));
     setBalls(0); setStrikes(0); cancelWizard();
   };
   const handleEndHalfInning = async () => {
@@ -1224,7 +1219,6 @@ export function LiveScoringPage() {
                         fieldingSequence: null, runnerFirstId: gameState.bases.first, runnerSecondId: gameState.bases.second, runnerThirdId: gameState.bases.third,
                         runnersScored: [],
                       });
-                      setCurrentBatterIdx(prev => ({ ...prev, [battingSide]: rawIdx + 1 }));
                       await loadState();
                     } catch (err: any) { alert(err.message || 'Failed'); }
                     setSubmitting(false);
@@ -1232,7 +1226,7 @@ export function LiveScoringPage() {
                     className="flex-1 py-3 bg-red-900 hover:bg-red-800 text-white text-xs font-bold rounded-lg uppercase transition-colors disabled:opacity-30">
                     AUTOMATIC OUT
                   </button>
-                  <button onClick={() => setCurrentBatterIdx(prev => ({ ...prev, [battingSide]: rawIdx + 1 }))}
+                  <button onClick={() => setSkipOffset(prev => ({ ...prev, [battingSide]: (prev[battingSide] || 0) + 1 }))}
                     className="flex-1 py-3 bg-white/10 hover:bg-white/15 text-white/60 text-xs font-bold rounded-lg uppercase transition-colors">
                     SKIP SLOT
                   </button>
