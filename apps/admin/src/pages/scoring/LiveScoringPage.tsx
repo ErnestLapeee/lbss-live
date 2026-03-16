@@ -429,9 +429,22 @@ export function LiveScoringPage() {
 
   const finishFielding = () => { if (selectedEvent) goToHitLocationOrRunners(selectedEvent); };
 
+  const inferHitType = (et: string): string | null => {
+    if (['ground_out','fielders_choice','bunt_out','bunt_single','sacrifice_bunt','sac_bunt_error'].includes(et)) return 'grounder';
+    if (['fly_out','sacrifice_fly','sac_fly_error'].includes(et)) return 'fly_ball';
+    if (et === 'line_out') return 'line_drive';
+    if (['pop_out','infield_fly'].includes(et)) return 'pop_up';
+    if (['single','error'].includes(et)) return 'grounder';
+    if (['double','triple','ground_rule_double'].includes(et)) return 'line_drive';
+    if (['home_run','inside_park_hr'].includes(et)) return 'fly_ball';
+    return null;
+  };
+
   const goToHitLocationOrRunners = (eventType: string) => {
     if (BATTED_BALL_EVENTS.has(eventType)) {
-      setHitLocationX(null); setHitLocationY(null); setHitType(null); setHitHardness(null);
+      setHitLocationX(null); setHitLocationY(null);
+      setHitType(inferHitType(eventType));
+      setHitHardness('medium');
       setStep('hit_location');
     } else {
       checkRunners(eventType);

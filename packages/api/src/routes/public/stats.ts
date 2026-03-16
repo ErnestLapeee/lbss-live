@@ -288,6 +288,17 @@ export async function statsRoutes(app: FastifyInstance) {
     }
   });
 
+  const INFER_HIT_TYPE_SQL = sql`COALESCE(${gameEvents.hitType}, CASE
+    WHEN ${gameEvents.eventType} IN ('ground_out','fielders_choice','bunt_out','bunt_single','sacrifice_bunt','sac_bunt_error') THEN 'grounder'
+    WHEN ${gameEvents.eventType} IN ('fly_out','sacrifice_fly','sac_fly_error') THEN 'fly_ball'
+    WHEN ${gameEvents.eventType} IN ('line_out') THEN 'line_drive'
+    WHEN ${gameEvents.eventType} IN ('pop_out','infield_fly') THEN 'pop_up'
+    WHEN ${gameEvents.eventType} IN ('single','error') THEN 'grounder'
+    WHEN ${gameEvents.eventType} IN ('double','triple','ground_rule_double') THEN 'line_drive'
+    WHEN ${gameEvents.eventType} IN ('home_run','inside_park_hr') THEN 'fly_ball'
+    ELSE NULL END)`;
+  const INFER_HARDNESS_SQL = sql`COALESCE(${gameEvents.hitHardness}, 'medium')`;
+
   // GET /batting-contact?seasonId=X or omit for all-time — hit type × hardness from game_events
   app.get<{ Querystring: { seasonId?: string } }>('/batting-contact', async (request, reply) => {
     try {
@@ -306,8 +317,8 @@ export async function statsRoutes(app: FastifyInstance) {
         .select({
           batterId: gameEvents.batterId,
           teamId: sql<number>`MIN(${gameLineups.teamId})`.as('teamId'),
-          hitType: gameEvents.hitType,
-          hitHardness: gameEvents.hitHardness,
+          hitType: sql<string>`${INFER_HIT_TYPE_SQL}`.as('inferred_hit_type'),
+          hitHardness: sql<string>`${INFER_HARDNESS_SQL}`.as('inferred_hardness'),
           cnt: sql<number>`count(DISTINCT ${gameEvents.id})::int`.as('cnt'),
         })
         .from(gameEvents)
@@ -316,13 +327,14 @@ export async function statsRoutes(app: FastifyInstance) {
         .innerJoin(gameLineups, and(eq(gameLineups.gameId, gameEvents.gameId), eq(gameLineups.playerId, gameEvents.batterId)))
         .where(
           and(
-            sql`${gameEvents.hitType} IS NOT NULL AND ${gameEvents.hitHardness} IS NOT NULL AND ${gameEvents.batterId} IS NOT NULL`,
+            sql`${gameEvents.batterId} IS NOT NULL`,
+            sql`${INFER_HIT_TYPE_SQL} IS NOT NULL`,
             eq(gameEvents.isDeleted, false),
             battedBallFilter,
             ...(isAllTime ? [] : [eq(leagues.seasonId, seasonIdNum!)]),
           ),
         )
-        .groupBy(gameEvents.batterId, gameEvents.hitType, gameEvents.hitHardness);
+        .groupBy(gameEvents.batterId, sql`${INFER_HIT_TYPE_SQL}`, sql`${INFER_HARDNESS_SQL}`);
 
       const byPlayer = new Map<number, { teamId: number; gbSoft: number; gbMedium: number; gbHard: number; ldSoft: number; ldMedium: number; ldHard: number; puSoft: number; puMedium: number; puHard: number; fbSoft: number; fbMedium: number; fbHard: number }>();
       for (const r of rows) {
@@ -330,7 +342,7 @@ export async function statsRoutes(app: FastifyInstance) {
         const tk = typeKey(r.hitType);
         const hk = hardKey(r.hitHardness);
         if (!tk || !hk) continue;
-        const key = `${tk}_${hk}` as keyof { gb_soft: number; gb_medium: number; gb_hard: number; ld_soft: number; ld_medium: number; ld_hard: number; pu_soft: number; pu_medium: number; pu_hard: number; fb_soft: number; fb_medium: number; fb_hard: number };
+        const key = `${tk}_${hk}`;
         const camel = (key.replace(/_([a-z])/g, (_, c) => c.toUpperCase()) as string).replace('Gb', 'gb').replace('Ld', 'ld').replace('Pu', 'pu').replace('Fb', 'fb');
         let entry = byPlayer.get(pid);
         if (!entry) {
@@ -362,9 +374,9 @@ export async function statsRoutes(app: FastifyInstance) {
         slug: players.slug,
         firstName: players.firstName,
         lastName: players.lastName,
-      }).from(players).where(sql`${players.id} IN (${sql.join(playerIds.map(id => sql`${id}`, sql`, `))})`);
+      }).from(players).where(sql`${players.id} IN (${sql.join(playerIds.map(id => sql`${id}`), sql`, `)})`);
       const teamIds = [...new Set(teamForPlayer.values())];
-      const teamList = teamIds.length ? await db.select({ id: teams.id, name: teams.name, shortName: teams.shortName, logoUrl: teams.logoUrl }).from(teams).where(sql`${teams.id} IN (${sql.join(teamIds.map(id => sql`${id}`, sql`, `))})`) : [];
+      const teamList = teamIds.length ? await db.select({ id: teams.id, name: teams.name, shortName: teams.shortName, logoUrl: teams.logoUrl }).from(teams).where(sql`${teams.id} IN (${sql.join(teamIds.map(id => sql`${id}`), sql`, `)})`) : [];
       const teamMap = new Map(teamList.map(t => [t.id, t]));
 
       const result = playerList.map(p => {
@@ -409,8 +421,8 @@ export async function statsRoutes(app: FastifyInstance) {
         .select({
           pitcherId: gameEvents.pitcherId,
           teamId: sql<number>`MIN(${gameLineups.teamId})`.as('teamId'),
-          hitType: gameEvents.hitType,
-          hitHardness: gameEvents.hitHardness,
+          hitType: sql<string>`${INFER_HIT_TYPE_SQL}`.as('inferred_hit_type'),
+          hitHardness: sql<string>`${INFER_HARDNESS_SQL}`.as('inferred_hardness'),
           cnt: sql<number>`count(DISTINCT ${gameEvents.id})::int`.as('cnt'),
         })
         .from(gameEvents)
@@ -419,13 +431,14 @@ export async function statsRoutes(app: FastifyInstance) {
         .innerJoin(gameLineups, and(eq(gameLineups.gameId, gameEvents.gameId), eq(gameLineups.playerId, gameEvents.pitcherId)))
         .where(
           and(
-            sql`${gameEvents.hitType} IS NOT NULL AND ${gameEvents.hitHardness} IS NOT NULL AND ${gameEvents.pitcherId} IS NOT NULL`,
+            sql`${gameEvents.pitcherId} IS NOT NULL`,
+            sql`${INFER_HIT_TYPE_SQL} IS NOT NULL`,
             eq(gameEvents.isDeleted, false),
             battedBallFilter,
             ...(isAllTime ? [] : [eq(leagues.seasonId, seasonIdNum!)]),
           ),
         )
-        .groupBy(gameEvents.pitcherId, gameEvents.hitType, gameEvents.hitHardness);
+        .groupBy(gameEvents.pitcherId, sql`${INFER_HIT_TYPE_SQL}`, sql`${INFER_HARDNESS_SQL}`);
 
       const byPlayer = new Map<number, { teamId: number; gbSoft: number; gbMedium: number; gbHard: number; ldSoft: number; ldMedium: number; ldHard: number; puSoft: number; puMedium: number; puHard: number; fbSoft: number; fbMedium: number; fbHard: number }>();
       for (const r of rows) {
@@ -465,9 +478,9 @@ export async function statsRoutes(app: FastifyInstance) {
         slug: players.slug,
         firstName: players.firstName,
         lastName: players.lastName,
-      }).from(players).where(sql`${players.id} IN (${sql.join(playerIds.map(id => sql`${id}`, sql`, `))})`);
+      }).from(players).where(sql`${players.id} IN (${sql.join(playerIds.map(id => sql`${id}`), sql`, `)})`);
       const teamIds = [...new Set(teamForPlayer.values())];
-      const teamList = teamIds.length ? await db.select({ id: teams.id, name: teams.name, shortName: teams.shortName, logoUrl: teams.logoUrl }).from(teams).where(sql`${teams.id} IN (${sql.join(teamIds.map(id => sql`${id}`, sql`, `))})`) : [];
+      const teamList = teamIds.length ? await db.select({ id: teams.id, name: teams.name, shortName: teams.shortName, logoUrl: teams.logoUrl }).from(teams).where(sql`${teams.id} IN (${sql.join(teamIds.map(id => sql`${id}`), sql`, `)})`) : [];
       const teamMap = new Map(teamList.map(t => [t.id, t]));
 
       const result = playerList.map(p => {
