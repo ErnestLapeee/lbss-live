@@ -52,60 +52,45 @@ export function SprayChart({ hits, width = 300, height = 220, compact = false, s
     );
   }
 
-  const cx = 150, hp = 195;
-  const infR = 57;
-  const outR = 130;
+  const dotSize = compact ? 3 : 4;
 
   return (
     <div>
-      <svg viewBox="0 0 300 200" width={width} height={height} className="w-full max-w-md mx-auto bg-black">
+      <svg viewBox="0 0 300 200" width={width} height={height} className="w-full max-w-md mx-auto" style={{ background: '#0a1628' }}>
+        <defs>
+          <radialGradient id="scGrass" cx="50%" cy="82%" r="58%">
+            <stop offset="0%" stopColor="#1b5e30" />
+            <stop offset="100%" stopColor="#0d3018" />
+          </radialGradient>
+          <radialGradient id="scDirt" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="#704828" />
+            <stop offset="100%" stopColor="#4e3015" />
+          </radialGradient>
+        </defs>
         {/* Outfield grass */}
-        <path
-          d={`M ${cx - outR * Math.sin(Math.PI / 4)},${hp - outR * Math.cos(Math.PI / 4)}
-              A ${outR},${outR} 0 0,1 ${cx + outR * Math.sin(Math.PI / 4)},${hp - outR * Math.cos(Math.PI / 4)}
-              L ${cx + infR * Math.sin(Math.PI / 4)},${hp - infR * Math.cos(Math.PI / 4)}
-              A ${infR},${infR} 0 0,0 ${cx - infR * Math.sin(Math.PI / 4)},${hp - infR * Math.cos(Math.PI / 4)}
-              Z`}
-          fill="#2c8f3a"
-        />
-        {/* Infield dirt arc */}
-        <path
-          d={`M ${cx - infR * 1.6},${hp - infR * 0.2}
-              A ${infR * 1.6},${infR * 1.1} 0 0,1 ${cx + infR * 1.6},${hp - infR * 0.2}
-              L ${cx + infR * Math.sin(Math.PI / 4)},${hp - infR * Math.cos(Math.PI / 4)}
-              L ${cx - infR * Math.sin(Math.PI / 4)},${hp - infR * Math.cos(Math.PI / 4)}
-              Z`}
-          fill="#d6a365"
-        />
+        <path d="M 45,78 Q 150,-20 255,78 L 202,130 L 150,78 L 98,130 Z" fill="url(#scGrass)" />
         {/* Infield dirt diamond */}
-        <polygon
-          points={`${cx},${hp} ${cx + infR * Math.sin(Math.PI / 4)},${hp - infR * Math.cos(Math.PI / 4)} ${cx},${hp - infR} ${cx - infR * Math.sin(Math.PI / 4)},${hp - infR * Math.cos(Math.PI / 4)}`}
-          fill="#d6a365"
-        />
-        {/* Infield grass inside diamond */}
-        <polygon
-          points={`${cx},${hp - infR * 0.4} ${cx + infR * 0.6},${hp - infR * 0.1} ${cx},${hp + infR * 0.2 - infR} ${cx - infR * 0.6},${hp - infR * 0.1}`}
-          fill="#2c8f3a"
-        />
-        {/* Mound / inner circle */}
-        <circle cx={cx} cy={hp - infR * 0.6} r={infR * 0.18} fill="#2c8f3a" stroke="#d6a365" strokeWidth={2} />
-        {/* Baselines (dirt stripes) */}
-        <polygon
-          points={`${cx - 3},${hp} ${cx + 3},${hp} ${cx + infR * Math.sin(Math.PI / 4) + 3},${hp - infR * Math.cos(Math.PI / 4) + 1} ${cx + infR * Math.sin(Math.PI / 4) - 3},${hp - infR * Math.cos(Math.PI / 4) - 1}`}
-          fill="#e4b978"
-        />
-        <polygon
-          points={`${cx - 3},${hp} ${cx + 3},${hp} ${cx - infR * Math.sin(Math.PI / 4) + 3},${hp - infR * Math.cos(Math.PI / 4) + 1} ${cx - infR * Math.sin(Math.PI / 4) - 3},${hp - infR * Math.cos(Math.PI / 4) - 1}`}
-          fill="#e4b978"
-        />
-        {/* Foul lines in black */}
-        <line x1={cx} y1={hp} x2={cx - outR * Math.sin(Math.PI / 4)} y2={hp - outR * Math.cos(Math.PI / 4)} stroke="#111" strokeWidth="2" />
-        <line x1={cx} y1={hp} x2={cx + outR * Math.sin(Math.PI / 4)} y2={hp - outR * Math.cos(Math.PI / 4)} stroke="#111" strokeWidth="2" />
-        {/* Bases and plate */}
-        <rect x={cx - 3} y={hp - 4} width={6} height={6} fill="white" />
-        <rect x={cx + infR * Math.sin(Math.PI / 4) - 3} y={hp - infR * Math.cos(Math.PI / 4) - 3} width={6} height={6} fill="white" transform={`rotate(45 ${cx + infR * Math.sin(Math.PI / 4)} ${hp - infR * Math.cos(Math.PI / 4)})`} />
-        <rect x={cx - 3} y={hp - infR - 3} width={6} height={6} fill="white" transform={`rotate(45 ${cx} ${hp - infR})`} />
-        <rect x={cx - infR * Math.sin(Math.PI / 4) - 3} y={hp - infR * Math.cos(Math.PI / 4) - 3} width={6} height={6} fill="white" transform={`rotate(45 ${cx - infR * Math.sin(Math.PI / 4)} ${hp - infR * Math.cos(Math.PI / 4)})`} />
+        <polygon points="150,78 202,130 150,182 98,130" fill="url(#scDirt)" />
+        {/* Grass cutout */}
+        <circle cx="150" cy="130" r="10" fill="#1b5e30" />
+        {/* Mound rubber */}
+        <rect x="147" y="129" width="6" height="2" rx="1" fill="rgba(255,255,255,0.4)" />
+        {/* Baselines */}
+        <line x1="150" y1="182" x2="202" y2="130" stroke="rgba(255,255,255,0.25)" strokeWidth="0.8" />
+        <line x1="150" y1="182" x2="98" y2="130" stroke="rgba(255,255,255,0.25)" strokeWidth="0.8" />
+        <line x1="98" y1="130" x2="150" y2="78" stroke="rgba(255,255,255,0.25)" strokeWidth="0.8" />
+        <line x1="202" y1="130" x2="150" y2="78" stroke="rgba(255,255,255,0.25)" strokeWidth="0.8" />
+        {/* Foul lines */}
+        <line x1="150" y1="182" x2="45" y2="78" stroke="rgba(255,255,255,0.15)" strokeWidth="0.8" />
+        <line x1="150" y1="182" x2="255" y2="78" stroke="rgba(255,255,255,0.15)" strokeWidth="0.8" />
+        {/* Fence arc */}
+        <path d="M 46,77 Q 150,-18 254,77" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="4" />
+        {/* Bases */}
+        <rect x="147" y="76" width="6" height="6" rx="0.5" transform="rotate(45 150 79)" fill="rgba(255,255,255,0.12)" stroke="white" strokeWidth="0.5" />
+        <rect x="199" y="128" width="6" height="6" rx="0.5" transform="rotate(45 202 131)" fill="rgba(255,255,255,0.12)" stroke="white" strokeWidth="0.5" />
+        <rect x="95" y="128" width="6" height="6" rx="0.5" transform="rotate(45 98 131)" fill="rgba(255,255,255,0.12)" stroke="white" strokeWidth="0.5" />
+        {/* Home plate */}
+        <polygon points="150,180 147,184 150,188 153,184" fill="#ddd" />
 
         {hits.map((hit, i) => {
           const color = getDotColor(hit);
