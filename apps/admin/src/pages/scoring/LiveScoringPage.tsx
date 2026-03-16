@@ -481,13 +481,16 @@ export function LiveScoringPage() {
     updated[currentRunnerIdx] = { ...updated[currentRunnerIdx], outcome, destination: destination as any, advanceReason: advanceReason || updated[currentRunnerIdx].advanceReason };
     setRunnerQuestions(updated);
     setRunnerOutSafeTab('safe');
-    const nextIdx = currentRunnerIdx + 1;
-    if (nextIdx < runnerQuestions.length) {
+    // Skip to next UNANSWERED runner (pre-filled runners already have outcome)
+    let nextIdx = currentRunnerIdx + 1;
+    while (nextIdx < updated.length && updated[nextIdx].outcome !== null) {
+      nextIdx++;
+    }
+    if (nextIdx < updated.length) {
       setCurrentRunnerIdx(nextIdx);
-      setRunnerSafeDest(runnerQuestions[nextIdx].minDestination);
+      setRunnerSafeDest(updated[nextIdx].minDestination);
     } else {
       setRunnerSafeDest(null);
-      // If this came from a between-pitch event, use the special submit path
       if (betweenPitchEvent) {
         submitBetweenPitchPlay(betweenPitchEvent, updated);
       } else {
@@ -575,9 +578,10 @@ export function LiveScoringPage() {
           else if (r.base === 'second') runnerSecondId = null;
           else if (r.base === 'third') runnerThirdId = null;
 
+          const stayed = r.destination === r.base;
           if (r.destination === 'home') { runnersScored.push(r.playerId); runsScored++; detailParts.push(`${r.playerName} scores`); }
-          else if (r.destination === 'third') { runnerThirdId = r.playerId; detailParts.push(`${r.playerName} to 3rd`); }
-          else if (r.destination === 'second') { runnerSecondId = r.playerId; detailParts.push(`${r.playerName} to 2nd`); }
+          else if (r.destination === 'third') { runnerThirdId = r.playerId; detailParts.push(`${r.playerName}${stayed ? ' stays at 3rd' : ' to 3rd'}`); }
+          else if (r.destination === 'second') { runnerSecondId = r.playerId; detailParts.push(`${r.playerName}${stayed ? ' stays at 2nd' : ' to 2nd'}`); }
           else if (r.destination === 'first') { runnerFirstId = r.playerId; detailParts.push(`${r.playerName} stays at 1st`); }
         } else if (r.outcome === 'out') {
           if (r.base === 'first') runnerFirstId = null;
@@ -1460,10 +1464,14 @@ export function LiveScoringPage() {
                 setRunnerOutSafeTab('safe');
                 setRunnerOutPendingType(null);
                 setRunnerOutFielding([]);
-                const nextIdx = currentRunnerIdx + 1;
-                if (nextIdx < runnerQuestions.length) {
+                // Skip to next UNANSWERED runner (pre-filled runners already have outcome)
+                let nextIdx = currentRunnerIdx + 1;
+                while (nextIdx < updated.length && updated[nextIdx].outcome !== null) {
+                  nextIdx++;
+                }
+                if (nextIdx < updated.length) {
                   setCurrentRunnerIdx(nextIdx);
-                  setRunnerSafeDest(runnerQuestions[nextIdx].minDestination);
+                  setRunnerSafeDest(updated[nextIdx].minDestination);
                   setStep('runner');
                 } else {
                   setRunnerSafeDest(null);
