@@ -58,36 +58,54 @@ export function SprayChart({ hits, width = 300, height = 220, compact = false, s
 
   return (
     <div>
-      <svg viewBox="0 0 300 200" width={width} height={height} className="w-full max-w-md mx-auto">
-        {/* Outfield grass — arc from left foul to right foul */}
+      <svg viewBox="0 0 300 200" width={width} height={height} className="w-full max-w-md mx-auto bg-black">
+        {/* Outfield grass */}
         <path
           d={`M ${cx - outR * Math.sin(Math.PI / 4)},${hp - outR * Math.cos(Math.PI / 4)}
               A ${outR},${outR} 0 0,1 ${cx + outR * Math.sin(Math.PI / 4)},${hp - outR * Math.cos(Math.PI / 4)}
               L ${cx + infR * Math.sin(Math.PI / 4)},${hp - infR * Math.cos(Math.PI / 4)}
               A ${infR},${infR} 0 0,0 ${cx - infR * Math.sin(Math.PI / 4)},${hp - infR * Math.cos(Math.PI / 4)}
               Z`}
-          fill="#1a5e2e"
+          fill="#2c8f3a"
+        />
+        {/* Infield dirt arc */}
+        <path
+          d={`M ${cx - infR * 1.6},${hp - infR * 0.2}
+              A ${infR * 1.6},${infR * 1.1} 0 0,1 ${cx + infR * 1.6},${hp - infR * 0.2}
+              L ${cx + infR * Math.sin(Math.PI / 4)},${hp - infR * Math.cos(Math.PI / 4)}
+              L ${cx - infR * Math.sin(Math.PI / 4)},${hp - infR * Math.cos(Math.PI / 4)}
+              Z`}
+          fill="#d6a365"
         />
         {/* Infield dirt diamond */}
         <polygon
           points={`${cx},${hp} ${cx + infR * Math.sin(Math.PI / 4)},${hp - infR * Math.cos(Math.PI / 4)} ${cx},${hp - infR} ${cx - infR * Math.sin(Math.PI / 4)},${hp - infR * Math.cos(Math.PI / 4)}`}
-          fill="#8B6914" opacity="0.55"
+          fill="#d6a365"
         />
-        {/* Infield grass circle */}
-        <circle cx={cx} cy={hp - infR * 0.52} r={infR * 0.32} fill="#1a5e2e" />
-        {/* Baselines */}
-        <line x1={cx} y1={hp} x2={cx + infR * Math.sin(Math.PI / 4)} y2={hp - infR * Math.cos(Math.PI / 4)} stroke="white" strokeWidth="0.7" opacity="0.3" />
-        <line x1={cx} y1={hp} x2={cx - infR * Math.sin(Math.PI / 4)} y2={hp - infR * Math.cos(Math.PI / 4)} stroke="white" strokeWidth="0.7" opacity="0.3" />
-        <line x1={cx - infR * Math.sin(Math.PI / 4)} y1={hp - infR * Math.cos(Math.PI / 4)} x2={cx} y2={hp - infR} stroke="white" strokeWidth="0.5" opacity="0.2" />
-        <line x1={cx + infR * Math.sin(Math.PI / 4)} y1={hp - infR * Math.cos(Math.PI / 4)} x2={cx} y2={hp - infR} stroke="white" strokeWidth="0.5" opacity="0.2" />
-        {/* Foul lines extending to outfield */}
-        <line x1={cx} y1={hp} x2={cx - outR * Math.sin(Math.PI / 4)} y2={hp - outR * Math.cos(Math.PI / 4)} stroke="white" strokeWidth="0.5" opacity="0.15" />
-        <line x1={cx} y1={hp} x2={cx + outR * Math.sin(Math.PI / 4)} y2={hp - outR * Math.cos(Math.PI / 4)} stroke="white" strokeWidth="0.5" opacity="0.15" />
-        {/* Base markers */}
-        <rect x={cx - 2} y={hp - 3} width={4} height={4} fill="white" opacity="0.6" />
-        <rect x={cx + infR * Math.sin(Math.PI / 4) - 2} y={hp - infR * Math.cos(Math.PI / 4) - 2} width={4} height={4} fill="white" opacity="0.5" transform={`rotate(45 ${cx + infR * Math.sin(Math.PI / 4)} ${hp - infR * Math.cos(Math.PI / 4)})`} />
-        <rect x={cx - 2} y={hp - infR - 2} width={4} height={4} fill="white" opacity="0.5" transform={`rotate(45 ${cx} ${hp - infR})`} />
-        <rect x={cx - infR * Math.sin(Math.PI / 4) - 2} y={hp - infR * Math.cos(Math.PI / 4) - 2} width={4} height={4} fill="white" opacity="0.5" transform={`rotate(45 ${cx - infR * Math.sin(Math.PI / 4)} ${hp - infR * Math.cos(Math.PI / 4)})`} />
+        {/* Infield grass inside diamond */}
+        <polygon
+          points={`${cx},${hp - infR * 0.4} ${cx + infR * 0.6},${hp - infR * 0.1} ${cx},${hp + infR * 0.2 - infR} ${cx - infR * 0.6},${hp - infR * 0.1}`}
+          fill="#2c8f3a"
+        />
+        {/* Mound / inner circle */}
+        <circle cx={cx} cy={hp - infR * 0.6} r={infR * 0.18} fill="#2c8f3a" stroke="#d6a365" strokeWidth={2} />
+        {/* Baselines (dirt stripes) */}
+        <polygon
+          points={`${cx - 3},${hp} ${cx + 3},${hp} ${cx + infR * Math.sin(Math.PI / 4) + 3},${hp - infR * Math.cos(Math.PI / 4) + 1} ${cx + infR * Math.sin(Math.PI / 4) - 3},${hp - infR * Math.cos(Math.PI / 4) - 1}`}
+          fill="#e4b978"
+        />
+        <polygon
+          points={`${cx - 3},${hp} ${cx + 3},${hp} ${cx - infR * Math.sin(Math.PI / 4) + 3},${hp - infR * Math.cos(Math.PI / 4) + 1} ${cx - infR * Math.sin(Math.PI / 4) - 3},${hp - infR * Math.cos(Math.PI / 4) - 1}`}
+          fill="#e4b978"
+        />
+        {/* Foul lines in black */}
+        <line x1={cx} y1={hp} x2={cx - outR * Math.sin(Math.PI / 4)} y2={hp - outR * Math.cos(Math.PI / 4)} stroke="#111" strokeWidth="2" />
+        <line x1={cx} y1={hp} x2={cx + outR * Math.sin(Math.PI / 4)} y2={hp - outR * Math.cos(Math.PI / 4)} stroke="#111" strokeWidth="2" />
+        {/* Bases and plate */}
+        <rect x={cx - 3} y={hp - 4} width={6} height={6} fill="white" />
+        <rect x={cx + infR * Math.sin(Math.PI / 4) - 3} y={hp - infR * Math.cos(Math.PI / 4) - 3} width={6} height={6} fill="white" transform={`rotate(45 ${cx + infR * Math.sin(Math.PI / 4)} ${hp - infR * Math.cos(Math.PI / 4)})`} />
+        <rect x={cx - 3} y={hp - infR - 3} width={6} height={6} fill="white" transform={`rotate(45 ${cx} ${hp - infR})`} />
+        <rect x={cx - infR * Math.sin(Math.PI / 4) - 3} y={hp - infR * Math.cos(Math.PI / 4) - 3} width={6} height={6} fill="white" transform={`rotate(45 ${cx - infR * Math.sin(Math.PI / 4)} ${hp - infR * Math.cos(Math.PI / 4)})`} />
 
         {hits.map((hit, i) => {
           const color = getDotColor(hit);

@@ -1323,18 +1323,43 @@ export function LiveScoringPage() {
                     {(() => {
                       const cx = 150, hp = 195, infR = 57, outR = 130;
                       const sin45 = Math.sin(Math.PI / 4), cos45 = Math.cos(Math.PI / 4);
-                      return (<>
-                        <path d={`M ${cx - outR * sin45},${hp - outR * cos45} A ${outR},${outR} 0 0,1 ${cx + outR * sin45},${hp - outR * cos45} L ${cx + infR * sin45},${hp - infR * cos45} A ${infR},${infR} 0 0,0 ${cx - infR * sin45},${hp - infR * cos45} Z`} fill="#1a5e2e" />
-                        <polygon points={`${cx},${hp} ${cx + infR * sin45},${hp - infR * cos45} ${cx},${hp - infR} ${cx - infR * sin45},${hp - infR * cos45}`} fill="#8B6914" opacity="0.55" />
-                        <circle cx={cx} cy={hp - infR * 0.52} r={infR * 0.32} fill="#1a5e2e" />
-                        <line x1={cx} y1={hp} x2={cx + infR * sin45} y2={hp - infR * cos45} stroke="rgba(255,255,255,0.3)" strokeWidth="0.7" />
-                        <line x1={cx} y1={hp} x2={cx - infR * sin45} y2={hp - infR * cos45} stroke="rgba(255,255,255,0.3)" strokeWidth="0.7" />
-                        <line x1={cx - infR * sin45} y1={hp - infR * cos45} x2={cx} y2={hp - infR} stroke="rgba(255,255,255,0.2)" strokeWidth="0.5" />
-                        <line x1={cx + infR * sin45} y1={hp - infR * cos45} x2={cx} y2={hp - infR} stroke="rgba(255,255,255,0.2)" strokeWidth="0.5" />
-                        <line x1={cx} y1={hp} x2={cx - outR * sin45} y2={hp - outR * cos45} stroke="rgba(255,255,255,0.15)" strokeWidth="0.5" />
-                        <line x1={cx} y1={hp} x2={cx + outR * sin45} y2={hp - outR * cos45} stroke="rgba(255,255,255,0.15)" strokeWidth="0.5" />
-                        <rect x={cx - 2} y={hp - 3} width={4} height={4} fill="white" opacity="0.6" />
-                      </>);
+                      return (
+                        <>
+                          <path
+                            d={`M ${cx - outR * sin45},${hp - outR * cos45} A ${outR},${outR} 0 0,1 ${cx + outR * sin45},${hp - outR * cos45}
+                                L ${cx + infR * sin45},${hp - infR * cos45}
+                                A ${infR},${infR} 0 0,0 ${cx - infR * sin45},${hp - infR * cos45} Z`}
+                            fill="#2c8f3a"
+                          />
+                          <path
+                            d={`M ${cx - infR * 1.6},${hp - infR * 0.2}
+                                A ${infR * 1.6},${infR * 1.1} 0 0,1 ${cx + infR * 1.6},${hp - infR * 0.2}
+                                L ${cx + infR * sin45},${hp - infR * cos45}
+                                L ${cx - infR * sin45},${hp - infR * cos45} Z`}
+                            fill="#d6a365"
+                          />
+                          <polygon
+                            points={`${cx},${hp} ${cx + infR * sin45},${hp - infR * cos45} ${cx},${hp - infR} ${cx - infR * sin45},${hp - infR * cos45}`}
+                            fill="#d6a365"
+                          />
+                          <polygon
+                            points={`${cx},${hp - infR * 0.4} ${cx + infR * 0.6},${hp - infR * 0.1} ${cx},${hp + infR * 0.2 - infR} ${cx - infR * 0.6},${hp - infR * 0.1}`}
+                            fill="#2c8f3a"
+                          />
+                          <circle cx={cx} cy={hp - infR * 0.6} r={infR * 0.18} fill="#2c8f3a" stroke="#d6a365" strokeWidth={2} />
+                          <polygon
+                            points={`${cx - 3},${hp} ${cx + 3},${hp} ${cx + infR * sin45 + 3},${hp - infR * cos45 + 1} ${cx + infR * sin45 - 3},${hp - infR * cos45 - 1}`}
+                            fill="#e4b978"
+                          />
+                          <polygon
+                            points={`${cx - 3},${hp} ${cx + 3},${hp} ${cx - infR * sin45 + 3},${hp - infR * cos45 + 1} ${cx - infR * sin45 - 3},${hp - infR * cos45 - 1}`}
+                            fill="#e4b978"
+                          />
+                          <line x1={cx} y1={hp} x2={cx - outR * sin45} y2={hp - outR * cos45} stroke="#000" strokeWidth={2} />
+                          <line x1={cx} y1={hp} x2={cx + outR * sin45} y2={hp - outR * cos45} stroke="#000" strokeWidth={2} />
+                          <rect x={cx - 3} y={hp - 4} width={6} height={6} fill="white" />
+                        </>
+                      );
                     })()}
                     {hitLocationX != null && hitLocationY != null && (
                       <circle cx={hitLocationX} cy={hitLocationY} r="6" fill="#ef4444" stroke="white" strokeWidth="1.5" opacity="0.9" />
