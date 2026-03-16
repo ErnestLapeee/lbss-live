@@ -296,7 +296,13 @@ export function formatPlayByPlay(
     } else {
       title = `${batter} reaches on ${who}`;
     }
-    if (scored.length > 0) {
+
+    // Use eventDetail for multi-runner info (e.g., "Y scores on error. Z advances to third on error.")
+    const detail = play.eventDetail || '';
+    const runnerDetail = detail.includes('. ') ? detail.substring(detail.indexOf('. ') + 2) : '';
+    if (runnerDetail) {
+      title += `. ${runnerDetail}`;
+    } else if (scored.length > 0) {
       title += `. ${scoredPhrase(scored)}`;
     }
   }
@@ -311,7 +317,10 @@ export function formatPlayByPlay(
 
   // ═══ RUNNER EVENTS (between pitches) ═══
   else if (RUNNER_TYPES.has(play.eventType)) {
-    const runner = lastName(play.batterName); // runner stored in batterName for these events
+    const runner = lastName(play.batterName);
+    const detail = play.eventDetail || '';
+    const isMultiRunner = !play.batterName && detail.includes(':');
+
     switch (play.eventType) {
       case 'stolen_base':
         title = `${runner} steals a base`;
@@ -322,22 +331,43 @@ export function formatPlayByPlay(
       case 'picked_off':
         title = `${runner} picked off${fsPhrase(fs)}`;
         break;
-      case 'wild_pitch':
-        title = `Wild pitch, ${runner} advances`;
-        if (scored.length > 0) title = `Wild pitch. ${scoredPhrase(scored)}`;
+      case 'wild_pitch': {
+        if (isMultiRunner) {
+          const after = detail.split(':').slice(1).join(':').trim();
+          title = `Wild pitch. ${after.charAt(0).toUpperCase() + after.slice(1)}`;
+        } else {
+          title = scored.length > 0 ? `Wild pitch. ${scoredPhrase(scored)}` : `Wild pitch, ${runner} advances`;
+        }
         break;
-      case 'passed_ball':
-        title = `Passed ball, ${runner} advances`;
-        if (scored.length > 0) title = `Passed ball. ${scoredPhrase(scored)}`;
+      }
+      case 'passed_ball': {
+        if (isMultiRunner) {
+          const after = detail.split(':').slice(1).join(':').trim();
+          title = `Passed ball. ${after.charAt(0).toUpperCase() + after.slice(1)}`;
+        } else {
+          title = scored.length > 0 ? `Passed ball. ${scoredPhrase(scored)}` : `Passed ball, ${runner} advances`;
+        }
         break;
-      case 'balk':
-        title = `Balk, ${runner} advances`;
-        if (scored.length > 0) title = `Balk. ${scoredPhrase(scored)}`;
+      }
+      case 'balk': {
+        if (isMultiRunner) {
+          const after = detail.split(':').slice(1).join(':').trim();
+          title = `Balk. ${after.charAt(0).toUpperCase() + after.slice(1)}`;
+        } else {
+          title = scored.length > 0 ? `Balk. ${scoredPhrase(scored)}` : `Balk, ${runner} advances`;
+        }
         break;
-      case 'advance_on_error':
-        title = `${runner} advances on error`;
-        if (scored.length > 0) title += `. ${scoredPhrase(scored)}`;
+      }
+      case 'advance_on_error': {
+        if (isMultiRunner) {
+          const after = detail.split(':').slice(1).join(':').trim();
+          title = `Error. ${after.charAt(0).toUpperCase() + after.slice(1)}`;
+        } else {
+          title = `${runner} advances on error`;
+          if (scored.length > 0) title += `. ${scoredPhrase(scored)}`;
+        }
         break;
+      }
       case 'defensive_indifference':
         title = `${runner} advances on defensive indifference`;
         break;

@@ -998,7 +998,8 @@ export function LiveGameClient({
                                       <span className="text-amber-500 mt-px">◆</span>
                                       <div>
                                         <span>{reFormatted.title}</span>
-                                        {re.outsRecorded > 0 && <span className="text-red-400/60 ml-1">({re.outsRecorded} out)</span>}
+                                        {re.runsScored > 0 && <span className="text-emerald-400/70 ml-1">({re.runsScored} run{re.runsScored > 1 ? 's' : ''})</span>}
+                                        {re.outsRecorded > 0 && <span className="text-red-400/60 ml-1">({re.outsRecorded} out{re.outsRecorded > 1 ? 's' : ''})</span>}
                                       </div>
                                     </div>
                                   );

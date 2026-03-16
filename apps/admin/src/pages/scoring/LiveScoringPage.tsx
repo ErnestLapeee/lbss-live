@@ -77,7 +77,11 @@ interface RunnerQuestion {
   outcome: 'safe' | 'out' | null;
   destination: 'first' | 'second' | 'third' | 'home' | null;
   minDestination: 'first' | 'second' | 'third' | 'home';
+  advanceReason?: string;
 }
+
+const NO_RBI_REASONS = new Set(['error', 'wild_pitch', 'passed_ball', 'balk', 'defensive_indifference', 'advance_on_error', 'obstruction']);
+const NO_RBI_BATTER_EVENTS = new Set(['error', 'sac_bunt_error', 'sac_fly_error']);
 
 const BASE_ORDER: Record<string, number> = { first: 1, second: 2, third: 3, home: 4 };
 const BASE_FROM_ORDER: Record<number, 'first' | 'second' | 'third' | 'home'> = { 1: 'first', 2: 'second', 3: 'third', 4: 'home' };
@@ -383,51 +387,60 @@ export function LiveScoringPage() {
   const checkRunners = (eventType: string) => {
     if (!gameState) return;
 
+    const hasRunners = gameState.bases.first || gameState.bases.second || gameState.bases.third;
+
     // Walks / HBP / IBB: auto-advance forced runners, no questions needed
     if (['walk', 'hit_by_pitch', 'intentional_walk'].includes(eventType)) {
       submitPlay(eventType, [], fieldingPositions);
       return;
     }
 
+    // HR / inside-park HR: all runners + batter score automatically
+    if (eventType === 'home_run' || eventType === 'inside_park_hr') {
+      submitPlay(eventType, [], fieldingPositions);
+      return;
+    }
+
+    // If no runners on base, skip runner resolution
+    if (!hasRunners) {
+      submitPlay(eventType, [], fieldingPositions);
+      return;
+    }
+
+    // Build runner questions for all occupied bases
+    const mins = computeMinDestinations(gameState.bases, eventType);
     const runners: RunnerQuestion[] = [];
-    if (eventType !== 'home_run' && eventType !== 'inside_park_hr') {
-      const mins = computeMinDestinations(gameState.bases, eventType);
-      if (gameState.bases.third) runners.push({ base: 'third', playerId: gameState.bases.third, playerName: getPlayerName(gameState.bases.third), outcome: null, destination: null, minDestination: mins['third'] || 'third' });
-      if (gameState.bases.second) runners.push({ base: 'second', playerId: gameState.bases.second, playerName: getPlayerName(gameState.bases.second), outcome: null, destination: null, minDestination: mins['second'] || 'second' });
-      if (gameState.bases.first) runners.push({ base: 'first', playerId: gameState.bases.first, playerName: getPlayerName(gameState.bases.first), outcome: null, destination: null, minDestination: mins['first'] || 'first' });
+    if (gameState.bases.third) runners.push({ base: 'third', playerId: gameState.bases.third, playerName: getPlayerName(gameState.bases.third), outcome: null, destination: null, minDestination: mins['third'] || 'third' });
+    if (gameState.bases.second) runners.push({ base: 'second', playerId: gameState.bases.second, playerName: getPlayerName(gameState.bases.second), outcome: null, destination: null, minDestination: mins['second'] || 'second' });
+    if (gameState.bases.first) runners.push({ base: 'first', playerId: gameState.bases.first, playerName: getPlayerName(gameState.bases.first), outcome: null, destination: null, minDestination: mins['first'] || 'first' });
 
-      // Auto-resolve runners that MUST score (minDestination === 'home')
-      const autoScored: RunnerQuestion[] = [];
-      const needsQuestion: RunnerQuestion[] = [];
-      for (const r of runners) {
-        if (r.minDestination === 'home') {
-          autoScored.push({ ...r, outcome: 'safe', destination: 'home' });
-        } else {
-          needsQuestion.push(r);
-        }
-      }
-
-      if (needsQuestion.length > 0) {
-        // Combine auto-scored + questions; auto-scored are already answered
-        setRunnerQuestions([...autoScored, ...needsQuestion]);
-        setCurrentRunnerIdx(autoScored.length); // skip past auto-scored
-        setRunnerSafeDest(needsQuestion[0].minDestination);
-        setRunnerOutSafeTab('safe');
-        setStep('runner');
-      } else if (autoScored.length > 0) {
-        // All runners auto-score, submit directly
-        submitPlay(eventType, autoScored, fieldingPositions);
+    // Auto-resolve runners that MUST score (minDestination === 'home')
+    const autoScored: RunnerQuestion[] = [];
+    const needsQuestion: RunnerQuestion[] = [];
+    for (const r of runners) {
+      if (r.minDestination === 'home') {
+        autoScored.push({ ...r, outcome: 'safe', destination: 'home', advanceReason: 'on_play' });
       } else {
-        submitPlay(eventType, [], fieldingPositions);
+        needsQuestion.push(r);
       }
+    }
+
+    if (needsQuestion.length > 0) {
+      setRunnerQuestions([...autoScored, ...needsQuestion]);
+      setCurrentRunnerIdx(autoScored.length);
+      setRunnerSafeDest(needsQuestion[0].minDestination);
+      setRunnerOutSafeTab('safe');
+      setStep('runner');
+    } else if (autoScored.length > 0) {
+      submitPlay(eventType, autoScored, fieldingPositions);
     } else {
       submitPlay(eventType, [], fieldingPositions);
     }
   };
 
-  const answerRunner = (outcome: 'safe' | 'out', destination: string) => {
+  const answerRunner = (outcome: 'safe' | 'out', destination: string, advanceReason?: string) => {
     const updated = [...runnerQuestions];
-    updated[currentRunnerIdx] = { ...updated[currentRunnerIdx], outcome, destination: destination as any };
+    updated[currentRunnerIdx] = { ...updated[currentRunnerIdx], outcome, destination: destination as any, advanceReason: advanceReason || updated[currentRunnerIdx].advanceReason };
     setRunnerQuestions(updated);
     setRunnerOutSafeTab('safe');
     const nextIdx = currentRunnerIdx + 1;
@@ -436,9 +449,17 @@ export function LiveScoringPage() {
       setRunnerSafeDest(runnerQuestions[nextIdx].minDestination);
     } else {
       setRunnerSafeDest(null);
-      submitPlay(selectedEvent!, updated, fieldingPositions);
+      // If this came from a between-pitch event, use the special submit path
+      if (betweenPitchEvent) {
+        submitBetweenPitchPlay(betweenPitchEvent, updated);
+      } else {
+        submitPlay(selectedEvent!, updated, fieldingPositions);
+      }
     }
   };
+
+  // ── Between-pitch event state (WP, PB, balk multi-runner) ──
+  const [betweenPitchEvent, setBetweenPitchEvent] = useState<string | null>(null);
 
   // ── Runner action (click runner on base) ──
   const [runnerActionType, setRunnerActionType] = useState<string | null>(null);
@@ -462,8 +483,85 @@ export function LiveScoringPage() {
     'tagged_out', 'force_out', 'hit_by_ball', 'missed_base', 'left_base_early',
     'left_base_path', 'offensive_interference', 'passed_runner', 'hesitation', 'double_play', 'triple_play']);
 
+  const MULTI_RUNNER_EVENTS = new Set(['wild_pitch', 'passed_ball', 'balk', 'advance_on_error']);
+
+  const startBetweenPitchRunnerCheck = (action: string) => {
+    if (!gameState) return;
+    setBetweenPitchEvent(action);
+    const runners: RunnerQuestion[] = [];
+    if (gameState.bases.third) runners.push({ base: 'third', playerId: gameState.bases.third, playerName: getPlayerName(gameState.bases.third), outcome: null, destination: null, minDestination: 'third' });
+    if (gameState.bases.second) runners.push({ base: 'second', playerId: gameState.bases.second, playerName: getPlayerName(gameState.bases.second), outcome: null, destination: null, minDestination: 'second' });
+    if (gameState.bases.first) runners.push({ base: 'first', playerId: gameState.bases.first, playerName: getPlayerName(gameState.bases.first), outcome: null, destination: null, minDestination: 'first' });
+
+    if (runners.length === 0) return;
+    setRunnerQuestions(runners);
+    setCurrentRunnerIdx(0);
+    setRunnerSafeDest(runners[0].minDestination);
+    setRunnerOutSafeTab('safe');
+    setActiveRunnerBase(null);
+    setStep('runner');
+  };
+
+  const submitBetweenPitchPlay = async (action: string, runners: RunnerQuestion[]) => {
+    if (!gameState || submitting) return;
+    setSubmitting(true);
+    try {
+      let runnerFirstId = gameState.bases.first;
+      let runnerSecondId = gameState.bases.second;
+      let runnerThirdId = gameState.bases.third;
+      let runsScored = 0;
+      const runnersScored: number[] = [];
+
+      const detailParts: string[] = [];
+      for (const r of runners) {
+        if (r.outcome === 'safe') {
+          if (r.base === 'first') runnerFirstId = null;
+          else if (r.base === 'second') runnerSecondId = null;
+          else if (r.base === 'third') runnerThirdId = null;
+
+          if (r.destination === 'home') { runnersScored.push(r.playerId); runsScored++; detailParts.push(`${r.playerName} scores`); }
+          else if (r.destination === 'third') { runnerThirdId = r.playerId; detailParts.push(`${r.playerName} to 3rd`); }
+          else if (r.destination === 'second') { runnerSecondId = r.playerId; detailParts.push(`${r.playerName} to 2nd`); }
+          else if (r.destination === 'first') { runnerFirstId = r.playerId; detailParts.push(`${r.playerName} stays at 1st`); }
+        } else if (r.outcome === 'out') {
+          if (r.base === 'first') runnerFirstId = null;
+          else if (r.base === 'second') runnerSecondId = null;
+          else if (r.base === 'third') runnerThirdId = null;
+          detailParts.push(`${r.playerName} out`);
+        } else {
+          detailParts.push(`${r.playerName} stays`);
+        }
+      }
+
+      const outsRecorded = runners.filter(r => r.outcome === 'out').length;
+      const detail = `${action.replace(/_/g, ' ')}: ${detailParts.join(', ')}`;
+
+      await apiPost(`/admin/scoring/${gameId}/event`, {
+        eventType: action, batterId: null, pitcherId: currentPitcher?.playerId,
+        inning: gameState.inning, half: gameState.half, rbi: 0, runsScored,
+        outsRecorded, balls, strikes,
+        runnerFirstId, runnerSecondId, runnerThirdId, runnersScored,
+        eventDetail: detail,
+      });
+      setBetweenPitchEvent(null);
+      setActiveRunnerBase(null); setRunnerActionType(null); setRunnerActionDest(null);
+      setRunnerActionOutType(null); setRunnerActionFielding([]);
+      setRunnerQuestions([]); setCurrentRunnerIdx(0);
+      setStep('pitch');
+      await loadState();
+    } catch (err: any) { alert(err.message || 'Failed'); }
+    finally { setSubmitting(false); }
+  };
+
   const handleRunnerActionSubmit = async (action: string, dest: string | null, fielding?: number[]) => {
     if (!gameState || !activeRunnerBase || submitting) return;
+
+    // For multi-runner events (WP, PB, balk, advance on error), prompt for ALL runners
+    if (MULTI_RUNNER_EVENTS.has(action)) {
+      startBetweenPitchRunnerCheck(action);
+      return;
+    }
+
     const runnerId = gameState.bases[activeRunnerBase];
     if (!runnerId) return;
     setSubmitting(true);
@@ -481,7 +579,6 @@ export function LiveScoringPage() {
       let runsScored = 0;
       const runnersScored: number[] = [];
 
-      // Clear the runner from their current base
       if (activeRunnerBase === 'first') runnerFirstId = null;
       else if (activeRunnerBase === 'second') runnerSecondId = null;
       else if (activeRunnerBase === 'third') runnerThirdId = null;
@@ -493,7 +590,6 @@ export function LiveScoringPage() {
         else if (dest === 'first') runnerFirstId = runnerId;
       }
 
-      // Convert fielding positions to player IDs
       const putoutFielderIds: number[] = [];
       const assistFielderIds: number[] = [];
       const errorFielderIds: number[] = [];
@@ -610,7 +706,12 @@ export function LiveScoringPage() {
         runnerFirstId = currentBatter.playerId;
       } else if (runners.length > 0) {
         for (const r of runners) {
-          if (r.outcome === 'safe' && r.destination === 'home') { runnersScored.push(r.playerId); runsScored++; rbi++; }
+          if (r.outcome === 'safe' && r.destination === 'home') {
+            runnersScored.push(r.playerId);
+            runsScored++;
+            const noRbi = NO_RBI_BATTER_EVENTS.has(eventType) || NO_RBI_REASONS.has(r.advanceReason || '');
+            if (!noRbi) rbi++;
+          }
           else if (r.outcome === 'safe') {
             if (r.destination === 'third') runnerThirdId = r.playerId;
             else if (r.destination === 'second') runnerSecondId = r.playerId;
@@ -664,7 +765,20 @@ export function LiveScoringPage() {
       }
 
       const isErrorPlay = ERROR_EVENTS.has(eventType);
-      const detail = `${currentBatter.firstName} ${currentBatter.lastName}: ${eventType.replace(/_/g, ' ')}${fieldingSequence ? ` (${isErrorPlay ? 'E' : ''}${fieldingSequence})` : ''}`;
+      const runnerParts: string[] = [];
+      for (const r of runners) {
+        if (r.outcome === 'safe' && r.destination === 'home') {
+          const reason = r.advanceReason && r.advanceReason !== 'on_play' ? ` on ${r.advanceReason.replace(/_/g, ' ')}` : '';
+          runnerParts.push(`${r.playerName} scores${reason}`);
+        } else if (r.outcome === 'safe' && r.destination && r.destination !== r.base) {
+          const reason = r.advanceReason && r.advanceReason !== 'on_play' ? ` on ${r.advanceReason.replace(/_/g, ' ')}` : '';
+          runnerParts.push(`${r.playerName} to ${r.destination}${reason}`);
+        } else if (r.outcome === 'out') {
+          runnerParts.push(`${r.playerName} out`);
+        }
+      }
+      const runnerSuffix = runnerParts.length > 0 ? `. ${runnerParts.join('. ')}` : '';
+      const detail = `${currentBatter.firstName} ${currentBatter.lastName}: ${eventType.replace(/_/g, ' ')}${fieldingSequence ? ` (${isErrorPlay ? 'E' : ''}${fieldingSequence})` : ''}${runnerSuffix}`;
       await apiPost(`/admin/scoring/${gameId}/event`, {
         eventType, batterId: currentBatter.playerId, pitcherId: currentPitcher?.playerId,
         inning: gameState.inning, half: gameState.half, rbi, runsScored, outsRecorded,
@@ -675,6 +789,7 @@ export function LiveScoringPage() {
       setCurrentBatterIdx(prev => ({ ...prev, [battingSide]: (prev[battingSide] || 0) + 1 }));
       setBalls(0); setStrikes(0); setStep('pitch'); setSelectedEvent(null);
       setFieldingPositions([]); setRunnerQuestions([]); setCurrentRunnerIdx(0);
+      setBetweenPitchEvent(null);
       await loadState();
     } catch (err: any) { alert(err.message || 'Failed'); } finally { setSubmitting(false); }
   };
@@ -739,7 +854,7 @@ export function LiveScoringPage() {
       cancelWizard(); await loadState();
     } catch (err: any) { alert(err.message || 'Failed'); } finally { setSubmitting(false); }
   };
-  const cancelWizard = () => { setStep('pitch'); setSelectedEvent(null); setFieldingPositions([]); setRunnerQuestions([]); setCurrentRunnerIdx(0); setActiveRunnerBase(null); setRunnerActionType(null); setRunnerActionDest(null); setRunnerActionOutType(null); setRunnerActionFielding([]); setSubPosition(null); setSubBattingSlot(null); setRunnerOutSafeTab('safe'); setRunnerSafeDest(null); setHitLocationX(null); setHitLocationY(null); setHitType(null); setHitHardness(null); };
+  const cancelWizard = () => { setStep('pitch'); setSelectedEvent(null); setFieldingPositions([]); setRunnerQuestions([]); setCurrentRunnerIdx(0); setActiveRunnerBase(null); setRunnerActionType(null); setRunnerActionDest(null); setRunnerActionOutType(null); setRunnerActionFielding([]); setSubPosition(null); setSubBattingSlot(null); setRunnerOutSafeTab('safe'); setRunnerSafeDest(null); setHitLocationX(null); setHitLocationY(null); setHitType(null); setHitHardness(null); setBetweenPitchEvent(null); };
 
   if (loading) return <div className="flex items-center justify-center h-screen bg-[#0c1220]"><span className="text-gray-400">Loading...</span></div>;
   if (!game) return <div className="flex items-center justify-center h-screen bg-[#0c1220]"><span className="text-red-400">Game not found</span></div>;
@@ -1261,7 +1376,7 @@ export function LiveScoringPage() {
 
               const markRunnerOut = (outType: string) => {
                 const updated = [...runnerQuestions];
-                updated[currentRunnerIdx] = { ...updated[currentRunnerIdx], outcome: 'out', destination: null };
+                updated[currentRunnerIdx] = { ...updated[currentRunnerIdx], outcome: 'out', destination: null, advanceReason: outType };
                 setRunnerQuestions(updated);
                 setRunnerOutSafeTab('safe');
                 const nextIdx = currentRunnerIdx + 1;
@@ -1271,7 +1386,11 @@ export function LiveScoringPage() {
                   setStep('runner');
                 } else {
                   setRunnerSafeDest(null);
-                  submitPlay(selectedEvent!, updated, fieldingPositions);
+                  if (betweenPitchEvent) {
+                    submitBetweenPitchPlay(betweenPitchEvent, updated);
+                  } else {
+                    submitPlay(selectedEvent!, updated, fieldingPositions);
+                  }
                 }
               };
 
@@ -1292,10 +1411,13 @@ export function LiveScoringPage() {
 
               return (
                 <div className="bg-[#111d30] rounded-xl border border-white/10 overflow-hidden">
-                  {/* Title - iScore style */}
+                  {/* Title */}
                   <div className="px-4 py-3 border-b border-white/5 text-center">
+                    {betweenPitchEvent && (
+                      <p className="text-[10px] text-amber-400 font-bold uppercase mb-1 tracking-widest">{betweenPitchEvent.replace(/_/g, ' ')}</p>
+                    )}
                     <p className="text-xs text-white/50 uppercase font-bold tracking-wide">
-                      What happened to the runner that was on {baseLabel} base,
+                      What happened to the runner on {baseLabel} base,
                     </p>
                     <p className="text-base text-white font-bold mt-0.5">{q.playerName}?</p>
                     {minOrder > BASE_ORDER[q.base] && (
@@ -1354,36 +1476,54 @@ export function LiveScoringPage() {
                       </div>
                     </div>
                   ) : (
-                    /* SAFE tab - click action submits with selected base */
+                    /* SAFE tab - click action submits with selected base + tracks advance reason */
                     <div className="p-3 max-h-72 overflow-y-auto">
                       <div className="grid grid-cols-2 gap-2">
-                        {/* HELD AT BASE - only if runner is allowed to stay */}
                         {minOrder <= BASE_ORDER[q.base] && (
-                          <button onClick={() => answerRunner('safe', q.base)}
+                          <button onClick={() => answerRunner('safe', q.base, 'held')}
                             className="py-3 bg-[#3a4a2a] hover:bg-[#4a5a3a] text-white text-xs font-bold rounded-lg uppercase col-span-2 transition-colors border border-[#4a5a3a]/50">
                             HELD AT {q.base.toUpperCase()}
                           </button>
                         )}
-                        {[
-                          { key: 'on_play', label: 'ADVANCED BY BATTER' },
-                          { key: 'stolen_base', label: 'STOLEN BASE' },
-                          { key: 'error', label: 'REACHED ON ERROR' },
-                          { key: 'wild_pitch', label: 'WILD PITCH' },
-                          { key: 'passed_ball', label: 'PASSED BALL' },
-                          { key: 'balk', label: 'BALK' },
-                          { key: 'fielders_choice', label: "FIELDER'S CHOICE" },
-                          { key: 'defensive_indifference', label: 'DEF. INDIFFERENCE' },
-                          { key: 'obstruction', label: 'OBSTRUCTION' },
-                        ].map(r => (
-                          <button key={r.key} onClick={() => answerRunner('safe', runnerSafeDest || q.minDestination)}
-                            className="py-3 bg-[#2a5a3a] hover:bg-[#3a7a4a] text-white text-xs font-bold rounded-lg uppercase transition-colors border border-[#3a7a4a]/50">
-                            {r.label}
-                          </button>
-                        ))}
-                        <button onClick={() => answerRunner('safe', runnerSafeDest || q.minDestination)}
-                          className="py-3 bg-[#2a5a3a] hover:bg-[#3a7a4a] text-white text-xs font-bold rounded-lg uppercase col-span-2 transition-colors border border-[#3a7a4a]/50">
-                          OTHER
-                        </button>
+                        {(() => {
+                          const isBatterError = ERROR_EVENTS.has(selectedEvent || '') || ERROR_EVENTS.has(betweenPitchEvent || '');
+                          const isBetweenPitch = !!betweenPitchEvent;
+                          const options: { key: string; label: string }[] = [];
+
+                          if (isBetweenPitch) {
+                            options.push({ key: betweenPitchEvent!, label: betweenPitchEvent!.replace(/_/g, ' ').toUpperCase() });
+                            options.push({ key: 'held', label: 'NO ADVANCE' });
+                          } else {
+                            options.push({ key: 'on_play', label: 'ADVANCED ON PLAY' });
+                            if (isBatterError) {
+                              options.push({ key: 'advance_on_error', label: 'ADVANCED ON SAME ERROR' });
+                            }
+                            options.push({ key: 'stolen_base', label: 'STOLEN BASE' });
+                            options.push({ key: 'error', label: 'REACHED ON ERROR' });
+                            options.push({ key: 'wild_pitch', label: 'WILD PITCH' });
+                            options.push({ key: 'passed_ball', label: 'PASSED BALL' });
+                            options.push({ key: 'balk', label: 'BALK' });
+                            options.push({ key: 'fielders_choice', label: "FIELDER'S CHOICE" });
+                            options.push({ key: 'defensive_indifference', label: 'DEF. INDIFFERENCE' });
+                            options.push({ key: 'obstruction', label: 'OBSTRUCTION' });
+                          }
+                          return options.map(r => {
+                            if (r.key === 'held') {
+                              return (
+                                <button key={r.key} onClick={() => answerRunner('safe', q.base, 'held')}
+                                  className="py-3 bg-[#3a4a2a] hover:bg-[#4a5a3a] text-white text-xs font-bold rounded-lg uppercase transition-colors border border-[#4a5a3a]/50">
+                                  {r.label}
+                                </button>
+                              );
+                            }
+                            return (
+                              <button key={r.key} onClick={() => answerRunner('safe', runnerSafeDest || q.minDestination, r.key)}
+                                className="py-3 bg-[#2a5a3a] hover:bg-[#3a7a4a] text-white text-xs font-bold rounded-lg uppercase transition-colors border border-[#3a7a4a]/50">
+                                {r.label}
+                              </button>
+                            );
+                          });
+                        })()}
                       </div>
                     </div>
                   )}
