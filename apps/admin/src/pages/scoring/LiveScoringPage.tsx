@@ -261,6 +261,30 @@ export function LiveScoringPage() {
 
   useEffect(() => { loadState(); loadRosters(); }, [loadState, loadRosters]);
 
+  // Derive current batter position from events (survives page refresh, always correct)
+  const NON_AB_EVENTS = useMemo(() => new Set([
+    'pitch', 'stolen_base', 'caught_stealing', 'picked_off', 'wild_pitch', 'passed_ball',
+    'balk', 'advance', 'advance_on_error', 'defensive_indifference',
+    'runner_interference', 'appeal_play', 'tagged_out', 'force_out',
+    'hit_by_ball', 'missed_base', 'left_base_early', 'left_base_path',
+    'offensive_interference', 'passed_runner', 'hesitation', 'double_play', 'triple_play',
+    'end_half_inning', 'adjust_score', 'illegal_pitch',
+  ]), []);
+
+  useEffect(() => {
+    let awayABs = 0;
+    let homeABs = 0;
+    for (const e of events) {
+      if (NON_AB_EVENTS.has(e.eventType)) continue;
+      if (e.half === 'top') awayABs++;
+      else if (e.half === 'bot') homeABs++;
+    }
+    setCurrentBatterIdx(prev => {
+      if (prev.away === awayABs && prev.home === homeABs) return prev;
+      return { away: awayABs, home: homeABs };
+    });
+  }, [events, NON_AB_EVENTS]);
+
   // Derived
   const battingTeamId = gameState?.half === 'top' ? game?.awayTeamId : game?.homeTeamId;
   const fieldingTeamId = gameState?.half === 'top' ? game?.homeTeamId : game?.awayTeamId;
