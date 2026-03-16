@@ -282,10 +282,6 @@ export function LiveScoringPage() {
     return { away: awayABs, home: homeABs };
   }, [events, NON_AB_EVENTS]);
 
-  // Reset skip offset whenever events change (loadState brings fresh truth)
-  const prevEventCount = useMemo(() => events.length, [events]);
-  useEffect(() => { setSkipOffset({ home: 0, away: 0 }); }, [prevEventCount]);
-
   // Derived
   const battingTeamId = gameState?.half === 'top' ? game?.awayTeamId : game?.homeTeamId;
   const fieldingTeamId = gameState?.half === 'top' ? game?.homeTeamId : game?.awayTeamId;
