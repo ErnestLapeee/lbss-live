@@ -625,15 +625,21 @@ async function assignPitcherDecisions(
   const winningTeamId = homeScore > awayScore ? game.homeTeamId : game.awayTeamId;
   const losingTeamId = homeScore > awayScore ? game.awayTeamId : game.homeTeamId;
 
-  // Find the event where the winning team took the lead for good.
+  // Find the scoring event where the winning team took the lead FOR GOOD.
+  //
+  // Old logic incorrectly overwrote the decision every time the winning team scored while already ahead.
+  // This version:
+  // - Determines the last point at which the winning team was NOT leading (tied or trailing).
+  // - Finds the first scoring event after that point that puts the winning team in the lead.
+  //
   // half='top' → away bats, home pitches (curHomePitcher)
   // half='bot' → home bats, away pitches (curAwayPitcher)
   let runH = 0, runA = 0;
-  let winPitcherId: number | null = null;
-  let losePitcherId: number | null = null;
   let curHomePitcher: number | null = null; // pitches in top half
   let curAwayPitcher: number | null = null; // pitches in bot half
 
+  // Pass 1: compute the last eventNumber where winning team was NOT leading.
+  let lastNotLeadingEvtNum = 0;
   for (const e of events) {
     if (e.half === 'top' && e.pitcherId) curHomePitcher = e.pitcherId;
     if (e.half === 'bot' && e.pitcherId) curAwayPitcher = e.pitcherId;
@@ -641,21 +647,53 @@ async function assignPitcherDecisions(
     const runs = e.runsScored ?? 0;
     if (runs > 0) {
       if (e.half === 'top') runA += runs; else runH += runs;
+    }
 
-      if (winningTeamId === game.homeTeamId) {
-        // Home won. Check if home just took the lead
-        if (runH > runA && e.half === 'bot') {
-          // Home took the lead in this event
-          winPitcherId = curHomePitcher; // home's pitcher gets the W
-          losePitcherId = curAwayPitcher; // away's pitcher at the time gets the L
-        }
+    const winningIsHome = winningTeamId === game.homeTeamId;
+    const winningScore = winningIsHome ? runH : runA;
+    const losingScore = winningIsHome ? runA : runH;
+    if (winningScore <= losingScore) {
+      lastNotLeadingEvtNum = e.eventNumber ?? lastNotLeadingEvtNum;
+    }
+  }
+
+  // Pass 2: find the go-ahead-for-good scoring event and assign pitcher of record.
+  runH = 0; runA = 0;
+  curHomePitcher = null; curAwayPitcher = null;
+  let winPitcherId: number | null = null;
+  let losePitcherId: number | null = null;
+
+  for (const e of events) {
+    if (e.half === 'top' && e.pitcherId) curHomePitcher = e.pitcherId;
+    if (e.half === 'bot' && e.pitcherId) curAwayPitcher = e.pitcherId;
+
+    const runs = e.runsScored ?? 0;
+    if (runs <= 0) continue;
+
+    const prevH = runH, prevA = runA;
+    if (e.half === 'top') runA += runs; else runH += runs;
+
+    // Only consider scoring that occurs strictly after the last not-leading point.
+    if ((e.eventNumber ?? 0) <= lastNotLeadingEvtNum) continue;
+
+    const winningIsHome = winningTeamId === game.homeTeamId;
+    const prevWinningScore = winningIsHome ? prevH : prevA;
+    const prevLosingScore = winningIsHome ? prevA : prevH;
+    const nextWinningScore = winningIsHome ? runH : runA;
+    const nextLosingScore = winningIsHome ? runA : runH;
+
+    // The go-ahead moment: winning team goes from tied/trailing to leading.
+    if (prevWinningScore <= prevLosingScore && nextWinningScore > nextLosingScore) {
+      if (winningIsHome) {
+        // Home took the lead in bottom half; W goes to home pitcher of record (pitched top), L to away pitcher pitching now.
+        winPitcherId = curHomePitcher;
+        losePitcherId = curAwayPitcher;
       } else {
-        // Away won. Check if away just took the lead
-        if (runA > runH && e.half === 'top') {
-          winPitcherId = curAwayPitcher;
-          losePitcherId = curHomePitcher;
-        }
+        // Away took the lead in top half; W goes to away pitcher of record (pitched bottom), L to home pitcher pitching now.
+        winPitcherId = curAwayPitcher;
+        losePitcherId = curHomePitcher;
       }
+      break;
     }
   }
 
