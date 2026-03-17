@@ -931,6 +931,52 @@ export function LiveScoringPage() {
     if (!gameState || submitting) return;
     setSubmitting(true);
     try {
+      if (eventType === 'balk') {
+        const r1 = gameState.bases.first;
+        const r2 = gameState.bases.second;
+        const r3 = gameState.bases.third;
+
+        // Balk with no runners is effectively an illegal pitch; in our UI "Balk"
+        // is intended for the common case with runners where all runners advance.
+        if (r1 || r2 || r3) {
+          const runnerFirstId = null;
+          const runnerSecondId = r1 ?? null;
+          const runnerThirdId = r2 ?? null;
+          const runnersScored: number[] = [];
+          let runsScored = 0;
+          const detailParts: string[] = [];
+
+          if (r1) detailParts.push(`${getPlayerName(r1)} to 2nd`);
+          if (r2) detailParts.push(`${getPlayerName(r2)} to 3rd`);
+          if (r3) {
+            runnersScored.push(r3);
+            runsScored = 1;
+            detailParts.push(`${getPlayerName(r3)} scores`);
+          }
+
+          await apiPost(`/admin/scoring/${gameId}/event`, {
+            eventType,
+            batterId: currentBatter?.playerId ?? null,
+            pitcherId: currentPitcher?.playerId,
+            inning: gameState.inning,
+            half: gameState.half,
+            rbi: 0,
+            runsScored,
+            outsRecorded: 0,
+            balls,
+            strikes,
+            runnerFirstId,
+            runnerSecondId,
+            runnerThirdId,
+            runnersScored,
+            eventDetail: `balk: ${detailParts.join(', ')}`,
+          });
+          cancelWizard();
+          await loadState();
+          return;
+        }
+      }
+
       await apiPost(`/admin/scoring/${gameId}/event`, {
         eventType, batterId: currentBatter?.playerId, pitcherId: currentPitcher?.playerId,
         inning: gameState.inning, half: gameState.half, rbi: 0, runsScored: 0,
@@ -1685,9 +1731,9 @@ export function LiveScoringPage() {
                             if (!stayedAtBase && minOrder <= BASE_ORDER[q.base]) {
                               options.push({ key: 'held', label: 'HELD UP', action: () => answerRunner('safe', q.base, 'held') });
                             }
-                            if (isBatterError) {
-                              options.push({ key: 'advance_on_error', label: 'ADVANCED ON SAME ERROR', action: () => answerRunner('safe', dest, 'advance_on_error') });
-                            }
+                            // Allow "advanced on (same) error" even when the batter event is a hit.
+                            // This is needed for plays like: single + runner(s) score on an outfield error.
+                            options.push({ key: 'advance_on_error', label: 'ADVANCED ON ERROR', action: () => answerRunner('safe', dest, 'advance_on_error') });
                             options.push({ key: 'stolen_base', label: 'STOLEN BASE', action: () => answerRunner('safe', dest, 'stolen_base') });
                             options.push({ key: 'error', label: 'ERROR', action: () => answerRunner('safe', dest, 'error') });
                             options.push({ key: 'passed_ball', label: 'PASSED BALL', action: () => answerRunner('safe', dest, 'passed_ball') });
