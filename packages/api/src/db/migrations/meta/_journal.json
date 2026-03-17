@@ -29,6 +29,20 @@
       "when": 1771232210257,
       "tag": "0003_thin_energizer",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1771232210258,
+      "tag": "0004_phase2_stats_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1771300000000,
+      "tag": "0005_runner_scored_reasons",
+      "breakpoints": true
     }
   ]
 }

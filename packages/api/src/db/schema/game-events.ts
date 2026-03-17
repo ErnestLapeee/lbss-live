@@ -39,6 +39,8 @@ export const gameEvents = pgTable(
     runnerSecondId: integer('runner_second_id').references(() => players.id),
     runnerThirdId: integer('runner_third_id').references(() => players.id),
     runnersScored: jsonb('runners_scored').default([]),
+    /** Per-runner advance reason when scoring, same order as runnersScored. e.g. ['wild_pitch','on_play'] */
+    runnerScoredReasons: jsonb('runner_scored_reasons').default([]),
     // Fielding tracking
     fieldingSequence: varchar('fielding_sequence', { length: 30 }),
     putoutFielderIds: jsonb('putout_fielder_ids').default([]),

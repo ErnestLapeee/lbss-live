@@ -58,6 +58,10 @@ const NON_PA_EVENTS = new Set([
 const GROUND_BALL_OUTS = new Set(['ground_out', 'bunt_out']);
 const FLY_BALL_OUTS = new Set(['fly_out', 'line_out', 'pop_out', 'infield_fly']);
 
+/** Advance reasons that make a run unearned (catcher/pitcher miscue, error, or defense indifference) */
+const UNEARNED_REASONS = new Set(['passed_ball', 'advance_on_error', 'error', 'defensive_indifference', 'obstruction']);
+const ERROR_EVENT_TYPES = new Set(['error', 'sac_bunt_error', 'sac_fly_error']);
+
 function isPlateAppearance(t: string): boolean {
   return !NON_PA_EVENTS.has(t);
 }
@@ -250,10 +254,32 @@ export async function finalizeGame(gameId: number, userId?: number, options?: Fi
 
       const runsScoredOnPlay = e.runsScored ?? 0;
       runsAllowed += runsScoredOnPlay;
-      if ((e.errorsOnPlay ?? 0) > 0) {
-        earnedRuns += Math.max(0, runsScoredOnPlay - (e.errorsOnPlay ?? 0));
+
+      // Earned run logic: use runnerScoredReasons when available; otherwise fall back to errorsOnPlay
+      if (ERROR_EVENT_TYPES.has(t)) {
+        // All runs on error events are unearned
+        earnedRuns += 0;
       } else {
-        earnedRuns += runsScoredOnPlay;
+        const reasons = (e.runnerScoredReasons as string[]) || [];
+        let earnedFromPlay = 0;
+        let wpCountFromPlay = 0;
+        for (let i = 0; i < runsScoredOnPlay; i++) {
+          const reason = reasons[i] || 'on_play';
+          if (UNEARNED_REASONS.has(reason)) continue;
+          if (reason === 'wild_pitch') {
+            earnedFromPlay++;
+            wpCountFromPlay++;
+          } else {
+            earnedFromPlay++;
+          }
+        }
+        // Legacy: if no runnerScoredReasons, use errorsOnPlay-based logic
+        if (reasons.length === 0 && runsScoredOnPlay > 0) {
+          const errs = e.errorsOnPlay ?? 0;
+          earnedFromPlay = Math.max(0, runsScoredOnPlay - errs);
+        }
+        earnedRuns += earnedFromPlay;
+        wildPitches += wpCountFromPlay;
       }
 
       if (HIT_EVENTS.has(t)) hitsAllowed++;

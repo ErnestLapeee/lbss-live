@@ -272,14 +272,12 @@ export function GamesPage() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2 flex-wrap">
-                      {!g.isFinalized && (
-                        <button
-                          onClick={() => navigate(`/scoring/${g.id}`)}
-                          className="px-2 py-1 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded"
-                        >
-                          Score Game
-                        </button>
-                      )}
+                      <button
+                        onClick={() => navigate(`/scoring/${g.id}`)}
+                        className="px-2 py-1 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded"
+                      >
+                        {g.isFinalized ? 'Edit Score' : 'Score Game'}
+                      </button>
                       {!g.isFinalized && (
                         <button
                           onClick={() => handleFinalize(g)}

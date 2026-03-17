@@ -260,7 +260,7 @@ export function LiveScoringPage() {
       const data: any = await apiGet(`/admin/scoring/${gameId}/state`);
       setGame(data.game); setGameState(data.state); setEvents(data.events || []);
       setHomeLineup(data.lineups?.home || []); setAwayLineup(data.lineups?.away || []);
-      if (data.game.status === 'live' || data.game.status === 'suspended') setPhase('scoring');
+      if (data.game.status === 'live' || data.game.status === 'suspended' || data.game.status === 'final') setPhase('scoring');
     } catch (err) { console.error(err); } finally { setLoading(false); }
   }, [gameId]);
 
@@ -764,17 +764,18 @@ export function LiveScoringPage() {
       const outsRecorded = (isOut ? 1 : 0) + runnerOuts;
       let runsScored = 0, rbi = 0;
       const runnersScored: number[] = [];
+      const runnerScoredReasons: string[] = [];
       let runnerFirstId: number | null = null, runnerSecondId: number | null = null, runnerThirdId: number | null = null;
 
       if (eventType === 'home_run' || eventType === 'inside_park_hr') {
-        if (gameState.bases.first) { runnersScored.push(gameState.bases.first); runsScored++; rbi++; }
-        if (gameState.bases.second) { runnersScored.push(gameState.bases.second); runsScored++; rbi++; }
-        if (gameState.bases.third) { runnersScored.push(gameState.bases.third); runsScored++; rbi++; }
-        runnersScored.push(currentBatter.playerId); runsScored++; rbi++;
+        if (gameState.bases.first) { runnersScored.push(gameState.bases.first); runnerScoredReasons.push('on_play'); runsScored++; rbi++; }
+        if (gameState.bases.second) { runnersScored.push(gameState.bases.second); runnerScoredReasons.push('on_play'); runsScored++; rbi++; }
+        if (gameState.bases.third) { runnersScored.push(gameState.bases.third); runnerScoredReasons.push('on_play'); runsScored++; rbi++; }
+        runnersScored.push(currentBatter.playerId); runnerScoredReasons.push('on_play'); runsScored++; rbi++;
       } else if (['walk','hit_by_pitch','intentional_walk'].includes(eventType)) {
         if (gameState.bases.first) {
           if (gameState.bases.second) {
-            if (gameState.bases.third) { runnersScored.push(gameState.bases.third); runsScored++; rbi++; }
+            if (gameState.bases.third) { runnersScored.push(gameState.bases.third); runnerScoredReasons.push('on_play'); runsScored++; rbi++; }
             runnerThirdId = gameState.bases.second;
           } else { runnerThirdId = gameState.bases.third; }
           runnerSecondId = gameState.bases.first;
@@ -784,6 +785,7 @@ export function LiveScoringPage() {
         for (const r of runners) {
           if (r.outcome === 'safe' && r.destination === 'home') {
             runnersScored.push(r.playerId);
+            runnerScoredReasons.push(r.advanceReason || 'on_play');
             runsScored++;
             const noRbi = NO_RBI_BATTER_EVENTS.has(eventType) || NO_RBI_REASONS.has(r.advanceReason || '');
             if (!noRbi) rbi++;
@@ -858,7 +860,7 @@ export function LiveScoringPage() {
       await apiPost(`/admin/scoring/${gameId}/event`, {
         eventType, batterId: currentBatter.playerId, pitcherId: currentPitcher?.playerId,
         inning: gameState.inning, half: gameState.half, rbi, runsScored, outsRecorded,
-        balls, strikes, runnerFirstId, runnerSecondId, runnerThirdId, runnersScored, fieldingSequence, eventDetail: detail,
+        balls, strikes, runnerFirstId, runnerSecondId, runnerThirdId, runnersScored, runnerScoredReasons, fieldingSequence, eventDetail: detail,
         hitLocationX, hitLocationY, hitType, hitHardness,
         putoutFielderIds, assistFielderIds, errorFielderIds,
       });
@@ -1592,7 +1594,15 @@ export function LiveScoringPage() {
                       <button key={t} onClick={() => {
                         if (t === 'out') { setRunnerOutSafeTab('out'); setStep('runner_out_detail'); }
                         else if (t === 'safe') { setRunnerOutSafeTab('safe'); setStep('runner'); }
-                        else answerRunner('safe', runnerSafeDest || q.minDestination);
+                        else {
+                          const dest = runnerSafeDest || q.minDestination;
+                          const stayedAtBase = dest === q.base;
+                          if (stayedAtBase && minOrder <= BASE_ORDER[q.base]) {
+                            answerRunner('safe', q.base, 'held');
+                          } else {
+                            answerRunner('safe', dest, betweenPitchEvent || undefined);
+                          }
+                        }
                       }}
                         className={`flex-1 py-2.5 text-sm font-bold capitalize transition-colors ${
                           (t === 'out' && runnerOutSafeTab === 'out') || (t === 'safe' && runnerOutSafeTab === 'safe')
@@ -1644,20 +1654,27 @@ export function LiveScoringPage() {
                           const isBatterError = ERROR_EVENTS.has(selectedEvent || '') || ERROR_EVENTS.has(betweenPitchEvent || '');
                           const isBetweenPitch = !!betweenPitchEvent;
                           const dest = runnerSafeDest || q.minDestination;
+                          const stayedAtBase = dest === q.base;
                           const options: { key: string; label: string; action: () => void }[] = [];
 
                           if (isBetweenPitch) {
+                            if (stayedAtBase && minOrder <= BASE_ORDER[q.base]) {
+                              options.push({ key: 'held', label: 'HELD UP', action: () => answerRunner('safe', q.base, 'held') });
+                            }
                             options.push({ key: 'advance', label: 'ADVANCE', action: () => answerRunner('safe', dest, betweenPitchEvent!) });
                             options.push({ key: 'stolen_base', label: 'STOLEN BASE', action: () => answerRunner('safe', dest, 'stolen_base') });
                             options.push({ key: 'on_throw', label: 'ADVANCED ON THROW', action: () => answerRunner('safe', dest, 'on_throw') });
-                            if (minOrder <= BASE_ORDER[q.base]) {
+                            if (!stayedAtBase && minOrder <= BASE_ORDER[q.base]) {
                               options.push({ key: 'held', label: 'HELD UP', action: () => answerRunner('safe', q.base, 'held') });
                             }
                             options.push({ key: 'error', label: 'ERROR', action: () => answerRunner('safe', dest, 'error') });
                             options.push({ key: 'defensive_indifference', label: 'DEF. INDIFFERENCE', action: () => answerRunner('safe', dest, 'defensive_indifference') });
                           } else {
+                            if (stayedAtBase && minOrder <= BASE_ORDER[q.base]) {
+                              options.push({ key: 'held', label: 'HELD UP', action: () => answerRunner('safe', q.base, 'held') });
+                            }
                             options.push({ key: 'on_play', label: 'ADVANCED BY BATTER', action: () => answerRunner('safe', dest, 'on_play') });
-                            if (minOrder <= BASE_ORDER[q.base]) {
+                            if (!stayedAtBase && minOrder <= BASE_ORDER[q.base]) {
                               options.push({ key: 'held', label: 'HELD UP', action: () => answerRunner('safe', q.base, 'held') });
                             }
                             if (isBatterError) {

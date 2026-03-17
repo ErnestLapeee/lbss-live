@@ -324,6 +324,7 @@ export async function adminScoringRoutes(app: FastifyInstance) {
       runnerSecondId?: number | null;
       runnerThirdId?: number | null;
       runnersScored?: number[];
+      runnerScoredReasons?: string[];
       fieldingSequence?: string;
       putoutFielderIds?: number[];
       assistFielderIds?: number[];
@@ -369,6 +370,7 @@ export async function adminScoringRoutes(app: FastifyInstance) {
         runnerSecondId: body.runnerSecondId ?? null,
         runnerThirdId: body.runnerThirdId ?? null,
         runnersScored: body.runnersScored ?? [],
+        runnerScoredReasons: body.runnerScoredReasons ?? [],
         fieldingSequence: body.fieldingSequence ?? null,
         putoutFielderIds: body.putoutFielderIds ?? [],
         assistFielderIds: body.assistFielderIds ?? [],
@@ -412,6 +414,9 @@ export async function adminScoringRoutes(app: FastifyInstance) {
           },
         });
       } catch {}
+
+      const [game] = await db.select({ isFinalized: games.isFinalized }).from(games).where(eq(games.id, gameId)).limit(1);
+      if (game?.isFinalized) await finalizeGame(gameId, user?.id, { recompute: true });
 
       return reply.send({ event, state });
     } catch (err) {
@@ -457,6 +462,10 @@ export async function adminScoringRoutes(app: FastifyInstance) {
 
       try { getIO().to(`game:${gameId}`).emit('game:update', { state }); } catch {}
 
+      const user = (request as any).user;
+      const [game] = await db.select({ isFinalized: games.isFinalized }).from(games).where(eq(games.id, gameId)).limit(1);
+      if (game?.isFinalized) await finalizeGame(gameId, user?.id, { recompute: true });
+
       return reply.send({ undone: lastEvent.eventNumber, undoneType: lastEvent.eventType, state });
     } catch (err) {
       request.log.error(err);
@@ -498,6 +507,10 @@ export async function adminScoringRoutes(app: FastifyInstance) {
 
       try { getIO().to(`game:${gameId}`).emit('game:update', { state }); } catch {}
 
+      const user = (request as any).user;
+      const [game] = await db.select({ isFinalized: games.isFinalized }).from(games).where(eq(games.id, gameId)).limit(1);
+      if (game?.isFinalized) await finalizeGame(gameId, user?.id, { recompute: true });
+
       return reply.send({ redone: lastDeleted.eventNumber, redoneType: lastDeleted.eventType, state });
     } catch (err) {
       request.log.error(err);
@@ -536,6 +549,7 @@ export async function adminScoringRoutes(app: FastifyInstance) {
         runnerSecondId: (v) => v ?? null,
         runnerThirdId: (v) => v ?? null,
         runnersScored: (v) => v ?? [],
+        runnerScoredReasons: (v) => v ?? [],
         batterId: (v) => v ?? null,
         pitcherId: (v) => v ?? null,
       };
@@ -567,6 +581,10 @@ export async function adminScoringRoutes(app: FastifyInstance) {
       }).where(eq(games.id, gameId));
 
       try { getIO().to(`game:${gameId}`).emit('game:update', { state }); } catch {}
+
+      const user = (request as any).user;
+      const [game] = await db.select({ isFinalized: games.isFinalized }).from(games).where(eq(games.id, gameId)).limit(1);
+      if (game?.isFinalized) await finalizeGame(gameId, user?.id, { recompute: true });
 
       return reply.send({ updated: eventId, state });
     } catch (err) {
@@ -606,6 +624,10 @@ export async function adminScoringRoutes(app: FastifyInstance) {
       }).where(eq(games.id, gameId));
 
       try { getIO().to(`game:${gameId}`).emit('game:update', { state }); } catch {}
+
+      const user = (request as any).user;
+      const [game] = await db.select({ isFinalized: games.isFinalized }).from(games).where(eq(games.id, gameId)).limit(1);
+      if (game?.isFinalized) await finalizeGame(gameId, user?.id, { recompute: true });
 
       return reply.send({ deleted: eventId, state });
     } catch (err) {
@@ -675,6 +697,10 @@ export async function adminScoringRoutes(app: FastifyInstance) {
         });
       }
 
+      const user = (request as any).user;
+      const [game] = await db.select({ isFinalized: games.isFinalized }).from(games).where(eq(games.id, gameId)).limit(1);
+      if (game?.isFinalized) await finalizeGame(gameId, user?.id, { recompute: true });
+
       return reply.send({ success: true });
     } catch (err) {
       request.log.error(err);
@@ -706,6 +732,10 @@ export async function adminScoringRoutes(app: FastifyInstance) {
             eq(gameLineups.isActive, true)
           ));
       }
+
+      const user = (request as any).user;
+      const [game] = await db.select({ isFinalized: games.isFinalized }).from(games).where(eq(games.id, gameId)).limit(1);
+      if (game?.isFinalized) await finalizeGame(gameId, user?.id, { recompute: true });
 
       return reply.send({ success: true });
     } catch (err) {
