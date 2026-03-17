@@ -622,6 +622,11 @@ async function assignPitcherDecisions(
   const awayScore = game.awayScore ?? 0;
   if (homeScore === awayScore) return; // tie, no decision
 
+  // Clear any previous decisions for this game (important when re-finalizing / backfilling).
+  await db.update(playerGamePitching)
+    .set({ decision: null })
+    .where(eq(playerGamePitching.gameId, gameId));
+
   const winningTeamId = homeScore > awayScore ? game.homeTeamId : game.awayTeamId;
   const losingTeamId = homeScore > awayScore ? game.awayTeamId : game.homeTeamId;
 
