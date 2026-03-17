@@ -216,6 +216,43 @@ export async function finalizeGame(gameId: number, userId?: number, options?: Fi
 
   /* ── Per-game PITCHING stats ── */
 
+  // Precompute, per inning half, when the inning would have ended in an error-free reconstruction.
+  // This is the key to "perfect" earned-run attribution: any runs scoring after the inning should
+  // have ended are unearned.
+  //
+  // We approximate the official scorer reconstruction with the data we have:
+  // - Treat batter-reaches-on-error events as if the batter were retired (adds 1 out).
+  // - Keep recorded runner outs (outsRecorded) as they happened.
+  // - Ignore pitch events for inning progression.
+  //
+  // This does NOT attempt to reconstruct alternate basepaths; it focuses on inning-extension,
+  // which is the biggest driver of earned vs unearned.
+  const inningCutoffEventNumber = new Map<string, number>(); // key = `${inning}:${half}`
+  {
+    const byHalfInning = new Map<string, any[]>();
+    for (const e of events) {
+      if (e.eventType === 'pitch') continue;
+      const key = `${e.inning}:${e.half}`;
+      const arr = byHalfInning.get(key) || [];
+      arr.push(e);
+      byHalfInning.set(key, arr);
+    }
+
+    for (const [key, evts] of byHalfInning) {
+      evts.sort((a, b) => (a.eventNumber ?? 0) - (b.eventNumber ?? 0));
+      let outsSim = 0;
+      let cutoff: number | null = null;
+      for (const e of evts) {
+        if (cutoff != null) break;
+        const outsRecorded = e.outsRecorded ?? 0;
+        const extraOut = ERROR_EVENT_TYPES.has(e.eventType) ? 1 : 0;
+        outsSim += outsRecorded + extraOut;
+        if (outsSim >= 3) cutoff = e.eventNumber ?? null;
+      }
+      if (cutoff != null) inningCutoffEventNumber.set(key, cutoff);
+    }
+  }
+
   const pitcherIds = new Set(events.filter(e => e.pitcherId).map(e => e.pitcherId!));
 
   for (const pitcherId of pitcherIds) {
@@ -255,29 +292,38 @@ export async function finalizeGame(gameId: number, userId?: number, options?: Fi
       const runsScoredOnPlay = e.runsScored ?? 0;
       runsAllowed += runsScoredOnPlay;
 
-      // Earned run logic: use runnerScoredReasons when available; otherwise fall back to errorsOnPlay
-      if (ERROR_EVENT_TYPES.has(t)) {
-        // All runs on error events are unearned
-        earnedRuns += 0;
+      // Earned run logic:
+      // 1) If the half-inning should have already ended in error-free reconstruction,
+      //    then any runs on this event are unearned.
+      // 2) Otherwise, use per-run reasons when available (passed_ball / wild_pitch / etc.).
+      // 3) Fallback for legacy events: errorsOnPlay-based approximation.
+      let inningExtended = false;
+      const hk = `${e.inning}:${e.half}`;
+      const cutoff = inningCutoffEventNumber.get(hk);
+      if (cutoff != null && (e.eventNumber ?? 0) > cutoff) inningExtended = true;
+
+      if (inningExtended || ERROR_EVENT_TYPES.has(t)) {
+        // If inning was extended by an error (or the event itself is an error-type PA),
+        // treat runs as unearned.
+        // (We still count runsAllowed above.)
       } else {
         const reasons = (e.runnerScoredReasons as string[]) || [];
         let earnedFromPlay = 0;
         let wpCountFromPlay = 0;
-        for (let i = 0; i < runsScoredOnPlay; i++) {
-          const reason = reasons[i] || 'on_play';
-          if (UNEARNED_REASONS.has(reason)) continue;
-          if (reason === 'wild_pitch') {
+
+        if (reasons.length > 0) {
+          for (let i = 0; i < runsScoredOnPlay; i++) {
+            const reason = reasons[i] || 'on_play';
+            if (UNEARNED_REASONS.has(reason)) continue;
             earnedFromPlay++;
-            wpCountFromPlay++;
-          } else {
-            earnedFromPlay++;
+            if (reason === 'wild_pitch') wpCountFromPlay++;
           }
-        }
-        // Legacy: if no runnerScoredReasons, use errorsOnPlay-based logic
-        if (reasons.length === 0 && runsScoredOnPlay > 0) {
+        } else if (runsScoredOnPlay > 0) {
+          // Legacy: if no runnerScoredReasons, use errorsOnPlay-based logic
           const errs = e.errorsOnPlay ?? 0;
           earnedFromPlay = Math.max(0, runsScoredOnPlay - errs);
         }
+
         earnedRuns += earnedFromPlay;
         wildPitches += wpCountFromPlay;
       }
