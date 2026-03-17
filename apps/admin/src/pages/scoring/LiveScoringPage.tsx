@@ -30,7 +30,7 @@ const SAFE_OUTCOMES_P1 = [
 const SAFE_OUTCOMES_P2 = [
   { key: 'sac_bunt_error', label: 'SAC BUNT WITH ERROR' },
   { key: 'sac_fly_error', label: 'SAC FLY WITH ERROR' },
-  { key: 'catcher_obstruction', label: 'CATCHER OBSTRUCTION' },
+  { key: 'catcher_obstruction', label: 'CATCHER INTERFERENCE' },
   { key: 'ground_rule_double', label: 'GROUND RULE DOUBLE' },
 ];
 

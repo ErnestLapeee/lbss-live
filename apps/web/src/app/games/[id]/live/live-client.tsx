@@ -589,8 +589,8 @@ export function LiveGameClient({
                 const hbp = (box?.hitByPitch ?? live?.hbp) ?? 0;
                 const sf = (box?.sacrificeFlies ?? live?.sf) ?? 0;
                 const sac = box?.sacrificeBunts ?? 0;
-                const sb = box?.stolenBases ?? live?.sb ?? 0;
-                const cs = box?.caughtStealing ?? 0;
+                const sb = status === 'live' ? (live?.sb ?? box?.stolenBases ?? 0) : (box?.stolenBases ?? live?.sb ?? 0);
+                const cs = status === 'live' ? (live?.cs ?? box?.caughtStealing ?? 0) : (box?.caughtStealing ?? live?.cs ?? 0);
                 const kc = box?.strikeoutsLooking ?? 0;
                 const ks = box?.strikeoutsSwinging ?? 0;
                 const b = box?.buntSingles ?? 0;
@@ -646,8 +646,14 @@ export function LiveGameClient({
               const tSO = rows.reduce((s, p) => s + (battingMap[p.playerId]?.strikeouts ?? liveBattingMap[p.playerId]?.so ?? 0), 0);
               const tKc = rows.reduce((s, p) => s + (battingMap[p.playerId]?.strikeoutsLooking ?? 0), 0);
               const tKs = rows.reduce((s, p) => s + (battingMap[p.playerId]?.strikeoutsSwinging ?? 0), 0);
-              const tSB = rows.reduce((s, p) => s + (battingMap[p.playerId]?.stolenBases ?? liveBattingMap[p.playerId]?.sb ?? 0), 0);
-              const tCS = rows.reduce((s, p) => s + (battingMap[p.playerId]?.caughtStealing ?? 0), 0);
+              const tSB = rows.reduce((s, p) => s + (status === 'live'
+                ? (liveBattingMap[p.playerId]?.sb ?? battingMap[p.playerId]?.stolenBases ?? 0)
+                : (battingMap[p.playerId]?.stolenBases ?? liveBattingMap[p.playerId]?.sb ?? 0)
+              ), 0);
+              const tCS = rows.reduce((s, p) => s + (status === 'live'
+                ? (liveBattingMap[p.playerId]?.cs ?? battingMap[p.playerId]?.caughtStealing ?? 0)
+                : (battingMap[p.playerId]?.caughtStealing ?? liveBattingMap[p.playerId]?.cs ?? 0)
+              ), 0);
               const tSF = rows.reduce((s, p) => s + (battingMap[p.playerId]?.sacrificeFlies ?? liveBattingMap[p.playerId]?.sf ?? 0), 0);
               const tSAC = rows.reduce((s, p) => s + (battingMap[p.playerId]?.sacrificeBunts ?? 0), 0);
               const tB = rows.reduce((s, p) => s + (battingMap[p.playerId]?.buntSingles ?? 0), 0);

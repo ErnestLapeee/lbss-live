@@ -14,9 +14,18 @@ export default async function HomePage() {
   let articles: any[] = [];
   let games: any[] = [];
   let teams: any[] = [];
+  let seasons: any[] = [];
+  let activeSeason: any | null = null;
 
   try { articles = toArray(await apiFetch('/api/public/articles')); } catch {}
-  try { games = toArray(await apiFetch('/api/public/games', { noCache: true })); } catch {}
+  try { seasons = toArray(await apiFetch('/api/public/seasons', { noCache: true })); } catch {}
+  activeSeason = seasons.find((s: any) => s?.isActive) ?? seasons[0] ?? null;
+  try {
+    games = toArray(await apiFetch(
+      activeSeason?.id ? `/api/public/games?seasonId=${activeSeason.id}` : '/api/public/games',
+      { noCache: true }
+    ));
+  } catch {}
   try { teams = toArray(await apiFetch('/api/public/teams')); } catch {}
 
   const liveGames = games.filter((g: any) => g.status === 'live');
@@ -37,7 +46,11 @@ export default async function HomePage() {
       <section className="bg-white border-b border-[#ccc]">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-10">
           <div className="max-w-3xl">
-            <p className="text-xs text-[#666] uppercase tracking-wider mb-2">2026 Season</p>
+            <p className="text-xs text-[#666] uppercase tracking-wider mb-2">
+              {activeSeason
+                ? `${activeSeason.year} Season`
+                : 'Season'}
+            </p>
             <h1 className="text-2xl sm:text-3xl font-bold text-[#111] leading-tight">
               Latvijas Beisbola Liga
             </h1>
@@ -56,7 +69,7 @@ export default async function HomePage() {
           <div className="mt-6 grid grid-cols-3 gap-3 max-w-md">
             <StatBox label="Teams" value={teams.length || '—'} />
             <StatBox label="Games" value={games.length || '—'} />
-            <StatBox label="Season" value="2026" />
+            <StatBox label="Season" value={activeSeason?.year ?? '—'} />
           </div>
         </div>
       </section>
