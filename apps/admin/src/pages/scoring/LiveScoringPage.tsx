@@ -2164,6 +2164,11 @@ function EventTimelinePanel({ gameId, events, homeLineup, awayLineup, onClose, o
   const [editForm, setEditForm] = useState<Record<string, any>>({});
   const [previewState, setPreviewState] = useState<{ eventNumber: number; state: any } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [scoreEditPlayerIds, setScoreEditPlayerIds] = useState<number[]>([]);
+  const [mode, setMode] = useState<'log' | 'stats'>('log');
+  const [statsLoading, setStatsLoading] = useState(false);
+  const [gameStats, setGameStats] = useState<{ batting: any[]; pitching: any[]; fielding: any[] } | null>(null);
+  const [statsEdits, setStatsEdits] = useState<Record<string, Record<string, any>>>({});
 
   const allPlayers = useMemo(() => {
     const map = new Map<number, string>();
@@ -2174,6 +2179,20 @@ function EventTimelinePanel({ gameId, events, homeLineup, awayLineup, onClose, o
   }, [homeLineup, awayLineup]);
 
   const playerName = (id?: number | null) => id ? (allPlayers.get(id) || `#${id}`) : '';
+
+  const RUN_SCORE_REASON_OPTIONS: Array<{ value: string; label: string }> = [
+    { value: 'on_play', label: 'On play' },
+    { value: 'wild_pitch', label: 'Wild pitch' },
+    { value: 'passed_ball', label: 'Passed ball' },
+    { value: 'error', label: 'Error' },
+    { value: 'advance_on_error', label: 'Advance on error' },
+    { value: 'obstruction', label: 'Obstruction' },
+    { value: 'defensive_indifference', label: 'Def. indifference' },
+    { value: 'stolen_base', label: 'Stolen base' },
+    { value: 'on_throw', label: 'On throw' },
+    { value: 'held', label: 'Held up' },
+    { value: 'other', label: 'Other' },
+  ];
 
   const eventColor = (type: string) => {
     if (type === 'pitch') return 'text-white/25';
@@ -2192,6 +2211,41 @@ function EventTimelinePanel({ gameId, events, homeLineup, awayLineup, onClose, o
     } catch { /* ignore */ }
   };
 
+  const loadStats = async () => {
+    setStatsLoading(true);
+    try {
+      const res = await apiGet<{ batting: any[]; pitching: any[]; fielding: any[] }>(`/admin/games/${gameId}/stats`);
+      setGameStats(res);
+      setStatsEdits({});
+    } catch (err: any) {
+      alert(err.message || 'Failed to load game stats');
+      setGameStats({ batting: [], pitching: [], fielding: [] });
+    } finally {
+      setStatsLoading(false);
+    }
+  };
+
+  const setRowEdit = (kind: 'batting' | 'pitching' | 'fielding', playerId: number, patch: Record<string, any>) => {
+    const key = `${kind}:${playerId}`;
+    setStatsEdits(prev => ({ ...prev, [key]: { ...(prev[key] || {}), ...patch } }));
+  };
+
+  const saveRow = async (kind: 'batting' | 'pitching' | 'fielding', playerId: number) => {
+    const key = `${kind}:${playerId}`;
+    const patch = statsEdits[key] || {};
+    if (Object.keys(patch).length === 0) return;
+    setBusy(true);
+    try {
+      await apiPut(`/admin/games/${gameId}/stats/${kind}/${playerId}`, patch);
+      await loadStats();
+      await onRefresh();
+    } catch (err: any) {
+      alert(err.message || 'Failed to save');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const handleDelete = async (eventId: number) => {
     if (!confirm('Delete this event? Game state will be recomputed.')) return;
     setBusy(true);
@@ -2204,12 +2258,20 @@ function EventTimelinePanel({ gameId, events, homeLineup, awayLineup, onClose, o
 
   const startEdit = (evt: GameEvent) => {
     setEditingId(evt.id);
+    const scored = (evt.runnersScored as any as number[]) || [];
+    const reasons = (evt as any).runnerScoredReasons as string[] | undefined;
+    setScoreEditPlayerIds(scored);
     setEditForm({
       eventType: evt.eventType,
       eventDetail: evt.eventDetail || '',
       rbi: evt.rbi ?? 0,
       runsScored: evt.runsScored ?? 0,
       outsRecorded: evt.outsRecorded ?? 0,
+      batterId: evt.batterId ?? null,
+      pitcherId: evt.pitcherId ?? null,
+      errorsOnPlay: (evt as any).errorsOnPlay ?? 0,
+      runnersScored: scored,
+      runnerScoredReasons: Array.isArray(reasons) ? reasons : scored.map(() => 'on_play'),
     });
   };
 
@@ -2217,8 +2279,22 @@ function EventTimelinePanel({ gameId, events, homeLineup, awayLineup, onClose, o
     if (!editingId) return;
     setBusy(true);
     try {
-      await apiPut(`/admin/scoring/${gameId}/event/${editingId}`, editForm);
+      // Normalize score arrays: ensure reasons aligns with runnersScored.
+      const scored: number[] = Array.isArray(editForm.runnersScored) ? editForm.runnersScored : [];
+      let reasons: string[] = Array.isArray(editForm.runnerScoredReasons) ? editForm.runnerScoredReasons : [];
+      if (reasons.length !== scored.length) {
+        reasons = scored.map((_, i) => reasons[i] || 'on_play');
+      }
+      const payload = {
+        ...editForm,
+        runnersScored: scored,
+        runnerScoredReasons: reasons,
+        // If user didn't set runsScored explicitly, keep it consistent with scorers.
+        runsScored: typeof editForm.runsScored === 'number' ? editForm.runsScored : scored.length,
+      };
+      await apiPut(`/admin/scoring/${gameId}/event/${editingId}`, payload);
       setEditingId(null);
+      setScoreEditPlayerIds([]);
       await onRefresh();
     } catch (err: any) { alert(err.message); }
     finally { setBusy(false); }
@@ -2232,12 +2308,28 @@ function EventTimelinePanel({ gameId, events, homeLineup, awayLineup, onClose, o
       <div className="relative ml-auto w-full max-w-lg bg-[#0a1628] border-l border-white/10 h-full flex flex-col overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
-          <h2 className="text-white font-bold text-sm uppercase tracking-wider">Game Log</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-white font-bold text-sm uppercase tracking-wider">{mode === 'log' ? 'Game Log' : 'Manual Stats'}</h2>
+            <div className="flex gap-1 ml-2">
+              <button
+                onClick={() => { setMode('log'); setPreviewState(null); }}
+                className={`px-2 py-1 text-[9px] font-bold rounded uppercase ${mode === 'log' ? 'bg-white/10 text-white' : 'bg-white/5 text-white/40 hover:text-white/70'}`}
+              >
+                Log
+              </button>
+              <button
+                onClick={async () => { setMode('stats'); setPreviewState(null); if (!gameStats) await loadStats(); }}
+                className={`px-2 py-1 text-[9px] font-bold rounded uppercase ${mode === 'stats' ? 'bg-white/10 text-white' : 'bg-white/5 text-white/40 hover:text-white/70'}`}
+              >
+                Stats
+              </button>
+            </div>
+          </div>
           <button onClick={onClose} className="text-white/40 hover:text-white text-lg font-bold">&times;</button>
         </div>
 
         {/* State preview bar */}
-        {previewState && (
+        {mode === 'log' && previewState && (
           <div className="px-4 py-2 bg-blue-900/30 border-b border-blue-500/20 text-[10px]">
             <div className="flex items-center gap-3 text-white/70">
               <span className="font-bold text-blue-400">State @ event #{previewState.eventNumber}</span>
@@ -2257,8 +2349,10 @@ function EventTimelinePanel({ gameId, events, homeLineup, awayLineup, onClose, o
 
         {/* Event list */}
         <div className="flex-1 overflow-y-auto">
-          {events.length === 0 && <p className="text-white/20 text-center mt-8 text-xs">No events yet</p>}
-          {events.map((evt, i) => {
+          {mode === 'log' && (
+            <>
+              {events.length === 0 && <p className="text-white/20 text-center mt-8 text-xs">No events yet</p>}
+              {events.map((evt, i) => {
             const showInningDivider = i === 0 || evt.inning !== events[i - 1].inning || evt.half !== events[i - 1].half;
             return (
               <div key={evt.id}>
@@ -2279,6 +2373,24 @@ function EventTimelinePanel({ gameId, events, homeLineup, awayLineup, onClose, o
                         <input value={editForm.eventDetail || ''} onChange={e => setEditForm(f => ({ ...f, eventDetail: e.target.value }))} className="flex-1 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-[10px]" />
                       </div>
                       <div className="flex gap-2 text-[10px]">
+                        <label className="text-white/40 w-16 shrink-0">Batter:</label>
+                        <select value={editForm.batterId ?? ''} onChange={e => setEditForm(f => ({ ...f, batterId: e.target.value === '' ? null : parseInt(e.target.value, 10) }))} className="flex-1 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-[10px]">
+                          <option value="">—</option>
+                          {[...allPlayers.entries()].sort((a, b) => a[1].localeCompare(b[1])).map(([id, name]) => (
+                            <option key={id} value={id}>{name}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="flex gap-2 text-[10px]">
+                        <label className="text-white/40 w-16 shrink-0">Pitcher:</label>
+                        <select value={editForm.pitcherId ?? ''} onChange={e => setEditForm(f => ({ ...f, pitcherId: e.target.value === '' ? null : parseInt(e.target.value, 10) }))} className="flex-1 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-[10px]">
+                          <option value="">—</option>
+                          {[...allPlayers.entries()].sort((a, b) => a[1].localeCompare(b[1])).map(([id, name]) => (
+                            <option key={id} value={id}>{name}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="flex gap-2 text-[10px]">
                         <label className="text-white/40 w-16 shrink-0">RBI:</label>
                         <input type="number" value={editForm.rbi ?? 0} onChange={e => setEditForm(f => ({ ...f, rbi: parseInt(e.target.value) || 0 }))} className="w-12 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-[10px]" />
                         <label className="text-white/40 w-10 shrink-0 ml-2">Runs:</label>
@@ -2286,6 +2398,80 @@ function EventTimelinePanel({ gameId, events, homeLineup, awayLineup, onClose, o
                         <label className="text-white/40 w-10 shrink-0 ml-2">Outs:</label>
                         <input type="number" value={editForm.outsRecorded ?? 0} onChange={e => setEditForm(f => ({ ...f, outsRecorded: parseInt(e.target.value) || 0 }))} className="w-12 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-[10px]" />
                       </div>
+                      <div className="flex gap-2 text-[10px]">
+                        <label className="text-white/40 w-16 shrink-0">Errors:</label>
+                        <input type="number" value={editForm.errorsOnPlay ?? 0} onChange={e => setEditForm(f => ({ ...f, errorsOnPlay: parseInt(e.target.value) || 0 }))} className="w-12 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-[10px]" />
+                        <span className="text-white/25 text-[9px] mt-1">Used for legacy ER calc</span>
+                      </div>
+
+                      {/* Scorers */}
+                      <div className="mt-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-white/40 text-[10px] font-bold">Runners scored</span>
+                          <button
+                            onClick={() => {
+                              setEditForm(f => ({ ...f, runnersScored: [], runnerScoredReasons: [] }));
+                              setScoreEditPlayerIds([]);
+                            }}
+                            className="text-[9px] text-white/30 hover:text-white/60"
+                          >
+                            Clear
+                          </button>
+                        </div>
+                        <div className="mt-1 grid grid-cols-2 gap-1.5">
+                          {[...allPlayers.entries()].sort((a, b) => a[1].localeCompare(b[1])).map(([id, name]) => {
+                            const checked = (editForm.runnersScored || []).includes(id);
+                            return (
+                              <label key={id} className={`flex items-center gap-2 px-2 py-1 rounded border text-[9px] ${checked ? 'bg-green-900/20 border-green-700/40 text-white' : 'bg-white/5 border-white/10 text-white/40'}`}>
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={(e) => {
+                                    const next = new Set<number>(editForm.runnersScored || []);
+                                    if (e.target.checked) next.add(id); else next.delete(id);
+                                    const arr = [...next];
+                                    setEditForm(f => ({
+                                      ...f,
+                                      runnersScored: arr,
+                                      runnerScoredReasons: arr.map((_, i) => (f.runnerScoredReasons?.[i] || 'on_play')),
+                                    }));
+                                  }}
+                                />
+                                <span className="truncate">{name}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Reason per scorer (order matches runnersScored) */}
+                      {(editForm.runnersScored || []).length > 0 && (
+                        <div className="mt-2 space-y-1">
+                          <div className="text-white/40 text-[10px] font-bold">Scoring reasons (in order)</div>
+                          {(editForm.runnersScored || []).map((pid: number, idx: number) => (
+                            <div key={`${pid}:${idx}`} className="flex items-center gap-2 text-[10px]">
+                              <div className="w-24 text-white/50 truncate">{playerName(pid)}</div>
+                              <select
+                                value={(editForm.runnerScoredReasons || [])[idx] || 'on_play'}
+                                onChange={(e) => {
+                                  const next = [...(editForm.runnerScoredReasons || [])];
+                                  next[idx] = e.target.value;
+                                  setEditForm(f => ({ ...f, runnerScoredReasons: next }));
+                                }}
+                                className="flex-1 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-[10px]"
+                              >
+                                {RUN_SCORE_REASON_OPTIONS.map(o => (
+                                  <option key={o.value} value={o.value}>{o.label}</option>
+                                ))}
+                              </select>
+                            </div>
+                          ))}
+                          <div className="text-[9px] text-white/25">
+                            Tip: for a <span className="text-white/40">WILD PITCH</span> scoring play, set reason to <span className="text-white/40">Wild pitch</span>.
+                          </div>
+                        </div>
+                      )}
+
                       <div className="flex gap-1.5 mt-1">
                         <button onClick={saveEdit} disabled={busy} className="px-2 py-0.5 bg-green-700 hover:bg-green-600 text-white text-[9px] font-bold rounded uppercase">Save</button>
                         <button onClick={() => setEditingId(null)} className="px-2 py-0.5 bg-white/10 hover:bg-white/20 text-white/60 text-[9px] font-bold rounded uppercase">Cancel</button>
@@ -2316,12 +2502,153 @@ function EventTimelinePanel({ gameId, events, homeLineup, awayLineup, onClose, o
                 </div>
               </div>
             );
-          })}
+              })}
+            </>
+          )}
+
+          {mode === 'stats' && (
+            <div className="p-4 space-y-6">
+              {statsLoading && <div className="text-white/40 text-xs">Loading…</div>}
+              {!statsLoading && !gameStats && <div className="text-white/30 text-xs">No stats loaded.</div>}
+
+              {!statsLoading && gameStats && (
+                <>
+                  <div className="text-white/30 text-[10px]">
+                    Edit per-game lines here (post-game corrections). Saving will recompute season totals + standings.
+                  </div>
+
+                  {/* Pitching */}
+                  <section>
+                    <div className="text-white font-bold text-[10px] uppercase tracking-wider mb-2">Pitching</div>
+                    <div className="space-y-2">
+                      {gameStats.pitching.length === 0 && <div className="text-white/20 text-xs">No pitching rows</div>}
+                      {gameStats.pitching.map((p: any) => (
+                        <div key={`p:${p.playerId}`} className="bg-white/5 border border-white/10 rounded p-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="text-white text-xs font-bold truncate">{playerName(p.playerId)}</div>
+                            <button
+                              onClick={() => saveRow('pitching', p.playerId)}
+                              disabled={busy || Object.keys(statsEdits[`pitching:${p.playerId}`] || {}).length === 0}
+                              className="px-2 py-1 bg-green-700 hover:bg-green-600 disabled:opacity-30 text-white text-[9px] font-bold rounded uppercase"
+                            >
+                              Save
+                            </button>
+                          </div>
+                          <div className="grid grid-cols-4 gap-2 mt-2 text-[10px]">
+                            {[
+                              ['inningsPitched','IP'],
+                              ['runsAllowed','R'],
+                              ['earnedRuns','ER'],
+                              ['wildPitches','WP'],
+                              ['walksAllowed','BB'],
+                              ['hitsAllowed','H'],
+                              ['strikeouts','K'],
+                            ].map(([k, label]) => (
+                              <label key={k} className="text-white/40">
+                                {label}
+                                <input
+                                  value={(statsEdits[`pitching:${p.playerId}`]?.[k] ?? p[k] ?? '')}
+                                  onChange={(e) => setRowEdit('pitching', p.playerId, { [k]: e.target.value })}
+                                  className="mt-0.5 w-full bg-[#0b1a30] border border-white/10 rounded px-1 py-0.5 text-white"
+                                />
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+
+                  {/* Batting */}
+                  <section>
+                    <div className="text-white font-bold text-[10px] uppercase tracking-wider mb-2">Batting</div>
+                    <div className="space-y-2">
+                      {gameStats.batting.length === 0 && <div className="text-white/20 text-xs">No batting rows</div>}
+                      {gameStats.batting.map((b: any) => (
+                        <div key={`b:${b.playerId}`} className="bg-white/5 border border-white/10 rounded p-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="text-white text-xs font-bold truncate">{playerName(b.playerId)}</div>
+                            <button
+                              onClick={() => saveRow('batting', b.playerId)}
+                              disabled={busy || Object.keys(statsEdits[`batting:${b.playerId}`] || {}).length === 0}
+                              className="px-2 py-1 bg-green-700 hover:bg-green-600 disabled:opacity-30 text-white text-[9px] font-bold rounded uppercase"
+                            >
+                              Save
+                            </button>
+                          </div>
+                          <div className="grid grid-cols-4 gap-2 mt-2 text-[10px]">
+                            {[
+                              ['atBats','AB'],
+                              ['hits','H'],
+                              ['runs','R'],
+                              ['rbi','RBI'],
+                              ['walks','BB'],
+                              ['strikeouts','SO'],
+                            ].map(([k, label]) => (
+                              <label key={k} className="text-white/40">
+                                {label}
+                                <input
+                                  value={(statsEdits[`batting:${b.playerId}`]?.[k] ?? b[k] ?? '')}
+                                  onChange={(e) => setRowEdit('batting', b.playerId, { [k]: e.target.value })}
+                                  className="mt-0.5 w-full bg-[#0b1a30] border border-white/10 rounded px-1 py-0.5 text-white"
+                                />
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+
+                  {/* Fielding */}
+                  <section>
+                    <div className="text-white font-bold text-[10px] uppercase tracking-wider mb-2">Fielding</div>
+                    <div className="space-y-2">
+                      {gameStats.fielding.length === 0 && <div className="text-white/20 text-xs">No fielding rows</div>}
+                      {gameStats.fielding.map((f: any) => (
+                        <div key={`f:${f.playerId}`} className="bg-white/5 border border-white/10 rounded p-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="text-white text-xs font-bold truncate">{playerName(f.playerId)}</div>
+                            <button
+                              onClick={() => saveRow('fielding', f.playerId)}
+                              disabled={busy || Object.keys(statsEdits[`fielding:${f.playerId}`] || {}).length === 0}
+                              className="px-2 py-1 bg-green-700 hover:bg-green-600 disabled:opacity-30 text-white text-[9px] font-bold rounded uppercase"
+                            >
+                              Save
+                            </button>
+                          </div>
+                          <div className="grid grid-cols-4 gap-2 mt-2 text-[10px]">
+                            {[
+                              ['putouts','PO'],
+                              ['assists','A'],
+                              ['errors','E'],
+                              ['passedBalls','PB'],
+                            ].map(([k, label]) => (
+                              <label key={k} className="text-white/40">
+                                {label}
+                                <input
+                                  value={(statsEdits[`fielding:${f.playerId}`]?.[k] ?? f[k] ?? '')}
+                                  onChange={(e) => setRowEdit('fielding', f.playerId, { [k]: e.target.value })}
+                                  className="mt-0.5 w-full bg-[#0b1a30] border border-white/10 rounded px-1 py-0.5 text-white"
+                                />
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                </>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Footer */}
         <div className="px-4 py-2 border-t border-white/10 text-[9px] text-white/20">
-          {events.length} event{events.length !== 1 ? 's' : ''}
+          {mode === 'log'
+            ? `${events.length} event${events.length !== 1 ? 's' : ''}`
+            : `Manual edits: ${Object.keys(statsEdits).length}`}
         </div>
       </div>
     </div>

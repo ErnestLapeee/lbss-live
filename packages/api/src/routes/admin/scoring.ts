@@ -563,6 +563,28 @@ export async function adminScoringRoutes(app: FastifyInstance) {
         return reply.status(400).send({ message: 'No valid fields to update' });
       }
 
+      // Basic validation / normalization for scorer attribution.
+      if ('runnersScored' in updates || 'runnerScoredReasons' in updates || 'runsScored' in updates) {
+        const nextRunners: number[] = ('runnersScored' in updates ? updates.runnersScored : (existing.runnersScored as any)) ?? [];
+        const nextReasons: string[] = ('runnerScoredReasons' in updates ? updates.runnerScoredReasons : ((existing as any).runnerScoredReasons as any)) ?? [];
+        const nextRunsScored: number = ('runsScored' in updates ? updates.runsScored : (existing.runsScored as any)) ?? 0;
+
+        const rs = Array.isArray(nextRunners) ? nextRunners : [];
+        const rr = Array.isArray(nextReasons) ? nextReasons : [];
+
+        if (rr.length !== 0 && rr.length !== rs.length) {
+          return reply.status(400).send({ message: 'runnerScoredReasons length must match runnersScored length (or be empty)' });
+        }
+        // Enforce consistency: runsScored should match the number of scorers when provided.
+        if (rs.length !== nextRunsScored) {
+          return reply.status(400).send({ message: `runsScored (${nextRunsScored}) must equal runnersScored length (${rs.length})` });
+        }
+        // If reasons omitted, default to on_play for each scorer.
+        if (rr.length === 0 && rs.length > 0 && 'runnerScoredReasons' in updates) {
+          updates.runnerScoredReasons = rs.map(() => 'on_play');
+        }
+      }
+
       await db.update(gameEvents).set(updates).where(eq(gameEvents.id, eventId));
 
       const allEvents = await db.select().from(gameEvents)
