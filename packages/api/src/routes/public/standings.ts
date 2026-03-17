@@ -5,12 +5,13 @@ import { and, desc, eq, gt } from 'drizzle-orm';
 
 export async function standingsRoutes(app: FastifyInstance) {
   // GET /:leagueId - get standings for a league, ordered by winPct desc
-  app.get<{ Params: { leagueId: string } }>('/:leagueId', async (request, reply) => {
+  app.get<{ Params: { leagueId: string }; Querystring: { includeZeroGames?: string } }>('/:leagueId', async (request, reply) => {
     try {
       const leagueId = parseInt(request.params.leagueId, 10);
       if (isNaN(leagueId)) {
         return reply.status(400).send({ message: 'Invalid league id' });
       }
+      const includeZero = request.query?.includeZeroGames === '1' || request.query?.includeZeroGames === 'true';
 
       const result = await db
         .select({
@@ -31,8 +32,10 @@ export async function standingsRoutes(app: FastifyInstance) {
         })
         .from(standings)
         .innerJoin(teams, eq(standings.teamId, teams.id))
-        // Only show teams that have actually played at least one game.
-        .where(and(eq(standings.leagueId, leagueId), gt(standings.gamesPlayed, 0)))
+        .where(and(
+          eq(standings.leagueId, leagueId),
+          ...(includeZero ? [] : [gt(standings.gamesPlayed, 0)]),
+        ))
         .orderBy(desc(standings.winPct));
 
       return reply.send(result);

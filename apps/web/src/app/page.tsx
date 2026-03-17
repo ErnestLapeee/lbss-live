@@ -16,6 +16,7 @@ export default async function HomePage() {
   let teams: any[] = [];
   let seasons: any[] = [];
   let activeSeason: any | null = null;
+  let miniStandings: Array<{ teamId: number; teamName: string; wins: number; losses: number; ties: number; winPct: any; gamesBehind: any; leagueName: string }> = [];
 
   try { articles = toArray(await apiFetch('/api/public/articles')); } catch {}
   try { seasons = toArray(await apiFetch('/api/public/seasons', { noCache: true })); } catch {}
@@ -27,6 +28,35 @@ export default async function HomePage() {
     ));
   } catch {}
   try { teams = toArray(await apiFetch('/api/public/teams')); } catch {}
+
+  // Mini-standings: active season -> leagues -> standings rows (include 0-game teams)
+  try {
+    if (activeSeason?.year) {
+      const seasonDetail = await apiFetch(`/api/public/seasons/${activeSeason.year}`, { noCache: true });
+      const leagues = (seasonDetail && typeof seasonDetail === 'object' && 'leagues' in seasonDetail)
+        ? ((seasonDetail as any).leagues ?? [])
+        : [];
+
+      const rows: typeof miniStandings = [];
+      for (const lg of leagues) {
+        if (!lg?.id) continue;
+        const lgRows = toArray<any>(await apiFetch(`/api/public/standings/${lg.id}?includeZeroGames=1`, { noCache: true }));
+        for (const r of lgRows) {
+          rows.push({
+            teamId: r.teamId,
+            teamName: r.teamName,
+            wins: r.wins ?? 0,
+            losses: r.losses ?? 0,
+            ties: r.ties ?? 0,
+            winPct: r.winPct ?? null,
+            gamesBehind: r.gamesBehind ?? null,
+            leagueName: lg.name ?? 'League',
+          });
+        }
+      }
+      miniStandings = rows;
+    }
+  } catch {}
 
   const liveGames = games.filter((g: any) => g.status === 'live');
   const finalGames = games.filter((g: any) => g.status === 'final');
@@ -239,29 +269,26 @@ export default async function HomePage() {
                 </div>
               </div>
               <div className="p-3">
-                {teams.length === 0 ? (
-                  <p className="text-sm text-text-muted py-4 text-center">No teams yet</p>
+                {miniStandings.length === 0 ? (
+                  <p className="text-sm text-text-muted py-4 text-center">No standings yet</p>
                 ) : (
                   <div className="space-y-1">
-                    {teams.slice(0, 6).map((team: any, i: number) => (
-                      <div key={team.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-surface-alt transition-colors">
+                    {miniStandings.slice(0, 6).map((row: any, i: number) => (
+                      <div key={`${row.leagueName}-${row.teamId}`} className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-surface-alt transition-colors">
                         <span className="text-[11px] font-bold text-text-faint w-4">{i + 1}</span>
-                        <TeamBadge name={team.name} />
-                        <span className="text-sm font-medium flex-1 truncate">{team.name}</span>
-                        <span className="text-[11px] text-text-faint font-mono">—</span>
+                        <TeamBadge name={row.teamName} />
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium truncate">{row.teamName}</div>
+                          <div className="text-[10px] text-text-faint truncate">{row.leagueName}</div>
+                        </div>
+                        <span className="text-[11px] text-text-faint font-mono">
+                          {row.wins}-{row.losses}{row.ties ? `-${row.ties}` : ''}
+                        </span>
                       </div>
                     ))}
                   </div>
                 )}
               </div>
-            </section>
-
-            {/* Quick Links */}
-            <section className="space-y-2">
-              <h3 className="font-heading text-sm font-bold uppercase tracking-wider text-text-muted px-1">Quick Links</h3>
-              <QuickLinkCard title="League Schedule" description="" href="/schedule" />
-              <QuickLinkCard title="Player Directory" description="" href="/players" />
-              <QuickLinkCard title="Statistics" description="" href="/stats" />
             </section>
           </div>
         </div>
@@ -300,19 +327,4 @@ function EmptyCard({ message }: { message: string }) {
   );
 }
 
-function QuickLinkCard({ title, description, href }: { title: string; description: string; href: string }) {
-  return (
-    <Link
-      href={href}
-      className="group flex items-center gap-3 rounded-xl border border-border bg-surface p-3.5 hover:border-accent/30 hover:shadow-sm transition-all"
-    >
-      <div className="flex-1 min-w-0">
-        <div className="text-sm font-semibold group-hover:text-accent transition-colors">{title}</div>
-        <div className="text-[11px] text-text-faint truncate">{description}</div>
-      </div>
-      <svg className="w-4 h-4 text-text-faint group-hover:text-accent transition-colors shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-      </svg>
-    </Link>
-  );
-}
+// Quick links removed per request.
