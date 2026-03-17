@@ -211,49 +211,6 @@ export default async function HomePage() {
                 </div>
               </section>
             )}
-
-            {/* ── News ── */}
-            <section>
-              <SectionHeader title="Latest News" href="/news" />
-              {recentArticles.length === 0 ? (
-                <EmptyCard message="No news articles published yet." />
-              ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {recentArticles.map((article: any, i: number) => (
-                    <Link
-                      key={article.id}
-                      href={`/news/${article.slug}`}
-                      className={`group block rounded-xl border border-border bg-surface overflow-hidden hover:border-accent/30 hover:shadow-md transition-all ${
-                        i === 0 ? 'sm:col-span-2' : ''
-                      }`}
-                    >
-                      <div className="p-5">
-                        <div className="flex items-center gap-2 mb-2">
-                          <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-accent/10 text-accent">
-                            News
-                          </span>
-                          <span className="text-[11px] text-text-faint">
-                            {article.publishedAt
-                              ? new Date(article.publishedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-                              : ''}
-                          </span>
-                        </div>
-                        <h3 className={`font-heading font-bold group-hover:text-accent transition-colors leading-snug ${
-                          i === 0 ? 'text-lg' : 'text-base'
-                        }`}>
-                          {article.title}
-                        </h3>
-                        {article.excerpt && (
-                          <p className="mt-2 text-sm text-text-muted line-clamp-2 leading-relaxed">
-                            {article.excerpt}
-                          </p>
-                        )}
-                      </div>
-                    </Link>
-                  ))}
-                </div>
-              )}
-            </section>
           </div>
 
           {/* ── Right sidebar (1/3) ── */}
