@@ -102,6 +102,39 @@ export async function finalizeGame(gameId: number, userId?: number, options?: Fi
 
   /* ── Per-game BATTING stats ── */
 
+  // Infer the "actor" runner for runner events from base state changes, so SB/CS/PO
+  // can be counted even if older data saved batterId as null.
+  const runnerActorByEventId = new Map<number, number>();
+  {
+    let prev = { first: null as number | null, second: null as number | null, third: null as number | null };
+    const getBaseState = (e: any) => ({
+      first: e.runnerFirstId ?? null,
+      second: e.runnerSecondId ?? null,
+      third: e.runnerThirdId ?? null,
+    });
+    for (const e of events) {
+      if (!e?.id) { prev = getBaseState(e); continue; }
+      const t = e.eventType;
+      const cur = getBaseState(e);
+
+      if (t === 'stolen_base') {
+        // Actor is the runner that moved up (id exists in cur at a higher base than prev).
+        // Prefer 1->2, 2->3, 3->home (home not represented; for home steals we can't infer here).
+        if (prev.first && cur.second === prev.first) runnerActorByEventId.set(e.id, prev.first);
+        else if (prev.second && cur.third === prev.second) runnerActorByEventId.set(e.id, prev.second);
+        else if (prev.first && cur.third === prev.first) runnerActorByEventId.set(e.id, prev.first);
+      } else if (t === 'caught_stealing' || t === 'picked_off') {
+        // Actor is the runner removed from bases.
+        const prevIds = [prev.first, prev.second, prev.third].filter(Boolean) as number[];
+        const curIds = new Set([cur.first, cur.second, cur.third].filter(Boolean) as number[]);
+        const removed = prevIds.find(id => !curIds.has(id));
+        if (removed) runnerActorByEventId.set(e.id, removed);
+      }
+
+      prev = cur;
+    }
+  }
+
   // Include all players who either had plate appearances OR runner events (SB, CS, etc.)
   const batterIds = new Set(events.filter(e => e.batterId).map(e => e.batterId!));
 
@@ -173,8 +206,9 @@ export async function finalizeGame(gameId: number, userId?: number, options?: Fi
 
     // Count SB/CS from runner events where this batter was involved
     for (const e of events) {
-      if (e.eventType === 'stolen_base' && e.batterId === batterId) stolenBases++;
-      if (e.eventType === 'caught_stealing' && e.batterId === batterId) caughtStealing++;
+      const actorId = (e.batterId ?? runnerActorByEventId.get(e.id)) as number | undefined;
+      if (e.eventType === 'stolen_base' && actorId === batterId) stolenBases++;
+      if (e.eventType === 'caught_stealing' && actorId === batterId) caughtStealing++;
     }
 
     // Count runs scored (when this player appears in runnersScored arrays)
