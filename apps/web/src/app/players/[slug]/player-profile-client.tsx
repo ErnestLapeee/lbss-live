@@ -23,7 +23,6 @@ const fmtEra = (v: any) => (v != null && v !== '' ? Number(v).toFixed(2) : '—'
 const fmtIp = (v: any) => (v != null ? v : '—');
 const n = (v: any) => v ?? 0;
 
-// Helpers to build TOTAL rows from per-season stats (Baseball-Reference style)
 const sumBattingRows = (rows: any[]) => {
   if (!rows.length) return null;
   const acc: any = {};
@@ -209,9 +208,6 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
       {/* BATTING TAB */}
       {tab === 'batting' && (
         <div className="space-y-8">
-          <p className="text-[11px] text-text-faint">
-            Season rows with a bold TOTAL line at the bottom, similar to Baseball-Reference.
-          </p>
           {battingStats.length === 0 ? (
             <div className="rounded-xl border border-dashed border-border bg-surface-alt p-8 text-center">
               <p className="text-sm text-text-muted">No batting statistics recorded yet.</p>
@@ -313,9 +309,6 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
       {/* PITCHING TAB */}
       {tab === 'pitching' && (
         <div>
-          <p className="text-[11px] text-text-faint mb-3">
-            Season rows with a bold TOTAL line at the bottom, similar to Baseball-Reference.
-          </p>
           {pitchingStats === null ? (
             <p className="text-sm text-text-muted py-4">Loading...</p>
           ) : pitchingStats.length === 0 ? (
@@ -401,9 +394,6 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
       {/* FIELDING TAB */}
       {tab === 'fielding' && (
         <div>
-          <p className="text-[11px] text-text-faint mb-3">
-            Season rows with a bold TOTAL line at the bottom, similar to Baseball-Reference.
-          </p>
           {fieldingStats === null ? (
             <p className="text-sm text-text-muted py-4">Loading...</p>
           ) : fieldingStats.length === 0 ? (

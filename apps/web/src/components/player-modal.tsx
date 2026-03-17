@@ -263,7 +263,7 @@ export function PlayerModal({ slug, firstName, lastName, onClose }: PlayerModalP
                   <div className="space-y-3">
                     <table className="w-full text-[11px] border-collapse">
                       <thead>
-                        <tr className="bg-[#111827] text-[#9ca3af] border-b border-white/5">
+                        <tr className="bg-[#e5e7eb] text-[#333] border-b border-[#ccc]">
                           {['Season','Team','G','PA','AB','R','H','2B','3B','HR','RBI','BB','SO','SB','CS','AVG','OBP','SLG','OPS'].map(col => (
                             <th
                               key={col}
@@ -304,7 +304,7 @@ export function PlayerModal({ slug, firstName, lastName, onClose }: PlayerModalP
                             </tr>
                           ))}
                         {total && (
-                          <tr className="bg-[#020617] border-t border-white/10">
+                          <tr className="bg-[#f3f3f3] border-t border-[#ccc]">
                             <td className="px-2 py-1.5 font-semibold text-left" colSpan={2}>TOTAL</td>
                             <td className="px-2 py-1.5 font-semibold text-right">{total.games}</td>
                             <td className="px-2 py-1.5 font-semibold text-right">{total.plateAppearances}</td>
@@ -339,7 +339,7 @@ export function PlayerModal({ slug, firstName, lastName, onClose }: PlayerModalP
                   <div className="space-y-3">
                     <table className="w-full text-[11px] border-collapse">
                       <thead>
-                        <tr className="bg-[#111827] text-[#9ca3af] border-b border-white/5">
+                        <tr className="bg-[#e5e7eb] text-[#333] border-b border-[#ccc]">
                           {['Season','Team','G','GS','W','L','SV','IP','H','R','ER','BB','SO','HR','ERA','WHIP'].map(col => (
                             <th
                               key={col}
@@ -377,7 +377,7 @@ export function PlayerModal({ slug, firstName, lastName, onClose }: PlayerModalP
                             </tr>
                           ))}
                         {total && (
-                          <tr className="bg-[#020617] border-t border-white/10">
+                          <tr className="bg-[#f3f3f3] border-t border-[#ccc]">
                             <td className="px-2 py-1.5 font-semibold text-left" colSpan={2}>TOTAL</td>
                             <td className="px-2 py-1.5 font-semibold text-right">{total.games}</td>
                             <td className="px-2 py-1.5 font-semibold text-right">{total.gamesStarted}</td>
@@ -416,7 +416,7 @@ export function PlayerModal({ slug, firstName, lastName, onClose }: PlayerModalP
                   <div className="space-y-3">
                     <table className="w-full text-[11px] border-collapse">
                       <thead>
-                        <tr className="bg-[#111827] text-[#9ca3af] border-b border-white/5">
+                        <tr className="bg-[#e5e7eb] text-[#333] border-b border-[#ccc]">
                           {['Season','Team','Pos','G','Inn','PO','A','E','DP','FP%'].map(col => (
                             <th
                               key={col}
@@ -449,7 +449,7 @@ export function PlayerModal({ slug, firstName, lastName, onClose }: PlayerModalP
                               <td className="px-2 py-1.5 text-right">{fmtRate(r.fieldingPct)}</td>
                             </tr>
                           ))}
-                        <tr className="bg-[#020617] border-t border-white/10">
+                        <tr className="bg-[#f3f3f3] border-t border-[#ccc]">
                           <td className="px-2 py-1.5 font-semibold text-left" colSpan={3}>TOTAL</td>
                           <td className="px-2 py-1.5 font-semibold text-right">{total.games || 0}</td>
                           <td className="px-2 py-1.5 font-semibold text-right">—</td>
