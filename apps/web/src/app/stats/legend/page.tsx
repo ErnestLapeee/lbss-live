@@ -125,11 +125,6 @@ export default function LegendPage() {
     <div>
       <PageHeader title="Statistics Legend" />
       <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 py-8">
-        <p className="text-text-muted text-sm mb-8">
-          Definitions and formulas for the statistics shown on the LBSS Statistics and player profile pages.
-          This legend follows common baseball scoring conventions (e.g. iScore, MLB).
-        </p>
-
         <LegendTable title="Batting" rows={BATTING} />
         <LegendTable title="Pitching" rows={PITCHING} />
         <LegendTable title="Fielding" rows={FIELDING} />
