@@ -516,6 +516,7 @@ export function LiveScoringPage() {
 
   // ── Between-pitch event state (WP, PB, balk multi-runner) ──
   const [betweenPitchEvent, setBetweenPitchEvent] = useState<string | null>(null);
+  const [betweenPitchInitiatorRunnerId, setBetweenPitchInitiatorRunnerId] = useState<number | null>(null);
 
   // ── Runner action (click runner on base) ──
   const [runnerActionType, setRunnerActionType] = useState<string | null>(null);
@@ -544,6 +545,8 @@ export function LiveScoringPage() {
   const startBetweenPitchRunnerCheck = (action: string, initiatingBase?: 'first' | 'second' | 'third' | null, initiatingDest?: string | null) => {
     if (!gameState) return;
     setBetweenPitchEvent(action);
+    const initiator = initiatingBase ? (gameState.bases as any)[initiatingBase] as number | null : null;
+    setBetweenPitchInitiatorRunnerId(initiator ?? null);
     const runners: RunnerQuestion[] = [];
     if (gameState.bases.third) runners.push({ base: 'third', playerId: gameState.bases.third, playerName: getPlayerName(gameState.bases.third), outcome: null, destination: null, minDestination: 'third' });
     if (gameState.bases.second) runners.push({ base: 'second', playerId: gameState.bases.second, playerName: getPlayerName(gameState.bases.second), outcome: null, destination: null, minDestination: 'second' });
@@ -613,13 +616,18 @@ export function LiveScoringPage() {
       const detail = `${action.replace(/_/g, ' ')}: ${detailParts.join(', ')}`;
 
       await apiPost(`/admin/scoring/${gameId}/event`, {
-        eventType: action, batterId: null, pitcherId: currentPitcher?.playerId,
+        // IMPORTANT: for runner events like stolen_base / caught_stealing we store the initiating runner in batterId
+        // so finalize-game can attribute SB/CS to the correct player.
+        eventType: action,
+        batterId: betweenPitchInitiatorRunnerId,
+        pitcherId: currentPitcher?.playerId,
         inning: gameState.inning, half: gameState.half, rbi: 0, runsScored,
         outsRecorded, balls, strikes,
         runnerFirstId, runnerSecondId, runnerThirdId, runnersScored,
         eventDetail: detail,
       });
       setBetweenPitchEvent(null);
+      setBetweenPitchInitiatorRunnerId(null);
       setActiveRunnerBase(null); setRunnerActionType(null); setRunnerActionDest(null);
       setRunnerActionOutType(null); setRunnerActionFielding([]);
       setRunnerQuestions([]); setCurrentRunnerIdx(0);
@@ -933,7 +941,7 @@ export function LiveScoringPage() {
       cancelWizard(); await loadState();
     } catch (err: any) { alert(err.message || 'Failed'); } finally { setSubmitting(false); }
   };
-  const cancelWizard = () => { setStep('pitch'); setSelectedEvent(null); setFieldingPositions([]); setRunnerQuestions([]); setCurrentRunnerIdx(0); setActiveRunnerBase(null); setRunnerActionType(null); setRunnerActionDest(null); setRunnerActionOutType(null); setRunnerActionFielding([]); setSubPosition(null); setSubBattingSlot(null); setRunnerOutSafeTab('safe'); setRunnerSafeDest(null); setHitLocationX(null); setHitLocationY(null); setHitType(null); setHitHardness(null); setBetweenPitchEvent(null); setOutSafeMorePage(false); setRunnerOutPendingType(null); setRunnerOutFielding([]); };
+  const cancelWizard = () => { setStep('pitch'); setSelectedEvent(null); setFieldingPositions([]); setRunnerQuestions([]); setCurrentRunnerIdx(0); setActiveRunnerBase(null); setRunnerActionType(null); setRunnerActionDest(null); setRunnerActionOutType(null); setRunnerActionFielding([]); setSubPosition(null); setSubBattingSlot(null); setRunnerOutSafeTab('safe'); setRunnerSafeDest(null); setHitLocationX(null); setHitLocationY(null); setHitType(null); setHitHardness(null); setBetweenPitchEvent(null); setBetweenPitchInitiatorRunnerId(null); setOutSafeMorePage(false); setRunnerOutPendingType(null); setRunnerOutFielding([]); };
 
   if (loading) return <div className="flex items-center justify-center h-screen bg-[#0c1220]"><span className="text-gray-400">Loading...</span></div>;
   if (!game) return <div className="flex items-center justify-center h-screen bg-[#0c1220]"><span className="text-red-400">Game not found</span></div>;
