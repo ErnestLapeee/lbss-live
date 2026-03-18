@@ -7,6 +7,23 @@ import {
 } from '../../db/schema/index.js';
 import { eq, and, desc, sql, isNotNull } from 'drizzle-orm';
 
+async function gamesHavePlayoffSeriesId(): Promise<boolean> {
+  try {
+    const rows = await db.execute(sql`
+      select 1
+      from information_schema.columns
+      where table_schema = 'public'
+        and table_name = 'games'
+        and column_name = 'playoff_series_id'
+      limit 1
+    `);
+    const list = Array.isArray((rows as any).rows) ? (rows as any).rows : (rows as any);
+    return Array.isArray(list) && list.length > 0;
+  } catch {
+    return false;
+  }
+}
+
 export async function playersRoutes(app: FastifyInstance) {
   // GET / - list all active players (with pagination: page, limit)
   app.get<{
@@ -130,56 +147,59 @@ export async function playersRoutes(app: FastifyInstance) {
 
       if (!isAllTime) return reply.send(stats);
 
-      // Playoffs rows (computed from per-game stats linked to playoff series)
-      const playoffRows = await db.select({
-        id: sql<number>`-(${seasons.id} * 1000 + ${playerGameBatting.teamId})`.as('id'),
-        playerId: playerGameBatting.playerId,
-        teamId: playerGameBatting.teamId,
-        seasonId: seasons.id,
-        seasonLabel: sql<string>`'Playoffs'`.as('season_label'),
-        games: sql<number>`COUNT(DISTINCT ${playerGameBatting.gameId})`.as('games'),
-        plateAppearances: sql<number>`SUM(${playerGameBatting.plateAppearances})`.as('plate_appearances'),
-        atBats: sql<number>`SUM(${playerGameBatting.atBats})`.as('at_bats'),
-        hits: sql<number>`SUM(${playerGameBatting.hits})`.as('hits'),
-        singles: sql<number>`SUM(${playerGameBatting.singles})`.as('singles'),
-        doubles: sql<number>`SUM(${playerGameBatting.doubles})`.as('doubles'),
-        triples: sql<number>`SUM(${playerGameBatting.triples})`.as('triples'),
-        homeRuns: sql<number>`SUM(${playerGameBatting.homeRuns})`.as('home_runs'),
-        rbi: sql<number>`SUM(${playerGameBatting.rbi})`.as('rbi'),
-        runs: sql<number>`SUM(${playerGameBatting.runs})`.as('runs'),
-        walks: sql<number>`SUM(${playerGameBatting.walks})`.as('walks'),
-        strikeouts: sql<number>`SUM(${playerGameBatting.strikeouts})`.as('strikeouts'),
-        hitByPitch: sql<number>`SUM(${playerGameBatting.hitByPitch})`.as('hit_by_pitch'),
-        stolenBases: sql<number>`SUM(${playerGameBatting.stolenBases})`.as('stolen_bases'),
-        caughtStealing: sql<number>`SUM(${playerGameBatting.caughtStealing})`.as('caught_stealing'),
-        sacrificeFlies: sql<number>`SUM(${playerGameBatting.sacrificeFlies})`.as('sacrifice_flies'),
-        sacrificeBunts: sql<number>`SUM(${playerGameBatting.sacrificeBunts})`.as('sacrifice_bunts'),
-        groundOuts: sql<number>`COALESCE(SUM(${playerGameBatting.groundOuts}),0)`.as('ground_outs'),
-        flyOuts: sql<number>`COALESCE(SUM(${playerGameBatting.flyOuts}),0)`.as('fly_outs'),
-        groundedIntoDoublePlays: sql<number>`COALESCE(SUM(${playerGameBatting.groundedIntoDoublePlays}),0)`.as('grounded_into_double_plays'),
-        intentionalWalks: sql<number>`COALESCE(SUM(${playerGameBatting.intentionalWalks}),0)`.as('intentional_walks'),
-        reachedOnError: sql<number>`COALESCE(SUM(${playerGameBatting.reachedOnError}),0)`.as('reached_on_error'),
-        totalBases: sql<number>`COALESCE(SUM(${playerGameBatting.totalBases}),0)`.as('total_bases'),
-        battingAvg: sql<string | null>`CASE WHEN SUM(${playerGameBatting.atBats}) > 0 THEN ROUND(SUM(${playerGameBatting.hits})::numeric / SUM(${playerGameBatting.atBats}), 3)::text ELSE NULL END`.as('batting_avg'),
-        onBasePct: sql<string | null>`CASE WHEN (SUM(${playerGameBatting.atBats}) + SUM(${playerGameBatting.walks}) + SUM(${playerGameBatting.hitByPitch}) + SUM(${playerGameBatting.sacrificeFlies})) > 0 THEN ROUND((SUM(${playerGameBatting.hits}) + SUM(${playerGameBatting.walks}) + SUM(${playerGameBatting.hitByPitch}))::numeric / (SUM(${playerGameBatting.atBats}) + SUM(${playerGameBatting.walks}) + SUM(${playerGameBatting.hitByPitch}) + SUM(${playerGameBatting.sacrificeFlies})), 3)::text ELSE NULL END`.as('on_base_pct'),
-        sluggingPct: sql<string | null>`CASE WHEN SUM(${playerGameBatting.atBats}) > 0 THEN ROUND(COALESCE(SUM(${playerGameBatting.totalBases}),0)::numeric / SUM(${playerGameBatting.atBats}), 3)::text ELSE NULL END`.as('slugging_pct'),
-        ops: sql<string | null>`CASE WHEN SUM(${playerGameBatting.atBats}) > 0 THEN ROUND( COALESCE((SUM(${playerGameBatting.hits}) + SUM(${playerGameBatting.walks}) + SUM(${playerGameBatting.hitByPitch}))::numeric / NULLIF(SUM(${playerGameBatting.atBats}) + SUM(${playerGameBatting.walks}) + SUM(${playerGameBatting.hitByPitch}) + SUM(${playerGameBatting.sacrificeFlies}), 0), 0) + COALESCE(SUM(${playerGameBatting.totalBases}),0)::numeric / SUM(${playerGameBatting.atBats}), 3)::text ELSE NULL END`.as('ops'),
-        babip: sql<string | null>`CASE WHEN (SUM(${playerGameBatting.atBats}) - SUM(${playerGameBatting.strikeouts}) - SUM(${playerGameBatting.homeRuns}) + SUM(${playerGameBatting.sacrificeFlies})) > 0 THEN ROUND((SUM(${playerGameBatting.hits}) - SUM(${playerGameBatting.homeRuns}))::numeric / (SUM(${playerGameBatting.atBats}) - SUM(${playerGameBatting.strikeouts}) - SUM(${playerGameBatting.homeRuns}) + SUM(${playerGameBatting.sacrificeFlies})), 3)::text ELSE NULL END`.as('babip'),
-        lastComputedAt: sql<null>`NULL`.as('last_computed_at'),
-        teamName: teams.name,
-        seasonYear: seasons.year,
-      })
-        .from(playerGameBatting)
-        .innerJoin(games, eq(playerGameBatting.gameId, games.id))
-        .innerJoin(leagues, eq(games.leagueId, leagues.id))
-        .innerJoin(seasons, eq(leagues.seasonId, seasons.id))
-        .innerJoin(teams, eq(playerGameBatting.teamId, teams.id))
-        .where(and(
-          eq(playerGameBatting.playerId, player.id),
-          eq(games.isFinalized, true),
-          sql`${games.playoffSeriesId} IS NOT NULL`,
-        ))
-        .groupBy(seasons.id, seasons.year, teams.id, teams.name, playerGameBatting.playerId, playerGameBatting.teamId);
+      let playoffRows: any[] = [];
+      if (await gamesHavePlayoffSeriesId()) {
+        // Playoffs rows (computed from per-game stats linked to playoff series)
+        playoffRows = await db.select({
+          id: sql<number>`-(${seasons.id} * 1000 + ${playerGameBatting.teamId})`.as('id'),
+          playerId: playerGameBatting.playerId,
+          teamId: playerGameBatting.teamId,
+          seasonId: seasons.id,
+          seasonLabel: sql<string>`'Playoffs'`.as('season_label'),
+          games: sql<number>`COUNT(DISTINCT ${playerGameBatting.gameId})`.as('games'),
+          plateAppearances: sql<number>`SUM(${playerGameBatting.plateAppearances})`.as('plate_appearances'),
+          atBats: sql<number>`SUM(${playerGameBatting.atBats})`.as('at_bats'),
+          hits: sql<number>`SUM(${playerGameBatting.hits})`.as('hits'),
+          singles: sql<number>`SUM(${playerGameBatting.singles})`.as('singles'),
+          doubles: sql<number>`SUM(${playerGameBatting.doubles})`.as('doubles'),
+          triples: sql<number>`SUM(${playerGameBatting.triples})`.as('triples'),
+          homeRuns: sql<number>`SUM(${playerGameBatting.homeRuns})`.as('home_runs'),
+          rbi: sql<number>`SUM(${playerGameBatting.rbi})`.as('rbi'),
+          runs: sql<number>`SUM(${playerGameBatting.runs})`.as('runs'),
+          walks: sql<number>`SUM(${playerGameBatting.walks})`.as('walks'),
+          strikeouts: sql<number>`SUM(${playerGameBatting.strikeouts})`.as('strikeouts'),
+          hitByPitch: sql<number>`SUM(${playerGameBatting.hitByPitch})`.as('hit_by_pitch'),
+          stolenBases: sql<number>`SUM(${playerGameBatting.stolenBases})`.as('stolen_bases'),
+          caughtStealing: sql<number>`SUM(${playerGameBatting.caughtStealing})`.as('caught_stealing'),
+          sacrificeFlies: sql<number>`SUM(${playerGameBatting.sacrificeFlies})`.as('sacrifice_flies'),
+          sacrificeBunts: sql<number>`SUM(${playerGameBatting.sacrificeBunts})`.as('sacrifice_bunts'),
+          groundOuts: sql<number>`COALESCE(SUM(${playerGameBatting.groundOuts}),0)`.as('ground_outs'),
+          flyOuts: sql<number>`COALESCE(SUM(${playerGameBatting.flyOuts}),0)`.as('fly_outs'),
+          groundedIntoDoublePlays: sql<number>`COALESCE(SUM(${playerGameBatting.groundedIntoDoublePlays}),0)`.as('grounded_into_double_plays'),
+          intentionalWalks: sql<number>`COALESCE(SUM(${playerGameBatting.intentionalWalks}),0)`.as('intentional_walks'),
+          reachedOnError: sql<number>`COALESCE(SUM(${playerGameBatting.reachedOnError}),0)`.as('reached_on_error'),
+          totalBases: sql<number>`COALESCE(SUM(${playerGameBatting.totalBases}),0)`.as('total_bases'),
+          battingAvg: sql<string | null>`CASE WHEN SUM(${playerGameBatting.atBats}) > 0 THEN ROUND(SUM(${playerGameBatting.hits})::numeric / SUM(${playerGameBatting.atBats}), 3)::text ELSE NULL END`.as('batting_avg'),
+          onBasePct: sql<string | null>`CASE WHEN (SUM(${playerGameBatting.atBats}) + SUM(${playerGameBatting.walks}) + SUM(${playerGameBatting.hitByPitch}) + SUM(${playerGameBatting.sacrificeFlies})) > 0 THEN ROUND((SUM(${playerGameBatting.hits}) + SUM(${playerGameBatting.walks}) + SUM(${playerGameBatting.hitByPitch}))::numeric / (SUM(${playerGameBatting.atBats}) + SUM(${playerGameBatting.walks}) + SUM(${playerGameBatting.hitByPitch}) + SUM(${playerGameBatting.sacrificeFlies})), 3)::text ELSE NULL END`.as('on_base_pct'),
+          sluggingPct: sql<string | null>`CASE WHEN SUM(${playerGameBatting.atBats}) > 0 THEN ROUND(COALESCE(SUM(${playerGameBatting.totalBases}),0)::numeric / SUM(${playerGameBatting.atBats}), 3)::text ELSE NULL END`.as('slugging_pct'),
+          ops: sql<string | null>`CASE WHEN SUM(${playerGameBatting.atBats}) > 0 THEN ROUND( COALESCE((SUM(${playerGameBatting.hits}) + SUM(${playerGameBatting.walks}) + SUM(${playerGameBatting.hitByPitch}))::numeric / NULLIF(SUM(${playerGameBatting.atBats}) + SUM(${playerGameBatting.walks}) + SUM(${playerGameBatting.hitByPitch}) + SUM(${playerGameBatting.sacrificeFlies}), 0), 0) + COALESCE(SUM(${playerGameBatting.totalBases}),0)::numeric / SUM(${playerGameBatting.atBats}), 3)::text ELSE NULL END`.as('ops'),
+          babip: sql<string | null>`CASE WHEN (SUM(${playerGameBatting.atBats}) - SUM(${playerGameBatting.strikeouts}) - SUM(${playerGameBatting.homeRuns}) + SUM(${playerGameBatting.sacrificeFlies})) > 0 THEN ROUND((SUM(${playerGameBatting.hits}) - SUM(${playerGameBatting.homeRuns}))::numeric / (SUM(${playerGameBatting.atBats}) - SUM(${playerGameBatting.strikeouts}) - SUM(${playerGameBatting.homeRuns}) + SUM(${playerGameBatting.sacrificeFlies})), 3)::text ELSE NULL END`.as('babip'),
+          lastComputedAt: sql<null>`NULL`.as('last_computed_at'),
+          teamName: teams.name,
+          seasonYear: seasons.year,
+        })
+          .from(playerGameBatting)
+          .innerJoin(games, eq(playerGameBatting.gameId, games.id))
+          .innerJoin(leagues, eq(games.leagueId, leagues.id))
+          .innerJoin(seasons, eq(leagues.seasonId, seasons.id))
+          .innerJoin(teams, eq(playerGameBatting.teamId, teams.id))
+          .where(and(
+            eq(playerGameBatting.playerId, player.id),
+            eq(games.isFinalized, true),
+            sql`${games.playoffSeriesId} IS NOT NULL`,
+          ))
+          .groupBy(seasons.id, seasons.year, teams.id, teams.name, playerGameBatting.playerId, playerGameBatting.teamId);
+      }
 
       const merged = [...stats, ...playoffRows].sort((a: any, b: any) => {
         const ay = Number(a.seasonYear ?? 0);
@@ -255,7 +275,8 @@ export async function playersRoutes(app: FastifyInstance) {
 
       if (!isAllTime) return reply.send(stats);
 
-      const playoffRows = await db.select({
+      let playoffRows: any[] = [];
+      if (await gamesHavePlayoffSeriesId()) playoffRows = await db.select({
         id: sql<number>`-(${seasons.id} * 1000 + ${playerGamePitching.teamId})`.as('id'),
         seasonId: seasons.id,
         seasonLabel: sql<string>`'Playoffs'`.as('season_label'),
@@ -360,7 +381,8 @@ export async function playersRoutes(app: FastifyInstance) {
 
       if (!isAllTime) return reply.send(stats);
 
-      const playoffRows = await db.select({
+      let playoffRows: any[] = [];
+      if (await gamesHavePlayoffSeriesId()) playoffRows = await db.select({
         id: sql<number>`-(${seasons.id} * 1000 + ${playerGameFielding.teamId})`.as('id'),
         seasonId: seasons.id,
         seasonLabel: sql<string>`'Playoffs'`.as('season_label'),

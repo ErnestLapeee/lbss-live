@@ -1235,11 +1235,48 @@ export async function statsRoutes(app: FastifyInstance) {
   // GET /seasons - all seasons for the season selector
   app.get('/seasons', async (_request, reply) => {
     try {
+      // Add playoff fields when available (older DBs may not have these columns).
+      const hasPoCols = await (async () => {
+        try {
+          const rows = await db.execute(sql`
+            select 1
+            from information_schema.columns
+            where table_schema = 'public'
+              and table_name = 'seasons'
+              and column_name in ('has_playoffs', 'regular_season_games_per_team', 'playoff_settings')
+          `);
+          const list = Array.isArray((rows as any).rows) ? (rows as any).rows : (rows as any);
+          return Array.isArray(list) && list.length >= 3;
+        } catch {
+          return false;
+        }
+      })();
+
       const result = await db
-        .select({ id: seasons.id, name: seasons.name, year: seasons.year, isActive: seasons.isActive })
+        .select({
+          id: seasons.id,
+          name: seasons.name,
+          year: seasons.year,
+          isActive: seasons.isActive,
+          ...(hasPoCols
+            ? {
+              hasPlayoffs: seasons.hasPlayoffs,
+              regularSeasonGamesPerTeam: seasons.regularSeasonGamesPerTeam,
+              playoffSettings: seasons.playoffSettings,
+            }
+            : {}),
+        })
         .from(seasons)
         .orderBy(desc(seasons.year));
-      return reply.send(result);
+
+      return reply.send(
+        result.map((s: any) => ({
+          ...s,
+          hasPlayoffs: hasPoCols ? (s.hasPlayoffs ?? false) : false,
+          regularSeasonGamesPerTeam: hasPoCols ? (s.regularSeasonGamesPerTeam ?? null) : null,
+          playoffSettings: hasPoCols ? (s.playoffSettings ?? {}) : {},
+        }))
+      );
     } catch (err) {
       app.log.error(err);
       return reply.status(500).send({ message: 'Failed to fetch seasons' });
