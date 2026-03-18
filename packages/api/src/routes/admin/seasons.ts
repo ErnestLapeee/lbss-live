@@ -60,10 +60,19 @@ export async function adminSeasonsRoutes(app: FastifyInstance) {
 
   // POST / - create season
   app.post<{
-    Body: { year: number; name: string; startDate?: string; endDate?: string; isActive?: boolean };
+    Body: {
+      year: number;
+      name: string;
+      startDate?: string;
+      endDate?: string;
+      isActive?: boolean;
+      hasPlayoffs?: boolean;
+      regularSeasonGamesPerTeam?: number;
+      playoffSettings?: any;
+    };
   }>('/', async (request, reply) => {
     try {
-      const { year, name, startDate, endDate, isActive } = request.body ?? {};
+      const { year, name, startDate, endDate, isActive, hasPlayoffs, regularSeasonGamesPerTeam, playoffSettings } = request.body ?? {};
       if (!year || !name) {
         return reply.status(400).send({ message: 'year and name required' });
       }
@@ -76,6 +85,9 @@ export async function adminSeasonsRoutes(app: FastifyInstance) {
           startDate: startDate ?? null,
           endDate: endDate ?? null,
           isActive: isActive ?? false,
+          hasPlayoffs: hasPlayoffs ?? false,
+          regularSeasonGamesPerTeam: regularSeasonGamesPerTeam ?? null,
+          playoffSettings: playoffSettings ?? {},
         })
         .returning();
 
@@ -89,7 +101,16 @@ export async function adminSeasonsRoutes(app: FastifyInstance) {
   // PUT /:id - update season
   app.put<{
     Params: { id: string };
-    Body: { year?: number; name?: string; startDate?: string; endDate?: string; isActive?: boolean };
+    Body: {
+      year?: number;
+      name?: string;
+      startDate?: string;
+      endDate?: string;
+      isActive?: boolean;
+      hasPlayoffs?: boolean;
+      regularSeasonGamesPerTeam?: number | null;
+      playoffSettings?: any;
+    };
   }>('/:id', async (request, reply) => {
     try {
       const id = parseInt(request.params.id, 10);
@@ -97,7 +118,7 @@ export async function adminSeasonsRoutes(app: FastifyInstance) {
         return reply.status(400).send({ message: 'Invalid season id' });
       }
 
-      const { year, name, startDate, endDate, isActive } = request.body ?? {};
+      const { year, name, startDate, endDate, isActive, hasPlayoffs, regularSeasonGamesPerTeam, playoffSettings } = request.body ?? {};
 
       const [season] = await db
         .update(seasons)
@@ -107,6 +128,9 @@ export async function adminSeasonsRoutes(app: FastifyInstance) {
           ...(startDate !== undefined && { startDate }),
           ...(endDate !== undefined && { endDate }),
           ...(isActive !== undefined && { isActive }),
+          ...(hasPlayoffs !== undefined && { hasPlayoffs }),
+          ...(regularSeasonGamesPerTeam !== undefined && { regularSeasonGamesPerTeam }),
+          ...(playoffSettings !== undefined && { playoffSettings }),
         })
         .where(eq(seasons.id, id))
         .returning();

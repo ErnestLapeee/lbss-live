@@ -32,10 +32,11 @@ export async function adminGamesRoutes(app: FastifyInstance) {
       awayTeamId: number;
       scheduledAt: string;
       venue?: string;
+      playoffSeriesId?: number | null;
     };
   }>('/', async (request, reply) => {
     try {
-      const { leagueId, homeTeamId, awayTeamId, scheduledAt, venue } =
+      const { leagueId, homeTeamId, awayTeamId, scheduledAt, venue, playoffSeriesId } =
         request.body ?? {};
 
       if (!leagueId || !homeTeamId || !awayTeamId || !scheduledAt) {
@@ -52,6 +53,7 @@ export async function adminGamesRoutes(app: FastifyInstance) {
           awayTeamId,
           scheduledAt: new Date(scheduledAt),
           venue: venue ?? null,
+          playoffSeriesId: playoffSeriesId ?? null,
         })
         .returning();
 
@@ -72,6 +74,7 @@ export async function adminGamesRoutes(app: FastifyInstance) {
       scheduledAt?: string;
       venue?: string;
       status?: string;
+      playoffSeriesId?: number | null;
     };
   }>('/:id', async (request, reply) => {
     try {
@@ -89,6 +92,7 @@ export async function adminGamesRoutes(app: FastifyInstance) {
         updateData.scheduledAt = new Date(body.scheduledAt);
       if (body.venue !== undefined) updateData.venue = body.venue;
       if (body.status !== undefined) updateData.status = body.status;
+      if (body.playoffSeriesId !== undefined) updateData.playoffSeriesId = body.playoffSeriesId;
 
       const [game] = await db
         .update(games)

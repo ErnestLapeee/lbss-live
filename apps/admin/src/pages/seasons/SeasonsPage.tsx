@@ -7,7 +7,17 @@ export function SeasonsPage() {
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<any>(null);
-  const [form, setForm] = useState({ year: '', name: '', startDate: '', endDate: '', isActive: false });
+  const [form, setForm] = useState({
+    year: '',
+    name: '',
+    startDate: '',
+    endDate: '',
+    isActive: false,
+    hasPlayoffs: false,
+    regularSeasonGamesPerTeam: '',
+    playoffSeeds: '4',
+    playoffBestOf: '1',
+  });
   const [saving, setSaving] = useState(false);
 
   const load = async () => {
@@ -29,7 +39,17 @@ export function SeasonsPage() {
 
   const openCreate = () => {
     setEditing(null);
-    setForm({ year: '', name: '', startDate: '', endDate: '', isActive: false });
+    setForm({
+      year: '',
+      name: '',
+      startDate: '',
+      endDate: '',
+      isActive: false,
+      hasPlayoffs: false,
+      regularSeasonGamesPerTeam: '',
+      playoffSeeds: '4',
+      playoffBestOf: '1',
+    });
     setShowForm(true);
   };
 
@@ -41,6 +61,10 @@ export function SeasonsPage() {
       startDate: item.startDate ?? '',
       endDate: item.endDate ?? '',
       isActive: item.isActive ?? false,
+      hasPlayoffs: item.hasPlayoffs ?? false,
+      regularSeasonGamesPerTeam: item.regularSeasonGamesPerTeam != null ? String(item.regularSeasonGamesPerTeam) : '',
+      playoffSeeds: String(item.playoffSettings?.seeds ?? 4),
+      playoffBestOf: String(item.playoffSettings?.bestOf ?? 1),
     });
     setShowForm(true);
   };
@@ -55,6 +79,12 @@ export function SeasonsPage() {
         startDate: form.startDate || null,
         endDate: form.endDate || null,
         isActive: form.isActive,
+        hasPlayoffs: form.hasPlayoffs,
+        regularSeasonGamesPerTeam: form.regularSeasonGamesPerTeam.trim() ? parseInt(form.regularSeasonGamesPerTeam, 10) : null,
+        playoffSettings: {
+          seeds: form.playoffSeeds.trim() ? parseInt(form.playoffSeeds, 10) : 4,
+          bestOf: form.playoffBestOf.trim() ? parseInt(form.playoffBestOf, 10) : 1,
+        },
       };
       if (editing) {
         await apiPut(`/admin/seasons/${editing.id}`, payload);
@@ -219,6 +249,56 @@ export function SeasonsPage() {
                   Active
                 </label>
               </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="hasPlayoffs"
+                  checked={form.hasPlayoffs}
+                  onChange={(e) => setForm({ ...form, hasPlayoffs: e.target.checked })}
+                  className="w-4 h-4 rounded border-border text-accent focus:ring-accent"
+                />
+                <label htmlFor="hasPlayoffs" className="text-sm font-medium">
+                  Has Playoffs
+                </label>
+              </div>
+
+              {form.hasPlayoffs && (
+                <div className="rounded-lg border border-border bg-surface-alt p-4 space-y-3">
+                  <div>
+                    <label className="block text-sm font-medium mb-1.5">Regular season games per team</label>
+                    <input
+                      type="number"
+                      value={form.regularSeasonGamesPerTeam}
+                      onChange={(e) => setForm({ ...form, regularSeasonGamesPerTeam: e.target.value })}
+                      className="w-full px-3 py-2 border border-border rounded-lg bg-surface text-sm focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent"
+                      placeholder="e.g. 18"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-sm font-medium mb-1.5">Playoff seeds</label>
+                      <input
+                        type="number"
+                        value={form.playoffSeeds}
+                        onChange={(e) => setForm({ ...form, playoffSeeds: e.target.value })}
+                        className="w-full px-3 py-2 border border-border rounded-lg bg-surface text-sm focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1.5">Default best-of</label>
+                      <input
+                        type="number"
+                        value={form.playoffBestOf}
+                        onChange={(e) => setForm({ ...form, playoffBestOf: e.target.value })}
+                        className="w-full px-3 py-2 border border-border rounded-lg bg-surface text-sm focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent"
+                      />
+                    </div>
+                  </div>
+                  <p className="text-xs text-text-faint">
+                    Bracket matchups can still be set manually later; these settings drive the auto playoff picture.
+                  </p>
+                </div>
+              )}
               <div className="flex justify-end gap-3 pt-2">
                 <button
                   type="button"

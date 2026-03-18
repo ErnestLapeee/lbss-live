@@ -282,7 +282,9 @@ export function PlayerModal({ slug, firstName, lastName, onClose }: PlayerModalP
                           .sort((a: any, b: any) => (a.seasonYear ?? 0) - (b.seasonYear ?? 0))
                           .map((r: any) => (
                             <tr key={`${r.seasonId ?? ''}-${r.teamName ?? ''}`} className="border-b border-white/[0.03]">
-                              <td className="px-2 py-1.5 text-left">{r.seasonYear ?? '—'}</td>
+                              <td className="px-2 py-1.5 text-left">
+                                {r.seasonYear ?? '—'}{r.seasonLabel ? ` ${r.seasonLabel}` : ''}
+                              </td>
                               <td className="px-2 py-1.5 text-left">{r.teamName ?? '—'}</td>
                               <td className="px-2 py-1.5 text-right">{r.games}</td>
                               <td className="px-2 py-1.5 text-right">{r.plateAppearances}</td>
@@ -358,7 +360,9 @@ export function PlayerModal({ slug, firstName, lastName, onClose }: PlayerModalP
                           .sort((a: any, b: any) => (a.seasonYear ?? 0) - (b.seasonYear ?? 0))
                           .map((r: any) => (
                             <tr key={`${r.seasonId ?? ''}-${r.teamName ?? ''}`} className="border-b border-white/[0.03]">
-                              <td className="px-2 py-1.5 text-left">{r.seasonYear ?? '—'}</td>
+                              <td className="px-2 py-1.5 text-left">
+                                {r.seasonYear ?? '—'}{r.seasonLabel ? ` ${r.seasonLabel}` : ''}
+                              </td>
                               <td className="px-2 py-1.5 text-left">{r.teamName ?? '—'}</td>
                               <td className="px-2 py-1.5 text-right">{r.games}</td>
                               <td className="px-2 py-1.5 text-right">{r.gamesStarted}</td>
@@ -435,7 +439,9 @@ export function PlayerModal({ slug, firstName, lastName, onClose }: PlayerModalP
                           .sort((a: any, b: any) => (a.seasonYear ?? 0) - (b.seasonYear ?? 0))
                           .map((r: any) => (
                             <tr key={`${r.seasonId ?? ''}-${r.teamName ?? ''}-${r.position ?? ''}`} className="border-b border-white/[0.03]">
-                              <td className="px-2 py-1.5 text-left">{r.seasonYear ?? '—'}</td>
+                              <td className="px-2 py-1.5 text-left">
+                                {r.seasonYear ?? '—'}{r.seasonLabel ? ` ${r.seasonLabel}` : ''}
+                              </td>
                               <td className="px-2 py-1.5 text-left">{r.teamName ?? '—'}</td>
                               <td className="px-2 py-1.5 text-left">
                                 {r.position != null ? (POS_LABELS[r.position] || String(r.position)) : '—'}

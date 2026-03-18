@@ -13,6 +13,7 @@ interface Game {
   homeScore: number;
   awayScore: number;
   isFinalized: boolean;
+  playoffSeriesId?: number | null;
 }
 
 interface Team {
@@ -75,6 +76,7 @@ export function GamesPage() {
     scheduledAt: '',
     venue: '',
     status: 'scheduled',
+    playoffSeriesId: '',
   });
 
   const teamMap = Object.fromEntries(teams.map((t) => [t.id, t.name]));
@@ -110,6 +112,7 @@ export function GamesPage() {
       scheduledAt: '',
       venue: '',
       status: 'scheduled',
+      playoffSeriesId: '',
     });
     setShowForm(true);
     setError(null);
@@ -124,6 +127,7 @@ export function GamesPage() {
       scheduledAt: formatDatetimeLocal(g.scheduledAt),
       venue: g.venue ?? '',
       status: g.status ?? 'scheduled',
+      playoffSeriesId: g.playoffSeriesId != null ? String(g.playoffSeriesId) : '',
     });
     setShowForm(true);
     setError(null);
@@ -142,6 +146,7 @@ export function GamesPage() {
           scheduledAt: new Date(form.scheduledAt).toISOString(),
           venue: form.venue.trim() || undefined,
           status: form.status,
+          playoffSeriesId: form.playoffSeriesId.trim() ? parseInt(form.playoffSeriesId, 10) : null,
         });
       } else {
         await apiPost('/admin/games', {
@@ -150,6 +155,7 @@ export function GamesPage() {
           awayTeamId: parseInt(form.awayTeamId, 10),
           scheduledAt: new Date(form.scheduledAt).toISOString(),
           venue: form.venue.trim() || undefined,
+          playoffSeriesId: form.playoffSeriesId.trim() ? parseInt(form.playoffSeriesId, 10) : null,
         });
       }
       setShowForm(false);
@@ -400,6 +406,21 @@ export function GamesPage() {
                     </option>
                   ))}
                 </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-text-muted mb-1">
+                  Playoff Series ID (optional)
+                </label>
+                <input
+                  type="number"
+                  value={form.playoffSeriesId}
+                  onChange={(e) => setForm((f) => ({ ...f, playoffSeriesId: e.target.value }))}
+                  className={inputClass}
+                  placeholder="e.g. 12"
+                />
+                <p className="mt-1 text-xs text-text-faint">
+                  Leave blank for regular season games. If set, this game counts as playoffs.
+                </p>
               </div>
               <div className="flex justify-end gap-3 pt-2">
                 <button

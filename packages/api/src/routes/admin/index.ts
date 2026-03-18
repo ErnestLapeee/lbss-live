@@ -10,6 +10,7 @@ import { adminArticlesRoutes } from './articles.js';
 import { adminUsersRoutes } from './users.js';
 import { adminScoringRoutes } from './scoring.js';
 import { adminBackupRoutes } from './backup.js';
+import { adminPlayoffsRoutes } from './playoffs.js';
 
 export async function adminRoutes(app: FastifyInstance) {
   // Auth routes don't need the auth hook
@@ -23,6 +24,7 @@ export async function adminRoutes(app: FastifyInstance) {
   await app.register(adminTeamsRoutes, { prefix: '/teams' });
   await app.register(adminPlayersRoutes, { prefix: '/players' });
   await app.register(adminGamesRoutes, { prefix: '/games' });
+  await app.register(adminPlayoffsRoutes, { prefix: '/playoffs' });
   await app.register(adminArticlesRoutes, { prefix: '/articles' });
   await app.register(adminUsersRoutes, { prefix: '/users' });
   await app.register(adminScoringRoutes, { prefix: '/scoring' });

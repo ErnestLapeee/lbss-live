@@ -227,7 +227,9 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
                 <tbody>
                   {battingStats.map((s: any, i: number) => (
                     <tr key={i} className="border-b border-border last:border-0 hover:bg-surface-alt/50 transition-colors">
-                      <td className="px-2 py-2 font-semibold text-xs">{s.seasonYear != null ? s.seasonYear : 'All time'}</td>
+                      <td className="px-2 py-2 font-semibold text-xs">
+                        {s.seasonYear != null ? `${s.seasonYear}${s.seasonLabel ? ` ${s.seasonLabel}` : ''}` : 'All time'}
+                      </td>
                       <td className="px-2 py-2 text-xs text-text-muted">{s.teamName ?? '—'}</td>
                       <td className="px-2 py-2 text-right font-mono text-xs">{n(s.games)}</td>
                       <td className="px-2 py-2 text-right font-mono text-xs">{n(s.plateAppearances)}</td>
@@ -330,7 +332,9 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
                 <tbody>
                   {pitchingStats.map((s: any, i: number) => (
                     <tr key={i} className="border-b border-border last:border-0 hover:bg-surface-alt/50 transition-colors">
-                      <td className="px-2 py-2 font-semibold text-xs">{s.seasonYear != null ? s.seasonYear : 'All time'}</td>
+                      <td className="px-2 py-2 font-semibold text-xs">
+                        {s.seasonYear != null ? `${s.seasonYear}${s.seasonLabel ? ` ${s.seasonLabel}` : ''}` : 'All time'}
+                      </td>
                       <td className="px-2 py-2 text-xs text-text-muted">{s.teamName ?? '—'}</td>
                       <td className="px-2 py-2 text-right font-mono text-xs">{n(s.games)}</td>
                       <td className="px-2 py-2 text-right font-mono text-xs">{n(s.gamesStarted)}</td>
@@ -416,7 +420,9 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
                   <tbody>
                     {fieldingStats.map((s: any, i: number) => (
                       <tr key={i} className="border-b border-border last:border-0 hover:bg-surface-alt/50 transition-colors">
-                        <td className="px-2 py-2 font-semibold text-xs">{s.seasonYear != null ? s.seasonYear : 'All time'}</td>
+                        <td className="px-2 py-2 font-semibold text-xs">
+                          {s.seasonYear != null ? `${s.seasonYear}${s.seasonLabel ? ` ${s.seasonLabel}` : ''}` : 'All time'}
+                        </td>
                         <td className="px-2 py-2 text-xs text-text-muted">{s.teamName ?? '—'}</td>
                         <td className="px-2 py-2 text-right font-mono text-xs">{n(s.games)}</td>
                         <td className="px-2 py-2 text-right font-mono text-xs">{n(s.putouts)}</td>

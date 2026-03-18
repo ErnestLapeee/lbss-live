@@ -8,6 +8,7 @@ import { standingsRoutes } from './standings.js';
 import { leaderboardsRoutes } from './leaderboards.js';
 import { articlesRoutes } from './articles.js';
 import { statsRoutes } from './stats.js';
+import { playoffsRoutes } from './playoffs.js';
 
 export async function publicRoutes(app: FastifyInstance) {
   await app.register(seasonsRoutes, { prefix: '/seasons' });
@@ -19,4 +20,5 @@ export async function publicRoutes(app: FastifyInstance) {
   await app.register(leaderboardsRoutes, { prefix: '/leaderboards' });
   await app.register(articlesRoutes, { prefix: '/articles' });
   await app.register(statsRoutes, { prefix: '/stats' });
+  await app.register(playoffsRoutes, { prefix: '/playoffs' });
 }

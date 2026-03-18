@@ -10,6 +10,7 @@ import {
 import { leagues } from './leagues.js';
 import { teams } from './teams.js';
 import { users } from './users.js';
+import { playoffSeries } from './playoff-series.js';
 
 export const games = pgTable(
   'games',
@@ -36,6 +37,7 @@ export const games = pgTable(
     isFinalized: boolean('is_finalized').default(false),
     finalizedAt: timestamp('finalized_at', { withTimezone: true }),
     finalizedBy: integer('finalized_by').references(() => users.id),
+    playoffSeriesId: integer('playoff_series_id').references(() => playoffSeries.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
   },
@@ -45,5 +47,6 @@ export const games = pgTable(
     index('games_scheduled_at_idx').on(table.scheduledAt),
     index('games_home_team_id_idx').on(table.homeTeamId),
     index('games_away_team_id_idx').on(table.awayTeamId),
+    index('games_playoff_series_id_idx').on(table.playoffSeriesId),
   ]
 );

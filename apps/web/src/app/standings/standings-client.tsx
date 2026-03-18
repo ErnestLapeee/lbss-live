@@ -18,6 +18,32 @@ type StandingsRow = {
   runsAllowed?: number;
 };
 type LeagueStandings = { leagueName: string; leagueId: number; rows: StandingsRow[] };
+type PlayoffsData = {
+  seasonId: number;
+  playoffs: { id: number; name: string; isActive: boolean; config: any } | null;
+  leagues: Array<{
+    leagueId: number;
+    leagueName: string;
+    seeds: Array<{ seed: number; teamId: number; teamName: string; wins: number; losses: number; ties: number; winPct: number; gamesBehind: number }>;
+    bracket: {
+      rounds: Array<{
+        roundNumber: number;
+        name: string;
+        series: Array<{
+          id: number | null;
+          label: string;
+          bestOf: number;
+          higherSeed: number | null;
+          lowerSeed: number | null;
+          higherTeamName: string;
+          lowerTeamName: string;
+          wins: { higher: number; lower: number };
+          winnerTeamId: number | null;
+        }>;
+      }>;
+    };
+  }>;
+};
 
 function proxy(path: string) {
   return path.startsWith('/api/') ? path.replace(/^\/api\//, '/api/proxy/') : `/api/proxy${path}`;
@@ -32,6 +58,9 @@ export function StandingsClient() {
   const [standings, setStandings] = useState<LeagueStandings[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingStandings, setLoadingStandings] = useState(false);
+  const [playoffs, setPlayoffs] = useState<PlayoffsData | null>(null);
+  const [loadingPlayoffs, setLoadingPlayoffs] = useState(false);
+  const [view, setView] = useState<'standings' | 'playoffs'>('standings');
 
   // Load seasons once (client-side so dropdown always appears)
   useEffect(() => {
@@ -112,10 +141,43 @@ export function StandingsClient() {
     loadStandings(selectedSeasonId);
   }, [selectedSeasonId, loadStandings]);
 
+  // Load playoffs picture/bracket for selected season
+  useEffect(() => {
+    if (selectedSeasonId == null) {
+      setPlayoffs(null);
+      setView('standings');
+      return;
+    }
+    let cancelled = false;
+    setLoadingPlayoffs(true);
+    fetch(proxy(`/api/public/playoffs/season/${selectedSeasonId}`))
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: PlayoffsData | null) => {
+        if (cancelled) return;
+        const d = data && typeof data === 'object' ? data : null;
+        setPlayoffs(d);
+        if (!d?.playoffs) setView('standings');
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setPlayoffs(null);
+          setView('standings');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingPlayoffs(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedSeasonId]);
+
   const handleSeasonChange = (value: string) => {
     const id = value === '' || value === 'all' ? null : parseInt(value, 10);
     const newId = id ?? seasons.find((s) => s.isActive)?.id ?? seasons[0]?.id ?? null;
     setSelectedSeasonId(newId);
+    // When switching seasons, default to standings view; playoffs will be available if configured.
+    setView('standings');
     const params = new URLSearchParams(searchParams?.toString() ?? '');
     if (newId != null) {
       params.set('season', String(newId));
@@ -128,6 +190,7 @@ export function StandingsClient() {
 
   const currentSeason = selectedSeasonId != null ? seasons.find((s) => s.id === selectedSeasonId) : null;
   const hasStandings = standings.some((s) => s.rows.length > 0);
+  const hasPlayoffs = !!playoffs?.playoffs;
 
   return (
     <div>
@@ -161,7 +224,91 @@ export function StandingsClient() {
           )}
         </div>
 
-        {loadingStandings ? (
+        {hasPlayoffs && (
+          <div className="mb-6 flex gap-2">
+            <button
+              onClick={() => setView('standings')}
+              className={`px-4 py-2 text-xs font-bold uppercase rounded-lg border transition-colors ${
+                view === 'standings'
+                  ? 'bg-surface border-border text-text'
+                  : 'bg-surface-alt border-border text-text-muted hover:text-text'
+              }`}
+            >
+              Standings
+            </button>
+            <button
+              onClick={() => setView('playoffs')}
+              className={`px-4 py-2 text-xs font-bold uppercase rounded-lg border transition-colors ${
+                view === 'playoffs'
+                  ? 'bg-surface border-border text-text'
+                  : 'bg-surface-alt border-border text-text-muted hover:text-text'
+              }`}
+            >
+              Playoffs
+            </button>
+          </div>
+        )}
+
+        {view === 'playoffs' ? (
+          <div className="space-y-6">
+            {loadingPlayoffs ? (
+              <div className="rounded-xl border border-border bg-surface-alt p-12 text-center">
+                <p className="text-text-muted">Loading playoff picture…</p>
+              </div>
+            ) : !hasPlayoffs ? (
+              <div className="rounded-xl border border-dashed border-border bg-surface-alt p-12 text-center">
+                <p className="text-lg font-medium text-text-muted">No playoffs configured for this season</p>
+              </div>
+            ) : (
+              <>
+                <h2 className="text-sm font-bold uppercase tracking-wider text-text-faint">
+                  {playoffs?.playoffs?.name ?? 'Playoffs'}
+                </h2>
+                {(playoffs?.leagues ?? []).map((lg) => (
+                  <div key={lg.leagueId} className="rounded-xl border border-border bg-surface overflow-hidden">
+                    <div className="px-4 py-3 border-b border-border bg-surface-alt">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="font-heading text-sm font-bold">{lg.leagueName}</div>
+                        <div className="text-[11px] text-text-faint truncate">
+                          Current seeding from standings
+                        </div>
+                      </div>
+                    </div>
+                    <div className="p-4 overflow-x-auto">
+                      <div className="flex gap-4 min-w-[720px]">
+                        {(lg.bracket?.rounds ?? []).map((r) => (
+                          <div key={r.roundNumber} className="w-64 shrink-0">
+                            <div className="text-[11px] font-bold uppercase tracking-wider text-text-faint mb-2">
+                              {r.name}
+                            </div>
+                            <div className="space-y-2">
+                              {r.series.map((s) => (
+                                <div key={s.id ?? s.label} className="border border-border rounded-lg bg-surface-alt p-3">
+                                  <div className="text-[10px] text-text-faint font-semibold mb-2 flex justify-between">
+                                    <span>{s.label}</span>
+                                    <span>Bo{s.bestOf}</span>
+                                  </div>
+                                  <div className="text-[11px] font-medium flex items-center justify-between">
+                                    <span className="truncate">{s.higherSeed ? `${s.higherSeed}. ` : ''}{s.higherTeamName}</span>
+                                    <span className="font-mono text-text-faint">{s.wins?.higher ?? 0}</span>
+                                  </div>
+                                  <div className="text-[11px] font-medium flex items-center justify-between mt-1">
+                                    <span className="truncate">{s.lowerSeed ? `${s.lowerSeed}. ` : ''}{s.lowerTeamName}</span>
+                                    <span className="font-mono text-text-faint">{s.wins?.lower ?? 0}</span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </>
+            )}
+          </div>
+        ) : loadingStandings ? (
           <div className="rounded-xl border border-border bg-surface-alt p-12 text-center">
             <p className="text-text-muted">Loading standings…</p>
           </div>
