@@ -32,14 +32,17 @@ export async function adminSeasonsRoutes(app: FastifyInstance) {
           startDate: seasons.startDate,
           endDate: seasons.endDate,
           isActive: seasons.isActive,
-          hasPlayoffs: seasons.hasPlayoffs,
-          regularSeasonGamesPerTeam: seasons.regularSeasonGamesPerTeam,
-          playoffSettings: seasons.playoffSettings,
           createdAt: seasons.createdAt,
         })
         .from(seasons)
         .orderBy(desc(seasons.year));
-      return reply.send(result);
+      // Fill optional playoff fields for older DB schemas.
+      return reply.send(result.map((s) => ({
+        ...s,
+        hasPlayoffs: false,
+        regularSeasonGamesPerTeam: null,
+        playoffSettings: {},
+      })));
     } catch (err) {
       request.log.error(err);
       return reply.status(500).send({ message: 'Failed to fetch seasons' });
@@ -62,9 +65,6 @@ export async function adminSeasonsRoutes(app: FastifyInstance) {
           startDate: seasons.startDate,
           endDate: seasons.endDate,
           isActive: seasons.isActive,
-          hasPlayoffs: seasons.hasPlayoffs,
-          regularSeasonGamesPerTeam: seasons.regularSeasonGamesPerTeam,
-          playoffSettings: seasons.playoffSettings,
           createdAt: seasons.createdAt,
         })
         .from(seasons)
@@ -75,7 +75,12 @@ export async function adminSeasonsRoutes(app: FastifyInstance) {
         return reply.status(404).send({ message: 'Season not found' });
       }
 
-      return reply.send(season);
+      return reply.send({
+        ...season,
+        hasPlayoffs: false,
+        regularSeasonGamesPerTeam: null,
+        playoffSettings: {},
+      });
     } catch (err) {
       request.log.error(err);
       return reply.status(500).send({ message: 'Failed to fetch season' });
