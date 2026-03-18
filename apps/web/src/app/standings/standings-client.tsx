@@ -190,7 +190,10 @@ export function StandingsClient() {
 
   const currentSeason = selectedSeasonId != null ? seasons.find((s) => s.id === selectedSeasonId) : null;
   const hasStandings = standings.some((s) => s.rows.length > 0);
-  const hasPlayoffs = !!playoffs?.playoffs;
+  const hasPlayoffs = !!playoffs && (
+    !!playoffs.playoffs ||
+    (playoffs.leagues ?? []).some((lg) => (lg.bracket?.rounds ?? []).length > 0)
+  );
   const playoffsByLeagueId = new Map((playoffs?.leagues ?? []).map((lg) => [lg.leagueId, lg] as const));
 
   return (

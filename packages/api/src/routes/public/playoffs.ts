@@ -97,10 +97,23 @@ export async function playoffsRoutes(app: FastifyInstance) {
       const [season] = await db.select().from(seasons).where(eq(seasons.id, seasonId)).limit(1);
       if (!season) return reply.status(404).send({ message: 'Season not found' });
 
-      const [po] = await db.select().from(playoffs)
+      const [poRow] = await db.select().from(playoffs)
         .where(and(eq(playoffs.seasonId, seasonId), eq(playoffs.isActive, true)))
         .orderBy(desc(playoffs.id))
         .limit(1);
+
+      // If no playoffs row exists yet, but the season is marked as having playoffs,
+      // synthesize a default "playoff picture" (current seeding + default bracket) from standings.
+      const po = poRow ?? (
+        (season as any).hasPlayoffs
+          ? ({
+            id: null,
+            name: `${(season as any).name ?? (season as any).year ?? 'Season'} Playoffs`,
+            isActive: true,
+            config: (season as any).playoffSettings ?? {},
+          } as any)
+          : null
+      );
 
       if (!po) return reply.send({ seasonId, playoffs: null, leagues: [] });
 
@@ -134,7 +147,7 @@ export async function playoffsRoutes(app: FastifyInstance) {
 
         // Load any manually configured series (rounds)
         const seriesRows = await db.select().from(playoffSeries)
-          .where(eq(playoffSeries.playoffsId, po.id))
+          .where(po.id ? eq(playoffSeries.playoffsId, po.id) : sql`false`)
           .orderBy(playoffSeries.roundNumber, playoffSeries.seriesIndex);
 
         // If manual series exist, resolve teams from seeds when missing.
@@ -226,7 +239,7 @@ export async function playoffsRoutes(app: FastifyInstance) {
 
       return reply.send({
         seasonId,
-        playoffs: { id: po.id, name: po.name, config: po.config, isActive: po.isActive },
+        playoffs: { id: po.id ?? null, name: po.name, config: po.config, isActive: po.isActive },
         leagues: leaguesOut,
       });
     } catch (err) {
