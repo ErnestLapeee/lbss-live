@@ -114,12 +114,39 @@ function computeGameState(events: any[]): GameState {
 }
 
 export async function adminScoringRoutes(app: FastifyInstance) {
+  async function getGameCore(gameId: number) {
+    const res = await db.execute(sql`
+      SELECT
+        id,
+        league_id as "leagueId",
+        home_team_id as "homeTeamId",
+        away_team_id as "awayTeamId",
+        scheduled_at as "scheduledAt",
+        venue,
+        status,
+        home_score as "homeScore",
+        away_score as "awayScore",
+        innings_count as "inningsCount",
+        current_inning as "currentInning",
+        current_half as "currentHalf",
+        current_outs as "currentOuts",
+        is_finalized as "isFinalized",
+        finalized_at as "finalizedAt",
+        finalized_by as "finalizedBy",
+        created_at as "createdAt",
+        updated_at as "updatedAt"
+      FROM games
+      WHERE id = ${gameId}
+      LIMIT 1
+    `);
+    return (((res as any).rows?.[0] ?? (res as any)?.[0]) ?? null) as any | null;
+  }
 
   // ── GET /:gameId/state ── Full game state
   app.get<{ Params: { gameId: string } }>('/:gameId/state', async (request, reply) => {
     try {
       const gameId = parseInt(request.params.gameId, 10);
-      const [game] = await db.select().from(games).where(eq(games.id, gameId)).limit(1);
+      const game = await getGameCore(gameId);
       if (!game) return reply.status(404).send({ message: 'Game not found' });
 
       const events = await db.select().from(gameEvents)
@@ -170,7 +197,7 @@ export async function adminScoringRoutes(app: FastifyInstance) {
   app.get<{ Params: { gameId: string } }>('/:gameId/roster', async (request, reply) => {
     try {
       const gameId = parseInt(request.params.gameId, 10);
-      const [game] = await db.select().from(games).where(eq(games.id, gameId)).limit(1);
+      const game = await getGameCore(gameId);
       if (!game) return reply.status(404).send({ message: 'Game not found' });
 
       // Get players on each team's roster for THIS game’s season, with license status.
@@ -799,7 +826,7 @@ export async function adminScoringRoutes(app: FastifyInstance) {
       const result = await finalizeGame(gameId, user?.id);
 
       try {
-        const [finalGame] = await db.select().from(games).where(eq(games.id, gameId)).limit(1);
+        const finalGame = await getGameCore(gameId);
         getIO().to(`game:${gameId}`).emit('game:final', {
           gameId,
           homeScore: finalGame?.homeScore,
