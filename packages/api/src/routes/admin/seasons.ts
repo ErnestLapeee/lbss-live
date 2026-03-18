@@ -16,7 +16,24 @@ import {
   seasons,
   standings,
 } from '../../db/schema/index.js';
-import { desc, eq, inArray } from 'drizzle-orm';
+import { desc, eq, inArray, sql } from 'drizzle-orm';
+
+async function seasonsHavePlayoffColumns(): Promise<boolean> {
+  try {
+    const rows = await db.execute(sql`
+      select column_name
+      from information_schema.columns
+      where table_schema = 'public'
+        and table_name = 'seasons'
+        and column_name in ('has_playoffs', 'regular_season_games_per_team', 'playoff_settings')
+    `);
+    // drizzle returns different shapes depending on driver; handle common cases.
+    const list = Array.isArray((rows as any).rows) ? (rows as any).rows : (rows as any);
+    return Array.isArray(list) && list.length >= 3;
+  } catch {
+    return false;
+  }
+}
 
 export async function adminSeasonsRoutes(app: FastifyInstance) {
   // GET / - list all seasons
@@ -106,6 +123,8 @@ export async function adminSeasonsRoutes(app: FastifyInstance) {
         return reply.status(400).send({ message: 'year and name required' });
       }
 
+      const hasPoCols = await seasonsHavePlayoffColumns();
+
       const [season] = await db
         .insert(seasons)
         .values({
@@ -114,13 +133,22 @@ export async function adminSeasonsRoutes(app: FastifyInstance) {
           startDate: startDate ?? null,
           endDate: endDate ?? null,
           isActive: isActive ?? false,
-          hasPlayoffs: hasPlayoffs ?? false,
-          regularSeasonGamesPerTeam: regularSeasonGamesPerTeam ?? null,
-          playoffSettings: playoffSettings ?? {},
+          ...(hasPoCols
+            ? {
+              hasPlayoffs: hasPlayoffs ?? false,
+              regularSeasonGamesPerTeam: regularSeasonGamesPerTeam ?? null,
+              playoffSettings: playoffSettings ?? {},
+            }
+            : {}),
         })
         .returning();
 
-      return reply.status(201).send(season);
+      return reply.status(201).send({
+        ...season,
+        hasPlayoffs: hasPoCols ? (season as any).hasPlayoffs ?? false : false,
+        regularSeasonGamesPerTeam: hasPoCols ? (season as any).regularSeasonGamesPerTeam ?? null : null,
+        playoffSettings: hasPoCols ? (season as any).playoffSettings ?? {} : {},
+      });
     } catch (err) {
       request.log.error(err);
       return reply.status(500).send({ message: 'Failed to create season' });
@@ -149,6 +177,8 @@ export async function adminSeasonsRoutes(app: FastifyInstance) {
 
       const { year, name, startDate, endDate, isActive, hasPlayoffs, regularSeasonGamesPerTeam, playoffSettings } = request.body ?? {};
 
+      const hasPoCols = await seasonsHavePlayoffColumns();
+
       const [season] = await db
         .update(seasons)
         .set({
@@ -157,9 +187,11 @@ export async function adminSeasonsRoutes(app: FastifyInstance) {
           ...(startDate !== undefined && { startDate }),
           ...(endDate !== undefined && { endDate }),
           ...(isActive !== undefined && { isActive }),
-          ...(hasPlayoffs !== undefined && { hasPlayoffs }),
-          ...(regularSeasonGamesPerTeam !== undefined && { regularSeasonGamesPerTeam }),
-          ...(playoffSettings !== undefined && { playoffSettings }),
+          ...(hasPoCols ? {
+            ...(hasPlayoffs !== undefined && { hasPlayoffs }),
+            ...(regularSeasonGamesPerTeam !== undefined && { regularSeasonGamesPerTeam }),
+            ...(playoffSettings !== undefined && { playoffSettings }),
+          } : {}),
         })
         .where(eq(seasons.id, id))
         .returning();
@@ -168,7 +200,12 @@ export async function adminSeasonsRoutes(app: FastifyInstance) {
         return reply.status(404).send({ message: 'Season not found' });
       }
 
-      return reply.send(season);
+      return reply.send({
+        ...season,
+        hasPlayoffs: hasPoCols ? (season as any).hasPlayoffs ?? false : false,
+        regularSeasonGamesPerTeam: hasPoCols ? (season as any).regularSeasonGamesPerTeam ?? null : null,
+        playoffSettings: hasPoCols ? (season as any).playoffSettings ?? {} : {},
+      });
     } catch (err) {
       request.log.error(err);
       return reply.status(500).send({ message: 'Failed to update season' });
