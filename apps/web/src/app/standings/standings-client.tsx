@@ -453,6 +453,16 @@ export function StandingsClient() {
                   const bracket = (lg?.bracket?.rounds?.length ? lg.bracket : buildProvisionalRound1(league.rows));
                   const rounds = bracket?.rounds ?? [];
                   if (rounds.length === 0) return null;
+
+                  const rowByTeam = new Map((league.rows ?? []).map(r => [String(r.teamName || '').trim(), r] as const));
+                  const recordText = (teamName: string) => {
+                    const r = rowByTeam.get(String(teamName || '').trim());
+                    if (!r) return '';
+                    const t = r.ties ?? 0;
+                    const gb = r.gamesBehind === '0' || r.gamesBehind === '0.0' ? '—' : (r.gamesBehind ?? '—');
+                    return `${r.wins}-${r.losses}${t ? `-${t}` : ''} • GB ${gb}`;
+                  };
+
                   return (
                     <div className="mt-4 rounded-xl border border-border bg-surface overflow-hidden">
                       <div className="px-4 py-3 border-b border-border bg-surface-alt">
@@ -465,40 +475,48 @@ export function StandingsClient() {
                           </div>
                         </div>
                       </div>
-                      <div className="p-4 overflow-x-auto">
-                        <div className="flex gap-4 min-w-[720px]">
-                          {rounds.map((r) => (
-                            <div key={r.roundNumber} className="w-64 shrink-0">
-                              <div className="text-[11px] font-bold uppercase tracking-wider text-text-faint mb-2">
-                                {r.name}
-                              </div>
-                              <div className="space-y-2">
-                                {r.series.map((s) => (
-                                  <div key={s.id ?? s.label} className="border border-border rounded-lg bg-surface-alt p-3">
-                                    <div className="text-[10px] text-text-faint font-semibold mb-2 flex justify-between">
-                                      <span>{s.label}</span>
-                                      <span>Bo{s.bestOf}</span>
+                      <div className="p-4">
+                        {rounds.map((r) => (
+                          <div key={r.roundNumber} className="mb-4 last:mb-0">
+                            <div className="text-[11px] font-bold uppercase tracking-wider text-text-faint mb-2">
+                              {r.name}
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                              {r.series.map((s) => (
+                                <div key={s.id ?? s.label} className="border border-border rounded-lg bg-surface-alt p-3">
+                                  <div className="text-[10px] text-text-faint font-semibold mb-2 flex items-center justify-between">
+                                    <span>{s.label}</span>
+                                    <span className="font-mono">Bo{s.bestOf}</span>
+                                  </div>
+
+                                  <div className="space-y-2">
+                                    <div className="flex items-start justify-between gap-2">
+                                      <div className="min-w-0">
+                                        <div className="text-[11px] font-semibold truncate">
+                                          <span className="text-text-faint mr-1">{s.higherSeed ? `${s.higherSeed}.` : '—'}</span>
+                                          {s.higherTeamName}
+                                        </div>
+                                        <div className="text-[10px] text-text-faint truncate">{recordText(s.higherTeamName)}</div>
+                                      </div>
+                                      <div className="font-mono text-[11px] text-text-faint">{s.wins?.higher ?? 0}</div>
                                     </div>
-                                    <div className="text-[11px] font-medium flex items-center justify-between">
-                                      <span className="truncate">
-                                        {s.higherSeed ? `${s.higherSeed}. ` : ''}
-                                        {s.higherTeamName}
-                                      </span>
-                                      <span className="font-mono text-text-faint">{s.wins?.higher ?? 0}</span>
-                                    </div>
-                                    <div className="text-[11px] font-medium flex items-center justify-between mt-1">
-                                      <span className="truncate">
-                                        {s.lowerSeed ? `${s.lowerSeed}. ` : ''}
-                                        {s.lowerTeamName}
-                                      </span>
-                                      <span className="font-mono text-text-faint">{s.wins?.lower ?? 0}</span>
+
+                                    <div className="flex items-start justify-between gap-2">
+                                      <div className="min-w-0">
+                                        <div className="text-[11px] font-semibold truncate">
+                                          <span className="text-text-faint mr-1">{s.lowerSeed ? `${s.lowerSeed}.` : '—'}</span>
+                                          {s.lowerTeamName}
+                                        </div>
+                                        <div className="text-[10px] text-text-faint truncate">{recordText(s.lowerTeamName)}</div>
+                                      </div>
+                                      <div className="font-mono text-[11px] text-text-faint">{s.wins?.lower ?? 0}</div>
                                     </div>
                                   </div>
-                                ))}
-                              </div>
+                                </div>
+                              ))}
                             </div>
-                          ))}
-                        </div>
+                          </div>
+                        ))}
                       </div>
                     </div>
                   );
