@@ -191,6 +191,7 @@ export function StandingsClient() {
   const currentSeason = selectedSeasonId != null ? seasons.find((s) => s.id === selectedSeasonId) : null;
   const hasStandings = standings.some((s) => s.rows.length > 0);
   const hasPlayoffs = !!playoffs?.playoffs;
+  const playoffsByLeagueId = new Map((playoffs?.leagues ?? []).map((lg) => [lg.leagueId, lg] as const));
 
   return (
     <div>
@@ -385,6 +386,62 @@ export function StandingsClient() {
                     </tbody>
                   </table>
                 </div>
+
+                {/* Playoff picture (current seeding) */}
+                {hasPlayoffs && (() => {
+                  const lg = playoffsByLeagueId.get(league.leagueId);
+                  const rounds = lg?.bracket?.rounds ?? [];
+                  if (!lg || rounds.length === 0) return null;
+                  return (
+                    <div className="mt-4 rounded-xl border border-border bg-surface overflow-hidden">
+                      <div className="px-4 py-3 border-b border-border bg-surface-alt">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="text-[11px] font-bold uppercase tracking-wider text-text-faint">
+                            Playoff picture
+                          </div>
+                          <div className="text-[11px] text-text-faint truncate">
+                            Current seeding from standings
+                          </div>
+                        </div>
+                      </div>
+                      <div className="p-4 overflow-x-auto">
+                        <div className="flex gap-4 min-w-[720px]">
+                          {rounds.map((r) => (
+                            <div key={r.roundNumber} className="w-64 shrink-0">
+                              <div className="text-[11px] font-bold uppercase tracking-wider text-text-faint mb-2">
+                                {r.name}
+                              </div>
+                              <div className="space-y-2">
+                                {r.series.map((s) => (
+                                  <div key={s.id ?? s.label} className="border border-border rounded-lg bg-surface-alt p-3">
+                                    <div className="text-[10px] text-text-faint font-semibold mb-2 flex justify-between">
+                                      <span>{s.label}</span>
+                                      <span>Bo{s.bestOf}</span>
+                                    </div>
+                                    <div className="text-[11px] font-medium flex items-center justify-between">
+                                      <span className="truncate">
+                                        {s.higherSeed ? `${s.higherSeed}. ` : ''}
+                                        {s.higherTeamName}
+                                      </span>
+                                      <span className="font-mono text-text-faint">{s.wins?.higher ?? 0}</span>
+                                    </div>
+                                    <div className="text-[11px] font-medium flex items-center justify-between mt-1">
+                                      <span className="truncate">
+                                        {s.lowerSeed ? `${s.lowerSeed}. ` : ''}
+                                        {s.lowerTeamName}
+                                      </span>
+                                      <span className="font-mono text-text-faint">{s.wins?.lower ?? 0}</span>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             ))}
           </div>
