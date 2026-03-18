@@ -16,7 +16,28 @@ export async function adminGamesRoutes(app: FastifyInstance) {
   // GET / - list all games
   app.get('/', async (request, reply) => {
     try {
-      const result = await db.select().from(games).orderBy(games.scheduledAt);
+      // IMPORTANT: do not `select()` all columns from games, because production DB may lag behind
+      // app schema during deployments/migration rollbacks (e.g. playoff columns). Keep this to core columns.
+      const result = await db.select({
+        id: games.id,
+        leagueId: games.leagueId,
+        homeTeamId: games.homeTeamId,
+        awayTeamId: games.awayTeamId,
+        scheduledAt: games.scheduledAt,
+        venue: games.venue,
+        status: games.status,
+        homeScore: games.homeScore,
+        awayScore: games.awayScore,
+        inningsCount: games.inningsCount,
+        currentInning: games.currentInning,
+        currentHalf: games.currentHalf,
+        currentOuts: games.currentOuts,
+        isFinalized: games.isFinalized,
+        finalizedAt: games.finalizedAt,
+        finalizedBy: games.finalizedBy,
+        createdAt: games.createdAt,
+        updatedAt: games.updatedAt,
+      }).from(games).orderBy(games.scheduledAt);
       return reply.send(result);
     } catch (err) {
       request.log.error(err);

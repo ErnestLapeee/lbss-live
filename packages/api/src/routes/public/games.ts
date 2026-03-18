@@ -280,8 +280,29 @@ export async function gamesRoutes(app: FastifyInstance) {
         return reply.status(400).send({ message: 'Invalid game id' });
       }
 
+      // IMPORTANT: do not `select()` all columns from games, because production DB may lag behind
+      // app schema during deployments/migration rollbacks (e.g. playoff columns). Keep this to core columns.
       const [game] = await db
-        .select()
+        .select({
+          id: games.id,
+          leagueId: games.leagueId,
+          homeTeamId: games.homeTeamId,
+          awayTeamId: games.awayTeamId,
+          scheduledAt: games.scheduledAt,
+          venue: games.venue,
+          status: games.status,
+          homeScore: games.homeScore,
+          awayScore: games.awayScore,
+          inningsCount: games.inningsCount,
+          currentInning: games.currentInning,
+          currentHalf: games.currentHalf,
+          currentOuts: games.currentOuts,
+          isFinalized: games.isFinalized,
+          finalizedAt: games.finalizedAt,
+          finalizedBy: games.finalizedBy,
+          createdAt: games.createdAt,
+          updatedAt: games.updatedAt,
+        })
         .from(games)
         .where(eq(games.id, id))
         .limit(1);
