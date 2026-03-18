@@ -482,7 +482,7 @@ export function PlayerModal({ slug, firstName, lastName, onClose }: PlayerModalP
                         const v = e.target.value;
                         setSeasonFilter(v === 'all' ? 'all' : Number(v));
                       }}
-                      className="bg-[#0b1220] border border-white/[0.12] rounded px-2 py-1 text-[10px] text-[#e2e8f0]"
+                      className="bg-white border border-[#ccc] rounded px-2 py-1 text-[10px] text-[#111]"
                     >
                       <option value="all">All time</option>
                       {seasons.map(s => (
@@ -493,12 +493,12 @@ export function PlayerModal({ slug, firstName, lastName, onClose }: PlayerModalP
                   {gameLog.batting.length > 0 && (
                     <div>
                       <h3 className="text-[10px] font-bold uppercase tracking-wider text-[#475569] mb-2">Batting Game Log</h3>
-                      <div className="rounded-lg border border-white/[0.06] overflow-x-auto">
+                      <div className="rounded-lg border border-[#ccc] overflow-x-auto bg-white">
                         <table className="w-full text-xs">
                           <thead>
-                            <tr className="border-b border-white/[0.06] bg-[#1a2642]">
+                            <tr className="border-b border-[#ccc] bg-[#f3f3f3]">
                               {['Date', 'Opp', 'AB', 'R', 'H', '2B', '3B', 'HR', 'RBI', 'BB', 'SO', 'SB'].map(col => (
-                                <th key={col} className={`px-1.5 py-1 text-[8px] font-bold tracking-wider text-[#64748b] whitespace-nowrap ${col === 'Date' || col === 'Opp' ? 'text-left' : 'text-right'}`}>
+                                <th key={col} className={`px-1.5 py-1 text-[8px] font-bold tracking-wider text-[#333] whitespace-nowrap ${col === 'Date' || col === 'Opp' ? 'text-left' : 'text-right'}`}>
                                   {col}
                                 </th>
                               ))}
@@ -510,19 +510,19 @@ export function PlayerModal({ slug, firstName, lastName, onClose }: PlayerModalP
                               const oppName = isHome ? g.away_team : g.home_team;
                               const dateStr = g.date ? new Date(g.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—';
                               return (
-                                <tr key={i} className="border-b border-white/[0.04] last:border-0 hover:bg-white/[0.03]">
-                                  <td className="px-1.5 py-1.5 text-[#94a3b8]">{dateStr}</td>
-                                  <td className="px-1.5 py-1.5 text-[#94a3b8]">{isHome ? 'vs' : '@'} {oppName}</td>
-                                  <td className="px-1.5 py-1.5 text-right font-mono text-[#94a3b8]">{n(g.at_bats)}</td>
-                                  <td className="px-1.5 py-1.5 text-right font-mono text-[#94a3b8]">{n(g.runs)}</td>
-                                  <td className="px-1.5 py-1.5 text-right font-mono text-[#94a3b8]">{n(g.hits)}</td>
-                                  <td className="px-1.5 py-1.5 text-right font-mono text-[#94a3b8]">{n(g.doubles)}</td>
-                                  <td className="px-1.5 py-1.5 text-right font-mono text-[#94a3b8]">{n(g.triples)}</td>
-                                  <td className="px-1.5 py-1.5 text-right font-mono text-[#94a3b8]">{n(g.home_runs)}</td>
-                                  <td className="px-1.5 py-1.5 text-right font-mono font-bold text-[#f1f5f9]">{n(g.rbi)}</td>
-                                  <td className="px-1.5 py-1.5 text-right font-mono text-[#94a3b8]">{n(g.walks)}</td>
-                                  <td className="px-1.5 py-1.5 text-right font-mono text-[#94a3b8]">{n(g.strikeouts)}</td>
-                                  <td className="px-1.5 py-1.5 text-right font-mono text-[#94a3b8]">{n(g.stolen_bases)}</td>
+                                <tr key={i} className="border-b border-[#e5e5e5] last:border-0 hover:bg-[#fafafa]">
+                                  <td className="px-1.5 py-1.5 text-[#666]">{dateStr}</td>
+                                  <td className="px-1.5 py-1.5 text-[#666]">{isHome ? 'vs' : '@'} {oppName}</td>
+                                  <td className="px-1.5 py-1.5 text-right font-mono text-[#333]">{n(g.at_bats)}</td>
+                                  <td className="px-1.5 py-1.5 text-right font-mono text-[#333]">{n(g.runs)}</td>
+                                  <td className="px-1.5 py-1.5 text-right font-mono text-[#333]">{n(g.hits)}</td>
+                                  <td className="px-1.5 py-1.5 text-right font-mono text-[#333]">{n(g.doubles)}</td>
+                                  <td className="px-1.5 py-1.5 text-right font-mono text-[#333]">{n(g.triples)}</td>
+                                  <td className="px-1.5 py-1.5 text-right font-mono text-[#333]">{n(g.home_runs)}</td>
+                                  <td className="px-1.5 py-1.5 text-right font-mono font-bold text-[#111]">{n(g.rbi)}</td>
+                                  <td className="px-1.5 py-1.5 text-right font-mono text-[#333]">{n(g.walks)}</td>
+                                  <td className="px-1.5 py-1.5 text-right font-mono text-[#333]">{n(g.strikeouts)}</td>
+                                  <td className="px-1.5 py-1.5 text-right font-mono text-[#333]">{n(g.stolen_bases)}</td>
                                 </tr>
                               );
                             })}
@@ -535,12 +535,12 @@ export function PlayerModal({ slug, firstName, lastName, onClose }: PlayerModalP
                   {gameLog.pitching.length > 0 && (
                     <div>
                       <h3 className="text-[10px] font-bold uppercase tracking-wider text-[#475569] mb-2">Pitching Game Log</h3>
-                      <div className="rounded-lg border border-white/[0.06] overflow-x-auto">
+                      <div className="rounded-lg border border-[#ccc] overflow-x-auto bg-white">
                         <table className="w-full text-xs">
                           <thead>
-                            <tr className="border-b border-white/[0.06] bg-[#1a2642]">
+                            <tr className="border-b border-[#ccc] bg-[#f3f3f3]">
                               {['Date', 'Opp', 'Dec', 'IP', 'H', 'R', 'ER', 'BB', 'SO', 'HR'].map(col => (
-                                <th key={col} className={`px-2 py-1.5 text-[9px] font-bold uppercase tracking-wider text-[#64748b] whitespace-nowrap ${col === 'Date' || col === 'Opp' ? 'text-left' : 'text-right'}`}>
+                                <th key={col} className={`px-2 py-1.5 text-[9px] font-bold uppercase tracking-wider text-[#333] whitespace-nowrap ${col === 'Date' || col === 'Opp' ? 'text-left' : 'text-right'}`}>
                                   {col}
                                 </th>
                               ))}
@@ -552,17 +552,17 @@ export function PlayerModal({ slug, firstName, lastName, onClose }: PlayerModalP
                               const oppName = isHome ? g.away_team : g.home_team;
                               const dateStr = g.date ? new Date(g.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—';
                               return (
-                                <tr key={i} className="border-b border-white/[0.04] last:border-0 hover:bg-white/[0.03]">
-                                  <td className="px-2 py-1.5 text-[#e2e8f0]">{dateStr}</td>
-                                  <td className="px-2 py-1.5 text-[#94a3b8]">{isHome ? 'vs' : '@'} {oppName}</td>
-                                  <td className="px-2 py-1.5 text-right font-mono font-bold text-[#f1f5f9]">{g.decision || '—'}</td>
-                                  <td className="px-2 py-1.5 text-right font-mono text-[#e2e8f0]">{g.innings_pitched ?? '—'}</td>
-                                  <td className="px-2 py-1.5 text-right font-mono text-[#94a3b8]">{n(g.hits_allowed)}</td>
-                                  <td className="px-2 py-1.5 text-right font-mono text-[#94a3b8]">{n(g.runs_allowed)}</td>
-                                  <td className="px-2 py-1.5 text-right font-mono text-[#94a3b8]">{n(g.earned_runs)}</td>
-                                  <td className="px-2 py-1.5 text-right font-mono text-[#94a3b8]">{n(g.walks_allowed)}</td>
-                                  <td className="px-2 py-1.5 text-right font-mono text-[#94a3b8]">{n(g.strikeouts)}</td>
-                                  <td className="px-2 py-1.5 text-right font-mono text-[#94a3b8]">{n(g.home_runs_allowed)}</td>
+                                <tr key={i} className="border-b border-[#e5e5e5] last:border-0 hover:bg-[#fafafa]">
+                                  <td className="px-2 py-1.5 text-[#666]">{dateStr}</td>
+                                  <td className="px-2 py-1.5 text-[#666]">{isHome ? 'vs' : '@'} {oppName}</td>
+                                  <td className="px-2 py-1.5 text-right font-mono font-bold text-[#111]">{g.decision || '—'}</td>
+                                  <td className="px-2 py-1.5 text-right font-mono text-[#333]">{g.innings_pitched ?? '—'}</td>
+                                  <td className="px-2 py-1.5 text-right font-mono text-[#333]">{n(g.hits_allowed)}</td>
+                                  <td className="px-2 py-1.5 text-right font-mono text-[#333]">{n(g.runs_allowed)}</td>
+                                  <td className="px-2 py-1.5 text-right font-mono text-[#333]">{n(g.earned_runs)}</td>
+                                  <td className="px-2 py-1.5 text-right font-mono text-[#333]">{n(g.walks_allowed)}</td>
+                                  <td className="px-2 py-1.5 text-right font-mono text-[#333]">{n(g.strikeouts)}</td>
+                                  <td className="px-2 py-1.5 text-right font-mono text-[#333]">{n(g.home_runs_allowed)}</td>
                                 </tr>
                               );
                             })}
@@ -591,7 +591,7 @@ export function PlayerModal({ slug, firstName, lastName, onClose }: PlayerModalP
                           const v = e.target.value;
                           setSeasonFilter(v === 'all' ? 'all' : Number(v));
                         }}
-                        className="bg-[#0b1220] border border-white/[0.12] rounded px-2 py-1 text-[10px] text-[#e2e8f0]"
+                        className="bg-white border border-[#ccc] rounded px-2 py-1 text-[10px] text-[#111]"
                       >
                         <option value="all">All time</option>
                         {seasons.map(s => (
