@@ -7,7 +7,17 @@ export async function adminLeaguesRoutes(app: FastifyInstance) {
   // GET / - list all leagues
   app.get('/', async (request, reply) => {
     try {
-      const result = await db.select().from(leagues);
+      // IMPORTANT: do not `select()` all columns from leagues, because production DB may lag behind
+      // app schema during deployments/migration rollbacks. Keep this to core columns.
+      const result = await db.select({
+        id: leagues.id,
+        seasonId: leagues.seasonId,
+        name: leagues.name,
+        slug: leagues.slug,
+        sport: leagues.sport,
+        level: leagues.level,
+        createdAt: leagues.createdAt,
+      }).from(leagues);
       return reply.send(result);
     } catch (err) {
       request.log.error(err);
