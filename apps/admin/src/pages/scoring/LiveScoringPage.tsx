@@ -78,7 +78,7 @@ const RUNNER_OUT_TYPES = [
 
 /* ── (Field positions are defined inline in the SVG) ── */
 
-type ScoringStep = 'pitch' | 'strikeout_type' | 'out_type' | 'safe_type' | 'fielding' | 'hit_location' | 'runner' | 'runner_out_detail' | 'runner_out_fielding' | 'runner_action' | 'sub_defense' | 'sub_offense' | 'swap_position' | 'swap_position_pick' | 'misc' | 'adjust_score';
+type ScoringStep = 'pitch' | 'strikeout_type' | 'out_type' | 'safe_type' | 'fielding' | 'hit_location' | 'runner' | 'batter_advance' | 'runner_out_detail' | 'runner_out_fielding' | 'runner_action' | 'sub_defense' | 'sub_offense' | 'swap_position' | 'swap_position_pick' | 'misc' | 'adjust_score';
 
 const BATTED_BALL_EVENTS = new Set([
   'single', 'double', 'triple', 'home_run', 'inside_park_hr', 'ground_rule_double',
@@ -453,6 +453,8 @@ export function LiveScoringPage() {
 
   const finishHitLocation = () => { if (selectedEvent) checkRunners(selectedEvent); };
 
+  const [batterAdvanceDest, setBatterAdvanceDest] = useState<'first' | 'second' | 'third' | 'home'>('first');
+
   const checkRunners = (eventType: string) => {
     if (!gameState) return;
     const hasRunners = gameState.bases.first || gameState.bases.second || gameState.bases.third;
@@ -471,6 +473,12 @@ export function LiveScoringPage() {
 
     // If no runners on base, skip runner resolution
     if (!hasRunners) {
+      // Special case: ROE can include additional batter advance on the same error.
+      if (ERROR_EVENTS.has(eventType)) {
+        setBatterAdvanceDest('first');
+        setStep('batter_advance');
+        return;
+      }
       submitPlay(eventType, [], fieldingPositions);
       return;
     }
@@ -763,7 +771,12 @@ export function LiveScoringPage() {
   };
 
   // ── Submit play ──
-  const submitPlay = async (eventType: string, runners: RunnerQuestion[], fielding: number[]) => {
+  const submitPlay = async (
+    eventType: string,
+    runners: RunnerQuestion[],
+    fielding: number[],
+    batterDestOverride?: 'first' | 'second' | 'third' | 'home'
+  ) => {
     if (!currentBatter || !gameState || submitting) return;
     setSubmitting(true);
     try {
@@ -816,7 +829,16 @@ export function LiveScoringPage() {
         }
       } else {
         if (!isOut) {
-          if (['single','bunt_single','error','dropped_third_strike','wild_pitch_third_strike','sac_bunt_error','sac_fly_error','catcher_obstruction'].includes(eventType)) runnerFirstId = currentBatter.playerId;
+          if (batterDestOverride && ['error', 'sac_bunt_error', 'sac_fly_error'].includes(eventType)) {
+            if (batterDestOverride === 'first') runnerFirstId = currentBatter.playerId;
+            else if (batterDestOverride === 'second') runnerSecondId = currentBatter.playerId;
+            else if (batterDestOverride === 'third') runnerThirdId = currentBatter.playerId;
+            else {
+              runnersScored.push(currentBatter.playerId);
+              runnerScoredReasons.push('advance_on_error');
+              runsScored++;
+            }
+          } else if (['single','bunt_single','error','dropped_third_strike','wild_pitch_third_strike','sac_bunt_error','sac_fly_error','catcher_obstruction'].includes(eventType)) runnerFirstId = currentBatter.playerId;
           else if (eventType === 'double' || eventType === 'ground_rule_double') runnerSecondId = currentBatter.playerId;
           else if (eventType === 'triple') runnerThirdId = currentBatter.playerId;
         } else { runnerFirstId = gameState.bases.first; runnerSecondId = gameState.bases.second; runnerThirdId = gameState.bases.third; }
@@ -1530,6 +1552,49 @@ export function LiveScoringPage() {
               </div>
             )}
 
+            {/* BATTER ADVANCE (same error, bases empty) */}
+            {step === 'batter_advance' && selectedEvent && ERROR_EVENTS.has(selectedEvent) && currentBatter && (
+              <div className="bg-[#111d30] rounded-xl border border-white/10 overflow-hidden">
+                <div className="px-4 py-3 border-b border-white/5 text-center">
+                  <p className="text-[10px] text-amber-400 font-bold uppercase mb-1 tracking-widest">Batter advance</p>
+                  <p className="text-xs text-white/60 uppercase font-bold tracking-wide">
+                    {currentBatter.firstName} {currentBatter.lastName} — on the same error
+                  </p>
+                </div>
+                <div className="p-3">
+                  <div className="grid grid-cols-2 gap-2">
+                    {(['first','second','third','home'] as const).map((d) => (
+                      <button
+                        key={d}
+                        onClick={() => setBatterAdvanceDest(d)}
+                        className={`py-3 rounded-lg text-xs font-bold uppercase border transition-colors ${
+                          batterAdvanceDest === d
+                            ? 'bg-amber-600/25 border-amber-400/40 text-white'
+                            : 'bg-white/5 border-white/10 text-white/70 hover:bg-white/10'
+                        }`}
+                      >
+                        {d === 'first' ? '1st (ROE)' : d === 'second' ? '2nd on error' : d === 'third' ? '3rd on error' : 'Scores on error'}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="mt-3 flex gap-2">
+                    <button
+                      onClick={() => { cancelWizard(); }}
+                      className="flex-1 py-2.5 bg-white/5 hover:bg-white/10 text-white/60 text-xs font-bold rounded-lg uppercase transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={() => submitPlay(selectedEvent, [], fieldingPositions, batterAdvanceDest)}
+                      className="flex-1 py-2.5 bg-amber-700 hover:bg-amber-600 text-white text-xs font-bold rounded-lg uppercase transition-colors"
+                    >
+                      Submit
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* RUNNER step (after play) - iScore style */}
             {(step === 'runner' || step === 'runner_out_detail' || step === 'runner_out_fielding') && runnerQuestions.length > 0 && (() => {
               const q = runnerQuestions[currentRunnerIdx];
@@ -1712,24 +1777,25 @@ export function LiveScoringPage() {
                           const options: { key: string; label: string; action: () => void }[] = [];
 
                           if (isBetweenPitch) {
-                            if (stayedAtBase && minOrder <= BASE_ORDER[q.base]) {
+                            // If the selected destination is the current base, prioritize HELD UP first.
+                            if (stayedAtBase) {
                               options.push({ key: 'held', label: 'HELD UP', action: () => answerRunner('safe', q.base, 'held') });
                             }
                             options.push({ key: 'advance', label: 'ADVANCE', action: () => answerRunner('safe', dest, betweenPitchEvent!) });
                             options.push({ key: 'stolen_base', label: 'STOLEN BASE', action: () => answerRunner('safe', dest, 'stolen_base') });
                             options.push({ key: 'on_throw', label: 'ADVANCED ON THROW', action: () => answerRunner('safe', dest, 'on_throw') });
-                            if (!stayedAtBase && minOrder <= BASE_ORDER[q.base]) {
-                              options.push({ key: 'held', label: 'HELD UP', action: () => answerRunner('safe', q.base, 'held') });
+                            if (!stayedAtBase) {
+                              options.push({ key: 'held2', label: 'HELD UP', action: () => answerRunner('safe', q.base, 'held') });
                             }
                             options.push({ key: 'error', label: 'ERROR', action: () => answerRunner('safe', dest, 'error') });
                             options.push({ key: 'defensive_indifference', label: 'DEF. INDIFFERENCE', action: () => answerRunner('safe', dest, 'defensive_indifference') });
                           } else {
-                            if (stayedAtBase && minOrder <= BASE_ORDER[q.base]) {
+                            if (stayedAtBase) {
                               options.push({ key: 'held', label: 'HELD UP', action: () => answerRunner('safe', q.base, 'held') });
                             }
                             options.push({ key: 'on_play', label: 'ADVANCED BY BATTER', action: () => answerRunner('safe', dest, 'on_play') });
-                            if (!stayedAtBase && minOrder <= BASE_ORDER[q.base]) {
-                              options.push({ key: 'held', label: 'HELD UP', action: () => answerRunner('safe', q.base, 'held') });
+                            if (!stayedAtBase) {
+                              options.push({ key: 'held2', label: 'HELD UP', action: () => answerRunner('safe', q.base, 'held') });
                             }
                             // Allow "advanced on (same) error" even when the batter event is a hit.
                             // This is needed for plays like: single + runner(s) score on an outfield error.
