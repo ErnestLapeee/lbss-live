@@ -39,9 +39,8 @@ export async function adminSeasonsRoutes(app: FastifyInstance) {
   // GET / - list all seasons
   app.get('/', async (request, reply) => {
     try {
+      const hasPoCols = await seasonsHavePlayoffColumns();
       const result = await db
-        // IMPORTANT: do not `select()` all columns from seasons, because production DB may lag behind
-        // app schema during deployments/migration rollbacks (e.g. playoff columns). Keep this to core columns.
         .select({
           id: seasons.id,
           year: seasons.year,
@@ -49,17 +48,26 @@ export async function adminSeasonsRoutes(app: FastifyInstance) {
           startDate: seasons.startDate,
           endDate: seasons.endDate,
           isActive: seasons.isActive,
+          ...(hasPoCols
+            ? {
+              hasPlayoffs: seasons.hasPlayoffs,
+              regularSeasonGamesPerTeam: seasons.regularSeasonGamesPerTeam,
+              playoffSettings: seasons.playoffSettings,
+            }
+            : {}),
           createdAt: seasons.createdAt,
         })
         .from(seasons)
         .orderBy(desc(seasons.year));
-      // Fill optional playoff fields for older DB schemas.
-      return reply.send(result.map((s) => ({
-        ...s,
-        hasPlayoffs: false,
-        regularSeasonGamesPerTeam: null,
-        playoffSettings: {},
-      })));
+
+      return reply.send(
+        result.map((s: any) => ({
+          ...s,
+          hasPlayoffs: hasPoCols ? (s.hasPlayoffs ?? false) : false,
+          regularSeasonGamesPerTeam: hasPoCols ? (s.regularSeasonGamesPerTeam ?? null) : null,
+          playoffSettings: hasPoCols ? (s.playoffSettings ?? {}) : {},
+        }))
+      );
     } catch (err) {
       request.log.error(err);
       return reply.status(500).send({ message: 'Failed to fetch seasons' });
@@ -74,6 +82,7 @@ export async function adminSeasonsRoutes(app: FastifyInstance) {
         return reply.status(400).send({ message: 'Invalid season id' });
       }
 
+      const hasPoCols = await seasonsHavePlayoffColumns();
       const [season] = await db
         .select({
           id: seasons.id,
@@ -82,6 +91,13 @@ export async function adminSeasonsRoutes(app: FastifyInstance) {
           startDate: seasons.startDate,
           endDate: seasons.endDate,
           isActive: seasons.isActive,
+          ...(hasPoCols
+            ? {
+              hasPlayoffs: seasons.hasPlayoffs,
+              regularSeasonGamesPerTeam: seasons.regularSeasonGamesPerTeam,
+              playoffSettings: seasons.playoffSettings,
+            }
+            : {}),
           createdAt: seasons.createdAt,
         })
         .from(seasons)
@@ -94,9 +110,9 @@ export async function adminSeasonsRoutes(app: FastifyInstance) {
 
       return reply.send({
         ...season,
-        hasPlayoffs: false,
-        regularSeasonGamesPerTeam: null,
-        playoffSettings: {},
+        hasPlayoffs: hasPoCols ? ((season as any).hasPlayoffs ?? false) : false,
+        regularSeasonGamesPerTeam: hasPoCols ? ((season as any).regularSeasonGamesPerTeam ?? null) : null,
+        playoffSettings: hasPoCols ? ((season as any).playoffSettings ?? {}) : {},
       });
     } catch (err) {
       request.log.error(err);
