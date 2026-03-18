@@ -2673,6 +2673,21 @@ function EventTimelinePanel({ gameId, events, homeLineup, awayLineup, onClose, o
                                 />
                               </label>
                             ))}
+
+                            <label className="text-white/40">
+                              Dec
+                              <select
+                                value={(statsEdits[`pitching:${p.playerId}`]?.decision ?? p.decision ?? '')}
+                                onChange={(e) => setRowEdit('pitching', p.playerId, { decision: e.target.value || null })}
+                                className="mt-0.5 w-full bg-[#0b1a30] border border-white/10 rounded px-1 py-0.5 text-white"
+                              >
+                                <option value="">—</option>
+                                <option value="W">W</option>
+                                <option value="L">L</option>
+                                <option value="S">S</option>
+                                <option value="H">H</option>
+                              </select>
+                            </label>
                           </div>
                         </div>
                       ))}
