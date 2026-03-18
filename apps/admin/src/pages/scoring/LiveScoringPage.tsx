@@ -1892,7 +1892,8 @@ export function LiveScoringPage() {
                           className="py-3 bg-[#1e2d48]/80 hover:bg-[#283a58] border border-white/[0.06] text-white text-xs font-bold rounded-lg uppercase transition-colors">
                           ERROR
                         </button>
-                        <button onClick={() => handleRunnerActionSubmit('advance', selectedDest)}
+                        {/* Pickoff attempt means runner stays at current base (does not advance). */}
+                        <button onClick={() => handleRunnerActionSubmit('advance', activeRunnerBase)}
                           className="py-3 bg-[#1e2d48]/80 hover:bg-[#283a58] border border-white/[0.06] text-white text-xs font-bold rounded-lg uppercase transition-colors">
                           PICKOFF ATTEMPT
                         </button>
