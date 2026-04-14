@@ -529,27 +529,27 @@ export function LiveGameClient({
   const playTone = (ab: AtBat): { tag: string; cls: string } => {
     const t = ab.result?.eventType || '';
     if ((ab.result?.runsScored ?? 0) > 0) {
-      return { tag: 'SCORING PLAY', cls: 'bg-emerald-900/35 text-emerald-200 border border-emerald-400/50' };
+      return { tag: 'SCORING', cls: 'text-emerald-300/80' };
     }
     if (['single', 'bunt_single', 'double', 'triple', 'home_run', 'inside_park_hr', 'ground_rule_double'].includes(t)) {
-      return { tag: 'HIT', cls: 'bg-blue-900/30 text-blue-300 border border-blue-500/30' };
+      return { tag: 'HIT', cls: 'text-emerald-300/75' };
     }
     if (['walk', 'intentional_walk', 'hit_by_pitch'].includes(t)) {
-      return { tag: 'FREE PASS', cls: 'bg-emerald-900/20 text-emerald-300 border border-emerald-500/30' };
+      return { tag: 'PASS', cls: 'text-emerald-300/70' };
     }
     if (['error', 'sac_bunt_error', 'sac_fly_error', 'advance_on_error'].includes(t)) {
-      return { tag: 'ERROR', cls: 'bg-orange-900/30 text-orange-300 border border-orange-500/40' };
+      return { tag: 'ERROR', cls: 'text-emerald-300/70' };
     }
     if (['stolen_base', 'caught_stealing', 'picked_off', 'defensive_indifference'].includes(t) || (!ab.result && ab.betweenEvents.some(e => ['stolen_base', 'caught_stealing', 'picked_off', 'defensive_indifference'].includes(e.eventType)))) {
-      return { tag: 'RUNNER', cls: 'bg-amber-900/20 text-amber-300 border border-amber-500/30' };
+      return { tag: 'RUNNER', cls: 'text-white/45' };
     }
     if (['ground_out', 'fly_out', 'line_out', 'pop_out', 'bunt_out', 'strikeout', 'strikeout_swinging', 'strikeout_looking', 'double_play', 'triple_play', 'fielders_choice'].includes(t)) {
-      return { tag: 'OUT', cls: 'bg-red-900/20 text-red-300 border border-red-500/30' };
+      return { tag: 'OUT', cls: 'text-rose-300/80' };
     }
     if (!ab.result && ab.betweenEvents.length > 0) {
-      return { tag: 'RUNNER', cls: 'bg-amber-900/20 text-amber-300 border border-amber-500/30' };
+      return { tag: 'RUNNER', cls: 'text-white/45' };
     }
-    return { tag: 'PLAY', cls: 'bg-white/5 text-white/50 border border-white/10' };
+    return { tag: 'PLAY', cls: 'text-white/45' };
   };
 
   const renderBattingTable = (teamName: string, lineup: LineupEntry[], batting: BattingBoxScore[]) => {
@@ -728,14 +728,6 @@ export function LiveGameClient({
     return 'P';
   };
 
-  const pitchChipClass = (symbol: 'B' | 'S' | 'F' | 'X' | 'P') => {
-    if (symbol === 'B') return 'bg-emerald-900/30 text-emerald-300 border border-emerald-500/30';
-    if (symbol === 'S') return 'bg-red-900/25 text-red-300 border border-red-500/30';
-    if (symbol === 'F') return 'bg-amber-900/25 text-amber-300 border border-amber-500/30';
-    if (symbol === 'X') return 'bg-blue-900/25 text-blue-300 border border-blue-500/30';
-    return 'bg-white/5 text-white/40 border border-white/10';
-  };
-
   const ordinalInning = (inning: number) => {
     if (inning % 100 >= 11 && inning % 100 <= 13) return `${inning}th`;
     const suffix = inning % 10 === 1 ? 'st' : inning % 10 === 2 ? 'nd' : inning % 10 === 3 ? 'rd' : 'th';
@@ -757,36 +749,23 @@ export function LiveGameClient({
   const BaseDiamond = ({ first, second, third }: { first: boolean; second: boolean; third: boolean }) => (
     <svg viewBox="0 0 50 50" className="w-9 h-9 shrink-0" aria-label="Base occupancy">
       <rect x="19" y="2" width="12" height="12" rx="1.5" transform="rotate(45 25 8)"
-        fill={second ? '#22c55e' : 'rgba(255,255,255,0.08)'} stroke="rgba(255,255,255,0.25)" strokeWidth="1" />
+        fill={second ? 'rgba(110, 231, 183, 0.45)' : 'rgba(255,255,255,0.06)'} stroke="rgba(255,255,255,0.22)" strokeWidth="1" />
       <rect x="35" y="18" width="12" height="12" rx="1.5" transform="rotate(45 41 24)"
-        fill={first ? '#22c55e' : 'rgba(255,255,255,0.08)'} stroke="rgba(255,255,255,0.25)" strokeWidth="1" />
+        fill={first ? 'rgba(110, 231, 183, 0.45)' : 'rgba(255,255,255,0.06)'} stroke="rgba(255,255,255,0.22)" strokeWidth="1" />
       <rect x="3" y="18" width="12" height="12" rx="1.5" transform="rotate(45 9 24)"
-        fill={third ? '#22c55e' : 'rgba(255,255,255,0.08)'} stroke="rgba(255,255,255,0.25)" strokeWidth="1" />
+        fill={third ? 'rgba(110, 231, 183, 0.45)' : 'rgba(255,255,255,0.06)'} stroke="rgba(255,255,255,0.22)" strokeWidth="1" />
     </svg>
   );
 
   const OutsDots = ({ outs }: { outs: number }) => (
     <div className="flex items-center gap-1" aria-label={outLabel(outs)}>
       {[0, 1, 2].map(i => (
-        <span key={i} className={`w-2.5 h-2.5 rounded-full border ${i < outs ? 'bg-amber-500 border-amber-400' : 'border-white/25'}`} />
+        <span key={i} className={`w-2 h-2 rounded-full border ${i < outs ? 'bg-white/50 border-white/40' : 'border-white/20'}`} />
       ))}
     </div>
   );
 
-  const CountDots = ({ balls, strikes }: { balls: number; strikes: number }) => (
-    <div className="flex items-center gap-2 text-[9px] text-white/40">
-      <div className="flex items-center gap-1" aria-label={`${balls} balls`}>
-        {[0, 1, 2].map(i => (
-          <span key={`b-${i}`} className={`w-2 h-2 rounded-full border ${i < balls ? 'bg-emerald-500 border-emerald-400' : 'border-white/20'}`} />
-        ))}
-      </div>
-      <div className="flex items-center gap-1" aria-label={`${strikes} strikes`}>
-        {[0, 1].map(i => (
-          <span key={`s-${i}`} className={`w-2 h-2 rounded-full border ${i < strikes ? 'bg-red-500 border-red-400' : 'border-white/20'}`} />
-        ))}
-      </div>
-    </div>
-  );
+  const pitchSequenceInline = (symbols: ('B' | 'S' | 'F' | 'X' | 'P')[]) => symbols.join(' ');
 
   const gameEra = (er: number, ipStr: string) => {
     const ip = parseFloat(String(ipStr).replace(',', '.')) || 0;
@@ -1130,12 +1109,11 @@ export function LiveGameClient({
                             const isOut = result && OUT_SET.has(result.eventType);
                             const isRunnerOnly = !result && ab.betweenEvents.length > 0;
 
-                            let borderClass = 'border-l-2 border-white/5';
-                            if (result && result.runsScored > 0) borderClass = 'border-l-2 border-emerald-500';
-                            else if (isHit) borderClass = 'border-l-2 border-blue-500';
-                            else if (isOut) borderClass = 'border-l-2 border-red-500/40';
-                            else if (isWalk) borderClass = 'border-l-2 border-emerald-400/50';
-                            else if (isRunnerOnly) borderClass = 'border-l-2 border-amber-500/50';
+                            let borderClass = 'border-l border-white/10';
+                            if (result && result.runsScored > 0) borderClass = 'border-l border-emerald-400/40';
+                            else if (isHit || isWalk) borderClass = 'border-l border-emerald-400/25';
+                            else if (isOut) borderClass = 'border-l border-rose-400/25';
+                            else if (isRunnerOnly) borderClass = 'border-l border-white/20';
 
                             const formatted = result
                               ? formatPlayByPlay(result, { outsBefore: outsAfter - (result.outsRecorded ?? 0), outsAfter })
@@ -1161,53 +1139,41 @@ export function LiveGameClient({
                             const contextLine = `${group.half === 'top' ? game.awayTeamName : game.homeTeamName} batting • ${group.half === 'top' ? game.homeTeamName : game.awayTeamName} pitching`;
 
                             return (
-                              <div key={`ab-${abIdx}`} className={`${borderClass} rounded-lg bg-white/[0.02] px-3 py-2`}>
+                              <div key={`ab-${abIdx}`} className={`${borderClass} rounded-lg bg-white/[0.015] px-3 py-3`}>
                                 <div className="flex items-start justify-between gap-3">
                                   <div className="min-w-0 flex-1">
-                                    <div className="flex items-center gap-2 mb-1">
-                                      <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wide ${tone.cls}`}>{tone.tag}</span>
+                                    <div className="flex items-center gap-2 mb-1.5">
+                                      <span className={`text-[9px] font-medium uppercase tracking-[0.12em] ${tone.cls}`}>{tone.tag}</span>
                                       {ab.pitches.length > 0 && (
-                                        <span className="text-[9px] text-white/35">{ab.pitches.length} pitch{ab.pitches.length === 1 ? '' : 'es'}</span>
+                                        <span className="text-[9px] text-white/30">{ab.pitches.length} pitch{ab.pitches.length === 1 ? '' : 'es'}</span>
                                       )}
                                     </div>
-                                    <div className="text-[13px] leading-snug text-white/90 font-semibold">
+                                    <div className="text-[14px] leading-snug text-white/92 font-semibold">
                                       {formatted ? formatted.title : ab.pitches.length > 0 ? `${ab.batterName} at bat` : stateEvt ? formatEventLine(stateEvt) : `${ab.batterName} play`}
                                     </div>
-                                    <div className="text-[10px] text-white/35 mt-0.5">
+                                    <div className="text-[10px] text-white/32 mt-1">
                                       {formatted?.subtitle ? `${formatted.subtitle} • ${contextLine}` : contextLine}
                                     </div>
                                   </div>
-                                  <div className="flex items-center gap-2 shrink-0">
-                                    <div className="flex flex-col items-center gap-1">
+                                  <div className="flex items-center gap-2 shrink-0 pt-0.5">
+                                    <div className="flex flex-col items-end gap-1">
                                       <BaseDiamond first={bases.first} second={bases.second} third={bases.third} />
                                       <OutsDots outs={Math.max(0, Math.min(3, outsAfter))} />
                                     </div>
                                   </div>
                                 </div>
-                                <div className="mt-2 flex flex-wrap items-center gap-2">
-                                  <CountDots balls={balls} strikes={strikes} />
-                                  <div className="flex flex-wrap gap-1">
-                                    {pitchSymbols.map((symbol, pi) => (
-                                      <span key={pi} className={`text-[9px] px-1.5 py-0.5 rounded font-mono ${pitchChipClass(symbol)}`}>
-                                        {symbol}
-                                      </span>
-                                    ))}
-                                  </div>
-                                  {formatted?.chips?.slice(0, playMode === 'compact' ? 2 : formatted.chips.length).map((chip, ci) => {
-                                    let chipClass = 'bg-white/5 text-white/40';
-                                    if (chip.includes('out')) chipClass = 'bg-red-900/15 text-red-400/50';
-                                    else if (chip.includes('RBI')) chipClass = 'bg-emerald-900/20 text-emerald-400/70';
-                                    else chipClass = 'bg-amber-900/15 text-amber-400/60';
-                                    return (
-                                      <span key={ci} className={`text-[9px] font-medium px-1.5 py-0.5 rounded ${chipClass}`}>
-                                        {chip}
-                                      </span>
-                                    );
-                                  })}
+                                <div className="mt-2.5 text-[10px] text-white/34 flex flex-wrap items-center gap-x-3 gap-y-1">
+                                  {pitchSymbols.length > 0 && (
+                                    <span className="font-mono tracking-wide">Pitches {pitchSequenceInline(pitchSymbols)}</span>
+                                  )}
+                                  <span className="font-mono">Count B{balls} S{strikes}</span>
+                                  {playMode === 'expanded' && formatted?.chips?.map((chip, ci) => (
+                                    <span key={ci}>{chip}</span>
+                                  ))}
                                 </div>
 
                                 {runnerSummary && (
-                                  <div className="text-[11px] text-amber-300/75 mt-1.5">{runnerSummary}</div>
+                                  <div className="text-[11px] text-white/45 mt-1.5">{runnerSummary}</div>
                                 )}
 
                                 {playMode === 'expanded' && ab.betweenEvents.length > 0 && (
@@ -1216,11 +1182,11 @@ export function LiveGameClient({
                                       const reFormatted = formatPlayByPlay(re);
                                       return (
                                         <div key={`re-${rei}`} className="text-[11px] text-white/60 flex items-start gap-1.5">
-                                          <span className="text-amber-500 mt-px">↳</span>
+                                          <span className="text-white/30 mt-px">↳</span>
                                           <div>
                                             <span>{reFormatted.title}</span>
-                                            {re.runsScored > 0 && <span className="text-emerald-400/70 ml-1">({re.runsScored} run{re.runsScored > 1 ? 's' : ''})</span>}
-                                            {re.outsRecorded > 0 && <span className="text-red-400/60 ml-1">({re.outsRecorded} out{re.outsRecorded > 1 ? 's' : ''})</span>}
+                                            {re.runsScored > 0 && <span className="text-white/45 ml-1">({re.runsScored} run{re.runsScored > 1 ? 's' : ''})</span>}
+                                            {re.outsRecorded > 0 && <span className="text-white/45 ml-1">({re.outsRecorded} out{re.outsRecorded > 1 ? 's' : ''})</span>}
                                           </div>
                                         </div>
                                       );
