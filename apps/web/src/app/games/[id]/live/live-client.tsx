@@ -415,11 +415,19 @@ export function LiveGameClient({
 
   // Lineups organized by team
   const homeLineup = useMemo(() =>
-    lineups.filter(l => l.teamId === game?.homeTeamId && l.isStarter && l.battingOrder > 0)
-      .sort((a, b) => a.battingOrder - b.battingOrder), [lineups, game]);
+    lineups.filter(l => l.teamId === game?.homeTeamId && l.battingOrder > 0)
+      .sort((a, b) => {
+        if (a.battingOrder !== b.battingOrder) return a.battingOrder - b.battingOrder;
+        if (a.isStarter !== b.isStarter) return a.isStarter ? -1 : 1;
+        return a.playerId - b.playerId;
+      }), [lineups, game]);
   const awayLineup = useMemo(() =>
-    lineups.filter(l => l.teamId === game?.awayTeamId && l.isStarter && l.battingOrder > 0)
-      .sort((a, b) => a.battingOrder - b.battingOrder), [lineups, game]);
+    lineups.filter(l => l.teamId === game?.awayTeamId && l.battingOrder > 0)
+      .sort((a, b) => {
+        if (a.battingOrder !== b.battingOrder) return a.battingOrder - b.battingOrder;
+        if (a.isStarter !== b.isStarter) return a.isStarter ? -1 : 1;
+        return a.playerId - b.playerId;
+      }), [lineups, game]);
 
   // Build live pitching stats from events
   const livePitchingMap = useMemo(() => {
@@ -562,6 +570,15 @@ export function LiveGameClient({
       isStarter: true, isActive: true, firstName: b.firstName, lastName: b.lastName,
     }));
 
+    const roleLabel = (p: LineupEntry, pa: number, ab: number, runs: number, sb: number) => {
+      if (p.isStarter) return '';
+      const hasRunOnly = runs > 0 && pa === 0 && ab === 0;
+      const hasSbOnly = sb > 0 && pa === 0 && ab === 0;
+      if (hasRunOnly || hasSbOnly) return ' (PR)';
+      if (pa > 0 || ab > 0) return ' (PH)';
+      return ' (SUB)';
+    };
+
     return (
       <div className="mb-6">
         <h4 className="text-xs font-bold uppercase tracking-wider text-white/45 mb-2">{teamName}</h4>
@@ -609,8 +626,12 @@ export function LiveGameClient({
                 const displayOps = fmtOps(h, ab, bb, hbp, sf, tb);
                 return (
                   <tr key={p.playerId} className={`border-b border-white/5 ${i % 2 === 0 ? '' : 'bg-white/[0.015]'}`}>
-                    <td className="py-1.5 pl-2 pr-1 text-white/35">{p.battingOrder || i + 1}</td>
-                    <td className="py-1.5 pr-2 text-white/90 font-sans font-medium">{p.firstName?.charAt(0)}. {p.lastName}</td>
+                    <td className="py-1.5 pl-2 pr-1 text-white/35">{p.isStarter ? (p.battingOrder || i + 1) : ''}</td>
+                    <td className={`py-1.5 pr-2 text-white/90 font-sans ${p.isStarter ? 'font-medium' : 'pl-4 text-white/75'}`}>
+                      {p.isStarter ? '' : '↳ '}
+                      {p.firstName?.charAt(0)}. {p.lastName}
+                      {roleLabel(p, pa, ab, r, sb)}
+                    </td>
                     <td className="text-center text-white/40">{POS_LABELS[p.position] || '—'}</td>
                     <td className="text-center text-white/70 font-mono">{pa}</td>
                     <td className="text-center text-white/70 font-mono">{ab}</td>
