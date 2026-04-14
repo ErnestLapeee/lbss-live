@@ -570,6 +570,29 @@ export function LiveGameClient({
       isStarter: true, isActive: true, firstName: b.firstName, lastName: b.lastName,
     }));
 
+    const shortName = (p: LineupEntry) => `${p.firstName?.charAt(0)}. ${p.lastName}`;
+    const defensiveNotes = (() => {
+      const byPosition = new Map<number, LineupEntry[]>();
+      for (const p of lineup) {
+        if (!p.position || p.position <= 0) continue;
+        const list = byPosition.get(p.position) ?? [];
+        list.push(p);
+        byPosition.set(p.position, list);
+      }
+      const notes: string[] = [];
+      for (const [pos, playersAtPos] of Array.from(byPosition.entries()).sort((a, b) => a[0] - b[0])) {
+        const starters = playersAtPos.filter(p => p.isStarter);
+        const subs = playersAtPos.filter(p => !p.isStarter);
+        if (subs.length === 0) continue;
+        const starter = starters[0];
+        const uniqueSubs = Array.from(new Map(subs.map(s => [s.playerId, s])).values());
+        const subNames = uniqueSubs.map(shortName).join(', ');
+        const posLabel = POS_LABELS[pos] ?? String(pos);
+        notes.push(starter ? `${posLabel}: ${shortName(starter)} -> ${subNames}` : `${posLabel}: ${subNames}`);
+      }
+      return notes;
+    })();
+
     return (
       <div className="mb-6">
         <h4 className="text-xs font-bold uppercase tracking-wider text-white/45 mb-2">{teamName}</h4>
@@ -716,6 +739,12 @@ export function LiveGameClient({
             })()}
           </table>
         </div>
+        {defensiveNotes.length > 0 && (
+          <div className="mt-2 text-[10px] text-white/45">
+            <span className="font-semibold text-white/55">Defensive notes:</span>{' '}
+            {defensiveNotes.join(' | ')}
+          </div>
+        )}
       </div>
     );
   };
