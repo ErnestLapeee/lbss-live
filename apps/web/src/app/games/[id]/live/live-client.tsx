@@ -1274,7 +1274,7 @@ export function LiveGameClient({
                             const contextLine = `${group.half === 'top' ? game.awayTeamName : game.homeTeamName} batting • ${group.half === 'top' ? game.homeTeamName : game.awayTeamName} pitching`;
 
                             return (
-                              <div key={`ab-${abIdx}`} className={`${borderClass} rounded-lg bg-gray-50 px-3 py-3`}>
+                              <div key={`ab-${abIdx}`} className={`${borderClass} rounded-lg border border-gray-200 bg-gray-100 px-3 py-3 shadow-sm`}>
                                 <div className="flex items-start justify-between gap-3">
                                   <div className="min-w-0 flex-1">
                                     <div className="flex items-center gap-2 mb-1.5">
@@ -1286,7 +1286,7 @@ export function LiveGameClient({
                                     <div className="text-[14px] leading-snug text-gray-900 font-semibold">
                                       {formatted ? formatted.title : ab.pitches.length > 0 ? `${ab.batterName} at bat` : stateEvt ? formatEventLine(stateEvt) : `${ab.batterName} play`}
                                     </div>
-                                    <div className="text-[10px] text-gray-600 mt-1">
+                                    <div className="text-[10px] text-gray-700 mt-1">
                                       {formatted?.subtitle ? `${formatted.subtitle} • ${contextLine}` : contextLine}
                                     </div>
                                   </div>
@@ -1297,12 +1297,12 @@ export function LiveGameClient({
                                     </div>
                                   </div>
                                 </div>
-                                <div className="mt-2.5 text-[10px] text-gray-500 flex flex-wrap items-center gap-x-3 gap-y-1">
+                                <div className="mt-2.5 text-[10px] text-gray-600 flex flex-wrap items-center gap-x-3 gap-y-1">
                                   {pitchSummary && (
                                     <span className="font-mono tracking-wide">Pitches: {pitchSummary}</span>
                                   )}
                                   {finalCountHint && (
-                                    <span className="text-gray-500">({finalCountHint})</span>
+                                    <span className="text-gray-600">({finalCountHint})</span>
                                   )}
                                   {playMode === 'expanded' && formatted?.chips?.map((chip, ci) => (
                                     <span key={ci}>{chip}</span>
