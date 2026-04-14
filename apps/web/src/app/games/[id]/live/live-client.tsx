@@ -215,6 +215,7 @@ export function LiveGameClient({
   const [loading, setLoading] = useState(false);
   const [tab, setTab] = useState<Tab>('plays');
   const [playMode, setPlayMode] = useState<'compact' | 'expanded'>('compact');
+  const [openPitchCards, setOpenPitchCards] = useState<Record<string, boolean>>({});
   const { connected, gameState, lastEvent, isFinal, viewerCount } = useGameSocket(gameId, apiBase);
 
   // Re-fetch when new event arrives via WebSocket
@@ -767,6 +768,68 @@ export function LiveGameClient({
 
   const pitchSequenceInline = (symbols: ('B' | 'S' | 'F' | 'X' | 'P')[]) => symbols.join(' ');
 
+  const pitchLabel = (evt?: GameEvent | null) => {
+    const detail = String(evt?.eventDetail || '').toLowerCase();
+    if (detail === 'ball') return 'Ball';
+    if (detail === 'called_strike') return 'Called strike';
+    if (detail === 'swinging_strike') return 'Swinging strike';
+    if (detail === 'strike') return 'Strike';
+    if (detail === 'foul') return 'Foul';
+    if (detail === 'in_play') return 'Ball in play';
+    if (!evt) return 'Pitch';
+    return detail ? detail.replace(/_/g, ' ') : 'Pitch';
+  };
+
+  const derivePitchBreakdown = (ab: AtBat) => {
+    const runnerEventsSorted = [...ab.betweenEvents].sort((a, b) => a.eventNumber - b.eventNumber);
+    const pitchEventsSorted = [...ab.pitches].sort((a, b) => a.eventNumber - b.eventNumber);
+    const rows: { pitchNo: number; label: string; count: string; runnerNotes: string[] }[] = [];
+    let balls = 0;
+    let strikes = 0;
+
+    for (let i = 0; i < pitchEventsSorted.length; i++) {
+      const pitchEvt = pitchEventsSorted[i];
+      const nextPitch = pitchEventsSorted[i + 1];
+      const d = String(pitchEvt.eventDetail || '').toLowerCase();
+      if (d === 'ball') balls = Math.min(3, balls + 1);
+      else if (d === 'foul') strikes = Math.min(2, strikes + 1);
+      else if (d === 'strike' || d === 'called_strike' || d === 'swinging_strike') strikes = Math.min(2, strikes + 1);
+
+      const runnerNotes = runnerEventsSorted
+        .filter(re => re.eventNumber > pitchEvt.eventNumber && (!nextPitch || re.eventNumber < nextPitch.eventNumber))
+        .map(re => formatPlayByPlay(re).title);
+
+      rows.push({
+        pitchNo: i + 1,
+        label: pitchLabel(pitchEvt),
+        count: `${balls}-${strikes}`,
+        runnerNotes,
+      });
+    }
+
+    if (ab.result) {
+      const resultPitchNo = Math.max(1, pitchEventsSorted.length);
+      const resultType = ab.result.eventType;
+      const contactLike = !['walk', 'intentional_walk', 'hit_by_pitch', 'catcher_obstruction'].includes(resultType);
+      if (contactLike) {
+        rows.push({
+          pitchNo: resultPitchNo,
+          label: 'Ball in play',
+          count: `${balls}-${strikes}`,
+          runnerNotes: [],
+        });
+      }
+      rows.push({
+        pitchNo: resultPitchNo,
+        label: formatPlayByPlay(ab.result).title,
+        count: `${balls}-${strikes}`,
+        runnerNotes: [],
+      });
+    }
+
+    return { rows, finalCount: `${balls}-${strikes}` };
+  };
+
   const gameEra = (er: number, ipStr: string) => {
     const ip = parseFloat(String(ipStr).replace(',', '.')) || 0;
     if (ip <= 0) return '—';
@@ -1136,6 +1199,10 @@ export function LiveGameClient({
                               else if (detail === 'foul') strikes = Math.min(2, strikes + 1);
                               else if (detail === 'strike' || detail === 'called_strike' || detail === 'swinging_strike') strikes = Math.min(2, strikes + 1);
                             }
+                            const pitchBreakdown = derivePitchBreakdown(ab);
+                            const pitchPreview = pitchSequenceInline(pitchSymbols.slice(0, 4));
+                            const cardKey = `${group.key}-${abIdx}-${ab.result?.id ?? 'runner'}`;
+                            const showPitchDetails = playMode === 'expanded' || Boolean(openPitchCards[cardKey]);
                             const contextLine = `${group.half === 'top' ? game.awayTeamName : game.homeTeamName} batting • ${group.half === 'top' ? game.homeTeamName : game.awayTeamName} pitching`;
 
                             return (
@@ -1163,14 +1230,52 @@ export function LiveGameClient({
                                   </div>
                                 </div>
                                 <div className="mt-2.5 text-[10px] text-white/34 flex flex-wrap items-center gap-x-3 gap-y-1">
-                                  {pitchSymbols.length > 0 && (
-                                    <span className="font-mono tracking-wide">Pitches {pitchSequenceInline(pitchSymbols)}</span>
+                                  {pitchBreakdown.rows.length > 0 && (
+                                    <span className="font-mono tracking-wide">Pitches {Math.max(1, ab.pitches.length || (ab.result ? 1 : 0))}</span>
                                   )}
                                   <span className="font-mono">Count B{balls} S{strikes}</span>
+                                  {pitchPreview && playMode === 'compact' && (
+                                    <span className="font-mono text-white/28">{pitchPreview}{pitchSymbols.length > 4 ? ' ...' : ''}</span>
+                                  )}
                                   {playMode === 'expanded' && formatted?.chips?.map((chip, ci) => (
                                     <span key={ci}>{chip}</span>
                                   ))}
                                 </div>
+
+                                {pitchBreakdown.rows.length > 0 && (
+                                  <div className="mt-1.5">
+                                    {playMode === 'compact' && (
+                                      <button
+                                        type="button"
+                                        className="text-[10px] text-white/40 hover:text-white/65 transition-colors"
+                                        onClick={() =>
+                                          setOpenPitchCards(prev => ({ ...prev, [cardKey]: !prev[cardKey] }))
+                                        }
+                                      >
+                                        {showPitchDetails ? 'Hide pitches' : 'View pitches'}
+                                      </button>
+                                    )}
+                                    {showPitchDetails && (
+                                      <div className="mt-1.5 pl-2 border-l border-white/10 space-y-1.5">
+                                        <div className="text-[10px] uppercase tracking-[0.1em] text-white/28">Pitch sequence</div>
+                                        {pitchBreakdown.rows.map((row, ri) => (
+                                          <div key={`${cardKey}-pitch-${ri}`} className="text-[11px] text-white/56">
+                                            <span className="text-white/34">Pitch {row.pitchNo}</span>
+                                            <span className="mx-1.5 text-white/22">-</span>
+                                            <span>{row.label}</span>
+                                            <span className="ml-2 text-white/34">{row.count}</span>
+                                            {row.runnerNotes.map((note, ni) => (
+                                              <div key={`${cardKey}-pitch-${ri}-runner-${ni}`} className="text-[10px] text-white/38 ml-4 mt-0.5">
+                                                {note}
+                                              </div>
+                                            ))}
+                                          </div>
+                                        ))}
+                                        <div className="text-[10px] text-white/32">Final count {pitchBreakdown.finalCount}</div>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
 
                                 {runnerSummary && (
                                   <div className="text-[11px] text-white/45 mt-1.5">{runnerSummary}</div>
