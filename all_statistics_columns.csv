@@ -1,0 +1,540 @@
+Category,Subcategory,Column,Full Name,Description
+Batting,Basic,#,Player Number,Player's jersey number
+Batting,Basic,Name,Player Name,Player's full name
+Batting,Basic,G,Games,Batting Games Played
+Batting,Basic,SEQ,Sequence,The Order in which the Player Batted
+Batting,Basic,PA,Plate Appearances,Total plate appearances
+Batting,Basic,AB,At Bats,Official at bats
+Batting,Basic,R,Runs,Runs scored
+Batting,Basic,H,Hits,Total hits
+Batting,Basic,B,Bunts,Bunt Singles
+Batting,Basic,1B,Singles,Single base hits
+Batting,Basic,2B,Doubles,Two-base hits
+Batting,Basic,3B,Triples,Three-base hits
+Batting,Basic,HR,Homeruns,Home runs
+Batting,Basic,XBH,Extra Base Hits,2B + 3B + HR
+Batting,Basic,TB,Total Bases,Total bases from hits
+Batting,Basic,OB,On Base,Times reached base
+Batting,Basic,RBI,Runs Batted In,Runs driven in
+Batting,Basic,AVG,Batting Average,H/AB
+Batting,Basic,BB,Walks,Base on balls
+Batting,Basic,BBi,Intentional Walks,Intentional base on balls
+Batting,Basic,Kc,Strike Outs Looking,Called third strikes
+Batting,Basic,Ks,Strike Outs Swinging,Swinging third strikes
+Batting,Basic,SO,Strike Outs,Total strikeouts (Kc+Ks)
+Batting,Basic,HBP,Hit By Pitch,Times hit by pitch
+Batting,Basic,SB,Stolen Bases,Successful stolen bases
+Batting,Basic,CS,Caught Stealing,Caught stealing attempts
+Batting,Basic,PK,Picked Off,Times picked off base
+Batting,Basic,SCB,Sacrifice Bunts,Sacrifice bunt attempts
+Batting,Basic,SF,Sacrifice Flys,Sacrifice fly balls
+Batting,Basic,SAC,Sacrifices,Total sacrifices
+Batting,Basic,LOBi,Left on Base (Individual),Times the player left runners on base
+Batting,Basic,LOB,Left on Base (Team),Times the player was left on base
+Batting,Basic,ROE,Reached on Error,Times reached base on error
+Batting,Basic,FC,Fielder's Choice,Reached on fielder's choice
+Batting,Basic,CI,Catcher's Interference,Reached on catcher's interference
+Batting,Basic,GDP,Grounded into Double Play,Double plays grounded into
+Batting,Basic,GTP,Grounded into Triple Play,Triple plays grounded into
+Batting,Advanced,#,Player Number,Player's jersey number
+Batting,Advanced,Name,Player Name,Player's full name
+Batting,Advanced,RC,Runs Created,Advanced offensive metric
+Batting,Advanced,BB/K,Walk to Strikeout Ratio,BB/K
+Batting,Advanced,BB/PA,Walk Rate,Walks per Plate Appearance
+Batting,Advanced,RPA,Runs per Appearance,Offensive efficiency metric
+Batting,Advanced,OBP,On Base Percentage,(H+BB+HBP)/(AB+BB+HBP+SF)
+Batting,Advanced,OBPE,On Base Percentage w/ROE,OBP including errors
+Batting,Advanced,SLG,Slugging Percentage,TB/AB
+Batting,Advanced,OPS,On Base Plus Slugging,OBP + SLG
+Batting,Advanced,GPA,Gross Production Average,Advanced offensive metric
+Batting,Advanced,BABIP,Batting Average on Balls in Play,H/(AB-SO-HR+SF)
+Batting,Advanced,1/RPA,Inverse RPA,Reciprocal of RPA
+Batting,Advanced,CT%,Contact Percentage,(AB-K)/AB
+Batting,Advanced,CT2%,Contact Percentage 2,(AB-K)/PA
+Batting,Advanced,PA/RSP,PA with Runners in Scoring Position,Clutch situations
+Batting,Advanced,AB/RSP,AB with Runners in Scoring Position,At bats with RISP
+Batting,Advanced,BB/RSP,BB with Runners in Scoring Position,Walks with RISP
+Batting,Advanced,HBP/RSP,HBP with Runners in Scoring Position,Hit by pitch with RISP
+Batting,Advanced,SAC/RSP,Sacrifices with RISP,Sacrifices with runners in scoring position
+Batting,Advanced,CI/RSP,Catcher's Interference with RISP,CI with RISP
+Batting,Advanced,H/RSP,Hits with Runners in Scoring Position,Hits with RISP
+Batting,Advanced,BA/RSP,Batting Average with RISP,Clutch hitting average
+Batting,Hit Type and Power,#,Player Number,Player's jersey number
+Batting,Hit Type and Power,Name,Player Name,Player's full name
+Batting,Hit Type and Power,GBs,Soft Ground Balls,Weakly hit ground balls
+Batting,Hit Type and Power,GBm,Medium Ground Balls,Medium contact ground balls
+Batting,Hit Type and Power,GBh,Hard Ground Balls,Hard hit ground balls
+Batting,Hit Type and Power,LDs,Soft Line Drives,Weakly hit line drives
+Batting,Hit Type and Power,LDm,Medium Line Drives,Medium contact line drives
+Batting,Hit Type and Power,LDh,Hard Line Drives,Hard hit line drives
+Batting,Hit Type and Power,PUs,Soft Popups,Weakly hit popups
+Batting,Hit Type and Power,PUm,Medium Popups,Medium contact popups
+Batting,Hit Type and Power,PUh,Hard Popups,Hard hit popups
+Batting,Hit Type and Power,FBs,Soft Flyballs,Weakly hit fly balls
+Batting,Hit Type and Power,FBm,Medium Flyballs,Medium contact fly balls
+Batting,Hit Type and Power,FBh,Hard Flyballs,Hard hit fly balls
+Batting,Hit Type and Power,GB%,Ground Ball Percentage,% of balls in play that are ground balls
+Batting,Hit Type and Power,LD%,Line Drive Percentage,% of balls in play that are line drives
+Batting,Hit Type and Power,PU%,Popup Percentage,% of balls in play that are popups
+Batting,Hit Type and Power,FB%,Flyball Percentage,% of balls in play that are fly balls
+Batting,Hit Type and Power,SH%,Soft Hit Percentage,% of balls hit softly
+Batting,Hit Type and Power,MH%,Medium Hit Percentage,% of balls hit with medium power
+Batting,Hit Type and Power,HH%,Hard Hit Percentage,% of balls hit hard
+Batting,Plate Discipline,#,Player Number,Player's jersey number
+Batting,Plate Discipline,Name,Player Name,Player's full name
+Batting,Plate Discipline,Sc,Strikes Looking,Called strikes
+Batting,Plate Discipline,Ss,Strikes Swinging,Swinging strikes
+Batting,Plate Discipline,F,Fouls,Foul balls
+Batting,Plate Discipline,Ball,Balls,Pitches outside strike zone
+Batting,Plate Discipline,Bi,Intentional Balls,Intentional balls (IBB)
+Batting,Plate Discipline,BIP,Balls in Play,Batted balls in play
+Batting,Plate Discipline,TP,Total Pitches,Total pitches seen
+Batting,Plate Discipline,Ss%,Swinging Strike Percentage,Ss/TP
+Batting,Plate Discipline,Ot,Outside Total,Total pitches outside the zone
+Batting,Plate Discipline,Zt,Zone Total,Total pitches inside the zone
+Batting,Plate Discipline,Os,Outside Swings,Swings at pitches outside zone
+Batting,Plate Discipline,Zs,Zone Swings,Swings at pitches in zone
+Batting,Plate Discipline,Oc,Outside Contact,Contact on pitches outside zone
+Batting,Plate Discipline,Zc,Zone Contact,Contact on pitches in zone
+Batting,Plate Discipline,FP,First Pitches,Total first pitches seen
+Batting,Plate Discipline,FS,First Pitch Strikes,First pitches that were strikes
+Batting,Plate Discipline,FB,First Pitch Balls,First pitches that were balls
+Batting,Plate Discipline,FPSw,First Pitch Swings,Swings at first pitch
+Batting,Plate Discipline,FPSw%,First Pitch Swing Percentage,FPSw/FP
+Batting,Plate Discipline,FPSs,First Pitch Swings for Strike,First pitch swinging strikes
+Batting,Plate Discipline,FPF,First Pitch Fouls,First pitch foul balls
+Batting,Plate Discipline,FPBu,First Pitch Bunts,First pitch bunts
+Batting,Plate Discipline,FP1B,First Pitch Singles,First pitch singles
+Batting,Plate Discipline,FP2B,First Pitch Doubles,First pitch doubles
+Batting,Plate Discipline,FP3B,First Pitch Triples,First pitch triples
+Batting,Plate Discipline,FPHR,First Pitch Homeruns,First pitch home runs
+Batting,Plate Discipline,FPH,First Pitch Hits,Total first pitch hits
+Batting,Plate Discipline,FPCI,First Pitch Catcher's Interference,CI on first pitch
+Batting,Plate Discipline,FPFC,First Pitch Fielder's Choice,FC on first pitch
+Batting,Plate Discipline,FPROE,First Pitch Error,Reached on error on first pitch
+Batting,Plate Discipline,FPSF,First Pitch Sacrifice Fly,Sac fly on first pitch
+Batting,Plate Discipline,FPSCB,First Pitch Sac Bunt,Sac bunt on first pitch
+Batting,Plate Discipline,FPO,First Pitch Out,Made out on first pitch
+Batting,Plate Discipline,FPSS%,First Pitch Swing Success Rate,Success rate of first pitch swings
+Batting,Batting Quality,#,Player Number,Player's jersey number
+Batting,Batting Quality,Name,Player Name,Player's full name
+Batting,Batting Quality,QAB1,Quality at Bat Type 1,Base Hit OR Sac Bunt OR Sac Fly OR Hard GB/LD/FB OR 6+ pitches
+Batting,Batting Quality,QAB1%,QAB1 Percentage,QAB1/PA
+Batting,Batting Quality,QAB2,Quality at Bat Type 2,Base Hit OR RBI OR Sac Bunt OR Sac Fly OR 6+ Pitches
+Batting,Batting Quality,QAB2%,QAB2 Percentage,QAB2/PA
+Batting,Batting Quality,QAB3,Quality at Bat Type 3,Hit w/RISP OR RBI OR Sac Bunt OR Sac Fly OR 6+ Pitches
+Batting,Batting Quality,QAB3%,QAB3 Percentage,QAB3/PA
+Batting,Batting Quality,P1,1 Pitch Plate Appearances,PAs ending after 1 pitch
+Batting,Batting Quality,P2,2 Pitch Plate Appearances,PAs ending after 2 pitches
+Batting,Batting Quality,P3,3 Pitch Plate Appearances,PAs ending after 3 pitches
+Batting,Batting Quality,P4,4 Pitch Plate Appearances,PAs ending after 4 pitches
+Batting,Batting Quality,P5,5 Pitch Plate Appearances,PAs ending after 5 pitches
+Batting,Batting Quality,P6,6 Pitch Plate Appearances,PAs ending after 6 pitches
+Batting,Batting Quality,P7,7 Pitch Plate Appearances,PAs ending after 7 pitches
+Batting,Batting Quality,P8,8 Pitch Plate Appearances,PAs ending after 8 pitches
+Batting,Batting Quality,P9,9 Pitch Plate Appearances,PAs ending after 9 pitches
+Batting,Batting Quality,P10,10 Pitch Plate Appearances,PAs ending after 10 pitches
+Batting,Batting Quality,P11,11 Pitch Plate Appearances,PAs ending after 11 pitches
+Batting,Batting Quality,P12,12 Pitch Plate Appearances,PAs ending after 12 pitches
+Batting,Batting Quality,P13+,13+ Pitch Plate Appearances,PAs with 13 or more pitches
+Pitching,Record,#,Player Number,Player's jersey number
+Pitching,Record,Name,Player Name,Player's full name
+Pitching,Record,G,Games,Pitching games
+Pitching,Record,SEQ,Sequence,The order in which the player pitched
+Pitching,Record,W,Wins,Pitching wins
+Pitching,Record,L,Losses,Pitching losses
+Pitching,Record,SV,Saves,Save opportunities converted
+Pitching,Record,HLD,Holds,Hold situations
+Pitching,Record,SVOP,Save Opportunities,Total save situations
+Pitching,Record,BS,Blown Saves,Failed save attempts
+Pitching,Record,SV%,Save Percent,SV/SVOP
+Pitching,Record,ST,Starts,Games started as pitcher
+Pitching,Record,FIN,Finishes,Games finished as pitcher
+Pitching,Record,CMP,Complete Games,Complete games pitched
+Pitching,Record,GSc,Game Score,Quality start metric
+Pitching,Record,QS,Quality Starts,Games with GSc > 50
+Pitching,Record,TL,Tough Losses,Losses with QS
+Pitching,Record,CW,Cheap Wins,Wins without QS
+Pitching,Record,ShO,Shutouts,Complete game shutouts
+Pitching,Record,GT,Games Totals,Total pitching games
+Pitching,Record,GScT,Total Game Score,Cumulative game score
+Pitching,Basic,#,Player Number,Player's jersey number
+Pitching,Basic,Name,Player Name,Player's full name
+Pitching,Basic,IP,Innings Pitched,Total innings pitched
+Pitching,Basic,BF,Batters Faced,Total batters faced
+Pitching,Basic,Ball,Balls,Balls thrown
+Pitching,Basic,Str,Strikes,Strikes thrown
+Pitching,Basic,B/S,Ball to Strike Ratio,Ball/Strike ratio
+Pitching,Basic,PIT,Pitches,Total pitches thrown
+Pitching,Basic,R,Runs,Runs allowed
+Pitching,Basic,GI,Game Innings Average,Average innings per game
+Pitching,Basic,RA,Run Average,Runs per game innings
+Pitching,Basic,ER,Earned Runs,Earned runs allowed
+Pitching,Basic,ERA,Earned Run Average,(ER/IP) × GI
+Pitching,Basic,ERA9,ERA for 9 Innings,Standardized ERA for 9-inning games
+Pitching,Basic,FIP,Fielding Independent Pitching,(13×HR + 3×BB - 2×K)/IP + 3.10
+Pitching,Basic,O,Outs,Total outs recorded
+Pitching,Basic,K,Strikeouts,Total strikeouts
+Pitching,Basic,Kc,Strikeouts Looking,Called third strikes
+Pitching,Basic,Ks,Strikeouts Swinging,Swinging third strikes
+Pitching,Basic,H,Hits,Hits allowed
+Pitching,Basic,BB,Walks,Walks allowed
+Pitching,Basic,IBB,Intentional Walks,Intentional walks allowed
+Pitching,Basic,K/BB,Strikeout to Walk Ratio,K/BB
+Pitching,Basic,K/GI,Strikeouts per Game,K/GI
+Pitching,Basic,BB/GI,Walks per Game,BB/GI
+Pitching,Basic,H/GI,Hits per Game,H/GI
+Pitching,Basic,HB,Hit Batters,Batters hit by pitch
+Pitching,Basic,BK,Balks,Balk calls
+Pitching,Basic,WP,Wild Pitches,Wild pitches thrown
+Pitching,Basic,CI,Catcher's Interference,Catcher interference calls
+Pitching,Basic,SCB,Sacrifice Bunts,Sacrifice bunts allowed
+Pitching,Basic,SCF,Sacrifice Flys,Sacrifice flies allowed
+Pitching,Basic,BT,Bunts,Total bunts allowed
+Pitching,Basic,1B,Singles,Singles allowed
+Pitching,Basic,2B,Doubles,Doubles allowed
+Pitching,Basic,3B,Triples,Triples allowed
+Pitching,Basic,HR,Homeruns,Home runs allowed
+Pitching,Basic,WHIP,Walks + Hits per IP,(BB+H)/IP
+Pitching,Basic,OBP,On Base Percentage,OBP against
+Pitching,Basic,BAA,Batting Average Against,Opponent batting average
+Pitching,Basic,BABIP,BABIP Against,Batting average on balls in play against
+Pitching,Basic,GIT,Game Innings,Total game innings
+Pitching,Basic,IR,Inherited Runners,Runners inherited from previous pitcher
+Pitching,Basic,IRS,Inherited Runners Scored,Inherited runners who scored
+Pitching,Basic,LOB,Left On Base,Runners left on base
+Pitching,Basic,PK,Pickoffs Successful,Successful pickoff attempts
+Pitching,Basic,PKF,Pickoffs Failed,Failed pickoff attempts
+Pitching,Basic,Sc,Strikes Looking,Called strikes thrown
+Pitching,Basic,Ss,Strikes Swinging,Swinging strikes induced
+Pitching,Basic,F,Fouls,Foul balls induced
+Pitching,Effectiveness,#,Player Number,Player's jersey number
+Pitching,Effectiveness,Name,Player Name,Player's full name
+Pitching,Effectiveness,GO,Ground Outs,Ground ball outs
+Pitching,Effectiveness,AO,Air Outs,Fly ball/popup outs
+Pitching,Effectiveness,GO/AO,Ground Out to Air Out Ratio,GO/AO
+Pitching,Effectiveness,FPS,First Pitch Strikes,First pitch strikes thrown
+Pitching,Effectiveness,FPB,First Pitch Balls,First pitch balls thrown
+Pitching,Effectiveness,FPS%,First Pitch Strike Percentage,FPS/(FPS+FPB)
+Pitching,Effectiveness,LOBB,Leadoff Walks,Walks to leadoff batter
+Pitching,Effectiveness,LOH,Leadoff Hit,Hits to leadoff batter
+Pitching,Effectiveness,LOHB,Leadoff Hit Batter,Hit leadoff batter with pitch
+Pitching,Effectiveness,LOCI,Leadoff Catcher Interference,CI on leadoff batter
+Pitching,Effectiveness,LOE,Leadoff Error,Error on leadoff batter
+Pitching,Effectiveness,LOK,Leadoff Strikeout,Strikeout of leadoff batter
+Pitching,Effectiveness,LOO,Leadoff Fielding Out,Leadoff batter made out
+Pitching,Effectiveness,123,123 Innings,3 up 3 down innings
+Pitching,Effectiveness,FsO,First Strike Field Outs,Outs after first strike
+Pitching,Effectiveness,FsK,First Strike Strikeouts,Strikeouts after first strike
+Pitching,Effectiveness,FsH,First Strike Hits,Hits after first strike
+Pitching,Effectiveness,FsBB,First Strike Walks,Walks after first strike
+Pitching,Effectiveness,3P,3 Pitch Innings,Innings with 3 pitches
+Pitching,Effectiveness,4P,4 Pitch Innings,Innings with 4 pitches
+Pitching,Effectiveness,5P,5 Pitch Innings,Innings with 5 pitches
+Pitching,Effectiveness,6P,6 Pitch Innings,Innings with 6 pitches
+Pitching,Effectiveness,7P,7 Pitch Innings,Innings with 7 pitches
+Pitching,Effectiveness,8P,8 Pitch Innings,Innings with 8 pitches
+Pitching,Effectiveness,9P,9 Pitch Innings,Innings with 9 pitches
+Pitching,Effectiveness,10P,10 Pitch Innings,Innings with 10 pitches
+Pitching,Effectiveness,11P,11 Pitch Innings,Innings with 11 pitches
+Pitching,Effectiveness,12P,12 Pitch Innings,Innings with 12 pitches
+Pitching,Effectiveness,13P,13 Pitch Innings,Innings with 13 pitches
+Pitching,Effectiveness,14P,14 Pitch Innings,Innings with 14 pitches
+Pitching,Effectiveness,15P,15 Pitch Innings,Innings with 15 pitches
+Pitching,Effectiveness,16P+,16+ Pitch Innings,Innings with 16 or more pitches
+Pitching,Effectiveness,1PA,1 Pitch Appearances,Plate appearances with 1 pitch
+Pitching,Effectiveness,2PA,2 Pitch Appearances,Plate appearances with 2 pitches
+Pitching,Effectiveness,3PA,3 Pitch Appearances,Plate appearances with 3 pitches
+Pitching,Effectiveness,4PA,4 Pitch Appearances,Plate appearances with 4 pitches
+Pitching,Effectiveness,5PA,5 Pitch Appearances,Plate appearances with 5 pitches
+Pitching,Effectiveness,6PA,6 Pitch Appearances,Plate appearances with 6 pitches
+Pitching,Effectiveness,7PA,7 Pitch Appearances,Plate appearances with 7 pitches
+Pitching,Effectiveness,8P+A,8+ Pitch Appearances,Plate appearances with 8+ pitches
+Pitching,Hit Type and Power,#,Player Number,Player's jersey number
+Pitching,Hit Type and Power,Name,Player Name,Player's full name
+Pitching,Hit Type and Power,GBs,Soft Ground Balls,Soft ground balls allowed
+Pitching,Hit Type and Power,GBm,Medium Ground Balls,Medium ground balls allowed
+Pitching,Hit Type and Power,GBh,Hard Ground Balls,Hard ground balls allowed
+Pitching,Hit Type and Power,LDs,Soft Line Drives,Soft line drives allowed
+Pitching,Hit Type and Power,LDm,Medium Line Drives,Medium line drives allowed
+Pitching,Hit Type and Power,LDh,Hard Line Drives,Hard line drives allowed
+Pitching,Hit Type and Power,PUs,Soft Popups,Soft popups allowed
+Pitching,Hit Type and Power,PUm,Medium Popups,Medium popups allowed
+Pitching,Hit Type and Power,PUh,Hard Popups,Hard popups allowed
+Pitching,Hit Type and Power,FBs,Soft Flyballs,Soft fly balls allowed
+Pitching,Hit Type and Power,FBm,Medium Flyballs,Medium fly balls allowed
+Pitching,Hit Type and Power,FBh,Hard Flyballs,Hard fly balls allowed
+Pitching,Hit Type and Power,BIP,Balls in Play,Total balls in play
+Pitching,Hit Type and Power,GB%,Ground Ball Percentage,% ground balls
+Pitching,Hit Type and Power,LD%,Line Drive Percentage,% line drives
+Pitching,Hit Type and Power,PU%,Popup Percentage,% popups
+Pitching,Hit Type and Power,FB%,Flyball Percentage,% fly balls
+Pitching,Hit Type and Power,SH%,Soft Hit Percentage,% soft contact
+Pitching,Hit Type and Power,MH%,Medium Hit Percentage,% medium contact
+Pitching,Hit Type and Power,HH%,Hard Hit Percentage,% hard contact
+Pitching,Pitch Types,#,Player Number,Player's jersey number
+Pitching,Pitch Types,Name,Player Name,Player's full name
+Pitching,Pitch Types,S%,Total Strike Percentage,Overall strike percentage
+Pitching,Pitch Types,B%,Total Ball Percentage,Overall ball percentage
+Pitching,Pitch Types,Fb,Fastballs,Fastball count
+Pitching,Pitch Types,FbS,Fastballs for Strike,Fastball strikes
+Pitching,Pitch Types,FbS%,Fastball Strike Percentage,FbS/Fb
+Pitching,Pitch Types,Cu,Curves,Curveball count
+Pitching,Pitch Types,CuS,Curves for Strike,Curveball strikes
+Pitching,Pitch Types,CuS%,Curveball Strike Percentage,CuS/Cu
+Pitching,Pitch Types,Sl,Sliders,Slider count
+Pitching,Pitch Types,SlS,Sliders for Strike,Slider strikes
+Pitching,Pitch Types,SlS%,Slider Strike Percentage,SlS/Sl
+Pitching,Pitch Types,Ct,Cutters,Cutter count
+Pitching,Pitch Types,CtS,Cutters for Strike,Cutter strikes
+Pitching,Pitch Types,CtS%,Cutter Strike Percentage,CtS/Ct
+Pitching,Pitch Types,Ch,Changeups,Changeup count
+Pitching,Pitch Types,ChS,Changeups for Strike,Changeup strikes
+Pitching,Pitch Types,ChS%,Changeup Strike Percentage,ChS/Ch
+Pitching,Pitch Types,Sp,Splitters,Splitter count
+Pitching,Pitch Types,SpS,Splitters for Strike,Splitter strikes
+Pitching,Pitch Types,SpS%,Splitter Strike Percentage,SpS/Sp
+Pitching,Pitch Types,Kn,Knuckleballs,Knuckleball count
+Pitching,Pitch Types,KnS,Knuckleballs for Strike,Knuckleball strikes
+Pitching,Pitch Types,KnS%,Knuckleball Strike Percentage,KnS/Kn
+Pitching,Pitch Types,Dp,Dropballs,Dropball count
+Pitching,Pitch Types,DpS,Dropballs for Strike,Dropball strikes
+Pitching,Pitch Types,DpS%,Dropball Strike Percentage,DpS/Dp
+Pitching,Pitch Types,Rs,Riseballs,Riseball count
+Pitching,Pitch Types,RsS,Riseballs for Strike,Riseball strikes
+Pitching,Pitch Types,RsS%,Riseball Strike Percentage,RsS/Rs
+Pitching,Pitch Types,Sw,Screwballs,Screwball count
+Pitching,Pitch Types,SwS,Screwballs for Strike,Screwball strikes
+Pitching,Pitch Types,SwS%,Screwball Strike Percentage,SwS/Sw
+Pitching,Pitch Types,Dc,Dropcurves,Dropcurve count
+Pitching,Pitch Types,DcS,Dropcurves for Strike,Dropcurve strikes
+Pitching,Pitch Types,DcS%,Dropcurve Strike Percentage,DcS/Dc
+Pitching,Pitch Types,Or,Other Pitches,Other pitch types
+Pitching,Pitch Types,OrS,Other Pitches for Strike,Other pitch strikes
+Pitching,Pitch Types,OrS%,Other Strike Percentage,OrS/Or
+Pitching,Pitch Types,FbMin,Minimum Fastball Speed,Slowest fastball
+Pitching,Pitch Types,FbMax,Maximum Fastball Speed,Fastest fastball
+Pitching,Pitch Types,FbTot,Total Fastball Speed,Sum for averaging
+Pitching,Pitch Types,FbCnt,Fastball Speed Count,Number of fastballs with speed
+Pitching,Pitch Types,FbAvg,Average Fastball Speed,FbTot/FbCnt
+Pitching,Pitch Types,CuMin,Minimum Curve Speed,Slowest curveball
+Pitching,Pitch Types,CuMax,Maximum Curve Speed,Fastest curveball
+Pitching,Pitch Types,CuTot,Total Curve Speed,Sum for averaging
+Pitching,Pitch Types,CuCnt,Curve Speed Count,Number of curves with speed
+Pitching,Pitch Types,CuAvg,Average Curve Speed,CuTot/CuCnt
+Pitching,Pitch Types,SlMin,Minimum Slider Speed,Slowest slider
+Pitching,Pitch Types,SlMax,Maximum Slider Speed,Fastest slider
+Pitching,Pitch Types,SlTot,Total Slider Speed,Sum for averaging
+Pitching,Pitch Types,SlCnt,Slider Speed Count,Number of sliders with speed
+Pitching,Pitch Types,SlAvg,Average Slider Speed,SlTot/SlCnt
+Pitching,Pitch Types,CtMin,Minimum Cutter Speed,Slowest cutter
+Pitching,Pitch Types,CtMax,Maximum Cutter Speed,Fastest cutter
+Pitching,Pitch Types,CtTot,Total Cutter Speed,Sum for averaging
+Pitching,Pitch Types,CtCnt,Cutter Speed Count,Number of cutters with speed
+Pitching,Pitch Types,CtAvg,Average Cutter Speed,CtTot/CtCnt
+Pitching,Pitch Types,ChMin,Minimum Change Speed,Slowest changeup
+Pitching,Pitch Types,ChMax,Maximum Change Speed,Fastest changeup
+Pitching,Pitch Types,ChTot,Total Change Speed,Sum for averaging
+Pitching,Pitch Types,ChCnt,Change Speed Count,Number of changeups with speed
+Pitching,Pitch Types,ChAvg,Average Change Speed,ChTot/ChCnt
+Pitching,Pitch Types,SpMin,Minimum Splitter Speed,Slowest splitter
+Pitching,Pitch Types,SpMax,Maximum Splitter Speed,Fastest splitter
+Pitching,Pitch Types,SpTot,Total Splitter Speed,Sum for averaging
+Pitching,Pitch Types,SpCnt,Splitter Speed Count,Number of splitters with speed
+Pitching,Pitch Types,SpAvg,Average Splitter Speed,SpTot/SpCnt
+Pitching,Pitch Types,KnMin,Minimum Knuckle Speed,Slowest knuckleball
+Pitching,Pitch Types,KnMax,Maximum Knuckle Speed,Fastest knuckleball
+Pitching,Pitch Types,KnTot,Total Knuckle Speed,Sum for averaging
+Pitching,Pitch Types,KnCnt,Knuckle Speed Count,Number of knuckleballs with speed
+Pitching,Pitch Types,KnAvg,Average Knuckle Speed,KnTot/KnCnt
+Pitching,Pitch Types,DpMin,Minimum Dropball Speed,Slowest dropball
+Pitching,Pitch Types,DpMax,Maximum Dropball Speed,Fastest dropball
+Pitching,Pitch Types,DpTot,Total Dropball Speed,Sum for averaging
+Pitching,Pitch Types,DpCnt,Dropball Speed Count,Number of dropballs with speed
+Pitching,Pitch Types,DpAvg,Average Dropball Speed,DpTot/DpCnt
+Pitching,Pitch Types,RsMin,Minimum Riseball Speed,Slowest riseball
+Pitching,Pitch Types,RsMax,Maximum Riseball Speed,Fastest riseball
+Pitching,Pitch Types,RsTot,Total Riseball Speed,Sum for averaging
+Pitching,Pitch Types,RsCnt,Riseball Speed Count,Number of riseballs with speed
+Pitching,Pitch Types,RsAvg,Average Riseball Speed,RsTot/RsCnt
+Pitching,Pitch Types,SwMin,Minimum Screwball Speed,Slowest screwball
+Pitching,Pitch Types,SwMax,Maximum Screwball Speed,Fastest screwball
+Pitching,Pitch Types,SwTot,Total Screwball Speed,Sum for averaging
+Pitching,Pitch Types,SwCnt,Screwball Speed Count,Number of screwballs with speed
+Pitching,Pitch Types,SwAvg,Average Screwball Speed,SwTot/SwCnt
+Pitching,Pitch Types,DcMin,Minimum Dropcurve Speed,Slowest dropcurve
+Pitching,Pitch Types,DcMax,Maximum Dropcurve Speed,Fastest dropcurve
+Pitching,Pitch Types,DcTot,Total Dropcurve Speed,Sum for averaging
+Pitching,Pitch Types,DcCnt,Dropcurve Speed Count,Number of dropcurves with speed
+Pitching,Pitch Types,DcAvg,Average Dropcurve Speed,DcTot/DcCnt
+Pitching,Pitch Types,OrMin,Minimum Other Speed,Slowest other pitch
+Pitching,Pitch Types,OrMax,Maximum Other Speed,Fastest other pitch
+Pitching,Pitch Types,OrTot,Total Other Speed,Sum for averaging
+Pitching,Pitch Types,OrCnt,Other Speed Count,Number of other pitches with speed
+Pitching,Pitch Types,OrAvg,Average Other Speed,OrTot/OrCnt
+Pitching,Pitch Types,T00,Total 0-0 Counts,Number of 0-0 counts
+Pitching,Pitch Types,S00,0-0 Count Strikes,Strikes at 0-0
+Pitching,Pitch Types,S%00,0-0 Strike Percentage,Strike % at 0-0
+Pitching,Pitch Types,E00+,0-0 Positive Outcome,Out/K/DT/Err/FC at 0-0
+Pitching,Pitch Types,E00-,0-0 Negative Outcome,Hit/BB/HBP at 0-0
+Pitching,Pitch Types,E00*,0-0 Neutral Outcome,SAC/SF/CI at 0-0
+Pitching,Pitch Types,T01,Total 0-1 Counts,Number of 0-1 counts
+Pitching,Pitch Types,S01,0-1 Count Strikes,Strikes at 0-1
+Pitching,Pitch Types,S%01,0-1 Strike Percentage,Strike % at 0-1
+Pitching,Pitch Types,E01+,0-1 Positive Outcome,Positive outcome at 0-1
+Pitching,Pitch Types,E01-,0-1 Negative Outcome,Negative outcome at 0-1
+Pitching,Pitch Types,E01*,0-1 Neutral Outcome,Neutral outcome at 0-1
+Pitching,Pitch Types,T02,Total 0-2 Counts,Number of 0-2 counts
+Pitching,Pitch Types,S02,0-2 Count Strikes,Strikes at 0-2
+Pitching,Pitch Types,S%02,0-2 Strike Percentage,Strike % at 0-2
+Pitching,Pitch Types,E02+,0-2 Positive Outcome,Positive outcome at 0-2
+Pitching,Pitch Types,E02-,0-2 Negative Outcome,Negative outcome at 0-2
+Pitching,Pitch Types,E02*,0-2 Neutral Outcome,Neutral outcome at 0-2
+Pitching,Pitch Types,T10,Total 1-0 Counts,Number of 1-0 counts
+Pitching,Pitch Types,S10,1-0 Count Strikes,Strikes at 1-0
+Pitching,Pitch Types,S%10,1-0 Strike Percentage,Strike % at 1-0
+Pitching,Pitch Types,E10+,1-0 Positive Outcome,Positive outcome at 1-0
+Pitching,Pitch Types,E10-,1-0 Negative Outcome,Negative outcome at 1-0
+Pitching,Pitch Types,E10*,1-0 Neutral Outcome,Neutral outcome at 1-0
+Pitching,Pitch Types,T11,Total 1-1 Counts,Number of 1-1 counts
+Pitching,Pitch Types,S11,1-1 Count Strikes,Strikes at 1-1
+Pitching,Pitch Types,S%11,1-1 Strike Percentage,Strike % at 1-1
+Pitching,Pitch Types,E11+,1-1 Positive Outcome,Positive outcome at 1-1
+Pitching,Pitch Types,E11-,1-1 Negative Outcome,Negative outcome at 1-1
+Pitching,Pitch Types,E11*,1-1 Neutral Outcome,Neutral outcome at 1-1
+Pitching,Pitch Types,T12,Total 1-2 Counts,Number of 1-2 counts
+Pitching,Pitch Types,S12,1-2 Count Strikes,Strikes at 1-2
+Pitching,Pitch Types,S%12,1-2 Strike Percentage,Strike % at 1-2
+Pitching,Pitch Types,E12+,1-2 Positive Outcome,Positive outcome at 1-2
+Pitching,Pitch Types,E12-,1-2 Negative Outcome,Negative outcome at 1-2
+Pitching,Pitch Types,E12*,1-2 Neutral Outcome,Neutral outcome at 1-2
+Pitching,Pitch Types,T20,Total 2-0 Counts,Number of 2-0 counts
+Pitching,Pitch Types,S20,2-0 Count Strikes,Strikes at 2-0
+Pitching,Pitch Types,S%20,2-0 Strike Percentage,Strike % at 2-0
+Pitching,Pitch Types,E20+,2-0 Positive Outcome,Positive outcome at 2-0
+Pitching,Pitch Types,E20-,2-0 Negative Outcome,Negative outcome at 2-0
+Pitching,Pitch Types,E20*,2-0 Neutral Outcome,Neutral outcome at 2-0
+Pitching,Pitch Types,T21,Total 2-1 Counts,Number of 2-1 counts
+Pitching,Pitch Types,S21,2-1 Count Strikes,Strikes at 2-1
+Pitching,Pitch Types,S%21,2-1 Strike Percentage,Strike % at 2-1
+Pitching,Pitch Types,E21+,2-1 Positive Outcome,Positive outcome at 2-1
+Pitching,Pitch Types,E21-,2-1 Negative Outcome,Negative outcome at 2-1
+Pitching,Pitch Types,E21*,2-1 Neutral Outcome,Neutral outcome at 2-1
+Pitching,Pitch Types,T22,Total 2-2 Counts,Number of 2-2 counts
+Pitching,Pitch Types,S22,2-2 Count Strikes,Strikes at 2-2
+Pitching,Pitch Types,S%22,2-2 Strike Percentage,Strike % at 2-2
+Pitching,Pitch Types,E22+,2-2 Positive Outcome,Positive outcome at 2-2
+Pitching,Pitch Types,E22-,2-2 Negative Outcome,Negative outcome at 2-2
+Pitching,Pitch Types,E22*,2-2 Neutral Outcome,Neutral outcome at 2-2
+Pitching,Pitch Types,T30,Total 3-0 Counts,Number of 3-0 counts
+Pitching,Pitch Types,S30,3-0 Count Strikes,Strikes at 3-0
+Pitching,Pitch Types,S%30,3-0 Strike Percentage,Strike % at 3-0
+Pitching,Pitch Types,E30+,3-0 Positive Outcome,Positive outcome at 3-0
+Pitching,Pitch Types,E30-,3-0 Negative Outcome,Negative outcome at 3-0
+Pitching,Pitch Types,E30*,3-0 Neutral Outcome,Neutral outcome at 3-0
+Pitching,Pitch Types,T31,Total 3-1 Counts,Number of 3-1 counts
+Pitching,Pitch Types,S31,3-1 Count Strikes,Strikes at 3-1
+Pitching,Pitch Types,S%31,3-1 Strike Percentage,Strike % at 3-1
+Pitching,Pitch Types,E31+,3-1 Positive Outcome,Positive outcome at 3-1
+Pitching,Pitch Types,E31-,3-1 Negative Outcome,Negative outcome at 3-1
+Pitching,Pitch Types,E31*,3-1 Neutral Outcome,Neutral outcome at 3-1
+Pitching,Pitch Types,T32,Total 3-2 Counts,Number of 3-2 counts
+Pitching,Pitch Types,S32,3-2 Count Strikes,Strikes at 3-2
+Pitching,Pitch Types,S%32,3-2 Strike Percentage,Strike % at 3-2
+Pitching,Pitch Types,E32+,3-2 Positive Outcome,Positive outcome at 3-2
+Pitching,Pitch Types,E32-,3-2 Negative Outcome,Negative outcome at 3-2
+Pitching,Pitch Types,E32*,3-2 Neutral Outcome,Neutral outcome at 3-2
+Fielding,Basic,#,Player Number,Player's jersey number
+Fielding,Basic,Name,Player Name,Player's full name
+Fielding,Basic,G,Games,Fielding games played
+Fielding,Basic,ST,Games Started,Games started in field
+Fielding,Basic,Et,Throwing Errors,Errors on throws
+Fielding,Basic,Ef,Fielding Errors,Errors on fielding plays
+Fielding,Basic,ERR,Total Errors,Total errors (Et+Ef)
+Fielding,Basic,PO,Putouts,Total putouts
+Fielding,Basic,A,Assists,Total assists
+Fielding,Basic,SBA,Stolen Bases Allowed,Stolen bases allowed
+Fielding,Basic,CS,Caught Stealing,Runners caught stealing
+Fielding,Basic,DP,Double Plays,Double plays turned
+Fielding,Basic,TP,Triple Plays,Triple plays turned
+Fielding,Basic,PB,Passed Balls,Passed balls (catcher)
+Fielding,Basic,PKF,Pickoff Failed,Failed pickoff attempts
+Fielding,Basic,PK,Pickoff Succeeded,Successful pickoffs
+Fielding,Basic,OP,Outs Played,Total outs in field
+Fielding,Basic,FP,Fielding Percentage,(PO+A)/(PO+A+E)
+Fielding,Basic,FP1,Fielding % at Pitcher,Fielding percentage at pitcher
+Fielding,Basic,FP2,Fielding % at Catcher,Fielding percentage at catcher
+Fielding,Basic,FP3,Fielding % at First,Fielding percentage at first base
+Fielding,Basic,FP4,Fielding % at Second,Fielding percentage at second base
+Fielding,Basic,FP5,Fielding % at Third,Fielding percentage at third base
+Fielding,Basic,FP6,Fielding % at Shortstop,Fielding percentage at shortstop
+Fielding,Basic,FP7,Fielding % at Left Field,Fielding percentage in left field
+Fielding,Basic,FP8,Fielding % at Center Field,Fielding percentage in center field
+Fielding,Basic,FP9,Fielding % at Right Field,Fielding percentage in right field
+Fielding,Basic,FP10,Fielding % at Other,Fielding percentage at other positions
+Fielding,Basic,IP,Innings Played,Total innings in field
+Fielding,Basic,AP,Innings Appeared,Innings appeared in field
+Fielding,Infield,#,Player Number,Player's jersey number
+Fielding,Infield,Name,Player Name,Player's full name
+Fielding,Infield,PO1,Putouts at Pitcher,Putouts at pitcher position
+Fielding,Infield,A1,Assists at Pitcher,Assists at pitcher position
+Fielding,Infield,Et1,Throwing Errors at Pitcher,Throwing errors at pitcher
+Fielding,Infield,Ef1,Fielding Errors at Pitcher,Fielding errors at pitcher
+Fielding,Infield,AP1,Innings Appeared at Pitcher,Innings at pitcher
+Fielding,Infield,OP1,Outs Played at Pitcher,Outs at pitcher
+Fielding,Infield,PO2,Putouts at Catcher,Putouts at catcher position
+Fielding,Infield,A2,Assists at Catcher,Assists at catcher position
+Fielding,Infield,Et2,Throwing Errors at Catcher,Throwing errors at catcher
+Fielding,Infield,Ef2,Fielding Errors at Catcher,Fielding errors at catcher
+Fielding,Infield,AP2,Innings Appeared at Catcher,Innings at catcher
+Fielding,Infield,OP2,Outs Played at Catcher,Outs at catcher
+Fielding,Infield,PO3,Putouts at First,Putouts at first base
+Fielding,Infield,A3,Assists at First,Assists at first base
+Fielding,Infield,Et3,Throwing Errors at First,Throwing errors at first
+Fielding,Infield,Ef3,Fielding Errors at First,Fielding errors at first
+Fielding,Infield,AP3,Innings Appeared at First,Innings at first base
+Fielding,Infield,OP3,Outs Played at First,Outs at first base
+Fielding,Infield,PO4,Putouts at Second,Putouts at second base
+Fielding,Infield,A4,Assists at Second,Assists at second base
+Fielding,Infield,Et4,Throwing Errors at Second,Throwing errors at second
+Fielding,Infield,Ef4,Fielding Errors at Second,Fielding errors at second
+Fielding,Infield,AP4,Innings Appeared at Second,Innings at second base
+Fielding,Infield,OP4,Outs Played at Second,Outs at second base
+Fielding,Infield,PO5,Putouts at Third,Putouts at third base
+Fielding,Infield,A5,Assists at Third,Assists at third base
+Fielding,Infield,Et5,Throwing Errors at Third,Throwing errors at third
+Fielding,Infield,Ef5,Fielding Errors at Third,Fielding errors at third
+Fielding,Infield,AP5,Innings Appeared at Third,Innings at third base
+Fielding,Infield,OP5,Outs Played at Third,Outs at third base
+Fielding,Infield,PO6,Putouts at Shortstop,Putouts at shortstop
+Fielding,Infield,A6,Assists at Shortstop,Assists at shortstop
+Fielding,Infield,Et6,Throwing Errors at Shortstop,Throwing errors at shortstop
+Fielding,Infield,Ef6,Fielding Errors at Shortstop,Fielding errors at shortstop
+Fielding,Infield,AP6,Innings Appeared at Shortstop,Innings at shortstop
+Fielding,Infield,OP6,Outs Played at Shortstop,Outs at shortstop
+Fielding,Outfield,#,Player Number,Player's jersey number
+Fielding,Outfield,Name,Player Name,Player's full name
+Fielding,Outfield,PO7,Putouts at Left Field,Putouts in left field
+Fielding,Outfield,A7,Assists at Left Field,Assists in left field
+Fielding,Outfield,Et7,Throwing Errors at Left Field,Throwing errors in left field
+Fielding,Outfield,Ef7,Fielding Errors at Left Field,Fielding errors in left field
+Fielding,Outfield,AP7,Innings Appeared at Left Field,Innings in left field
+Fielding,Outfield,OP7,Outs Played at Left Field,Outs in left field
+Fielding,Outfield,PO8,Putouts at Center Field,Putouts in center field
+Fielding,Outfield,A8,Assists at Center Field,Assists in center field
+Fielding,Outfield,Et8,Throwing Errors at Center Field,Throwing errors in center field
+Fielding,Outfield,Ef8,Fielding Errors at Center Field,Fielding errors in center field
+Fielding,Outfield,AP8,Innings Appeared at Center Field,Innings in center field
+Fielding,Outfield,OP8,Outs Played at Center Field,Outs in center field
+Fielding,Outfield,PO9,Putouts at Right Field,Putouts in right field
+Fielding,Outfield,A9,Assists at Right Field,Assists in right field
+Fielding,Outfield,Et9,Throwing Errors at Right Field,Throwing errors in right field
+Fielding,Outfield,Ef9,Fielding Errors at Right Field,Fielding errors in right field
+Fielding,Outfield,AP9,Innings Appeared at Right Field,Innings in right field
+Fielding,Outfield,OP9,Outs Played at Right Field,Outs in right field
+Fielding,Outfield,PO10,Putouts at Other Field,Putouts at other positions
+Fielding,Outfield,A10,Assists at Other Field,Assists at other positions
+Fielding,Outfield,Et10,Throwing Errors at Other Field,Throwing errors at other positions
+Fielding,Outfield,Ef10,Fielding Errors at Other Field,Fielding errors at other positions
+Fielding,Outfield,AP10,Innings Appeared at Other Field,Innings at other positions
+Fielding,Outfield,OP10,Outs Played at Other Field,Outs at other positions
