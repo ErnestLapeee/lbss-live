@@ -9,6 +9,25 @@ type Tab = 'batting' | 'pitching' | 'fielding' | 'gamelog' | 'spraychart';
 const n = (v: any) => v ?? 0;
 const fmtRate = (v: any) => (v != null && v !== '' ? Number(v).toFixed(3).replace(/^0/, '') : '—');
 const fmtEra = (v: any) => (v != null && v !== '' ? Number(v).toFixed(2) : '—');
+const ipToOuts = (ip: any): number => {
+  if (ip == null || ip === '') return 0;
+  const s = String(ip).trim();
+  const m = /^(\d+)(?:\.(\d+))?$/.exec(s);
+  if (m) {
+    const inn = parseInt(m[1] || '0', 10);
+    const fracRaw = m[2] ?? '';
+    if (fracRaw.length === 0) return inn * 3;
+    const outsDigit = parseInt(fracRaw[0] || '0', 10);
+    if (!Number.isNaN(outsDigit) && outsDigit >= 0 && outsDigit <= 2) return inn * 3 + outsDigit;
+  }
+  const n = Number(ip);
+  return Number.isFinite(n) ? Math.max(0, Math.round(n * 3)) : 0;
+};
+const outsToIp = (outs: number): string => {
+  const full = Math.floor(outs / 3);
+  const rem = outs % 3;
+  return rem === 0 ? `${full}` : `${full}.${rem}`;
+};
 
 const POS_LABELS: Record<number, string> = {
   1: 'P', 2: 'C', 3: '1B', 4: '2B', 5: '3B', 6: 'SS', 7: 'LF', 8: 'CF', 9: 'RF',
@@ -39,22 +58,65 @@ export function PlayerModal({ slug, firstName, lastName, onClose }: PlayerModalP
   const [gameLog, setGameLog] = useState<{ batting: any[]; pitching: any[] } | null>(null);
   const [sprayData, setSprayData] = useState<any[] | null>(null);
   const [loading, setLoading] = useState(true);
+  const [resolvedSlug, setResolvedSlug] = useState<string | null>(slug);
   // Season filter is used only for game log and spray chart views
   const [seasonFilter, setSeasonFilter] = useState<'all' | number>('all');
   const [seasons, setSeasons] = useState<{ id: number; year: number }[]>([]);
   const backdropRef = useRef<HTMLDivElement>(null);
 
+  useEffect(() => {
+    let cancelled = false;
+    const resolve = async () => {
+      if (!slug.startsWith('player-')) {
+        setResolvedSlug(slug);
+        return;
+      }
+      const fallbackId = Number(slug.replace('player-', ''));
+      if (!Number.isFinite(fallbackId) || fallbackId <= 0) {
+        setResolvedSlug(null);
+        return;
+      }
+      try {
+        let page = 1;
+        let foundSlug: string | null = null;
+        while (!foundSlug) {
+          const res = await fetch(`/api/proxy/public/players?page=${page}&limit=100`);
+          if (!res.ok) break;
+          const payload = await res.json();
+          const rows = Array.isArray(payload?.data) ? payload.data : [];
+          const matched = rows.find((p: any) => Number(p.id) === fallbackId);
+          if (matched?.slug) {
+            foundSlug = matched.slug;
+            break;
+          }
+          const total = Number(payload?.pagination?.total ?? rows.length);
+          if (!rows.length || page * 100 >= total) break;
+          page++;
+        }
+        if (!cancelled) setResolvedSlug(foundSlug);
+      } catch {
+        if (!cancelled) setResolvedSlug(null);
+      }
+    };
+    resolve();
+    return () => { cancelled = true; };
+  }, [slug]);
+
   // Load all data on mount
   useEffect(() => {
+    if (!resolvedSlug) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     Promise.all([
-      fetchJson(`/api/public/players/${slug}`),
-      fetchJson(`/api/public/players/${slug}/stats`),
-      fetchJson(`/api/public/players/${slug}/pitching-stats`),
-      fetchJson(`/api/public/players/${slug}/fielding-stats`),
-      fetchJson(`/api/public/players/${slug}/game-log`),
-      fetchJson(`/api/public/players/${slug}/spray-chart`),
-      fetchJson(`/api/public/players/${slug}/fielding-by-position`),
+      fetchJson(`/api/public/players/${resolvedSlug}`),
+      fetchJson(`/api/public/players/${resolvedSlug}/stats`),
+      fetchJson(`/api/public/players/${resolvedSlug}/pitching-stats`),
+      fetchJson(`/api/public/players/${resolvedSlug}/fielding-stats`),
+      fetchJson(`/api/public/players/${resolvedSlug}/game-log`),
+      fetchJson(`/api/public/players/${resolvedSlug}/spray-chart`),
+      fetchJson(`/api/public/players/${resolvedSlug}/fielding-by-position`),
     ]).then(([p, bat, pitch, field, gl, spray, fbp]) => {
       const batting = Array.isArray(bat) ? bat : [];
       const pitching = Array.isArray(pitch) ? pitch : [];
@@ -88,25 +150,27 @@ export function PlayerModal({ slug, firstName, lastName, onClose }: PlayerModalP
           .sort((a, b) => a.year - b.year),
       );
     }).finally(() => setLoading(false));
-  }, [slug]);
+  }, [resolvedSlug]);
 
   // Re-fetch game log when season filter changes while on Game Log tab
   useEffect(() => {
     if (tab !== 'gamelog') return;
     const query = seasonFilter === 'all' ? '' : `?seasonId=${seasonFilter}`;
-    fetchJson(`/api/public/players/${slug}/game-log${query}`).then(gl =>
+    if (!resolvedSlug) return;
+    fetchJson(`/api/public/players/${resolvedSlug}/game-log${query}`).then(gl =>
       setGameLog(gl || { batting: [], pitching: [] }),
     );
-  }, [tab, seasonFilter, slug]);
+  }, [tab, seasonFilter, resolvedSlug]);
 
   // Re-fetch spray chart when season filter changes while on Spray Chart tab
   useEffect(() => {
     if (tab !== 'spraychart') return;
     const query = seasonFilter === 'all' ? '' : `?seasonId=${seasonFilter}`;
-    fetchJson(`/api/public/players/${slug}/spray-chart${query}`).then(spray =>
+    if (!resolvedSlug) return;
+    fetchJson(`/api/public/players/${resolvedSlug}/spray-chart${query}`).then(spray =>
       setSprayData(Array.isArray(spray) ? spray : []),
     );
-  }, [tab, seasonFilter, slug]);
+  }, [tab, seasonFilter, resolvedSlug]);
 
   // Close on Escape
   useEffect(() => {
@@ -162,13 +226,14 @@ export function PlayerModal({ slug, firstName, lastName, onClose }: PlayerModalP
     for (const r of rows) {
       for (const k of keysToSum) acc[k] = (acc[k] || 0) + (Number(r[k] ?? 0) || 0);
     }
-    const ip = rows.reduce((s, r) => s + parseFloat(String(r.inningsPitched ?? 0)), 0);
+    const outs = rows.reduce((s, r) => s + ipToOuts(r.inningsPitched), 0);
+    const ip = outs / 3;
     const er = acc.earnedRuns || 0;
     const h = acc.hitsAllowed || 0;
     const bb = acc.walksAllowed || 0;
     return {
       ...acc,
-      inningsPitched: ip.toFixed(1),
+      inningsPitched: outsToIp(outs),
       era: ip > 0 ? ((er / ip) * 9).toFixed(2) : null,
       whip: ip > 0 ? ((bb + h) / ip).toFixed(2) : null,
     };
@@ -241,7 +306,7 @@ export function PlayerModal({ slug, firstName, lastName, onClose }: PlayerModalP
             </button>
           ))}
           <a
-            href={`/players/${slug}`}
+            href={`/players/${resolvedSlug ?? slug}`}
             className="ml-auto px-4 py-2.5 text-[10px] text-[#444] hover:text-[#111] transition-colors flex items-center gap-1"
           >
             Full Profile →

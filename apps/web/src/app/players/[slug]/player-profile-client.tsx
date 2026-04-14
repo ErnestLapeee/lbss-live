@@ -23,6 +23,25 @@ const fmtRate = (v: any) => (v != null && v !== '' ? Number(v).toFixed(3).replac
 const fmtEra = (v: any) => (v != null && v !== '' ? Number(v).toFixed(2) : '—');
 const fmtIp = (v: any) => (v != null ? v : '—');
 const n = (v: any) => v ?? 0;
+const ipToOuts = (ip: any): number => {
+  if (ip == null || ip === '') return 0;
+  const s = String(ip).trim();
+  const m = /^(\d+)(?:\.(\d+))?$/.exec(s);
+  if (m) {
+    const inn = parseInt(m[1] || '0', 10);
+    const fracRaw = m[2] ?? '';
+    if (fracRaw.length === 0) return inn * 3;
+    const outsDigit = parseInt(fracRaw[0] || '0', 10);
+    if (!Number.isNaN(outsDigit) && outsDigit >= 0 && outsDigit <= 2) return inn * 3 + outsDigit;
+  }
+  const nVal = Number(ip);
+  return Number.isFinite(nVal) ? Math.max(0, Math.round(nVal * 3)) : 0;
+};
+const outsToIp = (outs: number): string => {
+  const full = Math.floor(outs / 3);
+  const rem = outs % 3;
+  return rem === 0 ? `${full}` : `${full}.${rem}`;
+};
 
 const sumBattingRows = (rows: any[]) => {
   if (!rows.length) return null;
@@ -94,16 +113,14 @@ const sumPitchingRows = (rows: any[]) => {
   for (const r of rows) {
     for (const k of keysToSum) acc[k] = (acc[k] || 0) + (Number(r[k] ?? 0) || 0);
   }
-  const ip = rows.reduce(
-    (s, r) => s + parseFloat(String(r.inningsPitched ?? 0)),
-    0,
-  );
+  const outs = rows.reduce((s, r) => s + ipToOuts(r.inningsPitched), 0);
+  const ip = outs / 3;
   const er = acc.earnedRuns || 0;
   const h = acc.hitsAllowed || 0;
   const bb = acc.walksAllowed || 0;
   return {
     ...acc,
-    inningsPitched: ip.toFixed(1),
+    inningsPitched: outsToIp(outs),
     era: ip > 0 ? ((er / ip) * 9).toFixed(2) : null,
     whip: ip > 0 ? ((bb + h) / ip).toFixed(2) : null,
   };
@@ -112,7 +129,7 @@ const sumPitchingRows = (rows: any[]) => {
 const sumFieldingRows = (rows: any[]) => {
   if (!rows.length) return null;
   const acc: any = {};
-  const keysToSum = ['games', 'putouts', 'assists', 'errors', 'doublePlays', 'triplePlays', 'pickoffs'];
+  const keysToSum = ['games', 'putouts', 'assists', 'errors', 'doublePlays', 'triplePlays', 'pickoffs', 'passedBalls', 'catcherStolenBases', 'catcherCaughtStealing'];
   for (const r of rows) {
     for (const k of keysToSum) acc[k] = (acc[k] || 0) + (Number(r[k] ?? 0) || 0);
   }
@@ -175,9 +192,10 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
 
   // Spray chart: respects season filter
   useEffect(() => {
+    if (tab !== 'spraychart') return;
     const url = filterParam ? `/api/public/players/${slug}/spray-chart?${filterParam}` : `/api/public/players/${slug}/spray-chart`;
     fetchJson(url).then(d => setSprayData(Array.isArray(d) ? d : []));
-  }, [slug, filterParam]);
+  }, [tab, slug, filterParam]);
 
   const tabs: { key: Tab; label: string }[] = [
     { key: 'batting', label: 'Batting' },
@@ -450,8 +468,10 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
                           <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.errors)}</td>
                           <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.doublePlays)}</td>
                           <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.triplePlays)}</td>
-                          <td className="px-2 py-2 text-right font-mono text-xs font-bold">—</td>
-                          <td className="px-2 py-2 text-right font-mono text-xs font-bold">—</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.passedBalls)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.catcherStolenBases)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.catcherCaughtStealing)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.catcherStolenBases) + n(total.catcherCaughtStealing)}</td>
                           <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.pickoffs)}</td>
                           <td className="px-2 py-2 text-right font-mono text-xs font-bold">{fmtRate(total.fieldingPct)}</td>
                         </tr>

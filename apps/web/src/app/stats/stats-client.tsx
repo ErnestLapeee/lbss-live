@@ -889,7 +889,11 @@ export function StatsClient({
                                   size="sm"
                                 />
                                 <button
-                                  onClick={() => openModal(stat.playerSlug || `player-${stat.playerId}`, stat.firstName, stat.lastName)}
+                                  onClick={() => {
+                                    const modalSlug = stat.playerSlug || stat.slug || null;
+                                    if (!modalSlug) return;
+                                    openModal(modalSlug, stat.firstName, stat.lastName);
+                                  }}
                                   className="font-semibold text-[#111] hover:text-[#136cb2] hover:underline transition-colors text-left"
                                 >
                                   {stat.firstName} {stat.lastName}
@@ -959,6 +963,21 @@ function sortData<T extends { firstName: string; lastName: string; teamName: str
   sortKey: string,
   sortDir: SortDirection
 ): T[] {
+  const parseBaseballInnings = (value: any): number => {
+    if (value == null || value === '') return sortDir === 'asc' ? Infinity : -Infinity;
+    const s = String(value).trim();
+    const m = /^(\d+)(?:\.(\d+))?$/.exec(s);
+    if (m) {
+      const inn = parseInt(m[1] || '0', 10);
+      const fracRaw = m[2] ?? '';
+      if (fracRaw.length === 0) return inn;
+      const outsDigit = parseInt(fracRaw[0] || '0', 10);
+      if (!Number.isNaN(outsDigit) && outsDigit >= 0 && outsDigit <= 2) return inn + outsDigit / 3;
+    }
+    const n = parseFloat(s);
+    return Number.isNaN(n) ? (sortDir === 'asc' ? Infinity : -Infinity) : n;
+  };
+
   const sorted = [...data];
   sorted.sort((a, b) => {
     let aVal: any;
@@ -973,8 +992,14 @@ function sortData<T extends { firstName: string; lastName: string; teamName: str
     } else {
       aVal = (a as any)[sortKey];
       bVal = (b as any)[sortKey];
-      aVal = aVal !== null && aVal !== undefined ? parseFloat(String(aVal)) : -Infinity;
-      bVal = bVal !== null && bVal !== undefined ? parseFloat(String(bVal)) : -Infinity;
+      if (sortKey === 'inningsPitched' || sortKey === 'innings') {
+        aVal = parseBaseballInnings(aVal);
+        bVal = parseBaseballInnings(bVal);
+      } else {
+      const missingSentinel = sortDir === 'asc' ? Infinity : -Infinity;
+      aVal = aVal !== null && aVal !== undefined ? parseFloat(String(aVal)) : missingSentinel;
+      bVal = bVal !== null && bVal !== undefined ? parseFloat(String(bVal)) : missingSentinel;
+      }
     }
 
     if (typeof aVal === 'string' && typeof bVal === 'string') {
