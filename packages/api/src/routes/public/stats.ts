@@ -3,6 +3,7 @@ import { db } from '../../db/index.js';
 import {
   playerSeasonBatting,
   playerSeasonPitching,
+  playerGamePitching,
   playerSeasonFielding,
   playerGameFielding,
   players,
@@ -713,16 +714,38 @@ export async function statsRoutes(app: FastifyInstance) {
           .innerJoin(teams, eq(playerSeasonPitching.teamId, teams.id))
           .where(eq(playerSeasonPitching.seasonId, seasonIdNum))
           .orderBy(asc(playerSeasonPitching.era));
+        const pgPitchCounts = await db
+          .select({
+            playerId: playerGamePitching.playerId,
+            balls: sql<number>`SUM(COALESCE(${playerGamePitching.balls}, 0))::int`.as('balls'),
+            strikes: sql<number>`SUM(COALESCE(${playerGamePitching.strikes}, 0))::int`.as('strikes'),
+          })
+          .from(playerGamePitching)
+          .innerJoin(games, eq(playerGamePitching.gameId, games.id))
+          .innerJoin(leagues, eq(games.leagueId, leagues.id))
+          .where(
+            and(
+              eq(leagues.seasonId, seasonIdNum),
+              eq(games.isFinalized, true),
+            ),
+          )
+          .groupBy(playerGamePitching.playerId);
+        const pitchCountMap = new Map<number, { balls: number; strikes: number }>(
+          pgPitchCounts.map((r) => [r.playerId, { balls: Number(r.balls ?? 0), strikes: Number(r.strikes ?? 0) }]),
+        );
         const withGoAo = result.map((row: Record<string, unknown>) => {
           const go = Number(row.groundOuts ?? 0);
           const ao = Number(row.flyOuts ?? 0);
-          const balls = Number(row.balls ?? 0);
-          const strikes = Number(row.strikes ?? 0);
+          const fallbackCounts = pitchCountMap.get(Number(row.playerId ?? 0));
+          const seasonBalls = Number(row.balls ?? 0);
+          const seasonStrikes = Number(row.strikes ?? 0);
+          const balls = seasonBalls + seasonStrikes > 0 ? seasonBalls : Number(fallbackCounts?.balls ?? 0);
+          const strikes = seasonBalls + seasonStrikes > 0 ? seasonStrikes : Number(fallbackCounts?.strikes ?? 0);
           const strikePct = (balls + strikes) > 0 ? ((strikes / (balls + strikes)) * 100).toFixed(1) : null;
           const fpStrikes = Number(row.firstPitchStrikes ?? 0);
           const fpTotal = Number(row.firstPitchTotal ?? 0);
           const firstPitchStrikePct = fpTotal > 0 ? ((fpStrikes / fpTotal) * 100).toFixed(1) : null;
-          return { ...row, goAo: ao > 0 ? (go / ao).toFixed(2) : null, strikePercentage: strikePct, firstPitchStrikePct };
+          return { ...row, balls, strikes, goAo: ao > 0 ? (go / ao).toFixed(2) : null, strikePercentage: strikePct, firstPitchStrikePct };
         });
         return reply.send(withGoAo);
       }
@@ -788,6 +811,19 @@ export async function statsRoutes(app: FastifyInstance) {
       `);
 
       const raw = (rows as { rows?: unknown[] }).rows ?? (rows as unknown[]);
+      const pgAllTimePitchCounts = await db
+        .select({
+          playerId: playerGamePitching.playerId,
+          balls: sql<number>`SUM(COALESCE(${playerGamePitching.balls}, 0))::int`.as('balls'),
+          strikes: sql<number>`SUM(COALESCE(${playerGamePitching.strikes}, 0))::int`.as('strikes'),
+        })
+        .from(playerGamePitching)
+        .innerJoin(games, eq(playerGamePitching.gameId, games.id))
+        .where(eq(games.isFinalized, true))
+        .groupBy(playerGamePitching.playerId);
+      const allTimePitchCountMap = new Map<number, { balls: number; strikes: number }>(
+        pgAllTimePitchCounts.map((r) => [r.playerId, { balls: Number(r.balls ?? 0), strikes: Number(r.strikes ?? 0) }]),
+      );
       const result = Array.isArray(raw) ? raw.map((row: unknown) => {
         const r = row as Record<string, number | string | null>;
         const ip = typeof r.innings_pitched === 'string' ? parseFloat(r.innings_pitched) : Number(r.innings_pitched ?? 0);
@@ -802,6 +838,11 @@ export async function statsRoutes(app: FastifyInstance) {
           atBats: ab,
           homeRunsAllowed: Number(r.home_runs_allowed ?? 0),
         });
+        const seasonBalls = Number(r.balls ?? 0);
+        const seasonStrikes = Number(r.strikes ?? 0);
+        const fallbackCounts = allTimePitchCountMap.get(Number(r.player_id ?? 0));
+        const balls = seasonBalls + seasonStrikes > 0 ? seasonBalls : Number(fallbackCounts?.balls ?? 0);
+        const strikes = seasonBalls + seasonStrikes > 0 ? seasonStrikes : Number(fallbackCounts?.strikes ?? 0);
         return {
           playerId: r.player_id,
           playerSlug: r.player_slug,
@@ -843,10 +884,10 @@ export async function statsRoutes(app: FastifyInstance) {
           inheritedRunnersScored: r.inherited_runners_scored ?? 0,
           strikeoutsLooking: r.strikeouts_looking ?? 0,
           strikeoutsSwinging: r.strikeouts_swinging ?? 0,
-          balls: r.balls ?? 0,
-          strikes: r.strikes ?? 0,
-          strikePercentage: (Number(r.balls ?? 0) + Number(r.strikes ?? 0)) > 0
-            ? ((Number(r.strikes ?? 0) / (Number(r.balls ?? 0) + Number(r.strikes ?? 0))) * 100).toFixed(1)
+          balls,
+          strikes,
+          strikePercentage: (balls + strikes) > 0
+            ? ((strikes / (balls + strikes)) * 100).toFixed(1)
             : null,
           firstPitchStrikes: r.first_pitch_strikes ?? 0,
           firstPitchTotal: r.first_pitch_total ?? 0,

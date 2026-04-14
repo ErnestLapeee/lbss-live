@@ -285,8 +285,6 @@ const PITCHING_COLUMNS: Column[] = [
   { key: 'k9', label: 'K/9', align: 'right' },
   { key: 'bb9', label: 'BB/9', align: 'right' },
   { key: 'h9', label: 'H/9', align: 'right' },
-  { key: 'strikeoutRate', label: 'K/INN', align: 'right' },
-  { key: 'walkRate', label: 'BB/INN', align: 'right' },
   { key: 'homeRunsAllowed', label: 'HR', align: 'right' },
   { key: 'hitBatters', label: 'HBP', align: 'right' },
   { key: 'wildPitches', label: 'WP', align: 'right' },
