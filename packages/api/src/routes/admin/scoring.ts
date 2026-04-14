@@ -56,9 +56,11 @@ function computeGameState(events: any[]): GameState {
     // Pitch events only update the count; they don't affect bases/outs/score
     if (event.eventType === 'pitch') {
       const detail = (event.eventDetail || '').toLowerCase();
-      if (detail === 'ball') state.balls++;
+      if (detail === 'ball') state.balls = Math.min(3, state.balls + 1);
       else if (detail === 'foul') { if (state.strikes < 2) state.strikes++; }
-      else if (detail === 'strike' || detail === 'called_strike' || detail === 'swinging_strike') state.strikes++;
+      else if (detail === 'strike' || detail === 'called_strike' || detail === 'swinging_strike') {
+        state.strikes = Math.min(2, state.strikes + 1);
+      }
       state.eventCount++;
       continue;
     }
@@ -166,7 +168,8 @@ export async function adminScoringRoutes(app: FastifyInstance) {
       })
         .from(gameLineups)
         .innerJoin(players, eq(gameLineups.playerId, players.id))
-        .where(eq(gameLineups.gameId, gameId));
+        .where(eq(gameLineups.gameId, gameId))
+        .orderBy(gameLineups.battingOrder);
 
       // Get team names
       const [homeTeam] = await db.select({ name: teams.name }).from(teams).where(eq(teams.id, game.homeTeamId)).limit(1);
@@ -744,6 +747,8 @@ export async function adminScoringRoutes(app: FastifyInstance) {
           isStarter: false,
           isActive: true,
         });
+      } else {
+        return reply.status(400).send({ message: 'Outgoing player is not active in lineup' });
       }
 
       const user = (request as any).user;
