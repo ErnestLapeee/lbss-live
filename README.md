@@ -157,3 +157,5 @@ If the **web app** is deployed on Railway, you must set **`NEXT_PUBLIC_API_URL`*
 ## License
 
 Private — Latvijas Beisbola Softbola Savienība
+
+<!-- deploy-trigger: 2026-04-14 21:03:59 +03:00 -->
