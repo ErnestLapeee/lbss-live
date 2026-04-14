@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { SprayChart } from '@/components/stats/spray-chart';
+import { getStatAbbreviationMeaning } from '@/lib/stat-abbreviations';
 
 
 interface Season {
@@ -218,7 +219,7 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
                 <thead>
                   <tr className="border-b border-border bg-surface-alt">
                     {['Season', 'Team', 'G', 'PA', 'AB', 'R', 'H', '2B', '3B', 'HR', 'RBI', 'BB', 'HBP', 'SO', 'SB', 'CS', 'SF', 'AVG', 'OBP', 'SLG', 'OPS', 'BABIP'].map(col => (
-                      <th key={col} className={`px-2 py-2.5 text-[10px] font-bold uppercase tracking-wider text-text-faint whitespace-nowrap ${col === 'Season' || col === 'Team' ? 'text-left' : 'text-right'}`}>
+                      <th title={getStatAbbreviationMeaning(col) ?? undefined} key={col} className={`px-2 py-2.5 text-[10px] font-bold uppercase tracking-wider text-text-faint whitespace-nowrap ${col === 'Season' || col === 'Team' ? 'text-left' : 'text-right'}`}>
                         {col}
                       </th>
                     ))}
@@ -323,7 +324,7 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
                 <thead>
                   <tr className="border-b border-border bg-surface-alt">
                     {['Season', 'Team', 'G', 'GS', 'W', 'L', 'SV', 'IP', 'H', 'R', 'ER', 'BB', 'SO', 'HR', 'HBP', 'WP', 'ERA', 'WHIP', 'FIP', 'K/9', 'BB/9', 'BABIP'].map(col => (
-                      <th key={col} className={`px-2 py-2.5 text-[10px] font-bold uppercase tracking-wider text-text-faint whitespace-nowrap ${col === 'Season' || col === 'Team' ? 'text-left' : 'text-right'}`}>
+                      <th title={getStatAbbreviationMeaning(col) ?? undefined} key={col} className={`px-2 py-2.5 text-[10px] font-bold uppercase tracking-wider text-text-faint whitespace-nowrap ${col === 'Season' || col === 'Team' ? 'text-left' : 'text-right'}`}>
                         {col}
                       </th>
                     ))}
@@ -411,7 +412,7 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
                   <thead>
                     <tr className="border-b border-border bg-surface-alt">
                       {['Season', 'Team', 'G', 'PO', 'A', 'E', 'DP', 'TP', 'PB', 'SB', 'CS', 'SBA', 'PK', 'FP%'].map(col => (
-                        <th key={col} className={`px-2 py-2.5 text-[10px] font-bold uppercase tracking-wider text-text-faint whitespace-nowrap ${col === 'Season' || col === 'Team' ? 'text-left' : 'text-right'}`}>
+                        <th title={getStatAbbreviationMeaning(col) ?? undefined} key={col} className={`px-2 py-2.5 text-[10px] font-bold uppercase tracking-wider text-text-faint whitespace-nowrap ${col === 'Season' || col === 'Team' ? 'text-left' : 'text-right'}`}>
                           {col}
                         </th>
                       ))}

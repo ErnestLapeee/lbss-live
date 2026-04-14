@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import { usePlayerModal } from '@/components/player-modal';
+import { getStatAbbreviationMeaning } from '@/lib/stat-abbreviations';
 
 
 /* ── Types ── */
@@ -839,8 +840,12 @@ export function StatsClient({
                         #
                       </th>
                       {currentColumns.map(col => (
+                        (() => {
+                          const meaning = getStatAbbreviationMeaning(col.label);
+                          return (
                         <th
                           key={col.key}
+                          title={meaning ?? undefined}
                           className={`px-3 py-2.5 text-[10px] font-bold uppercase tracking-wider cursor-pointer select-none transition-colors hover:text-accent ${
                             col.align === 'left' ? 'text-left' : 'text-right'
                           } ${sortKey === col.key ? 'text-accent' : 'text-text-faint'} ${
@@ -857,6 +862,8 @@ export function StatsClient({
                             )}
                           </span>
                         </th>
+                          );
+                        })()
                       ))}
                     </tr>
                   </thead>

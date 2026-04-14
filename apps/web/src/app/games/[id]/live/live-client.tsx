@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useGameSocket } from '@/hooks/useGameSocket';
 import { formatPlayByPlay } from '@/lib/format-play';
 import { useApiBase } from '@/lib/api-context';
+import { getStatAbbreviationMeaning } from '@/lib/stat-abbreviations';
 
 const POS_LABELS: Record<number, string> = {
   1: 'P', 2: 'C', 3: '1B', 4: '2B', 5: '3B', 6: 'SS', 7: 'LF', 8: 'CF', 9: 'RF', 10: 'DH',
@@ -528,6 +529,23 @@ export function LiveGameClient({
     return (obp + slg) > 0 ? (obp + slg).toFixed(3) : '—';
   };
 
+  const playTone = (ab: AtBat): { tag: string; cls: string } => {
+    const t = ab.result?.eventType || '';
+    if (['single', 'bunt_single', 'double', 'triple', 'home_run', 'inside_park_hr', 'ground_rule_double'].includes(t)) {
+      return { tag: 'HIT', cls: 'bg-blue-900/30 text-blue-300 border border-blue-500/30' };
+    }
+    if (['walk', 'intentional_walk', 'hit_by_pitch'].includes(t)) {
+      return { tag: 'FREE PASS', cls: 'bg-emerald-900/20 text-emerald-300 border border-emerald-500/30' };
+    }
+    if (['ground_out', 'fly_out', 'line_out', 'pop_out', 'bunt_out', 'strikeout', 'strikeout_swinging', 'strikeout_looking', 'double_play', 'triple_play', 'fielders_choice'].includes(t)) {
+      return { tag: 'OUT', cls: 'bg-red-900/20 text-red-300 border border-red-500/30' };
+    }
+    if (!ab.result && ab.betweenEvents.length > 0) {
+      return { tag: 'RUNNER', cls: 'bg-amber-900/20 text-amber-300 border border-amber-500/30' };
+    }
+    return { tag: 'PLAY', cls: 'bg-white/5 text-white/50 border border-white/10' };
+  };
+
   const renderBattingTable = (teamName: string, lineup: LineupEntry[], batting: BattingBoxScore[]) => {
     const battingMap: Record<number, BattingBoxScore> = {};
     for (const b of batting) battingMap[b.playerId] = b;
@@ -547,29 +565,11 @@ export function LiveGameClient({
                 <th className="text-left py-1.5 pl-2 pr-1 w-8">#</th>
                 <th className="text-left py-1.5 pr-2 min-w-[90px]">Player</th>
                 <th className="text-center px-0.5 w-7">Pos</th>
-                <th className="text-center px-0.5 w-7">PA</th>
-                <th className="text-center px-0.5 w-7">AB</th>
-                <th className="text-center px-0.5 w-7">R</th>
-                <th className="text-center px-0.5 w-7">H</th>
-                <th className="text-center px-0.5 w-7">2B</th>
-                <th className="text-center px-0.5 w-7">3B</th>
-                <th className="text-center px-0.5 w-7">HR</th>
-                <th className="text-center px-0.5 w-7">RBI</th>
-                <th className="text-center px-0.5 w-7">BB</th>
-                <th className="text-center px-0.5 w-7">HBP</th>
-                <th className="text-center px-0.5 w-7">SO</th>
-                <th className="text-center px-0.5 w-7">Kc</th>
-                <th className="text-center px-0.5 w-7">Ks</th>
-                <th className="text-center px-0.5 w-7">SB</th>
-                <th className="text-center px-0.5 w-7">CS</th>
-                <th className="text-center px-0.5 w-7">SF</th>
-                <th className="text-center px-0.5 w-7">SAC</th>
-                <th className="text-center px-0.5 w-7">B</th>
-                <th className="text-center px-0.5 w-7">GDP</th>
-                <th className="text-center px-0.5 w-7">FC</th>
-                <th className="text-center px-0.5 w-7">CI</th>
-                <th className="text-center px-0.5 w-8 text-cyan-400/70">AVG</th>
-                <th className="text-center px-0.5 w-8 text-cyan-400/70">OPS</th>
+                {['PA','AB','R','H','2B','3B','HR','RBI','BB','HBP','SO','Kc','Ks','SB','CS','SF','SH','B','GDP','FC','CI','AVG','OPS'].map((h) => (
+                  <th key={h} title={getStatAbbreviationMeaning(h) ?? undefined} className={`text-center px-0.5 ${h === 'AVG' || h === 'OPS' ? 'w-8 text-cyan-400/70' : 'w-7'}`}>
+                    {h === 'SH' ? 'SAC' : h}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
@@ -731,26 +731,11 @@ export function LiveGameClient({
             <thead>
               <tr className="text-white/30 border-b border-white/10">
                 <th className="text-left py-1.5 pl-2 min-w-[90px]">Pitcher</th>
-                <th className="text-center px-0.5 w-7">Dec</th>
-                <th className="text-center px-0.5 w-7">IP</th>
-                <th className="text-center px-0.5 w-7">H</th>
-                <th className="text-center px-0.5 w-7">R</th>
-                <th className="text-center px-0.5 w-7">ER</th>
-                <th className="text-center px-0.5 w-7">BB</th>
-                <th className="text-center px-0.5 w-7">K</th>
-                <th className="text-center px-0.5 w-7">Kc</th>
-                <th className="text-center px-0.5 w-7">Ks</th>
-                <th className="text-center px-0.5 w-7">HR</th>
-                <th className="text-center px-0.5 w-7">HBP</th>
-                <th className="text-center px-0.5 w-7">WP</th>
-                <th className="text-center px-0.5 w-8">BF</th>
-                <th className="text-center px-0.5 w-8">NP</th>
-                <th className="text-center px-0.5 w-8">B</th>
-                <th className="text-center px-0.5 w-8">S</th>
-                <th className="text-center px-0.5 w-10">%S</th>
-                <th className="text-center px-0.5 w-7">GSc</th>
-                <th className="text-center px-0.5 w-8 text-amber-400/50">ERA</th>
-                <th className="text-center px-0.5 w-8 text-amber-400/50">WHIP</th>
+                {['Dec','IP','H','R','ER','BB','SO','Kc','Ks','HR','HBP','WP','BF','NP','B','S','%S','GSc','ERA','WHIP'].map((h) => (
+                  <th key={h} title={getStatAbbreviationMeaning(h) ?? undefined} className={`text-center px-0.5 ${h === '%S' ? 'w-10' : h === 'ERA' || h === 'WHIP' ? 'w-8 text-amber-400/50' : h === 'BF' || h === 'NP' || h === 'B' || h === 'S' ? 'w-8' : 'w-7'}`}>
+                    {h === 'SO' ? 'K' : h}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
@@ -1055,7 +1040,16 @@ export function LiveGameClient({
                               : null;
 
                             return (
-                              <div key={`ab-${abIdx}`} className={`${borderClass} pl-3 py-2 rounded-r`}>
+                              <div key={`ab-${abIdx}`} className={`${borderClass} pl-3 py-2 rounded-r bg-white/[0.015]`}>
+                                <div className="flex items-center gap-2 mb-1">
+                                  {(() => {
+                                    const tone = playTone(ab);
+                                    return <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wide ${tone.cls}`}>{tone.tag}</span>;
+                                  })()}
+                                  {ab.pitches.length > 0 && (
+                                    <span className="text-[9px] text-white/35">{ab.pitches.length} pitch{ab.pitches.length === 1 ? '' : 'es'}</span>
+                                  )}
+                                </div>
                                 {/* Title line — human-readable play description */}
                                 {formatted ? (
                                   <div className="text-[13px] leading-snug text-white/90">{formatted.title}</div>

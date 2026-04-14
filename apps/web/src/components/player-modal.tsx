@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { SprayChart } from '@/components/stats/spray-chart';
+import { getStatAbbreviationMeaning } from '@/lib/stat-abbreviations';
 
 type Tab = 'batting' | 'pitching' | 'fielding' | 'gamelog' | 'spraychart';
 
@@ -267,6 +268,7 @@ export function PlayerModal({ slug, firstName, lastName, onClose }: PlayerModalP
                           {['Season','Team','G','PA','AB','R','H','2B','3B','HR','RBI','BB','SO','SB','CS','AVG','OBP','SLG','OPS'].map(col => (
                             <th
                               key={col}
+                              title={getStatAbbreviationMeaning(col) ?? undefined}
                               className={`px-2 py-1.5 font-semibold ${
                                 col === 'Season' || col === 'Team' ? 'text-left' : 'text-right'
                               }`}
@@ -345,6 +347,7 @@ export function PlayerModal({ slug, firstName, lastName, onClose }: PlayerModalP
                           {['Season','Team','G','GS','W','L','SV','IP','H','R','ER','BB','SO','HR','ERA','WHIP'].map(col => (
                             <th
                               key={col}
+                              title={getStatAbbreviationMeaning(col) ?? undefined}
                               className={`px-2 py-1.5 font-semibold ${
                                 col === 'Season' || col === 'Team' ? 'text-left' : 'text-right'
                               }`}
@@ -424,6 +427,7 @@ export function PlayerModal({ slug, firstName, lastName, onClose }: PlayerModalP
                           {['Season','Team','Pos','G','Inn','PO','A','E','DP','FP%'].map(col => (
                             <th
                               key={col}
+                              title={getStatAbbreviationMeaning(col) ?? undefined}
                               className={`px-2 py-1.5 font-semibold ${
                                 col === 'Season' || col === 'Team' || col === 'Pos' ? 'text-left' : 'text-right'
                               }`}
@@ -498,7 +502,7 @@ export function PlayerModal({ slug, firstName, lastName, onClose }: PlayerModalP
                           <thead>
                             <tr className="border-b border-[#ccc] bg-[#f3f3f3]">
                               {['Date', 'Opp', 'AB', 'R', 'H', '2B', '3B', 'HR', 'RBI', 'BB', 'SO', 'SB'].map(col => (
-                                <th key={col} className={`px-1.5 py-1 text-[8px] font-bold tracking-wider text-[#333] whitespace-nowrap ${col === 'Date' || col === 'Opp' ? 'text-left' : 'text-right'}`}>
+                                <th key={col} title={getStatAbbreviationMeaning(col) ?? undefined} className={`px-1.5 py-1 text-[8px] font-bold tracking-wider text-[#333] whitespace-nowrap ${col === 'Date' || col === 'Opp' ? 'text-left' : 'text-right'}`}>
                                   {col}
                                 </th>
                               ))}
@@ -540,7 +544,7 @@ export function PlayerModal({ slug, firstName, lastName, onClose }: PlayerModalP
                           <thead>
                             <tr className="border-b border-[#ccc] bg-[#f3f3f3]">
                               {['Date', 'Opp', 'Dec', 'IP', 'H', 'R', 'ER', 'BB', 'SO', 'HR'].map(col => (
-                                <th key={col} className={`px-2 py-1.5 text-[9px] font-bold uppercase tracking-wider text-[#333] whitespace-nowrap ${col === 'Date' || col === 'Opp' ? 'text-left' : 'text-right'}`}>
+                                <th key={col} title={getStatAbbreviationMeaning(col) ?? undefined} className={`px-2 py-1.5 text-[9px] font-bold uppercase tracking-wider text-[#333] whitespace-nowrap ${col === 'Date' || col === 'Opp' ? 'text-left' : 'text-right'}`}>
                                   {col}
                                 </th>
                               ))}
