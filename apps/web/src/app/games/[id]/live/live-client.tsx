@@ -47,10 +47,6 @@ const RUNNER_EVENT_TYPES = new Set([
   'double_play', 'triple_play', 'illegal_pitch', 'end_half_inning',
 ]);
 
-const PITCH_LABELS: Record<string, string> = {
-  ball: 'Ball', strike: 'Strike', called_strike: 'Called Strike', swinging_strike: 'Swinging Strike', foul: 'Foul',
-};
-
 interface AtBat {
   batterId: number | null;
   batterName: string;
@@ -218,6 +214,7 @@ export function LiveGameClient({
   const [seasonCtx, setSeasonCtx] = useState<SeasonContext>(initialSeasonCtx);
   const [loading, setLoading] = useState(false);
   const [tab, setTab] = useState<Tab>('plays');
+  const [playMode, setPlayMode] = useState<'compact' | 'expanded'>('compact');
   const { connected, gameState, lastEvent, isFinal, viewerCount } = useGameSocket(gameId, apiBase);
 
   // Re-fetch when new event arrives via WebSocket
@@ -531,11 +528,20 @@ export function LiveGameClient({
 
   const playTone = (ab: AtBat): { tag: string; cls: string } => {
     const t = ab.result?.eventType || '';
+    if ((ab.result?.runsScored ?? 0) > 0) {
+      return { tag: 'SCORING PLAY', cls: 'bg-emerald-900/35 text-emerald-200 border border-emerald-400/50' };
+    }
     if (['single', 'bunt_single', 'double', 'triple', 'home_run', 'inside_park_hr', 'ground_rule_double'].includes(t)) {
       return { tag: 'HIT', cls: 'bg-blue-900/30 text-blue-300 border border-blue-500/30' };
     }
     if (['walk', 'intentional_walk', 'hit_by_pitch'].includes(t)) {
       return { tag: 'FREE PASS', cls: 'bg-emerald-900/20 text-emerald-300 border border-emerald-500/30' };
+    }
+    if (['error', 'sac_bunt_error', 'sac_fly_error', 'advance_on_error'].includes(t)) {
+      return { tag: 'ERROR', cls: 'bg-orange-900/30 text-orange-300 border border-orange-500/40' };
+    }
+    if (['stolen_base', 'caught_stealing', 'picked_off', 'defensive_indifference'].includes(t) || (!ab.result && ab.betweenEvents.some(e => ['stolen_base', 'caught_stealing', 'picked_off', 'defensive_indifference'].includes(e.eventType)))) {
+      return { tag: 'RUNNER', cls: 'bg-amber-900/20 text-amber-300 border border-amber-500/30' };
     }
     if (['ground_out', 'fly_out', 'line_out', 'pop_out', 'bunt_out', 'strikeout', 'strikeout_swinging', 'strikeout_looking', 'double_play', 'triple_play', 'fielders_choice'].includes(t)) {
       return { tag: 'OUT', cls: 'bg-red-900/20 text-red-300 border border-red-500/30' };
@@ -701,6 +707,86 @@ export function LiveGameClient({
       </div>
     );
   };
+
+  const baseStateFromEvent = (evt?: GameEvent | null) => ({
+    first: Boolean(evt?.runnerFirstId),
+    second: Boolean(evt?.runnerSecondId),
+    third: Boolean(evt?.runnerThirdId),
+  });
+
+  const outLabel = (outs: number) => {
+    if (outs <= 0) return '0 outs';
+    if (outs === 1) return '1 out';
+    return `${outs} outs`;
+  };
+
+  const pitchSymbol = (evt: GameEvent): 'B' | 'S' | 'F' | 'X' | 'P' => {
+    const detail = String(evt.eventDetail || '').toLowerCase();
+    if (detail === 'ball') return 'B';
+    if (detail === 'foul') return 'F';
+    if (detail === 'strike' || detail === 'called_strike' || detail === 'swinging_strike') return 'S';
+    return 'P';
+  };
+
+  const pitchChipClass = (symbol: 'B' | 'S' | 'F' | 'X' | 'P') => {
+    if (symbol === 'B') return 'bg-emerald-900/30 text-emerald-300 border border-emerald-500/30';
+    if (symbol === 'S') return 'bg-red-900/25 text-red-300 border border-red-500/30';
+    if (symbol === 'F') return 'bg-amber-900/25 text-amber-300 border border-amber-500/30';
+    if (symbol === 'X') return 'bg-blue-900/25 text-blue-300 border border-blue-500/30';
+    return 'bg-white/5 text-white/40 border border-white/10';
+  };
+
+  const ordinalInning = (inning: number) => {
+    if (inning % 100 >= 11 && inning % 100 <= 13) return `${inning}th`;
+    const suffix = inning % 10 === 1 ? 'st' : inning % 10 === 2 ? 'nd' : inning % 10 === 3 ? 'rd' : 'th';
+    return `${inning}${suffix}`;
+  };
+
+  const compactRunnerSummary = (ab: AtBat) => {
+    const entries: string[] = [];
+    for (const re of ab.betweenEvents) {
+      const title = formatPlayByPlay(re).title;
+      if (title) entries.push(title);
+    }
+    if (ab.result?.runsScored && ab.result.runsScored > 0) {
+      entries.push(`${ab.result.runsScored} run${ab.result.runsScored > 1 ? 's' : ''} scored`);
+    }
+    return entries.join(' → ');
+  };
+
+  const BaseDiamond = ({ first, second, third }: { first: boolean; second: boolean; third: boolean }) => (
+    <svg viewBox="0 0 50 50" className="w-9 h-9 shrink-0" aria-label="Base occupancy">
+      <rect x="19" y="2" width="12" height="12" rx="1.5" transform="rotate(45 25 8)"
+        fill={second ? '#22c55e' : 'rgba(255,255,255,0.08)'} stroke="rgba(255,255,255,0.25)" strokeWidth="1" />
+      <rect x="35" y="18" width="12" height="12" rx="1.5" transform="rotate(45 41 24)"
+        fill={first ? '#22c55e' : 'rgba(255,255,255,0.08)'} stroke="rgba(255,255,255,0.25)" strokeWidth="1" />
+      <rect x="3" y="18" width="12" height="12" rx="1.5" transform="rotate(45 9 24)"
+        fill={third ? '#22c55e' : 'rgba(255,255,255,0.08)'} stroke="rgba(255,255,255,0.25)" strokeWidth="1" />
+    </svg>
+  );
+
+  const OutsDots = ({ outs }: { outs: number }) => (
+    <div className="flex items-center gap-1" aria-label={outLabel(outs)}>
+      {[0, 1, 2].map(i => (
+        <span key={i} className={`w-2.5 h-2.5 rounded-full border ${i < outs ? 'bg-amber-500 border-amber-400' : 'border-white/25'}`} />
+      ))}
+    </div>
+  );
+
+  const CountDots = ({ balls, strikes }: { balls: number; strikes: number }) => (
+    <div className="flex items-center gap-2 text-[9px] text-white/40">
+      <div className="flex items-center gap-1" aria-label={`${balls} balls`}>
+        {[0, 1, 2].map(i => (
+          <span key={`b-${i}`} className={`w-2 h-2 rounded-full border ${i < balls ? 'bg-emerald-500 border-emerald-400' : 'border-white/20'}`} />
+        ))}
+      </div>
+      <div className="flex items-center gap-1" aria-label={`${strikes} strikes`}>
+        {[0, 1].map(i => (
+          <span key={`s-${i}`} className={`w-2 h-2 rounded-full border ${i < strikes ? 'bg-red-500 border-red-400' : 'border-white/20'}`} />
+        ))}
+      </div>
+    </div>
+  );
 
   const gameEra = (er: number, ipStr: string) => {
     const ip = parseFloat(String(ipStr).replace(',', '.')) || 0;
@@ -984,7 +1070,23 @@ export function LiveGameClient({
           {/* PLAY-BY-PLAY */}
           {tab === 'plays' && (
             <div>
-              <h3 className="text-xs font-bold uppercase tracking-wider text-white/30 mb-3">Play-by-Play</h3>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-white/30">Play-by-Play</h3>
+                <div className="flex items-center gap-1 bg-white/5 border border-white/10 rounded-md p-0.5">
+                  <button
+                    onClick={() => setPlayMode('compact')}
+                    className={`px-2 py-1 text-[10px] uppercase font-bold rounded ${playMode === 'compact' ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white/70'}`}
+                  >
+                    Compact
+                  </button>
+                  <button
+                    onClick={() => setPlayMode('expanded')}
+                    className={`px-2 py-1 text-[10px] uppercase font-bold rounded ${playMode === 'expanded' ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white/70'}`}
+                  >
+                    Expanded
+                  </button>
+                </div>
+              </div>
               {loading ? (
                 <p className="text-white/20 text-sm">Loading...</p>
               ) : groupedAtBats.length === 0 ? (
@@ -995,8 +1097,8 @@ export function LiveGameClient({
                     <div key={group.key}>
                       {/* Inning header */}
                       <div className="flex items-center gap-2 mb-2">
-                        <div className="text-xs font-bold text-white/60 bg-white/5 rounded px-2 py-1">
-                          {group.half === 'top' ? '▲' : '▼'} {group.inning}{group.inning === 1 ? 'st' : group.inning === 2 ? 'nd' : group.inning === 3 ? 'rd' : 'th'}
+                        <div className="text-[11px] font-bold text-white/80 bg-white/10 border border-white/15 rounded px-2.5 py-1">
+                          {group.half === 'top' ? 'Top' : 'Bottom'} {ordinalInning(group.inning)}
                         </div>
                         <div className="text-[10px] text-white/30">
                           {group.half === 'top' ? game.awayTeamName : game.homeTeamName} batting
@@ -1038,84 +1140,93 @@ export function LiveGameClient({
                             const formatted = result
                               ? formatPlayByPlay(result, { outsBefore: outsAfter - (result.outsRecorded ?? 0), outsAfter })
                               : null;
+                            const stateEvt = result ?? ab.betweenEvents[ab.betweenEvents.length - 1] ?? ab.pitches[ab.pitches.length - 1] ?? null;
+                            const bases = baseStateFromEvent(stateEvt);
+                            const tone = playTone(ab);
+                            const runnerSummary = compactRunnerSummary(ab);
+                            const pitchSymbols: ('B' | 'S' | 'F' | 'X' | 'P')[] = ab.pitches.map(pitchSymbol);
+                            if (result) {
+                              const resultSymbol: 'B' | 'S' | 'F' | 'X' | 'P' =
+                                ['walk', 'intentional_walk', 'hit_by_pitch', 'catcher_obstruction'].includes(result.eventType) ? 'B' : 'X';
+                              pitchSymbols.push(resultSymbol);
+                            }
+                            let balls = 0;
+                            let strikes = 0;
+                            for (const p of ab.pitches) {
+                              const detail = (p.eventDetail || '').toLowerCase();
+                              if (detail === 'ball') balls = Math.min(3, balls + 1);
+                              else if (detail === 'foul') strikes = Math.min(2, strikes + 1);
+                              else if (detail === 'strike' || detail === 'called_strike' || detail === 'swinging_strike') strikes = Math.min(2, strikes + 1);
+                            }
+                            const contextLine = `${group.half === 'top' ? game.awayTeamName : game.homeTeamName} batting • ${group.half === 'top' ? game.homeTeamName : game.awayTeamName} pitching`;
 
                             return (
-                              <div key={`ab-${abIdx}`} className={`${borderClass} pl-3 py-2 rounded-r bg-white/[0.015]`}>
-                                <div className="flex items-center gap-2 mb-1">
-                                  {(() => {
-                                    const tone = playTone(ab);
-                                    return <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wide ${tone.cls}`}>{tone.tag}</span>;
-                                  })()}
-                                  {ab.pitches.length > 0 && (
-                                    <span className="text-[9px] text-white/35">{ab.pitches.length} pitch{ab.pitches.length === 1 ? '' : 'es'}</span>
-                                  )}
+                              <div key={`ab-${abIdx}`} className={`${borderClass} rounded-lg bg-white/[0.02] px-3 py-2`}>
+                                <div className="flex items-start justify-between gap-3">
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex items-center gap-2 mb-1">
+                                      <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wide ${tone.cls}`}>{tone.tag}</span>
+                                      {ab.pitches.length > 0 && (
+                                        <span className="text-[9px] text-white/35">{ab.pitches.length} pitch{ab.pitches.length === 1 ? '' : 'es'}</span>
+                                      )}
+                                    </div>
+                                    <div className="text-[13px] leading-snug text-white/90 font-semibold">
+                                      {formatted ? formatted.title : ab.pitches.length > 0 ? `${ab.batterName} at bat` : stateEvt ? formatEventLine(stateEvt) : `${ab.batterName} play`}
+                                    </div>
+                                    <div className="text-[10px] text-white/35 mt-0.5">
+                                      {formatted?.subtitle ? `${formatted.subtitle} • ${contextLine}` : contextLine}
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-2 shrink-0">
+                                    <div className="flex flex-col items-center gap-1">
+                                      <BaseDiamond first={bases.first} second={bases.second} third={bases.third} />
+                                      <OutsDots outs={Math.max(0, Math.min(3, outsAfter))} />
+                                    </div>
+                                  </div>
                                 </div>
-                                {/* Title line — human-readable play description */}
-                                {formatted ? (
-                                  <div className="text-[13px] leading-snug text-white/90">{formatted.title}</div>
-                                ) : ab.pitches.length > 0 ? (
-                                  <div className="text-[13px] leading-snug text-white/50 italic">{ab.batterName} at bat…</div>
-                                ) : null}
+                                <div className="mt-2 flex flex-wrap items-center gap-2">
+                                  <CountDots balls={balls} strikes={strikes} />
+                                  <div className="flex flex-wrap gap-1">
+                                    {pitchSymbols.map((symbol, pi) => (
+                                      <span key={pi} className={`text-[9px] px-1.5 py-0.5 rounded font-mono ${pitchChipClass(symbol)}`}>
+                                        {symbol}
+                                      </span>
+                                    ))}
+                                  </div>
+                                  {formatted?.chips?.slice(0, playMode === 'compact' ? 2 : formatted.chips.length).map((chip, ci) => {
+                                    let chipClass = 'bg-white/5 text-white/40';
+                                    if (chip.includes('out')) chipClass = 'bg-red-900/15 text-red-400/50';
+                                    else if (chip.includes('RBI')) chipClass = 'bg-emerald-900/20 text-emerald-400/70';
+                                    else chipClass = 'bg-amber-900/15 text-amber-400/60';
+                                    return (
+                                      <span key={ci} className={`text-[9px] font-medium px-1.5 py-0.5 rounded ${chipClass}`}>
+                                        {chip}
+                                      </span>
+                                    );
+                                  })}
+                                </div>
 
-                                {/* Subtitle — pitcher + state */}
-                                {formatted && formatted.subtitle && (
-                                  <div className="text-[10px] text-white/30 mt-0.5">{formatted.subtitle}</div>
+                                {runnerSummary && (
+                                  <div className="text-[11px] text-amber-300/75 mt-1.5">{runnerSummary}</div>
                                 )}
 
-                                {/* State chips — outs + bases + RBI */}
-                                {formatted && formatted.chips.length > 0 && (
-                                  <div className="flex flex-wrap gap-1 mt-1">
-                                    {formatted.chips.map((chip, ci) => {
-                                      let chipClass = 'bg-white/5 text-white/40';
-                                      if (chip.includes('out')) chipClass = 'bg-red-900/15 text-red-400/50';
-                                      else if (chip.includes('RBI')) chipClass = 'bg-emerald-900/20 text-emerald-400/70';
-                                      else chipClass = 'bg-amber-900/15 text-amber-400/60';
+                                {playMode === 'expanded' && ab.betweenEvents.length > 0 && (
+                                  <div className="mt-1.5 space-y-1">
+                                    {ab.betweenEvents.map((re, rei) => {
+                                      const reFormatted = formatPlayByPlay(re);
                                       return (
-                                        <span key={ci} className={`text-[9px] font-medium px-1.5 py-0.5 rounded ${chipClass}`}>
-                                          {chip}
-                                        </span>
+                                        <div key={`re-${rei}`} className="text-[11px] text-white/60 flex items-start gap-1.5">
+                                          <span className="text-amber-500 mt-px">↳</span>
+                                          <div>
+                                            <span>{reFormatted.title}</span>
+                                            {re.runsScored > 0 && <span className="text-emerald-400/70 ml-1">({re.runsScored} run{re.runsScored > 1 ? 's' : ''})</span>}
+                                            {re.outsRecorded > 0 && <span className="text-red-400/60 ml-1">({re.outsRecorded} out{re.outsRecorded > 1 ? 's' : ''})</span>}
+                                          </div>
+                                        </div>
                                       );
                                     })}
                                   </div>
                                 )}
-
-                                {/* Pitch sequence */}
-                                {ab.pitches.length > 0 && (
-                                  <div className="flex flex-wrap gap-1 mt-1.5">
-                                    {(() => {
-                                      let b = 0, s = 0;
-                                      return ab.pitches.map((p, pi) => {
-                                        const detail = (p.eventDetail || '').toLowerCase();
-                                        if (detail === 'ball') b++;
-                                        else if (detail === 'foul') { if (s < 2) s++; }
-                                        else if (detail === 'strike' || detail === 'called_strike' || detail === 'swinging_strike') s++;
-                                        const label = PITCH_LABELS[detail] || detail;
-                                        const isBall = detail === 'ball';
-                                        const isStrike = detail.includes('strike');
-                                        return (
-                                          <span key={pi} className={`text-[9px] px-1.5 py-0.5 rounded font-mono ${isBall ? 'bg-green-900/30 text-green-400/70' : isStrike ? 'bg-red-900/20 text-red-400/60' : 'bg-yellow-900/20 text-yellow-400/60'}`}>
-                                            {label} {b}-{s}
-                                          </span>
-                                        );
-                                      });
-                                    })()}
-                                  </div>
-                                )}
-
-                                {/* Runner events during at-bat — also formatted */}
-                                {ab.betweenEvents.map((re, rei) => {
-                                  const reFormatted = formatPlayByPlay(re);
-                                  return (
-                                    <div key={`re-${rei}`} className="text-[11px] text-amber-400/70 mt-1 ml-1 flex items-start gap-1.5">
-                                      <span className="text-amber-500 mt-px">◆</span>
-                                      <div>
-                                        <span>{reFormatted.title}</span>
-                                        {re.runsScored > 0 && <span className="text-emerald-400/70 ml-1">({re.runsScored} run{re.runsScored > 1 ? 's' : ''})</span>}
-                                        {re.outsRecorded > 0 && <span className="text-red-400/60 ml-1">({re.outsRecorded} out{re.outsRecorded > 1 ? 's' : ''})</span>}
-                                      </div>
-                                    </div>
-                                  );
-                                })}
                               </div>
                             );
                           });
