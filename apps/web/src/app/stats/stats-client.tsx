@@ -47,6 +47,9 @@ interface BattingStat {
   runsCreated?: string | null;
   gpa?: string | null;
   babip?: string | null;
+  iso?: string | null;
+  bbPct?: string | null;
+  kPct?: string | null;
 }
 
 interface PitchingStat {
@@ -219,6 +222,10 @@ const BATTING_COLUMNS: Column[] = [
   { key: 'onBasePct', label: 'OBP', align: 'right' },
   { key: 'sluggingPct', label: 'SLG', align: 'right' },
   { key: 'ops', label: 'OPS', align: 'right', highlight: true },
+  { key: 'babip', label: 'BABIP', align: 'right' },
+  { key: 'iso', label: 'ISO', align: 'right' },
+  { key: 'bbPct', label: 'BB%', align: 'right' },
+  { key: 'kPct', label: 'K%', align: 'right' },
 ];
 
 const BATTING_ADVANCED_COLUMNS: Column[] = [
@@ -396,13 +403,29 @@ export function StatsClient({
   initialBatting, initialPitching, initialFielding,
   initialBattingLeaders, initialPitchingLeaders,
 }: StatsClientProps) {
+  const enrichBattingRates = (rows: BattingStat[]): BattingStat[] => {
+    return rows.map((r) => {
+      const ab = Number(r.atBats ?? 0);
+      const hits = Number(r.hits ?? 0);
+      const tb = Number((r as any).totalBases ?? 0);
+      const pa = Number(r.plateAppearances ?? 0);
+      const bb = Number(r.walks ?? 0);
+      const so = Number(r.strikeouts ?? 0);
+      return {
+        ...r,
+        iso: ab > 0 ? ((tb - hits) / ab).toFixed(3) : null,
+        bbPct: pa > 0 ? ((bb / pa) * 100).toFixed(1) : null,
+        kPct: pa > 0 ? ((so / pa) * 100).toFixed(1) : null,
+      };
+    });
+  };
   const { openModal, renderModal } = usePlayerModal();
   const router = useRouter();
   const pathname = usePathname();
   const [tab, setTab] = useState<StatsTab>('batting');
   const [seasons, setSeasons] = useState<Season[]>(initialSeasons);
   const [selectedSeasonId, setSelectedSeasonId] = useState<number | null>(initialSeasonId); // null = All time
-  const [battingStats, setBattingStats] = useState<BattingStat[]>(initialBatting);
+  const [battingStats, setBattingStats] = useState<BattingStat[]>(enrichBattingRates(initialBatting));
   const [pitchingStats, setPitchingStats] = useState<PitchingStat[]>(initialPitching);
   const [fieldingStats, setFieldingStats] = useState<FieldingStat[]>(
     initialFielding.map((f: any) => ({ ...f, sba: (f.catcherStolenBases || 0) + (f.catcherCaughtStealing || 0) }))
@@ -441,7 +464,7 @@ export function StatsClient({
       fetch(`/api/proxy/public/stats/fielding?${seasonParam}`).then(r => r.json()).catch(() => []),
     ])
       .then(([batting, bLeaders, pitching, pLeaders, fielding]) => {
-        setBattingStats(Array.isArray(batting) ? batting : []);
+        setBattingStats(Array.isArray(batting) ? enrichBattingRates(batting) : []);
         setBattingLeaders(bLeaders && typeof bLeaders === 'object' && !Array.isArray(bLeaders) ? bLeaders : null);
         setPitchingStats(Array.isArray(pitching) ? pitching : []);
         setPitchingLeaders(pLeaders && typeof pLeaders === 'object' && !Array.isArray(pLeaders) ? pLeaders : null);
