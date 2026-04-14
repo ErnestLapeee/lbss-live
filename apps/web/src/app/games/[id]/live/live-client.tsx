@@ -768,6 +768,17 @@ export function LiveGameClient({
 
   const pitchSequenceInline = (symbols: ('B' | 'S' | 'F' | 'X' | 'P')[]) => symbols.join(' ');
 
+  const meaningfulFinalCount = (resultType: string | undefined, finalCount: string) => {
+    if (!resultType) return null;
+    const showFor = new Set([
+      'walk', 'intentional_walk', 'strikeout', 'strikeout_swinging', 'strikeout_looking',
+      'caught_foul_tip', 'dropped_third_strike_out', 'wild_pitch_third_strike',
+    ]);
+    if (!showFor.has(resultType)) return null;
+    if (finalCount === '3-2') return 'Full count';
+    return finalCount;
+  };
+
   const pitchLabel = (evt?: GameEvent | null) => {
     const detail = String(evt?.eventDetail || '').toLowerCase();
     if (detail === 'ball') return 'Ball';
@@ -1191,16 +1202,11 @@ export function LiveGameClient({
                                 ['walk', 'intentional_walk', 'hit_by_pitch', 'catcher_obstruction'].includes(result.eventType) ? 'B' : 'X';
                               pitchSymbols.push(resultSymbol);
                             }
-                            let balls = 0;
-                            let strikes = 0;
-                            for (const p of ab.pitches) {
-                              const detail = (p.eventDetail || '').toLowerCase();
-                              if (detail === 'ball') balls = Math.min(3, balls + 1);
-                              else if (detail === 'foul') strikes = Math.min(2, strikes + 1);
-                              else if (detail === 'strike' || detail === 'called_strike' || detail === 'swinging_strike') strikes = Math.min(2, strikes + 1);
-                            }
                             const pitchBreakdown = derivePitchBreakdown(ab);
-                            const pitchPreview = pitchSequenceInline(pitchSymbols.slice(0, 4));
+                            const pitchSummary = pitchSymbols.length > 8
+                              ? `${pitchSequenceInline(pitchSymbols.slice(0, 8))} ...`
+                              : pitchSequenceInline(pitchSymbols);
+                            const finalCountHint = meaningfulFinalCount(ab.result?.eventType, pitchBreakdown.finalCount);
                             const cardKey = `${group.key}-${abIdx}-${ab.result?.id ?? 'runner'}`;
                             const showPitchDetails = playMode === 'expanded' || Boolean(openPitchCards[cardKey]);
                             const contextLine = `${group.half === 'top' ? game.awayTeamName : game.homeTeamName} batting • ${group.half === 'top' ? game.homeTeamName : game.awayTeamName} pitching`;
@@ -1230,12 +1236,11 @@ export function LiveGameClient({
                                   </div>
                                 </div>
                                 <div className="mt-2.5 text-[10px] text-white/34 flex flex-wrap items-center gap-x-3 gap-y-1">
-                                  {pitchBreakdown.rows.length > 0 && (
-                                    <span className="font-mono tracking-wide">Pitches {Math.max(1, ab.pitches.length || (ab.result ? 1 : 0))}</span>
+                                  {pitchSummary && (
+                                    <span className="font-mono tracking-wide">Pitches: {pitchSummary}</span>
                                   )}
-                                  <span className="font-mono">Count B{balls} S{strikes}</span>
-                                  {pitchPreview && playMode === 'compact' && (
-                                    <span className="font-mono text-white/28">{pitchPreview}{pitchSymbols.length > 4 ? ' ...' : ''}</span>
+                                  {finalCountHint && (
+                                    <span className="text-white/30">({finalCountHint})</span>
                                   )}
                                   {playMode === 'expanded' && formatted?.chips?.map((chip, ci) => (
                                     <span key={ci}>{chip}</span>
@@ -1271,7 +1276,11 @@ export function LiveGameClient({
                                             ))}
                                           </div>
                                         ))}
-                                        <div className="text-[10px] text-white/32">Final count {pitchBreakdown.finalCount}</div>
+                                        {finalCountHint && (
+                                          <div className="text-[10px] text-white/32">
+                                            {finalCountHint === 'Full count' ? 'Final count 3-2 (Full count)' : `Final count ${pitchBreakdown.finalCount}`}
+                                          </div>
+                                        )}
                                       </div>
                                     )}
                                   </div>
