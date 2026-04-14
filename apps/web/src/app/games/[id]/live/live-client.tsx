@@ -1062,7 +1062,10 @@ export function LiveGameClient({
 
       <div className="max-w-6xl mx-auto px-4 py-4 space-y-4">
         {/* Scoreboard */}
-        <div className="bg-[#111827] rounded-xl border border-[#1f2937] p-4">
+        <div
+          className="bg-[#111827] rounded-xl border border-[#1f2937] p-4"
+          style={{ backgroundColor: '#111827', color: '#e5e7eb' }}
+        >
           <div className="flex items-center justify-between max-w-xl mx-auto">
             {/* Away */}
             <div className="flex items-center gap-3">
