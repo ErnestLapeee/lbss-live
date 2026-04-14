@@ -514,8 +514,8 @@ export function LiveGameClient({
 
   if (!game) {
     return (
-      <div className="min-h-screen bg-primary flex items-center justify-center">
-        <div className="text-text-muted">Game not found</div>
+      <div className="min-h-screen bg-[#f3f4f6] flex items-center justify-center">
+        <div className="text-[#6b7280]">Game not found</div>
       </div>
     );
   }
@@ -1032,11 +1032,11 @@ export function LiveGameClient({
   };
 
   return (
-    <div className="min-h-screen bg-primary">
+    <div className="min-h-screen bg-[#f3f4f6]">
       {/* Header */}
-      <div className="bg-primary-light border-b border-white/10">
+      <div className="bg-white border-b border-[#d1d5db]">
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center gap-4">
-          <Link href="/schedule" className="text-sm text-white/40 hover:text-white transition-colors">← Schedule</Link>
+          <Link href="/schedule" className="text-sm text-[#6b7280] hover:text-[#111827] transition-colors">← Schedule</Link>
           <div className="flex items-center gap-2">
             {status === 'live' && (
               <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-live/20 text-live text-[10px] font-bold uppercase">
@@ -1045,13 +1045,13 @@ export function LiveGameClient({
               </span>
             )}
             {status === 'final' && (
-              <span className="px-2 py-0.5 rounded-full bg-white/10 text-white/50 text-[10px] font-bold uppercase">Final</span>
+              <span className="px-2 py-0.5 rounded-full bg-[#f3f4f6] text-[#6b7280] text-[10px] font-bold uppercase border border-[#d1d5db]">Final</span>
             )}
             {connected && status === 'live' && (
               <span className="text-[10px] text-green-400">Connected</span>
             )}
             {viewerCount > 0 && (
-              <span className="flex items-center gap-1 text-[10px] text-white/40">
+              <span className="flex items-center gap-1 text-[10px] text-[#6b7280]">
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
                 {viewerCount} watching
               </span>
@@ -1067,32 +1067,32 @@ export function LiveGameClient({
             {/* Away */}
             <div className="flex items-center gap-3">
               <div>
-                <div className="text-[10px] text-white/30 uppercase tracking-wider">Away</div>
-                <div className="text-base font-bold text-white">{game.awayTeamName}</div>
+                <div className="text-[10px] text-[#6b7280] uppercase tracking-wider">Away</div>
+                <div className="text-base font-bold text-[#111827]">{game.awayTeamName}</div>
               </div>
-              <div className="text-4xl font-bold font-mono text-white">{displayScore.away}</div>
+              <div className="text-4xl font-bold font-mono text-[#111827]">{displayScore.away}</div>
             </div>
 
             {/* Inning + Bases + Outs */}
             <div className="flex flex-col items-center gap-2">
               {status === 'live' ? (
-                <div className="text-xl font-bold text-white">{displayHalf === 'top' ? '▲' : '▼'} {displayInning}</div>
+                <div className="text-xl font-bold text-[#111827]">{displayHalf === 'top' ? '▲' : '▼'} {displayInning}</div>
               ) : (
-                <div className="text-sm font-bold text-white/40 uppercase">{status}</div>
+                <div className="text-sm font-bold text-[#6b7280] uppercase">{status}</div>
               )}
               {status === 'live' && (
                 <>
                   <svg viewBox="0 0 50 50" className="w-10 h-10">
                     <rect x="19" y="2" width="12" height="12" rx="1.5" transform="rotate(45 25 8)"
-                      fill={displayBases.second ? '#22c55e' : 'rgba(255,255,255,0.1)'} stroke="rgba(255,255,255,0.25)" strokeWidth="1" />
+                      fill={displayBases.second ? '#22c55e' : 'rgba(0,0,0,0.06)'} stroke="rgba(0,0,0,0.2)" strokeWidth="1" />
                     <rect x="35" y="18" width="12" height="12" rx="1.5" transform="rotate(45 41 24)"
-                      fill={displayBases.first ? '#22c55e' : 'rgba(255,255,255,0.1)'} stroke="rgba(255,255,255,0.25)" strokeWidth="1" />
+                      fill={displayBases.first ? '#22c55e' : 'rgba(0,0,0,0.06)'} stroke="rgba(0,0,0,0.2)" strokeWidth="1" />
                     <rect x="3" y="18" width="12" height="12" rx="1.5" transform="rotate(45 9 24)"
-                      fill={displayBases.third ? '#22c55e' : 'rgba(255,255,255,0.1)'} stroke="rgba(255,255,255,0.25)" strokeWidth="1" />
+                      fill={displayBases.third ? '#22c55e' : 'rgba(0,0,0,0.06)'} stroke="rgba(0,0,0,0.2)" strokeWidth="1" />
                   </svg>
                   <div className="flex gap-1">
                     {[0, 1, 2].map(i => (
-                      <div key={i} className={`w-3 h-3 rounded-full border ${i < displayOuts ? 'bg-amber-500 border-amber-400' : 'border-white/20'}`} />
+                      <div key={i} className={`w-3 h-3 rounded-full border ${i < displayOuts ? 'bg-amber-500 border-amber-400' : 'border-[#9ca3af]'}`} />
                     ))}
                   </div>
                 </>
@@ -1101,10 +1101,10 @@ export function LiveGameClient({
 
             {/* Home */}
             <div className="flex items-center gap-3">
-              <div className="text-4xl font-bold font-mono text-white">{displayScore.home}</div>
+              <div className="text-4xl font-bold font-mono text-[#111827]">{displayScore.home}</div>
               <div className="text-right">
-                <div className="text-[10px] text-white/30 uppercase tracking-wider">Home</div>
-                <div className="text-base font-bold text-white">{game.homeTeamName}</div>
+                <div className="text-[10px] text-[#6b7280] uppercase tracking-wider">Home</div>
+                <div className="text-base font-bold text-[#111827]">{game.homeTeamName}</div>
               </div>
             </div>
           </div>
@@ -1113,35 +1113,35 @@ export function LiveGameClient({
           <div className="mt-4 overflow-x-auto">
             <table className="w-full text-[10px] font-mono max-w-xl mx-auto">
               <thead>
-                <tr className="text-white/25">
+                <tr className="text-[#6b7280]">
                   <th className="text-left px-1 w-16"></th>
                   {Array.from({ length: maxInnings }, (_, i) => (
                     <th key={i} className="text-center w-5">{i + 1}</th>
                   ))}
-                  <th className="text-center w-6 border-l border-white/10 font-bold">R</th>
+                  <th className="text-center w-6 border-l border-[#d1d5db] font-bold">R</th>
                   <th className="text-center w-6 font-bold">H</th>
                   <th className="text-center w-6 font-bold">E</th>
                 </tr>
               </thead>
               <tbody>
                 <tr>
-                  <td className="text-white/50 px-1 font-semibold text-[11px]">{game.awayTeamName?.slice(0, 5)}</td>
+                  <td className="text-[#4b5563] px-1 font-semibold text-[11px]">{game.awayTeamName?.slice(0, 5)}</td>
                   {Array.from({ length: maxInnings }, (_, i) => {
                     const hasVal = i < awayLineScore.length;
                     const isCurrent = status === 'live' && i + 1 === displayInning && displayHalf === 'top';
                     const isFuture = i + 1 > Math.max(awayLineScore.length, homeLineScore.length);
                     return (
-                      <td key={i} className={`text-center ${isCurrent ? 'text-live font-bold' : hasVal ? 'text-white/60' : 'text-white/15'}`}>
+                      <td key={i} className={`text-center ${isCurrent ? 'text-live font-bold' : hasVal ? 'text-[#4b5563]' : 'text-[#d1d5db]'}`}>
                         {hasVal ? awayLineScore[i] : (isCurrent ? '•' : isFuture ? '' : '')}
                       </td>
                     );
                   })}
-                  <td className="text-center font-bold text-white border-l border-white/10">{displayScore.away}</td>
-                  <td className="text-center text-white/60">{awayBatting.reduce((s, b) => s + (b.hits || 0), 0) || awayLineup.reduce((s, p) => s + (liveBattingMap[p.playerId]?.h ?? 0), 0)}</td>
-                  <td className="text-center text-white/60">{errorCounts.away}</td>
+                  <td className="text-center font-bold text-[#111827] border-l border-[#d1d5db]">{displayScore.away}</td>
+                  <td className="text-center text-[#4b5563]">{awayBatting.reduce((s, b) => s + (b.hits || 0), 0) || awayLineup.reduce((s, p) => s + (liveBattingMap[p.playerId]?.h ?? 0), 0)}</td>
+                  <td className="text-center text-[#4b5563]">{errorCounts.away}</td>
                 </tr>
                 <tr>
-                  <td className="text-white/50 px-1 font-semibold text-[11px]">{game.homeTeamName?.slice(0, 5)}</td>
+                  <td className="text-[#4b5563] px-1 font-semibold text-[11px]">{game.homeTeamName?.slice(0, 5)}</td>
                   {Array.from({ length: maxInnings }, (_, i) => {
                     const hasVal = i < homeLineScore.length;
                     const isCurrent = status === 'live' && i + 1 === displayInning && displayHalf === 'bot';
@@ -1149,14 +1149,14 @@ export function LiveGameClient({
                     const isTopOfThis = status === 'live' && i + 1 === displayInning && displayHalf === 'top';
                     const isFuture = i + 1 > Math.max(awayLineScore.length, homeLineScore.length);
                     return (
-                      <td key={i} className={`text-center ${isCurrent ? 'text-live font-bold' : hasVal ? 'text-white/60' : 'text-white/15'}`}>
+                      <td key={i} className={`text-center ${isCurrent ? 'text-live font-bold' : hasVal ? 'text-[#4b5563]' : 'text-[#d1d5db]'}`}>
                         {hasVal ? homeLineScore[i] : (isCurrent ? '•' : (isTopOfThis || isFuture) ? '' : '')}
                       </td>
                     );
                   })}
-                  <td className="text-center font-bold text-white border-l border-white/10">{displayScore.home}</td>
-                  <td className="text-center text-white/60">{homeBatting.reduce((s, b) => s + (b.hits || 0), 0) || homeLineup.reduce((s, p) => s + (liveBattingMap[p.playerId]?.h ?? 0), 0)}</td>
-                  <td className="text-center text-white/60">{errorCounts.home}</td>
+                  <td className="text-center font-bold text-[#111827] border-l border-[#d1d5db]">{displayScore.home}</td>
+                  <td className="text-center text-[#4b5563]">{homeBatting.reduce((s, b) => s + (b.hits || 0), 0) || homeLineup.reduce((s, p) => s + (liveBattingMap[p.playerId]?.h ?? 0), 0)}</td>
+                  <td className="text-center text-[#4b5563]">{errorCounts.home}</td>
                 </tr>
               </tbody>
             </table>
@@ -1164,21 +1164,21 @@ export function LiveGameClient({
         </div>
 
         {/* Tab bar */}
-        <div className="flex gap-1 bg-primary-light rounded-lg border border-white/10 p-1">
+        <div className="flex gap-1 bg-white rounded-lg border border-[#d1d5db] p-1">
           {([
             { key: 'plays' as Tab, label: 'Play-by-Play' },
             { key: 'boxscore' as Tab, label: 'Box Score' },
             { key: 'pitching' as Tab, label: 'Pitching' },
           ]).map(t => (
             <button key={t.key} onClick={() => setTab(t.key)}
-              className={`flex-1 py-2 text-xs font-bold uppercase rounded transition-colors ${tab === t.key ? 'bg-white/10 text-white' : 'text-white/30 hover:text-white/50'}`}>
+              className={`flex-1 py-2 text-xs font-bold uppercase rounded transition-colors ${tab === t.key ? 'bg-[#e5e7eb] text-[#111827]' : 'text-[#6b7280] hover:text-[#111827]'}`}>
               {t.label}
             </button>
           ))}
         </div>
 
         {/* Tab content */}
-        <div className="bg-primary-light rounded-xl border border-white/10 p-4">
+        <div className="bg-white rounded-xl border border-[#d1d5db] p-4">
           {/* PLAY-BY-PLAY */}
           {tab === 'plays' && (
             <div>
