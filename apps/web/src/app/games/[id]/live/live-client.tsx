@@ -572,9 +572,9 @@ export function LiveGameClient({
                 <th className="text-left py-1.5 pl-2 pr-1 w-8">#</th>
                 <th className="text-left py-1.5 pr-2 min-w-[90px]">Player</th>
                 <th className="text-center px-0.5 w-7">Pos</th>
-                {['AB','R','H','RBI','BB','SO','2B','3B','HR','AVG','OPS'].map((h) => (
+                {['PA','AB','R','H','2B','3B','HR','RBI','BB','HBP','SO','Kc','Ks','SB','CS','SF','SH','B','GDP','FC','CI','AVG','OPS'].map((h) => (
                   <th key={h} title={getStatAbbreviationMeaning(h) ?? undefined} className={`text-center px-1 ${h === 'AVG' || h === 'OPS' ? 'w-9 text-white/65' : 'w-8'}`}>
-                    {h}
+                    {h === 'SH' ? 'SAC' : h}
                   </th>
                 ))}
               </tr>
@@ -583,6 +583,7 @@ export function LiveGameClient({
               {rows.map((p, i) => {
                 const box = battingMap[p.playerId];
                 const live = liveBattingMap[p.playerId];
+                const pa = box?.plateAppearances ?? live?.pa ?? 0;
                 const ab = box?.atBats ?? live?.ab ?? 0;
                 const h = box?.hits ?? live?.h ?? 0;
                 const r = box?.runs ?? live?.r ?? 0;
@@ -594,6 +595,15 @@ export function LiveGameClient({
                 const trp = box?.triples ?? 0;
                 const hbp = box?.hitByPitch ?? live?.hbp ?? 0;
                 const sf = box?.sacrificeFlies ?? live?.sf ?? 0;
+                const sac = box?.sacrificeBunts ?? 0;
+                const sb = status === 'live' ? (live?.sb ?? box?.stolenBases ?? 0) : (box?.stolenBases ?? live?.sb ?? 0);
+                const cs = status === 'live' ? (live?.cs ?? box?.caughtStealing ?? 0) : (box?.caughtStealing ?? live?.cs ?? 0);
+                const kc = box?.strikeoutsLooking ?? 0;
+                const ks = box?.strikeoutsSwinging ?? 0;
+                const b = box?.buntSingles ?? 0;
+                const gdp = box?.groundedIntoDoublePlays ?? 0;
+                const fc = box?.fieldersChoice ?? 0;
+                const ci = box?.catcherInterference ?? 0;
                 const tb = box?.totalBases ?? live?.tb ?? 0;
                 const displayAvg = fmtAvg(h, ab);
                 const displayOps = fmtOps(h, ab, bb, hbp, sf, tb);
@@ -602,15 +612,27 @@ export function LiveGameClient({
                     <td className="py-1.5 pl-2 pr-1 text-white/35">{p.battingOrder || i + 1}</td>
                     <td className="py-1.5 pr-2 text-white/90 font-sans font-medium">{p.firstName?.charAt(0)}. {p.lastName}</td>
                     <td className="text-center text-white/40">{POS_LABELS[p.position] || '—'}</td>
+                    <td className="text-center text-white/70 font-mono">{pa}</td>
                     <td className="text-center text-white/70 font-mono">{ab}</td>
                     <td className="text-center text-white/70 font-mono">{r}</td>
                     <td className={`text-center font-mono ${h > 0 ? 'text-white font-bold' : 'text-white/70'}`}>{h}</td>
-                    <td className={`text-center font-mono ${rbi > 0 ? 'text-white font-bold' : 'text-white/70'}`}>{rbi}</td>
-                    <td className="text-center text-white/70 font-mono">{bb}</td>
-                    <td className="text-center text-white/70 font-mono">{so}</td>
                     <td className="text-center text-white/70 font-mono">{dbl}</td>
                     <td className="text-center text-white/70 font-mono">{trp}</td>
                     <td className={`text-center font-mono ${hr > 0 ? 'text-amber-400 font-bold' : 'text-white/70'}`}>{hr}</td>
+                    <td className={`text-center font-mono ${rbi > 0 ? 'text-white font-bold' : 'text-white/70'}`}>{rbi}</td>
+                    <td className="text-center text-white/70 font-mono">{bb}</td>
+                    <td className="text-center text-white/70 font-mono">{hbp}</td>
+                    <td className="text-center text-white/70 font-mono">{so}</td>
+                    <td className="text-center text-white/50 font-mono">{kc}</td>
+                    <td className="text-center text-white/50 font-mono">{ks}</td>
+                    <td className="text-center text-white/70 font-mono">{sb}</td>
+                    <td className="text-center text-white/70 font-mono">{cs}</td>
+                    <td className="text-center text-white/70 font-mono">{sf}</td>
+                    <td className="text-center text-white/70 font-mono">{sac}</td>
+                    <td className="text-center text-white/70 font-mono">{b}</td>
+                    <td className="text-center text-white/70 font-mono">{gdp}</td>
+                    <td className="text-center text-white/70 font-mono">{fc}</td>
+                    <td className="text-center text-white/70 font-mono">{ci}</td>
                     <td className="text-center text-white/70 font-mono text-[10px]">{displayAvg}</td>
                     <td className="text-center text-white/70 font-mono text-[10px]">{displayOps}</td>
                   </tr>
@@ -618,6 +640,7 @@ export function LiveGameClient({
               })}
             </tbody>
             {(() => {
+              const tPA = rows.reduce((s, p) => s + (battingMap[p.playerId]?.plateAppearances ?? liveBattingMap[p.playerId]?.pa ?? 0), 0);
               const tAB = rows.reduce((s, p) => s + (battingMap[p.playerId]?.atBats ?? liveBattingMap[p.playerId]?.ab ?? 0), 0);
               const tR = rows.reduce((s, p) => s + (battingMap[p.playerId]?.runs ?? liveBattingMap[p.playerId]?.r ?? 0), 0);
               const tH = rows.reduce((s, p) => s + (battingMap[p.playerId]?.hits ?? liveBattingMap[p.playerId]?.h ?? 0), 0);
@@ -628,7 +651,22 @@ export function LiveGameClient({
               const tBB = rows.reduce((s, p) => s + (battingMap[p.playerId]?.walks ?? liveBattingMap[p.playerId]?.bb ?? 0), 0);
               const tHBP = rows.reduce((s, p) => s + (battingMap[p.playerId]?.hitByPitch ?? liveBattingMap[p.playerId]?.hbp ?? 0), 0);
               const tSO = rows.reduce((s, p) => s + (battingMap[p.playerId]?.strikeouts ?? liveBattingMap[p.playerId]?.so ?? 0), 0);
+              const tKc = rows.reduce((s, p) => s + (battingMap[p.playerId]?.strikeoutsLooking ?? 0), 0);
+              const tKs = rows.reduce((s, p) => s + (battingMap[p.playerId]?.strikeoutsSwinging ?? 0), 0);
+              const tSB = rows.reduce((s, p) => s + (status === 'live'
+                ? (liveBattingMap[p.playerId]?.sb ?? battingMap[p.playerId]?.stolenBases ?? 0)
+                : (battingMap[p.playerId]?.stolenBases ?? liveBattingMap[p.playerId]?.sb ?? 0)
+              ), 0);
+              const tCS = rows.reduce((s, p) => s + (status === 'live'
+                ? (liveBattingMap[p.playerId]?.cs ?? battingMap[p.playerId]?.caughtStealing ?? 0)
+                : (battingMap[p.playerId]?.caughtStealing ?? liveBattingMap[p.playerId]?.cs ?? 0)
+              ), 0);
               const tSF = rows.reduce((s, p) => s + (battingMap[p.playerId]?.sacrificeFlies ?? liveBattingMap[p.playerId]?.sf ?? 0), 0);
+              const tSAC = rows.reduce((s, p) => s + (battingMap[p.playerId]?.sacrificeBunts ?? 0), 0);
+              const tB = rows.reduce((s, p) => s + (battingMap[p.playerId]?.buntSingles ?? 0), 0);
+              const tGDP = rows.reduce((s, p) => s + (battingMap[p.playerId]?.groundedIntoDoublePlays ?? 0), 0);
+              const tFC = rows.reduce((s, p) => s + (battingMap[p.playerId]?.fieldersChoice ?? 0), 0);
+              const tCI = rows.reduce((s, p) => s + (battingMap[p.playerId]?.catcherInterference ?? 0), 0);
               const tTB = rows.reduce((s, p) => {
                 const box = battingMap[p.playerId];
                 const live = liveBattingMap[p.playerId];
@@ -638,15 +676,27 @@ export function LiveGameClient({
                 <tfoot>
                   <tr className="border-t border-white/10 text-white/60 font-bold">
                     <td className="py-1.5 pl-2" colSpan={3}>Totals</td>
+                    <td className="text-center font-mono">{tPA}</td>
                     <td className="text-center font-mono">{tAB}</td>
                     <td className="text-center font-mono">{tR}</td>
                     <td className="text-center font-mono">{tH}</td>
-                    <td className="text-center font-mono">{tRBI}</td>
-                    <td className="text-center font-mono">{tBB}</td>
-                    <td className="text-center font-mono">{tSO}</td>
                     <td className="text-center font-mono">{tDbl}</td>
                     <td className="text-center font-mono">{tTrp}</td>
                     <td className="text-center font-mono">{tHR}</td>
+                    <td className="text-center font-mono">{tRBI}</td>
+                    <td className="text-center font-mono">{tBB}</td>
+                    <td className="text-center font-mono">{tHBP}</td>
+                    <td className="text-center font-mono">{tSO}</td>
+                    <td className="text-center font-mono">{tKc}</td>
+                    <td className="text-center font-mono">{tKs}</td>
+                    <td className="text-center font-mono">{tSB}</td>
+                    <td className="text-center font-mono">{tCS}</td>
+                    <td className="text-center font-mono">{tSF}</td>
+                    <td className="text-center font-mono">{tSAC}</td>
+                    <td className="text-center font-mono">{tB}</td>
+                    <td className="text-center font-mono">{tGDP}</td>
+                    <td className="text-center font-mono">{tFC}</td>
+                    <td className="text-center font-mono">{tCI}</td>
                     <td className="text-center font-mono text-[10px]">{fmtAvg(tH, tAB)}</td>
                     <td className="text-center font-mono text-[10px]">{fmtOps(tH, tAB, tBB, tHBP, tSF, tTB)}</td>
                   </tr>
@@ -802,6 +852,14 @@ export function LiveGameClient({
     return ((h + bb) / ip).toFixed(2);
   };
 
+  const strikePct = (balls: number | null | undefined, strikes: number | null | undefined) => {
+    const b = balls ?? 0;
+    const s = strikes ?? 0;
+    const total = b + s;
+    if (total <= 0) return '—';
+    return `${Math.round((s / total) * 100)}%`;
+  };
+
   const renderPitchingTable = (teamName: string, pitchers: PitchingBoxScore[]) => {
     if (pitchers.length === 0) return null;
     return (
@@ -812,8 +870,8 @@ export function LiveGameClient({
             <thead>
               <tr className="text-white/40 border-b border-white/15">
                 <th className="text-left py-1.5 pl-2 min-w-[90px]">Pitcher</th>
-                {['Dec','IP','H','R','ER','BB','SO','HR','NP','B-S','ERA','WHIP'].map((h) => (
-                  <th key={h} title={getStatAbbreviationMeaning(h) ?? undefined} className={`text-center px-1 ${h === 'B-S' ? 'w-16' : h === 'ERA' || h === 'WHIP' ? 'w-9' : 'w-8'}`}>
+                {['Dec','IP','H','R','ER','BB','SO','Kc','Ks','HR','HBP','WP','BF','NP','B','S','%S','GSc','ERA','WHIP'].map((h) => (
+                  <th key={h} title={getStatAbbreviationMeaning(h) ?? undefined} className={`text-center px-1 ${h === '%S' ? 'w-10' : h === 'ERA' || h === 'WHIP' ? 'w-9' : h === 'BF' || h === 'NP' || h === 'B' || h === 'S' ? 'w-9' : 'w-8'}`}>
                     {h === 'SO' ? 'K' : h}
                   </th>
                 ))}
@@ -834,9 +892,17 @@ export function LiveGameClient({
                     <td className="text-center text-white/70 font-mono">{p.earnedRuns}</td>
                     <td className="text-center text-white/70 font-mono">{p.walks}</td>
                     <td className="text-center text-white/70 font-mono">{p.strikeouts}</td>
+                    <td className="text-center text-white/50 font-mono">{p.strikeoutsLooking ?? '—'}</td>
+                    <td className="text-center text-white/50 font-mono">{p.strikeoutsSwinging ?? '—'}</td>
                     <td className="text-center text-white/70 font-mono">{p.homeRuns}</td>
+                    <td className="text-center text-white/70 font-mono">{p.hitBatters ?? '—'}</td>
+                    <td className="text-center text-white/70 font-mono">{p.wildPitches ?? '—'}</td>
+                    <td className="text-center text-white/50 font-mono">{p.battersFaced ?? '—'}</td>
                     <td className="text-center text-white/50 font-mono">{p.pitchesThrown ?? '—'}</td>
-                    <td className="text-center text-white/50 font-mono">{`${p.balls ?? 0}-${p.strikes ?? 0}`}</td>
+                    <td className="text-center text-white/50 font-mono">{p.balls ?? '—'}</td>
+                    <td className="text-center text-white/50 font-mono">{p.strikes ?? '—'}</td>
+                    <td className="text-center text-white/50 font-mono">{strikePct(p.balls, p.strikes)}</td>
+                    <td className="text-center text-white/50 font-mono">{p.gameScore ?? '—'}</td>
                     <td className="text-center text-white/70 font-mono text-[10px]">{era}</td>
                     <td className="text-center text-white/70 font-mono text-[10px]">{whip}</td>
                   </tr>
@@ -861,7 +927,12 @@ export function LiveGameClient({
               const tER = pitchers.reduce((s, p) => s + (p.earnedRuns ?? 0), 0);
               const tBB = pitchers.reduce((s, p) => s + (p.walks ?? 0), 0);
               const tK = pitchers.reduce((s, p) => s + (p.strikeouts ?? 0), 0);
+              const tKc = pitchers.reduce((s, p) => s + (p.strikeoutsLooking ?? 0), 0);
+              const tKs = pitchers.reduce((s, p) => s + (p.strikeoutsSwinging ?? 0), 0);
               const tHR = pitchers.reduce((s, p) => s + (p.homeRuns ?? 0), 0);
+              const tHBP = pitchers.reduce((s, p) => s + (p.hitBatters ?? 0), 0);
+              const tWP = pitchers.reduce((s, p) => s + (p.wildPitches ?? 0), 0);
+              const tBF = pitchers.reduce((s, p) => s + (p.battersFaced ?? 0), 0);
               const tNP = pitchers.reduce((s, p) => s + (p.pitchesThrown ?? 0), 0);
               const tBalls = pitchers.reduce((s, p) => s + (p.balls ?? 0), 0);
               const tStrikes = pitchers.reduce((s, p) => s + (p.strikes ?? 0), 0);
@@ -878,9 +949,17 @@ export function LiveGameClient({
                     <td className="text-center font-mono">{tER}</td>
                     <td className="text-center font-mono">{tBB}</td>
                     <td className="text-center font-mono">{tK}</td>
+                    <td className="text-center font-mono">{tKc}</td>
+                    <td className="text-center font-mono">{tKs}</td>
                     <td className="text-center font-mono">{tHR}</td>
+                    <td className="text-center font-mono">{tHBP}</td>
+                    <td className="text-center font-mono">{tWP}</td>
+                    <td className="text-center font-mono">{tBF}</td>
                     <td className="text-center font-mono">{tNP}</td>
-                    <td className="text-center font-mono">{`${tBalls}-${tStrikes}`}</td>
+                    <td className="text-center font-mono">{tBalls}</td>
+                    <td className="text-center font-mono">{tStrikes}</td>
+                    <td className="text-center font-mono">{strikePct(tBalls, tStrikes)}</td>
+                    <td></td>
                     <td className="text-center font-mono text-[10px]">{tERA}</td>
                     <td className="text-center font-mono text-[10px]">{tWHIP}</td>
                   </tr>
