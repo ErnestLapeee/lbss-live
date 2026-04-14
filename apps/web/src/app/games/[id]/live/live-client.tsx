@@ -561,6 +561,24 @@ export function LiveGameClient({
     return { tag: 'PLAY', cls: 'text-white/45' };
   };
 
+  const teamLobMap = useMemo(() => {
+    const map: Record<number, number> = {};
+    if (!game) return map;
+    const filtered = events
+      .filter(e => e.eventType !== 'pitch' && e.eventType !== 'end_half_inning')
+      .sort((a, b) => a.eventNumber - b.eventNumber);
+    let outs = 0;
+    for (const evt of filtered) {
+      outs += evt.outsRecorded ?? 0;
+      if (outs < 3) continue;
+      const battingTeamId = evt.half === 'top' ? game.awayTeamId : game.homeTeamId;
+      const lobThisHalf = [evt.runnerFirstId, evt.runnerSecondId, evt.runnerThirdId].filter(Boolean).length;
+      map[battingTeamId] = (map[battingTeamId] ?? 0) + lobThisHalf;
+      outs = 0;
+    }
+    return map;
+  }, [events, game]);
+
   const renderBattingTable = (teamName: string, lineup: LineupEntry[], batting: BattingBoxScore[]) => {
     const battingMap: Record<number, BattingBoxScore> = {};
     for (const b of batting) battingMap[b.playerId] = b;
@@ -569,6 +587,7 @@ export function LiveGameClient({
       playerId: b.playerId, teamId: b.teamId, battingOrder: 0, position: 0,
       isStarter: true, isActive: true, firstName: b.firstName, lastName: b.lastName,
     }));
+    const teamId = rows[0]?.teamId ?? batting[0]?.teamId ?? 0;
 
     const shortName = (p: LineupEntry) => `${p.firstName?.charAt(0)}. ${p.lastName}`;
     const defensiveNotes = (() => {
@@ -592,6 +611,27 @@ export function LiveGameClient({
       }
       return notes;
     })();
+    const battingNotes = (() => {
+      const collectNames = (predicate: (box: BattingBoxScore | undefined, live: typeof liveBattingMap[number] | undefined) => boolean) =>
+        rows
+          .filter(p => predicate(battingMap[p.playerId], liveBattingMap[p.playerId]))
+          .map(shortName);
+      const parts: string[] = [];
+      const doublesNames = collectNames((box) => (box?.doubles ?? 0) > 0);
+      if (doublesNames.length > 0) parts.push(`2B: ${doublesNames.join(', ')}`);
+      const triplesNames = collectNames((box) => (box?.triples ?? 0) > 0);
+      if (triplesNames.length > 0) parts.push(`3B: ${triplesNames.join(', ')}`);
+      const hrNames = collectNames((box, live) => (box?.homeRuns ?? live?.hr ?? 0) > 0);
+      if (hrNames.length > 0) parts.push(`HR: ${hrNames.join(', ')}`);
+      const sfNames = collectNames((box, live) => (box?.sacrificeFlies ?? live?.sf ?? 0) > 0);
+      if (sfNames.length > 0) parts.push(`SF: ${sfNames.join(', ')}`);
+      const shNames = collectNames((box) => (box?.sacrificeBunts ?? 0) > 0);
+      if (shNames.length > 0) parts.push(`SH: ${shNames.join(', ')}`);
+      const gdpNames = collectNames((box) => (box?.groundedIntoDoublePlays ?? 0) > 0);
+      if (gdpNames.length > 0) parts.push(`GDP: ${gdpNames.join(', ')}`);
+      return parts;
+    })();
+    const lob = teamLobMap[teamId] ?? 0;
 
     return (
       <div className="mb-6">
@@ -743,6 +783,12 @@ export function LiveGameClient({
           <div className="mt-2 text-[10px] text-white/45">
             <span className="font-semibold text-white/55">Defensive notes:</span>{' '}
             {defensiveNotes.join(' | ')}
+          </div>
+        )}
+        {(battingNotes.length > 0 || lob > 0) && (
+          <div className="mt-1 text-[10px] text-white/45">
+            <span className="font-semibold text-white/55">Batting notes:</span>{' '}
+            {[...battingNotes, `LOB: ${lob}`].join(' | ')}
           </div>
         )}
       </div>
