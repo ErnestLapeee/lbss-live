@@ -694,6 +694,10 @@ export async function statsRoutes(app: FastifyInstance) {
             inheritedRunnersScored: playerSeasonPitching.inheritedRunnersScored,
             strikeoutsLooking: playerSeasonPitching.strikeoutsLooking,
             strikeoutsSwinging: playerSeasonPitching.strikeoutsSwinging,
+            balls: playerSeasonPitching.balls,
+            strikes: playerSeasonPitching.strikes,
+            firstPitchStrikes: playerSeasonPitching.firstPitchStrikes,
+            firstPitchTotal: playerSeasonPitching.firstPitchTotal,
             era: playerSeasonPitching.era,
             whip: playerSeasonPitching.whip,
             strikeoutRate: playerSeasonPitching.strikeoutRate,
@@ -712,7 +716,13 @@ export async function statsRoutes(app: FastifyInstance) {
         const withGoAo = result.map((row: Record<string, unknown>) => {
           const go = Number(row.groundOuts ?? 0);
           const ao = Number(row.flyOuts ?? 0);
-          return { ...row, goAo: ao > 0 ? (go / ao).toFixed(2) : null };
+          const balls = Number(row.balls ?? 0);
+          const strikes = Number(row.strikes ?? 0);
+          const strikePct = (balls + strikes) > 0 ? ((strikes / (balls + strikes)) * 100).toFixed(1) : null;
+          const fpStrikes = Number(row.firstPitchStrikes ?? 0);
+          const fpTotal = Number(row.firstPitchTotal ?? 0);
+          const firstPitchStrikePct = fpTotal > 0 ? ((fpStrikes / fpTotal) * 100).toFixed(1) : null;
+          return { ...row, goAo: ao > 0 ? (go / ao).toFixed(2) : null, strikePercentage: strikePct, firstPitchStrikePct };
         });
         return reply.send(withGoAo);
       }
@@ -749,7 +759,11 @@ export async function statsRoutes(app: FastifyInstance) {
             SUM(COALESCE(inherited_runners, 0))::int AS inherited_runners,
             SUM(COALESCE(inherited_runners_scored, 0))::int AS inherited_runners_scored,
             SUM(COALESCE(strikeouts_looking, 0))::int AS strikeouts_looking,
-            SUM(COALESCE(strikeouts_swinging, 0))::int AS strikeouts_swinging
+            SUM(COALESCE(strikeouts_swinging, 0))::int AS strikeouts_swinging,
+            SUM(COALESCE(balls, 0))::int AS balls,
+            SUM(COALESCE(strikes, 0))::int AS strikes,
+            SUM(COALESCE(first_pitch_strikes, 0))::int AS first_pitch_strikes,
+            SUM(COALESCE(first_pitch_total, 0))::int AS first_pitch_total
           FROM player_season_pitching GROUP BY player_id
         ),
         latest AS (
@@ -764,7 +778,7 @@ export async function statsRoutes(app: FastifyInstance) {
           tot.ground_outs, tot.fly_outs,
           tot.holds, tot.save_opportunities, tot.blown_saves, tot.complete_games, tot.game_score,
           tot.quality_starts, tot.shutouts, tot.inherited_runners, tot.inherited_runners_scored,
-          tot.strikeouts_looking, tot.strikeouts_swinging,
+          tot.strikeouts_looking, tot.strikeouts_swinging, tot.balls, tot.strikes, tot.first_pitch_strikes, tot.first_pitch_total,
           ls.team_id
         FROM totals tot
         JOIN latest ls ON tot.player_id = ls.player_id
@@ -829,6 +843,16 @@ export async function statsRoutes(app: FastifyInstance) {
           inheritedRunnersScored: r.inherited_runners_scored ?? 0,
           strikeoutsLooking: r.strikeouts_looking ?? 0,
           strikeoutsSwinging: r.strikeouts_swinging ?? 0,
+          balls: r.balls ?? 0,
+          strikes: r.strikes ?? 0,
+          strikePercentage: (Number(r.balls ?? 0) + Number(r.strikes ?? 0)) > 0
+            ? ((Number(r.strikes ?? 0) / (Number(r.balls ?? 0) + Number(r.strikes ?? 0))) * 100).toFixed(1)
+            : null,
+          firstPitchStrikes: r.first_pitch_strikes ?? 0,
+          firstPitchTotal: r.first_pitch_total ?? 0,
+          firstPitchStrikePct: Number(r.first_pitch_total ?? 0) > 0
+            ? ((Number(r.first_pitch_strikes ?? 0) / Number(r.first_pitch_total ?? 0)) * 100).toFixed(1)
+            : null,
           era: rates.era,
           whip: rates.whip,
           strikeoutRate: rates.strikeoutRate,

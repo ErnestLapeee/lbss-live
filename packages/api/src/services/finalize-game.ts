@@ -296,6 +296,9 @@ export async function finalizeGame(gameId: number, userId?: number, options?: Fi
     let outsRecorded = 0, hitsAllowed = 0, runsAllowed = 0, earnedRuns = 0;
     let walksAllowed = 0, pStrikeouts = 0, homeRunsAllowed = 0;
     let hitBatters = 0, wildPitches = 0, totalPitches = 0;
+    let pBalls = 0, pStrikes = 0;
+    let firstPitchStrikes = 0, firstPitchTotal = 0;
+    let currentPaFirstPitchStrike: boolean | null = null;
     let battersFaced = 0, pBalks = 0, pIntentionalWalks = 0;
     let pGroundOuts = 0, pFlyOuts = 0;
     let pStrikeoutsLooking = 0, pStrikeoutsSwinging = 0;
@@ -305,6 +308,11 @@ export async function finalizeGame(gameId: number, userId?: number, options?: Fi
 
       if (t === 'pitch') {
         totalPitches++;
+        if (e.eventDetail === 'ball') pBalls++;
+        else pStrikes++;
+        if (currentPaFirstPitchStrike == null) {
+          currentPaFirstPitchStrike = e.eventDetail !== 'ball';
+        }
         continue;
       }
 
@@ -321,6 +329,15 @@ export async function finalizeGame(gameId: number, userId?: number, options?: Fi
 
       battersFaced++;
       totalPitches++;
+      if (WALK_EVENTS.has(t) || t === 'hit_by_pitch' || t === 'catcher_obstruction' || t === 'catcher_interference') {
+        pBalls++;
+      } else {
+        pStrikes++;
+      }
+      firstPitchTotal++;
+      const inferredFirstPitchStrike = !(WALK_EVENTS.has(t) || t === 'hit_by_pitch' || t === 'catcher_obstruction' || t === 'catcher_interference');
+      if ((currentPaFirstPitchStrike ?? inferredFirstPitchStrike) === true) firstPitchStrikes++;
+      currentPaFirstPitchStrike = null;
       outsRecorded += e.outsRecorded ?? 0;
 
       const runsScoredOnPlay = e.runsScored ?? 0;
@@ -402,6 +419,10 @@ export async function finalizeGame(gameId: number, userId?: number, options?: Fi
         hitsAllowed, runsAllowed, earnedRuns, walksAllowed,
         strikeouts: pStrikeouts, homeRunsAllowed, hitBatters, wildPitches,
         pitchesThrown: totalPitches || null,
+        balls: pBalls,
+        strikes: pStrikes,
+        firstPitchStrikes,
+        firstPitchTotal,
         isStarter,
         decision: null,
         battersFaced, balks: pBalks,
@@ -421,6 +442,10 @@ export async function finalizeGame(gameId: number, userId?: number, options?: Fi
           hitsAllowed, runsAllowed, earnedRuns, walksAllowed,
           strikeouts: pStrikeouts, homeRunsAllowed, hitBatters, wildPitches,
           pitchesThrown: totalPitches || null,
+          balls: pBalls,
+          strikes: pStrikes,
+          firstPitchStrikes,
+          firstPitchTotal,
           isStarter,
           battersFaced, balks: pBalks,
           intentionalWalks: pIntentionalWalks,
@@ -922,7 +947,11 @@ export async function recomputeSeasonPitching(seasonId: number) {
         COALESCE(SUM(pgp.inherited_runners), 0) AS inherited_runners,
         COALESCE(SUM(pgp.inherited_runners_scored), 0) AS inherited_runners_scored,
         COALESCE(SUM(pgp.strikeouts_looking), 0) AS strikeouts_looking,
-        COALESCE(SUM(pgp.strikeouts_swinging), 0) AS strikeouts_swinging
+        COALESCE(SUM(pgp.strikeouts_swinging), 0) AS strikeouts_swinging,
+        COALESCE(SUM(pgp.balls), 0) AS balls,
+        COALESCE(SUM(pgp.strikes), 0) AS strikes,
+        COALESCE(SUM(pgp.first_pitch_strikes), 0) AS first_pitch_strikes,
+        COALESCE(SUM(pgp.first_pitch_total), 0) AS first_pitch_total
       FROM player_game_pitching pgp
       JOIN games g ON pgp.game_id = g.id
       JOIN leagues l ON g.league_id = l.id
@@ -938,6 +967,8 @@ export async function recomputeSeasonPitching(seasonId: number) {
       holds, save_opportunities, blown_saves, complete_games, game_score,
       quality_starts, shutouts, inherited_runners, inherited_runners_scored,
       strikeouts_looking, strikeouts_swinging,
+      balls, strikes,
+      first_pitch_strikes, first_pitch_total,
       era, whip, strikeout_rate, walk_rate, fip, k9, bb9, h9, babip,
       last_computed_at)
     SELECT
@@ -951,6 +982,8 @@ export async function recomputeSeasonPitching(seasonId: number) {
       CASE WHEN games > 0 THEN ROUND(game_score_sum::numeric / games, 0)::int ELSE NULL END,
       quality_starts, shutouts, inherited_runners, inherited_runners_scored,
       strikeouts_looking, strikeouts_swinging,
+      balls, strikes,
+      first_pitch_strikes, first_pitch_total,
       -- ERA = ER * 27 / total_outs  (equivalent to ER * 9 / actual_IP)
       CASE WHEN total_outs > 0
         THEN ROUND(earned_runs::numeric * 27 / total_outs, 2) ELSE 0 END,
@@ -1016,6 +1049,10 @@ export async function recomputeSeasonPitching(seasonId: number) {
       inherited_runners_scored = EXCLUDED.inherited_runners_scored,
       strikeouts_looking = EXCLUDED.strikeouts_looking,
       strikeouts_swinging = EXCLUDED.strikeouts_swinging,
+      balls = EXCLUDED.balls,
+      strikes = EXCLUDED.strikes,
+      first_pitch_strikes = EXCLUDED.first_pitch_strikes,
+      first_pitch_total = EXCLUDED.first_pitch_total,
       era = EXCLUDED.era,
       whip = EXCLUDED.whip,
       strikeout_rate = EXCLUDED.strikeout_rate,

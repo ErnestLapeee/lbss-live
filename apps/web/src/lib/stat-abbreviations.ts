@@ -57,6 +57,7 @@ const STAT_ABBREVIATIONS: Record<string, string> = {
   'K/9': 'Strikeouts Per 9 Innings',
   'BB/9': 'Walks Per 9 Innings',
   'H/9': 'Hits Allowed Per 9 Innings',
+  'FPS%': 'First-Pitch Strike Percentage',
   PO: 'Putouts',
   A: 'Assists',
   E: 'Errors',

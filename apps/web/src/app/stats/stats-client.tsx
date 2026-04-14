@@ -74,6 +74,17 @@ interface PitchingStat {
   whip: string | null;
   strikeoutRate: string | null;
   walkRate: string | null;
+  k9?: string | null;
+  bb9?: string | null;
+  h9?: string | null;
+  fip?: string | null;
+  babip?: string | null;
+  balls?: number;
+  strikes?: number;
+  strikePercentage?: string | null;
+  firstPitchStrikes?: number;
+  firstPitchTotal?: number;
+  firstPitchStrikePct?: string | null;
   goAo?: string | null;
   groundOuts?: number;
   flyOuts?: number;
@@ -192,7 +203,13 @@ const BATTING_COLUMNS: Column[] = [
   { key: 'strikeoutsLooking', label: 'Kc', align: 'right' },
   { key: 'strikeoutsSwinging', label: 'Ks', align: 'right' },
   { key: 'stolenBases', label: 'SB', align: 'right' },
+  { key: 'caughtStealing', label: 'CS', align: 'right' },
+  { key: 'sacrificeFlies', label: 'SF', align: 'right' },
+  { key: 'sacrificeBunts', label: 'SH', align: 'right' },
+  { key: 'intentionalWalks', label: 'IBB', align: 'right' },
   { key: 'groundedIntoDoublePlays', label: 'GDP', align: 'right' },
+  { key: 'reachedOnError', label: 'ROE', align: 'right' },
+  { key: 'totalBases', label: 'TB', align: 'right' },
   { key: 'buntSingles', label: 'B', align: 'right' },
   { key: 'pickedOff', label: 'PK', align: 'right' },
   { key: 'fieldersChoice', label: 'FC', align: 'right' },
@@ -257,7 +274,6 @@ const PITCHING_COLUMNS: Column[] = [
   { key: 'wins', label: 'W', align: 'right' },
   { key: 'losses', label: 'L', align: 'right' },
   { key: 'saves', label: 'SV', align: 'right' },
-  { key: 'holds', label: 'HLD', align: 'right' },
   { key: 'saveOpportunities', label: 'SVOP', align: 'right' },
   { key: 'blownSaves', label: 'BS', align: 'right' },
   { key: 'inningsPitched', label: 'IP', align: 'right' },
@@ -266,9 +282,18 @@ const PITCHING_COLUMNS: Column[] = [
   { key: 'earnedRuns', label: 'ER', align: 'right' },
   { key: 'walksAllowed', label: 'BB', align: 'right' },
   { key: 'strikeouts', label: 'SO', align: 'right' },
+  { key: 'k9', label: 'K/9', align: 'right' },
+  { key: 'bb9', label: 'BB/9', align: 'right' },
+  { key: 'h9', label: 'H/9', align: 'right' },
+  { key: 'strikeoutRate', label: 'K/INN', align: 'right' },
+  { key: 'walkRate', label: 'BB/INN', align: 'right' },
   { key: 'homeRunsAllowed', label: 'HR', align: 'right' },
   { key: 'hitBatters', label: 'HBP', align: 'right' },
   { key: 'wildPitches', label: 'WP', align: 'right' },
+  { key: 'balls', label: 'B', align: 'right' },
+  { key: 'strikes', label: 'S', align: 'right' },
+  { key: 'strikePercentage', label: '%S', align: 'right' },
+  { key: 'firstPitchStrikePct', label: 'FPS%', align: 'right' },
   { key: 'qualityStarts', label: 'QS', align: 'right' },
   { key: 'completeGames', label: 'CMP', align: 'right' },
   { key: 'shutouts', label: 'ShO', align: 'right' },
@@ -280,6 +305,8 @@ const PITCHING_COLUMNS: Column[] = [
   { key: 'goAo', label: 'GO/AO', align: 'right' },
   { key: 'era', label: 'ERA', align: 'right', highlight: true },
   { key: 'whip', label: 'WHIP', align: 'right', highlight: true },
+  { key: 'fip', label: 'FIP', align: 'right' },
+  { key: 'babip', label: 'BABIP', align: 'right' },
 ];
 
 const PITCHING_CONTACT_COLUMNS: Column[] = [
@@ -559,6 +586,9 @@ export function StatsClient({
     : tab === 'pitching'
       ? (pitchingCategory === 'hittype' ? PITCHING_CONTACT_COLUMNS : PITCHING_COLUMNS)
       : FIELDING_COLUMNS;
+  const displayColumns = selectedSeasonId == null
+    ? currentColumns.filter(col => col.key !== 'teamName')
+    : currentColumns;
   const currentData = tab === 'batting'
     ? (battingCategory === 'hittype' ? sortedBattingContact : sortedBatting)
     : tab === 'pitching'
@@ -742,17 +772,21 @@ export function StatsClient({
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
-                            <TeamLogo
-                              name={leader.teamName}
-                              shortName={leader.teamShortName}
-                              logoUrl={leader.teamLogoUrl}
-                              size="sm"
-                            />
+                            {selectedSeasonId != null && (
+                              <TeamLogo
+                                name={leader.teamName}
+                                shortName={leader.teamShortName}
+                                logoUrl={leader.teamLogoUrl}
+                                size="sm"
+                              />
+                            )}
                             <span className="font-semibold text-sm truncate">
                               {leader.firstName} {leader.lastName}
                             </span>
                           </div>
-                          <span className="text-[11px] text-text-faint">{leader.teamName}</span>
+                          {selectedSeasonId != null && (
+                            <span className="text-[11px] text-text-faint">{leader.teamName}</span>
+                          )}
                         </div>
                         <span className="font-heading text-xl font-bold stat-value shrink-0">
                           {formatStatValue(leader.value)}
@@ -766,12 +800,14 @@ export function StatsClient({
                               <span className="text-[11px] font-bold text-text-faint w-5 text-center shrink-0">
                                 {idx + 2}
                               </span>
-                              <TeamLogo
-                                name={player.teamName}
-                                shortName={player.teamShortName}
-                                logoUrl={player.teamLogoUrl}
-                                size="sm"
-                              />
+                              {selectedSeasonId != null && (
+                                <TeamLogo
+                                  name={player.teamName}
+                                  shortName={player.teamShortName}
+                                  logoUrl={player.teamLogoUrl}
+                                  size="sm"
+                                />
+                              )}
                               <span className="text-sm truncate flex-1">
                                 {player.firstName} {player.lastName}
                               </span>
@@ -839,7 +875,7 @@ export function StatsClient({
                       <th className="px-3 py-2.5 text-center text-[10px] font-bold uppercase tracking-wider text-text-faint w-10">
                         #
                       </th>
-                      {currentColumns.map(col => (
+                      {displayColumns.map(col => (
                         (() => {
                           const meaning = getStatAbbreviationMeaning(col.label);
                           return (
@@ -876,18 +912,20 @@ export function StatsClient({
                         <td className="px-3 py-2 text-center text-[11px] text-text-faint font-mono">
                           {idx + 1}
                         </td>
-                        {currentColumns.map(col => {
+                        {displayColumns.map(col => {
                           let cellValue: React.ReactNode;
 
                           if (col.key === 'name') {
                             cellValue = (
                               <div className="flex items-center gap-2">
-                                <TeamLogo
-                                  name={stat.teamName}
-                                  shortName={stat.teamShortName}
-                                  logoUrl={stat.teamLogoUrl}
-                                  size="sm"
-                                />
+                                {selectedSeasonId != null && (
+                                  <TeamLogo
+                                    name={stat.teamName}
+                                    shortName={stat.teamShortName}
+                                    logoUrl={stat.teamLogoUrl}
+                                    size="sm"
+                                  />
+                                )}
                                 <button
                                   onClick={() => {
                                     const modalSlug = stat.playerSlug || stat.slug || null;
@@ -929,7 +967,7 @@ export function StatsClient({
 
                     {currentData.length === 0 && (
                       <tr>
-                        <td colSpan={currentColumns.length + 1} className="px-4 py-12 text-center text-text-muted">
+                        <td colSpan={displayColumns.length + 1} className="px-4 py-12 text-center text-text-muted">
                           {currentLeaders && Object.keys(currentLeaders).length > 0 ? (
                             <span>
                               No {tab} table data for this season. Leaders above use the same source — try refreshing the page.
