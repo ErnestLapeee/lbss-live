@@ -24,8 +24,9 @@
   --color-border: #ccc;
   --color-border-light: #ddd;
 
-  --font-heading: 'Inter', system-ui, sans-serif;
-  --font-body: 'Inter', system-ui, sans-serif;
+  --font-sans: var(--font-ibm-plex), ui-sans-serif, system-ui, sans-serif;
+  --font-heading: var(--font-ibm-plex), system-ui, sans-serif;
+  --font-body: var(--font-ibm-plex), system-ui, sans-serif;
   --font-mono: ui-monospace, monospace;
 }
 
