@@ -312,12 +312,12 @@ export async function gamesRoutes(app: FastifyInstance) {
       }
 
       const [homeTeam] = await db
-        .select({ name: teams.name, slug: teams.slug })
+        .select({ name: teams.name, slug: teams.slug, shortName: teams.shortName, logoUrl: teams.logoUrl })
         .from(teams)
         .where(eq(teams.id, game.homeTeamId))
         .limit(1);
       const [awayTeam] = await db
-        .select({ name: teams.name, slug: teams.slug })
+        .select({ name: teams.name, slug: teams.slug, shortName: teams.shortName, logoUrl: teams.logoUrl })
         .from(teams)
         .where(eq(teams.id, game.awayTeamId))
         .limit(1);
@@ -328,6 +328,10 @@ export async function gamesRoutes(app: FastifyInstance) {
         awayTeamName: awayTeam?.name ?? null,
         homeTeamSlug: homeTeam?.slug ?? null,
         awayTeamSlug: awayTeam?.slug ?? null,
+        homeTeamShortName: homeTeam?.shortName ?? null,
+        awayTeamShortName: awayTeam?.shortName ?? null,
+        homeTeamLogoUrl: homeTeam?.logoUrl ?? null,
+        awayTeamLogoUrl: awayTeam?.logoUrl ?? null,
       });
     } catch (err) {
       request.log.error(err);

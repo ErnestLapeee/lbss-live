@@ -65,6 +65,10 @@ interface GameData {
   awayTeamId: number;
   homeTeamName: string;
   awayTeamName: string;
+  homeTeamShortName?: string | null;
+  awayTeamShortName?: string | null;
+  homeTeamLogoUrl?: string | null;
+  awayTeamLogoUrl?: string | null;
   homeScore: number;
   awayScore: number;
   status: string;
@@ -73,6 +77,30 @@ interface GameData {
   currentOuts: number;
   venue: string;
   scheduledAt: string;
+}
+
+function ScoreboardTeamLogo({
+  name,
+  shortName,
+  logoUrl,
+}: {
+  name: string;
+  shortName?: string | null;
+  logoUrl?: string | null;
+}) {
+  const wrap = 'flex h-14 w-14 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white p-1 shadow-sm sm:h-[4.5rem] sm:w-[4.5rem]';
+  if (logoUrl) {
+    return <img src={logoUrl} alt={name} className={`${wrap} object-contain`} />;
+  }
+  const abbr = shortName?.trim()
+    || (name.length <= 3
+      ? name.toUpperCase()
+      : name.split(/\s+/).map(w => w[0]).join('').slice(0, 3).toUpperCase());
+  return (
+    <div className={`${wrap} bg-slate-50`} aria-hidden>
+      <span className="text-center text-[11px] font-bold leading-none tracking-tight text-slate-600 sm:text-xs">{abbr}</span>
+    </div>
+  );
 }
 
 interface GameEvent {
@@ -220,7 +248,6 @@ export function LiveGameClient({
   const [loading, setLoading] = useState(false);
   const [tab, setTab] = useState<Tab>('plays');
   const [playMode, setPlayMode] = useState<'compact' | 'expanded'>('compact');
-  const [pitchingView, setPitchingView] = useState<'core' | 'all'>('core');
   const [openPitchCards, setOpenPitchCards] = useState<Record<string, boolean>>({});
   const { connected, gameState, lastEvent, isFinal, viewerCount } = useGameSocket(gameId, apiBase);
 
@@ -1052,15 +1079,9 @@ export function LiveGameClient({
 
   const renderPitchingTable = (teamName: string, pitchers: PitchingBoxScore[]) => {
     if (pitchers.length === 0) return null;
-    const pitchHeadersAll = ['Dec','IP','H','R','ER','BB','SO','Kc','Ks','HR','HBP','WP','BF','NP','B','S','%S','GSc','ERA','WHIP'] as const;
-    const pitchHeadersCore = ['Dec','IP','H','R','ER','BB','SO','HR','ERA','WHIP'] as const;
-    const pitchHeaders = pitchingView === 'core' ? pitchHeadersCore : pitchHeadersAll;
-    const groupBorder = (h: string) => {
-      if (pitchingView === 'core') {
-        return ['IP','HR','ERA'].includes(h) ? 'border-l border-slate-200' : '';
-      }
-      return ['IP','Kc','HR','BF','ERA'].includes(h) ? 'border-l border-slate-200' : '';
-    };
+    const pitchHeaders = ['Dec','IP','H','R','ER','BB','SO','Kc','Ks','HR','HBP','WP','BF','NP','B','S','%S','GSc','ERA','WHIP'] as const;
+    const groupBorder = (h: string) =>
+      ['IP','Kc','HR','BF','ERA'].includes(h) ? 'border-l border-slate-200' : '';
     const thWidth = (h: string) =>
       h === '%S' ? 'w-11' : h === 'ERA' || h === 'WHIP' ? 'min-w-[2.75rem]' : h === 'BF' || h === 'NP' || h === 'B' || h === 'S' ? 'min-w-[2.25rem]' : 'min-w-[2rem]';
 
@@ -1182,14 +1203,12 @@ export function LiveGameClient({
       }
     };
 
-    const minW = pitchingView === 'core' ? 'min-w-[22rem] sm:min-w-[32rem]' : 'min-w-[920px]';
-
     return (
       <div className="mb-8">
         <h4 className="text-sm font-semibold text-slate-800 mb-3">{teamName}</h4>
         <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
           <div className="overflow-x-auto overscroll-x-contain">
-            <table className={`${minW} w-full text-[11px] whitespace-nowrap font-mono`}>
+            <table className="min-w-[920px] w-full text-[11px] whitespace-nowrap font-mono">
               <thead>
                 <tr className="bg-slate-100 text-slate-600 border-b border-slate-200">
                   <th className="sticky left-0 z-20 bg-slate-100 text-left py-2.5 pl-3 pr-2 min-w-[7.5rem] text-[10px] font-semibold uppercase tracking-wide text-slate-500 shadow-[4px_0_12px_-4px_rgba(15,23,42,0.12)]">
@@ -1235,7 +1254,7 @@ export function LiveGameClient({
   };
 
   return (
-    <div className="min-h-screen bg-slate-100">
+    <div className="min-h-screen bg-[#f5f5f5]">
       {/* Header */}
       <div className="bg-white border-b border-[#d1d5db]">
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center gap-4">
@@ -1265,49 +1284,54 @@ export function LiveGameClient({
 
       <div className="max-w-6xl mx-auto px-4 py-4 space-y-4">
         {/* Scoreboard */}
-        <div className="relative overflow-hidden rounded-2xl border border-slate-700/60 bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 shadow-lg ring-1 ring-white/5">
-          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_70%_45%_at_50%_-15%,rgba(255,255,255,0.07),transparent)]" />
-          <div className="relative px-4 py-4 sm:px-5">
-            <div className="flex flex-col gap-4">
+        <div className="relative overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-sm ring-1 ring-slate-100">
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-slate-50/80 to-white" />
+          <div className="relative px-4 py-5 sm:px-6">
+            <div className="flex flex-col gap-5">
               {/* Main scores row */}
-              <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 sm:gap-5">
+              <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 sm:gap-6">
                 {/* Away */}
                 <div className="flex min-w-0 items-center justify-end gap-2 sm:gap-3">
+                  <ScoreboardTeamLogo
+                    name={game.awayTeamName}
+                    shortName={game.awayTeamShortName}
+                    logoUrl={game.awayTeamLogoUrl}
+                  />
                   <div className="min-w-0 text-right">
-                    <div className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">Away</div>
-                    <div className="truncate text-sm font-bold leading-tight text-white sm:text-[15px]">{game.awayTeamName}</div>
+                    <div className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Away</div>
+                    <div className="truncate font-sans text-sm font-semibold leading-snug text-slate-900 sm:text-base">{game.awayTeamName}</div>
                   </div>
-                  <div className="shrink-0 text-4xl font-bold tabular-nums text-white sm:text-5xl leading-none">{displayScore.away}</div>
+                  <div className="shrink-0 font-sans text-4xl font-bold tabular-nums tracking-tight text-slate-900 sm:text-5xl">{displayScore.away}</div>
                 </div>
 
                 {/* Inning / status + live widgets */}
                 <div className="flex min-w-[5.5rem] flex-col items-center justify-center gap-1.5 px-1">
                   {status === 'live' ? (
                     <>
-                      <div className="text-lg font-bold tabular-nums text-emerald-400 sm:text-xl">
+                      <div className="text-lg font-bold tabular-nums text-emerald-700 sm:text-xl">
                         {displayHalf === 'top' ? '▲' : '▼'} {displayInning}
                       </div>
                       <svg viewBox="0 0 50 50" className="h-9 w-9 sm:h-10 sm:w-10" aria-hidden>
                         <rect x="19" y="2" width="12" height="12" rx="1.5" transform="rotate(45 25 8)"
-                          fill={displayBases.second ? '#10b981' : '#1e293b'} stroke="#64748b" strokeWidth="1" />
+                          fill={displayBases.second ? '#059669' : '#e2e8f0'} stroke="#94a3b8" strokeWidth="1" />
                         <rect x="35" y="18" width="12" height="12" rx="1.5" transform="rotate(45 41 24)"
-                          fill={displayBases.first ? '#10b981' : '#1e293b'} stroke="#64748b" strokeWidth="1" />
+                          fill={displayBases.first ? '#059669' : '#e2e8f0'} stroke="#94a3b8" strokeWidth="1" />
                         <rect x="3" y="18" width="12" height="12" rx="1.5" transform="rotate(45 9 24)"
-                          fill={displayBases.third ? '#10b981' : '#1e293b'} stroke="#64748b" strokeWidth="1" />
+                          fill={displayBases.third ? '#059669' : '#e2e8f0'} stroke="#94a3b8" strokeWidth="1" />
                       </svg>
                       <div className="flex gap-1.5" aria-label={`${displayOuts} out${displayOuts === 1 ? '' : 's'}`}>
                         {[0, 1, 2].map(i => (
                           <div
                             key={i}
                             className={`h-2.5 w-2.5 rounded-full border-2 ${
-                              i < displayOuts ? 'border-amber-400 bg-amber-400' : 'border-slate-500 bg-slate-800'
+                              i < displayOuts ? 'border-amber-500 bg-amber-500' : 'border-slate-300 bg-white'
                             }`}
                           />
                         ))}
                       </div>
                     </>
                   ) : (
-                    <span className="inline-flex items-center rounded-full bg-white/12 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-100 ring-1 ring-white/20">
+                    <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-100 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.15em] text-slate-600">
                       {status}
                     </span>
                   )}
@@ -1315,47 +1339,52 @@ export function LiveGameClient({
 
                 {/* Home */}
                 <div className="flex min-w-0 items-center justify-start gap-2 sm:gap-3">
-                  <div className="shrink-0 text-4xl font-bold tabular-nums text-white sm:text-5xl leading-none">{displayScore.home}</div>
+                  <div className="shrink-0 font-sans text-4xl font-bold tabular-nums tracking-tight text-slate-900 sm:text-5xl">{displayScore.home}</div>
                   <div className="min-w-0 text-left">
-                    <div className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">Home</div>
-                    <div className="truncate text-sm font-bold leading-tight text-white sm:text-[15px]">{game.homeTeamName}</div>
+                    <div className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Home</div>
+                    <div className="truncate font-sans text-sm font-semibold leading-snug text-slate-900 sm:text-base">{game.homeTeamName}</div>
                   </div>
+                  <ScoreboardTeamLogo
+                    name={game.homeTeamName}
+                    shortName={game.homeTeamShortName}
+                    logoUrl={game.homeTeamLogoUrl}
+                  />
                 </div>
               </div>
 
               {/* Line score */}
-              <div className="overflow-x-auto rounded-xl border border-white/12 bg-black/40 px-1 py-2 sm:px-3">
-                <table className="w-full min-w-[20rem] table-fixed text-xs font-mono sm:text-sm">
+              <div className="overflow-x-auto rounded-xl border border-slate-200 bg-slate-50/80 px-1 py-2 sm:px-3">
+                <table className="w-full min-w-[20rem] table-fixed text-xs font-mono text-slate-800 sm:text-sm">
                   <thead>
-                    <tr className="text-slate-400">
+                    <tr className="text-slate-500">
                       <th className="w-[40%] min-w-[0] py-1.5 pl-2 pr-1 text-left align-bottom font-sans text-[10px] font-semibold uppercase tracking-wide sm:w-[36%]">Team</th>
                       {Array.from({ length: maxInnings }, (_, i) => (
-                        <th key={i} className="w-[2.25rem] px-0 py-1.5 text-center font-normal tabular-nums sm:w-10">{i + 1}</th>
+                        <th key={i} className="w-[2.25rem] px-0 py-1.5 text-center font-medium tabular-nums sm:w-10">{i + 1}</th>
                       ))}
-                      <th className="w-8 border-l border-white/10 py-1.5 text-center font-bold text-slate-200 sm:w-9">R</th>
-                      <th className="w-8 py-1.5 text-center font-bold text-slate-200 sm:w-9">H</th>
-                      <th className="w-8 py-1.5 text-center font-bold text-slate-200 sm:w-9">E</th>
+                      <th className="w-8 border-l border-slate-200 py-1.5 text-center font-bold text-slate-800 sm:w-9">R</th>
+                      <th className="w-8 py-1.5 text-center font-bold text-slate-800 sm:w-9">H</th>
+                      <th className="w-8 py-1.5 text-center font-bold text-slate-800 sm:w-9">E</th>
                     </tr>
                   </thead>
                   <tbody>
-                    <tr className="border-t border-white/[0.06] bg-white/[0.02]">
-                      <td className="text-left align-middle px-2 py-2 font-sans text-[11px] font-semibold leading-snug text-slate-100 sm:text-xs sm:leading-tight">{game.awayTeamName}</td>
+                    <tr className="border-t border-slate-200/80 bg-white">
+                      <td className="text-left align-middle px-2 py-2 font-sans text-[11px] font-semibold leading-snug text-slate-900 sm:text-xs sm:leading-tight">{game.awayTeamName}</td>
                   {Array.from({ length: maxInnings }, (_, i) => {
                     const hasVal = i < awayLineScore.length;
                     const isCurrent = status === 'live' && i + 1 === displayInning && displayHalf === 'top';
                     const isFuture = i + 1 > Math.max(awayLineScore.length, homeLineScore.length);
                     return (
-                      <td key={i} className={`py-2 text-center tabular-nums ${isCurrent ? 'text-live font-bold' : hasVal ? 'text-slate-200' : 'text-slate-500'}`}>
+                      <td key={i} className={`py-2 text-center tabular-nums ${isCurrent ? 'text-live font-bold' : hasVal ? 'text-slate-800' : 'text-slate-400'}`}>
                         {hasVal ? awayLineScore[i] : (isCurrent ? '•' : isFuture ? '' : '')}
                       </td>
                     );
                   })}
-                  <td className="border-l border-white/10 py-2 text-center text-base font-bold tabular-nums text-white">{displayScore.away}</td>
-                  <td className="py-2 text-center tabular-nums text-slate-200">{awayBatting.reduce((s, b) => s + (b.hits || 0), 0) || awayLineup.reduce((s, p) => s + (liveBattingMap[p.playerId]?.h ?? 0), 0)}</td>
-                  <td className="py-2 text-center tabular-nums text-slate-200">{errorCounts.away}</td>
+                  <td className="border-l border-slate-200 py-2 text-center text-base font-bold tabular-nums text-slate-900">{displayScore.away}</td>
+                  <td className="py-2 text-center tabular-nums text-slate-700">{awayBatting.reduce((s, b) => s + (b.hits || 0), 0) || awayLineup.reduce((s, p) => s + (liveBattingMap[p.playerId]?.h ?? 0), 0)}</td>
+                  <td className="py-2 text-center tabular-nums text-slate-700">{errorCounts.away}</td>
                 </tr>
-                <tr className="border-t border-white/[0.06] bg-white/[0.02]">
-                  <td className="text-left align-middle px-2 py-2 font-sans text-[11px] font-semibold leading-snug text-slate-100 sm:text-xs sm:leading-tight">{game.homeTeamName}</td>
+                <tr className="border-t border-slate-200/80 bg-white">
+                  <td className="text-left align-middle px-2 py-2 font-sans text-[11px] font-semibold leading-snug text-slate-900 sm:text-xs sm:leading-tight">{game.homeTeamName}</td>
                   {Array.from({ length: maxInnings }, (_, i) => {
                     const hasVal = i < homeLineScore.length;
                     const isCurrent = status === 'live' && i + 1 === displayInning && displayHalf === 'bot';
@@ -1363,14 +1392,14 @@ export function LiveGameClient({
                     const isTopOfThis = status === 'live' && i + 1 === displayInning && displayHalf === 'top';
                     const isFuture = i + 1 > Math.max(awayLineScore.length, homeLineScore.length);
                     return (
-                      <td key={i} className={`py-2 text-center tabular-nums ${isCurrent ? 'text-live font-bold' : hasVal ? 'text-slate-200' : 'text-slate-500'}`}>
+                      <td key={i} className={`py-2 text-center tabular-nums ${isCurrent ? 'text-live font-bold' : hasVal ? 'text-slate-800' : 'text-slate-400'}`}>
                         {hasVal ? homeLineScore[i] : (isCurrent ? '•' : (isTopOfThis || isFuture) ? '' : '')}
                       </td>
                     );
                   })}
-                  <td className="border-l border-white/10 py-2 text-center text-base font-bold tabular-nums text-white">{displayScore.home}</td>
-                  <td className="py-2 text-center tabular-nums text-slate-200">{homeBatting.reduce((s, b) => s + (b.hits || 0), 0) || homeLineup.reduce((s, p) => s + (liveBattingMap[p.playerId]?.h ?? 0), 0)}</td>
-                  <td className="py-2 text-center tabular-nums text-slate-200">{errorCounts.home}</td>
+                  <td className="border-l border-slate-200 py-2 text-center text-base font-bold tabular-nums text-slate-900">{displayScore.home}</td>
+                  <td className="py-2 text-center tabular-nums text-slate-700">{homeBatting.reduce((s, b) => s + (b.hits || 0), 0) || homeLineup.reduce((s, p) => s + (liveBattingMap[p.playerId]?.h ?? 0), 0)}</td>
+                  <td className="py-2 text-center tabular-nums text-slate-700">{errorCounts.home}</td>
                 </tr>
               </tbody>
             </table>
@@ -1624,31 +1653,10 @@ export function LiveGameClient({
           {/* PITCHING */}
           {tab === 'pitching' && (
             <div>
-              <div className="mb-3 flex flex-col gap-3 sm:mb-4 sm:flex-row sm:items-center sm:justify-between">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">Pitching</h3>
-                <div className="flex items-center gap-0.5 self-start rounded-lg bg-slate-100/90 p-0.5 ring-1 ring-slate-200/80 sm:self-auto">
-                  <button
-                    type="button"
-                    onClick={() => setPitchingView('core')}
-                    className={`rounded-md px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide ${pitchingView === 'core' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
-                  >
-                    Core stats
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPitchingView('all')}
-                    className={`rounded-md px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide ${pitchingView === 'all' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
-                  >
-                    All columns
-                  </button>
-                </div>
-              </div>
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3">Pitching</h3>
               <p className="mb-5 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-[11px] leading-relaxed text-slate-500">
                 <span>All counts from this game.</span>
                 <span className="font-medium text-slate-600">ERA / WHIP = this game only (not season).</span>
-                {pitchingView === 'core' && (
-                  <span className="text-slate-500">Core view: decision, line, runs, walks, strikeouts, HR, ERA, WHIP.</span>
-                )}
               </p>
               {renderPitchingTable(game.awayTeamName, awayPitching)}
               {renderPitchingTable(game.homeTeamName, homePitching)}
