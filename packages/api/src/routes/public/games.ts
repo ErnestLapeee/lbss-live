@@ -487,9 +487,10 @@ export async function gamesRoutes(app: FastifyInstance) {
 
       const playerMap: Record<number, string> = {};
       if (playerIds.size > 0) {
+        const ids = [...playerIds];
         const allPlayers = await db.select({ id: players.id, firstName: players.firstName, lastName: players.lastName })
           .from(players)
-          .where(sql`${players.id} = ANY(${sql.raw(`ARRAY[${[...playerIds].join(',')}]`)})`);
+          .where(inArray(players.id, ids));
         for (const p of allPlayers) playerMap[p.id] = `${p.firstName} ${p.lastName}`;
       }
 
