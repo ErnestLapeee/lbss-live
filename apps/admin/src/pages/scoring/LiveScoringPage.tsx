@@ -9,7 +9,14 @@ interface GameState { inning: number; half: 'top' | 'bot'; outs: number; homeSco
 interface GameEvent { id: number; eventNumber: number; eventType: string; batterId?: number; batterSide?: string | null; pitcherId?: number; inning: number; half: string; runsScored?: number; rbi?: number; outsRecorded?: number; eventDetail?: string; fieldingSequence?: string; hitLocationX?: string | null; hitLocationY?: string | null; hitType?: string | null; hitHardness?: string | null; runnerFirstId?: number | null; runnerSecondId?: number | null; runnerThirdId?: number | null; runnersScored?: number[] }
 interface GameData { id: number; status: string; homeTeamId: number; awayTeamId: number; homeTeamName: string; awayTeamName: string; isFinalized: boolean }
 
-function formatScoringMiniPbpLine(evt: GameEvent): string {
+function battingTeamIdFromHalf(half: string | undefined, homeTeamId: number, awayTeamId: number): number | null {
+  const h = String(half ?? '').toLowerCase();
+  if (h === 'top' || h === 't') return awayTeamId;
+  if (h === 'bottom' || h === 'bot' || h === 'b') return homeTeamId;
+  return null;
+}
+
+function formatScoringMiniPbpLine(evt: GameEvent, game?: GameData | null): string {
   if (String(evt.eventDetail || '').toLowerCase() === 'automatic_out_empty_slot') {
     return 'Automatic out (empty lineup slot)';
   }
@@ -29,6 +36,7 @@ function formatScoringMiniPbpLine(evt: GameEvent): string {
       const d = JSON.parse(evt.eventDetail || '{}') as {
         kind?: string;
         subKind?: string;
+        teamId?: number;
         outName?: string;
         inName?: string;
         position?: number;
@@ -47,11 +55,18 @@ function formatScoringMiniPbpLine(evt: GameEvent): string {
       if (d.kind === 'player_change' || d.outName != null || d.inName != null) {
         const pos = d.position === 1 ? 'P' : (d.position != null ? (POS_LABELS[d.position] ?? `#${d.position}`) : '');
         const role = pos ? ` (${pos})` : '';
+        let effective: 'offensive' | 'defensive' | null = null;
+        if (d.subKind === 'offensive' || d.subKind === 'defensive') effective = d.subKind;
+        else if (game && d.teamId != null) {
+          const bat = battingTeamIdFromHalf(evt.half, game.homeTeamId, game.awayTeamId);
+          if (bat != null) effective = d.teamId === bat ? 'offensive' : 'defensive';
+        }
         let prefix: string;
         if (d.position === 1) prefix = 'Pitching change';
-        else if (d.subKind === 'offensive') prefix = 'Offensive substitution';
+        else if (effective === 'offensive') prefix = 'Pinch hitter';
+        else if (effective === 'defensive') prefix = 'Defensive substitution';
         else prefix = 'Substitution';
-        return `${prefix}: ${d.inName ?? '?'} for ${d.outName ?? '?'}${role}`;
+        return `${prefix}: ${d.inName ?? '?'} replaces ${d.outName ?? '?'}${role}`;
       }
     } catch { /* fall through */ }
     return 'Substitution';
@@ -2665,7 +2680,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
             {[...events].reverse().slice(0, 15).map(evt => (
               <div key={evt.eventNumber} className="py-0.5 leading-tight text-white/35 border-b border-white/[0.03]">
                 <span className="text-white/20">{evt.half === 'top' ? '▲' : '▼'}{evt.inning}</span>{' '}
-                {formatScoringMiniPbpLine(evt)}
+                {formatScoringMiniPbpLine(evt, game)}
               </div>
             ))}
             {events.length === 0 && <p className="text-white/15">No plays yet</p>}

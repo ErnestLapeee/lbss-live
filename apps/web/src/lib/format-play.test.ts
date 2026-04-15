@@ -367,3 +367,79 @@ describe("Fielder's choice", () => {
     expect(result.title).toContain('Roberts Lipsbergs scores');
   });
 });
+
+describe('Substitution', () => {
+  const playerChangeDetail = (extra: Record<string, unknown>) =>
+    JSON.stringify({
+      kind: 'player_change',
+      outName: 'Out Player',
+      inName: 'In Player',
+      position: 3,
+      teamId: 10,
+      ...extra,
+    });
+
+  it('labels pitching change', () => {
+    const result = formatPlayByPlay(
+      make({
+        eventType: 'substitution',
+        eventDetail: playerChangeDetail({ position: 1 }),
+      }),
+    );
+    expect(result.title).toBe('Pitching change: In Player replaces Out Player (P)');
+  });
+
+  it('labels explicit offensive subKind', () => {
+    const result = formatPlayByPlay(
+      make({
+        eventType: 'substitution',
+        eventDetail: playerChangeDetail({ subKind: 'offensive' }),
+      }),
+    );
+    expect(result.title).toBe('Pinch hitter: In Player replaces Out Player (1B)');
+  });
+
+  it('labels explicit defensive subKind', () => {
+    const result = formatPlayByPlay(
+      make({
+        eventType: 'substitution',
+        eventDetail: playerChangeDetail({ subKind: 'defensive' }),
+      }),
+    );
+    expect(result.title).toBe('Defensive substitution: In Player replaces Out Player (1B)');
+  });
+
+  it('infers pinch hitter when batting team matches detail.teamId', () => {
+    const result = formatPlayByPlay(
+      make({
+        eventType: 'substitution',
+        half: 'top',
+        eventDetail: playerChangeDetail({ teamId: 5 }),
+      }),
+      { homeTeamId: 1, awayTeamId: 5 },
+    );
+    expect(result.title).toBe('Pinch hitter: In Player replaces Out Player (1B)');
+  });
+
+  it('infers defensive substitution when fielding team matches detail.teamId', () => {
+    const result = formatPlayByPlay(
+      make({
+        eventType: 'substitution',
+        half: 'top',
+        eventDetail: playerChangeDetail({ teamId: 1 }),
+      }),
+      { homeTeamId: 1, awayTeamId: 5 },
+    );
+    expect(result.title).toBe('Defensive substitution: In Player replaces Out Player (1B)');
+  });
+
+  it('falls back when team context is missing', () => {
+    const result = formatPlayByPlay(
+      make({
+        eventType: 'substitution',
+        eventDetail: playerChangeDetail({}),
+      }),
+    );
+    expect(result.title).toBe('Substitution: In Player replaces Out Player (1B)');
+  });
+});

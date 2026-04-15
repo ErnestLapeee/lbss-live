@@ -625,6 +625,8 @@ export function LiveGameClient({
     );
   }
 
+  const fmtPbpCtx = { homeTeamId: game.homeTeamId, awayTeamId: game.awayTeamId };
+
   const fmtAvg = (h: number, ab: number) => ab > 0 ? (h / ab).toFixed(3) : '—';
   const fmtOps = (h: number, ab: number, bb: number, hbp: number, sf: number, tb: number) => {
     const obpDenom = ab + bb + hbp + sf;
@@ -899,7 +901,7 @@ export function LiveGameClient({
   const compactRunnerSummary = (ab: AtBat) => {
     const entries: string[] = [];
     for (const re of ab.betweenEvents) {
-      const title = formatPlayByPlay(re).title;
+      const title = formatPlayByPlay(re, fmtPbpCtx).title;
       if (title) entries.push(title);
     }
     if (ab.result?.runsScored && ab.result.runsScored > 0) {
@@ -1000,7 +1002,7 @@ export function LiveGameClient({
 
       const runnerNotes = runnerEventsSorted
         .filter(re => re.eventNumber > pitchEvt.eventNumber && (!nextPitch || re.eventNumber < nextPitch.eventNumber))
-        .map(re => formatPlayByPlay(re).title);
+        .map(re => formatPlayByPlay(re, fmtPbpCtx).title);
 
       rows.push({
         pitchNo: i + 1,
@@ -1015,7 +1017,7 @@ export function LiveGameClient({
     }
 
     const r = ab.result;
-    const title = formatPlayByPlay(r).title;
+    const title = formatPlayByPlay(r, fmtPbpCtx).title;
     const resultType = r.eventType;
     const n = pitchEventsSorted.length;
 
@@ -1542,7 +1544,11 @@ export function LiveGameClient({
                             else if (isRunnerOnly) borderClass = 'border-l border-gray-300';
 
                             const formatted = result
-                              ? formatPlayByPlay(result, { outsBefore: outsAfter - (result.outsRecorded ?? 0), outsAfter })
+                              ? formatPlayByPlay(result, {
+                                  outsBefore: outsAfter - (result.outsRecorded ?? 0),
+                                  outsAfter,
+                                  ...fmtPbpCtx,
+                                })
                               : null;
                             const stateEvt = result ?? ab.betweenEvents[ab.betweenEvents.length - 1] ?? ab.pitches[ab.pitches.length - 1] ?? null;
                             const bases = baseStateFromEvent(stateEvt);
@@ -1598,7 +1604,7 @@ export function LiveGameClient({
                                         : ab.pitches.length > 0
                                           ? `${ab.batterName} at bat`
                                           : stateEvt
-                                            ? formatPlayByPlay(stateEvt).title
+                                            ? formatPlayByPlay(stateEvt, fmtPbpCtx).title
                                             : `${ab.batterName} play`}
                                     </div>
                                     <div className="text-[10px] text-gray-800 mt-1">
@@ -1659,7 +1665,7 @@ export function LiveGameClient({
                                 {ab.betweenEvents.length > 0 && (
                                   <div className="mt-1.5 space-y-1">
                                     {ab.betweenEvents.map((re, rei) => {
-                                      const reFormatted = formatPlayByPlay(re);
+                                      const reFormatted = formatPlayByPlay(re, fmtPbpCtx);
                                       return (
                                         <div key={`re-${rei}`} className="text-[11px] text-gray-700 flex items-start gap-1.5">
                                           <span className="text-gray-500 mt-px">↳</span>
