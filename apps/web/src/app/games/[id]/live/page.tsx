@@ -1,8 +1,12 @@
 import type { Metadata } from 'next';
 import { apiFetch } from '@/lib/api';
+import { normalizeGameEvents } from '@/lib/normalize-game-events';
 import { LiveGameClient } from './live-client';
 
 export const metadata: Metadata = { title: 'Game Detail' };
+/** Always load fresh game + events (avoid prerendering empty PBP). */
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 export default async function LiveGamePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -20,11 +24,14 @@ export default async function LiveGamePage({ params }: { params: Promise<{ id: s
       apiFetch(`/api/public/games/${gameId}/season-context`, opts).catch(() => ({ batting: [], pitching: [] })),
     ]);
 
+  const eventsList = normalizeGameEvents(Array.isArray(initialEvents) ? initialEvents : []);
+
   return (
     <LiveGameClient
+      key={gameId}
       gameId={gameId}
       initialData={initialData}
-      initialEvents={Array.isArray(initialEvents) ? initialEvents : []}
+      initialEvents={eventsList}
       initialLineups={Array.isArray(initialLineups) ? initialLineups : []}
       initialBatting={Array.isArray(initialBatting) ? initialBatting : []}
       initialPitching={Array.isArray(initialPitching) ? initialPitching : []}

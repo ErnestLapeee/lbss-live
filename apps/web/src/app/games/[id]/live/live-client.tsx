@@ -7,11 +7,12 @@ import { formatPlayByPlay } from '@/lib/format-play';
 import { useApiBase } from '@/lib/api-context';
 import { getStatAbbreviationMeaning } from '@/lib/stat-abbreviations';
 import { aggregatePitchingStatsByPitcher, inningsFromOuts } from '@lbss/shared';
+import { normalizeGameEvents } from '@/lib/normalize-game-events';
 
 /** Fetch a JSON array from the public proxy; returns null on non-OK or parse errors so callers do not replace state with []. */
 async function fetchPublicJsonArray(url: string): Promise<any[] | null> {
   try {
-    const r = await fetch(url);
+    const r = await fetch(url, { cache: 'no-store' });
     if (!r.ok) return null;
     const data = await r.json();
     return Array.isArray(data) ? data : null;
@@ -250,7 +251,7 @@ export function LiveGameClient({
 }: LiveGameClientProps) {
   const apiBase = useApiBase();
   const [game, setGame] = useState<GameData | null>(initialData);
-  const [events, setEvents] = useState<GameEvent[]>(initialEvents);
+  const [events, setEvents] = useState<GameEvent[]>(() => normalizeGameEvents(initialEvents) as GameEvent[]);
   const [lineups, setLineups] = useState<LineupEntry[]>(initialLineups);
   const [battingBox, setBattingBox] = useState<BattingBoxScore[]>(initialBatting);
   const [pitchingBox, setPitchingBox] = useState<PitchingBoxScore[]>(initialPitching);
@@ -264,10 +265,14 @@ export function LiveGameClient({
   /** SSR can yield [] on failure; same-origin client fetch often succeeds. Run once when props had no events. */
   const emptyEventsBootstrapDone = useRef(false);
   useEffect(() => {
+    emptyEventsBootstrapDone.current = false;
+  }, [gameId]);
+
+  useEffect(() => {
     if (initialEvents.length > 0 || !game || emptyEventsBootstrapDone.current) return;
     emptyEventsBootstrapDone.current = true;
     fetchPublicJsonArray(`/api/proxy/public/games/${gameId}/events`).then((evts) => {
-      if (evts !== null) setEvents(evts);
+      if (evts !== null) setEvents(normalizeGameEvents(evts) as GameEvent[]);
     });
   }, [gameId, game, initialEvents.length]);
 
@@ -279,7 +284,7 @@ export function LiveGameClient({
       fetchPublicJsonArray(`/api/proxy/public/games/${gameId}/boxscore`),
       fetchPublicJsonArray(`/api/proxy/public/games/${gameId}/pitching-boxscore`),
     ]).then(([evts, box, pbox]) => {
-      if (evts !== null) setEvents(evts);
+      if (evts !== null) setEvents(normalizeGameEvents(evts) as GameEvent[]);
       if (box !== null) setBattingBox(box);
       if (pbox !== null) setPitchingBox(pbox);
     });
@@ -293,7 +298,7 @@ export function LiveGameClient({
       fetchPublicJsonArray(`/api/proxy/public/games/${gameId}/boxscore`),
       fetchPublicJsonArray(`/api/proxy/public/games/${gameId}/pitching-boxscore`),
     ]).then(([evts, box, pbox]) => {
-      if (evts !== null) setEvents(evts);
+      if (evts !== null) setEvents(normalizeGameEvents(evts) as GameEvent[]);
       if (box !== null) setBattingBox(box);
       if (pbox !== null) setPitchingBox(pbox);
     });
@@ -315,7 +320,7 @@ export function LiveGameClient({
           fetchPublicJsonArray(`/api/proxy/public/games/${gameId}/pitching-boxscore`),
         ]);
         if (gData && typeof gData === 'object' && gData.id) setGame(gData);
-        if (evts !== null) setEvents(evts);
+        if (evts !== null) setEvents(normalizeGameEvents(evts) as GameEvent[]);
         if (box !== null) setBattingBox(box);
         if (pbox !== null) setPitchingBox(pbox);
       } catch {}

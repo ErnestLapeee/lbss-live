@@ -1,4 +1,8 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
+/** Server components prefer INTERNAL_API_URL (e.g. Docker/Railway private URL); browser uses NEXT_PUBLIC. */
+const API_BASE =
+  typeof window === 'undefined'
+    ? (process.env.INTERNAL_API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002')
+    : (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002');
 
 export async function apiFetch<T>(path: string, options?: RequestInit & { noCache?: boolean }): Promise<T> {
   const { noCache, ...fetchOptions } = options ?? {};
