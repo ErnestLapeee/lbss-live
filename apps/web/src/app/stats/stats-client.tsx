@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import { usePlayerModal } from '@/components/player-modal';
 import { getStatAbbreviationMeaning } from '@/lib/stat-abbreviations';
+import { HorizontalScrollArea } from '@/components/stats/horizontal-scroll-area';
 
 
 /* ── Types ── */
@@ -889,7 +890,7 @@ export function StatsClient({
             </div>
 
             <div className="rounded-xl border border-border bg-surface overflow-hidden">
-              <div className="overflow-x-auto">
+              <HorizontalScrollArea>
                 <table className="w-full text-sm whitespace-nowrap">
                   <thead>
                     <tr className="border-b border-border bg-surface-alt">
@@ -1002,7 +1003,7 @@ export function StatsClient({
                     )}
                   </tbody>
                 </table>
-              </div>
+              </HorizontalScrollArea>
             </div>
 
           </section>
