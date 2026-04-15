@@ -530,13 +530,19 @@ export async function playersRoutes(app: FastifyInstance) {
     }
   });
 
-  // GET /:slug/fielding-by-position - aggregate fielding stats grouped by position
-  app.get<{ Params: { slug: string } }>('/:slug/fielding-by-position', async (request, reply) => {
+  // GET /:slug/fielding-by-position - aggregate fielding stats grouped by position; ?seasonId= filters to that season
+  app.get<{ Params: { slug: string }; Querystring: { seasonId?: string } }>(
+    '/:slug/fielding-by-position',
+    async (request, reply) => {
     try {
       const [player] = await db.select().from(players).where(eq(players.slug, request.params.slug)).limit(1);
       if (!player) return reply.status(404).send({ message: 'Player not found' });
 
-      const rows = await db.select({
+      const seasonIdRaw = request.query.seasonId;
+      const seasonIdNum = seasonIdRaw ? parseInt(seasonIdRaw, 10) : null;
+      const filterSeason = seasonIdNum != null && !Number.isNaN(seasonIdNum);
+
+      const posSelect = {
         position: playerGameFielding.position,
         games: sql<number>`count(*)`.as('games'),
         putouts: sql<number>`sum(${playerGameFielding.putouts})`.as('putouts'),
@@ -544,11 +550,30 @@ export async function playersRoutes(app: FastifyInstance) {
         errors: sql<number>`sum(${playerGameFielding.errors})`.as('errors'),
         doublePlays: sql<number>`sum(${playerGameFielding.doublePlays})`.as('double_plays'),
         innings: sql<string>`sum(${playerGameFielding.innings}::numeric)`.as('innings'),
-      })
-        .from(playerGameFielding)
-        .where(eq(playerGameFielding.playerId, player.id))
-        .groupBy(playerGameFielding.position)
-        .orderBy(sql`count(*) desc`);
+      };
+
+      const rows = filterSeason
+        ? await db
+          .select(posSelect)
+          .from(playerGameFielding)
+          .innerJoin(games, eq(playerGameFielding.gameId, games.id))
+          .innerJoin(leagues, eq(games.leagueId, leagues.id))
+          .where(
+            and(
+              eq(playerGameFielding.playerId, player.id),
+              eq(leagues.seasonId, seasonIdNum!),
+              eq(games.isFinalized, true),
+              isNotNull(playerGameFielding.position),
+            ),
+          )
+          .groupBy(playerGameFielding.position)
+          .orderBy(sql`count(*) desc`)
+        : await db
+          .select(posSelect)
+          .from(playerGameFielding)
+          .where(and(eq(playerGameFielding.playerId, player.id), isNotNull(playerGameFielding.position)))
+          .groupBy(playerGameFielding.position)
+          .orderBy(sql`count(*) desc`);
 
       const result = rows.map(r => {
         const po = Number(r.putouts) || 0;

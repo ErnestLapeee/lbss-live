@@ -226,6 +226,8 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
 
   const [tab, setTab] = useState<Tab>('batting');
   const [selectedSeasonId, setSelectedSeasonId] = useState<number | null>(null); // null = All time
+  /** Season filter for Fielding → By Position only (null = all seasons). */
+  const [fieldingPosSeasonId, setFieldingPosSeasonId] = useState<number | null>(null);
   const [battingStats, setBattingStats] = useState<any[]>(initialBattingStats);
   const [pitchingStats, setPitchingStats] = useState<any[] | null>(null);
   const [fieldingStats, setFieldingStats] = useState<any[] | null>(null);
@@ -248,8 +250,13 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
     if (tab !== 'fielding') return;
     if (fieldingStats !== null) return;
     fetchJson(`/api/public/players/${slug}/fielding-stats`).then(d => setFieldingStats(Array.isArray(d) ? d : []));
-    fetchJson(`/api/public/players/${slug}/fielding-by-position`).then(d => setFieldingByPos(Array.isArray(d) ? d : []));
   }, [tab, slug, fieldingStats]);
+
+  useEffect(() => {
+    if (tab !== 'fielding') return;
+    const q = fieldingPosSeasonId != null ? `?seasonId=${fieldingPosSeasonId}` : '';
+    fetchJson(`/api/public/players/${slug}/fielding-by-position${q}`).then(d => setFieldingByPos(Array.isArray(d) ? d : []));
+  }, [tab, slug, fieldingPosSeasonId]);
 
   // Game log: respects season filter
   useEffect(() => {
@@ -562,36 +569,64 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
               </div>
 
               {/* Fielding by Position */}
-              {fieldingByPos && fieldingByPos.length > 0 && (
+              {fieldingByPos !== null && (
                 <div className="mt-5">
-                  <h3 className="text-[11px] font-bold uppercase tracking-wider text-text-faint mb-2">By Position</h3>
-                  <div className="rounded-xl border border-border bg-surface overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b border-border bg-surface-alt">
-                          {['Pos', 'G', 'INN', 'PO', 'A', 'E', 'DP', 'FP%'].map(col => (
-                            <th key={col} className={`px-2.5 py-2 text-[10px] font-bold uppercase tracking-wider text-text-faint whitespace-nowrap ${col === 'Pos' ? 'text-left' : 'text-right'}`}>
-                              {col}
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {fieldingByPos.map((r: any, i: number) => (
-                          <tr key={i} className="border-b border-border last:border-0 hover:bg-surface-alt/50 transition-colors">
-                            <td className="px-2.5 py-2 font-semibold text-xs">{r.position ? POS_LABELS[r.position] || String(r.position) : '—'}</td>
-                            <td className="px-2.5 py-2 text-right font-mono text-xs">{n(r.games)}</td>
-                            <td className="px-2.5 py-2 text-right font-mono text-xs">{r.innings ?? '—'}</td>
-                            <td className="px-2.5 py-2 text-right font-mono text-xs">{n(r.putouts)}</td>
-                            <td className="px-2.5 py-2 text-right font-mono text-xs">{n(r.assists)}</td>
-                            <td className="px-2.5 py-2 text-right font-mono text-xs">{n(r.errors)}</td>
-                            <td className="px-2.5 py-2 text-right font-mono text-xs">{n(r.doublePlays)}</td>
-                            <td className="px-2.5 py-2 text-right font-mono text-xs font-bold">{fmtRate(r.fieldingPct)}</td>
-                          </tr>
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-2">
+                    <h3 className="text-[11px] font-bold uppercase tracking-wider text-text-faint">By Position</h3>
+                    <div className="flex items-center gap-2">
+                      <label
+                        htmlFor="fielding-pos-season"
+                        className="text-xs font-medium text-text-muted whitespace-nowrap"
+                        title="Filter defensive games by season"
+                      >
+                        Season:
+                      </label>
+                      <select
+                        id="fielding-pos-season"
+                        value={fieldingPosSeasonId ?? 'all'}
+                        onChange={(e) =>
+                          setFieldingPosSeasonId(e.target.value === 'all' ? null : Number(e.target.value))
+                        }
+                        className="rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent/50 min-w-[140px]"
+                      >
+                        <option value="all">All seasons</option>
+                        {seasons.map(s => (
+                          <option key={s.id} value={s.id}>{s.name}</option>
                         ))}
-                      </tbody>
-                    </table>
+                      </select>
+                    </div>
                   </div>
+                  {fieldingByPos.length > 0 ? (
+                    <div className="rounded-xl border border-border bg-surface overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-border bg-surface-alt">
+                            {['Pos', 'G', 'INN', 'PO', 'A', 'E', 'DP', 'FP%'].map(col => (
+                              <th key={col} className={`px-2.5 py-2 text-[10px] font-bold uppercase tracking-wider text-text-faint whitespace-nowrap ${col === 'Pos' ? 'text-left' : 'text-right'}`}>
+                                {col}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {fieldingByPos.map((r: any, i: number) => (
+                            <tr key={i} className="border-b border-border last:border-0 hover:bg-surface-alt/50 transition-colors">
+                              <td className="px-2.5 py-2 font-semibold text-xs">{r.position ? POS_LABELS[r.position] || String(r.position) : '—'}</td>
+                              <td className="px-2.5 py-2 text-right font-mono text-xs">{n(r.games)}</td>
+                              <td className="px-2.5 py-2 text-right font-mono text-xs">{r.innings ?? '—'}</td>
+                              <td className="px-2.5 py-2 text-right font-mono text-xs">{n(r.putouts)}</td>
+                              <td className="px-2.5 py-2 text-right font-mono text-xs">{n(r.assists)}</td>
+                              <td className="px-2.5 py-2 text-right font-mono text-xs">{n(r.errors)}</td>
+                              <td className="px-2.5 py-2 text-right font-mono text-xs">{n(r.doublePlays)}</td>
+                              <td className="px-2.5 py-2 text-right font-mono text-xs font-bold">{fmtRate(r.fieldingPct)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-text-muted py-2">No fielding by position for this filter.</p>
+                  )}
                 </div>
               )}
             </>
