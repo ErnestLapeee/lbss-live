@@ -430,6 +430,67 @@ export function LiveScoringPage() {
     setter(list => list.map(p => p.playerId === pid ? { ...p, position: pos } : p));
   };
 
+  const [setupLineupLoading, setSetupLineupLoading] = useState(false);
+  const [setupDragFrom, setSetupDragFrom] = useState<number | null>(null);
+
+  const moveSetup = (side: 'home' | 'away', fromIdx: number, toIdx: number) => {
+    if (fromIdx === toIdx) return;
+    const setter = side === 'home' ? setSetupHome : setSetupAway;
+    setter((list) => {
+      const next = [...list];
+      const [removed] = next.splice(fromIdx, 1);
+      next.splice(toIdx, 0, removed);
+      return next;
+    });
+  };
+
+  const fetchAndApplySeasonLineup = useCallback(async (side: 'home' | 'away'): Promise<'ok' | 'empty' | 'roster'> => {
+    if (!game) return 'empty';
+    const teamId = side === 'home' ? game.homeTeamId : game.awayTeamId;
+    const roster = side === 'home' ? homeRoster : awayRoster;
+    const data: any = await apiGet(`/admin/scoring/${gameId}/most-common-lineup/${teamId}`);
+    const raw = data.lineup as Array<{ playerId: number; position: number }> | null | undefined;
+    if (!raw?.length) return 'empty';
+    const rosterIds = new Set(roster.map((p) => p.playerId));
+    const filtered = raw.filter((l) => rosterIds.has(l.playerId));
+    if (filtered.length === 0) return 'roster';
+    const lined = filtered.map((l) => ({ playerId: l.playerId, position: l.position }));
+    if (side === 'home') setSetupHome(lined);
+    else setSetupAway(lined);
+    return 'ok';
+  }, [game, gameId, homeRoster, awayRoster]);
+
+  const applySeasonLineup = async (side: 'home' | 'away') => {
+    setSetupLineupLoading(true);
+    try {
+      const r = await fetchAndApplySeasonLineup(side);
+      if (r === 'empty') alert('No full starter lineups in this season yet — set manually.');
+      if (r === 'roster') alert('None of those players are on this game’s roster.');
+    } catch (e: any) {
+      alert(e?.message || 'Failed to load suggested lineup');
+    } finally {
+      setSetupLineupLoading(false);
+    }
+  };
+
+  const applySeasonLineupBoth = async () => {
+    if (!game) return;
+    setSetupLineupLoading(true);
+    try {
+      const ra = await fetchAndApplySeasonLineup('away');
+      const rh = await fetchAndApplySeasonLineup('home');
+      if (ra !== 'ok' && rh !== 'ok') {
+        if (ra === 'empty' && rh === 'empty') alert('No full starter lineups in this season yet.');
+        else if (ra === 'roster' && rh === 'roster') alert('None of those players are on the rosters.');
+        else alert('Could not fill one or both lineups from season data.');
+      }
+    } catch (e: any) {
+      alert(e?.message || 'Failed to load lineups');
+    } finally {
+      setSetupLineupLoading(false);
+    }
+  };
+
   // Sync local count from server state
   useEffect(() => {
     if (gameState) {
@@ -1250,13 +1311,30 @@ function needsRunnerAdvanceErrorFieldingPrompt(
           <button onClick={handleSetupSubmit} disabled={setupHome.length === 0 || setupAway.length === 0} className="px-4 py-2 bg-green-600 hover:bg-green-500 disabled:opacity-30 text-white text-sm font-bold rounded-lg">Start Game</button>
         </div>
         <div className="max-w-6xl mx-auto p-6">
-          <div className="flex gap-2 mb-6">
+          <div className="flex flex-wrap gap-2 mb-4 items-center">
             {(['away', 'home'] as const).map(side => (
               <button key={side} onClick={() => setSetupTeam(side)} className={`px-4 py-2 rounded-lg text-sm font-semibold ${setupTeam === side ? 'bg-accent text-white' : 'bg-white/10 text-white/60'}`}>
                 {side === 'away' ? game.awayTeamName : game.homeTeamName} ({(side === 'home' ? setupHome : setupAway).length}/9)
               </button>
             ))}
+            <button
+              type="button"
+              disabled={setupLineupLoading}
+              onClick={() => void applySeasonLineup(setupTeam)}
+              className="px-3 py-2 rounded-lg text-xs font-bold uppercase bg-amber-700/80 hover:bg-amber-600 disabled:opacity-40 text-white border border-amber-500/40"
+            >
+              {setupLineupLoading ? 'Loading…' : 'This team: most common (season)'}
+            </button>
+            <button
+              type="button"
+              disabled={setupLineupLoading}
+              onClick={() => void applySeasonLineupBoth()}
+              className="px-3 py-2 rounded-lg text-xs font-bold uppercase bg-white/10 hover:bg-white/15 disabled:opacity-40 text-white/90 border border-white/10"
+            >
+              Both teams
+            </button>
           </div>
+          <p className="text-[11px] text-white/35 mb-4">Fills batting order + positions from the most-used 9-man starter group in this league season (other games). Drag rows to reorder.</p>
           <div className="grid grid-cols-2 gap-6">
             <div>
               <h3 className="text-sm font-bold text-white/50 uppercase mb-3">Available</h3>
@@ -1273,14 +1351,37 @@ function needsRunnerAdvanceErrorFieldingPrompt(
               <div className="space-y-1">{currentSetup.map((entry, idx) => {
                 const player = currentRoster.find(p => p.playerId === entry.playerId);
                 return (
-                  <div key={entry.playerId} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5">
+                  <div
+                    key={entry.playerId}
+                    draggable
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData('text/plain', String(idx));
+                      e.dataTransfer.effectAllowed = 'move';
+                      setSetupDragFrom(idx);
+                    }}
+                    onDragEnd={() => setSetupDragFrom(null)}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = 'move';
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      const fromStr = e.dataTransfer.getData('text/plain');
+                      const from = parseInt(fromStr, 10);
+                      if (Number.isNaN(from) || from === idx) return;
+                      moveSetup(setupTeam, from, idx);
+                      setSetupDragFrom(null);
+                    }}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5 border border-transparent cursor-grab active:cursor-grabbing select-none ${setupDragFrom === idx ? 'opacity-50 border-amber-500/40' : 'hover:border-white/10'}`}
+                  >
+                    <span className="text-white/40 text-lg leading-none" aria-hidden>⋮⋮</span>
                     <span className="text-white/30 font-bold w-6">{idx + 1}</span>
                     <span className={`w-2 h-2 rounded-full shrink-0 ${player?.licensePaid === 'paid' ? 'bg-green-500' : 'bg-red-500'}`} />
                     <span className="flex-1 text-sm">{player ? `${player.firstName.charAt(0)}. ${player.lastName}` : '?'}</span>
-                    <select value={entry.position} onChange={e => updatePosition(setupTeam, entry.playerId, Number(e.target.value))} className="bg-white/10 border border-white/10 rounded px-2 py-1 text-xs">
+                    <select value={entry.position} onChange={e => updatePosition(setupTeam, entry.playerId, Number(e.target.value))} className="bg-white/10 border border-white/10 rounded px-2 py-1 text-xs" onClick={e => e.stopPropagation()}>
                       {Object.entries(POS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                     </select>
-                    <button onClick={() => removeFromSetup(setupTeam, entry.playerId)} className="text-red-400 text-xs">✕</button>
+                    <button type="button" onClick={() => removeFromSetup(setupTeam, entry.playerId)} className="text-red-400 text-xs">✕</button>
                   </div>
                 );
               })}</div>

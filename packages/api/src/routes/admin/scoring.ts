@@ -10,7 +10,7 @@ import {
   licenses,
   leagues,
 } from '../../db/schema/index.js';
-import { eq, and, desc, max, sql, inArray } from 'drizzle-orm';
+import { eq, and, or, desc, max, sql, inArray } from 'drizzle-orm';
 import { getIO } from '../../app.js';
 import { finalizeGame } from '../../services/finalize-game.js';
 
@@ -310,6 +310,111 @@ export async function adminScoringRoutes(app: FastifyInstance) {
       return reply.status(500).send({ message: 'Failed to get roster' });
     }
   });
+
+  // ── GET /:gameId/most-common-lineup/:teamId ── Mode starter lineup (same season) for quick entry
+  app.get<{ Params: { gameId: string; teamId: string } }>(
+    '/:gameId/most-common-lineup/:teamId',
+    async (request, reply) => {
+      try {
+        const gameId = parseInt(request.params.gameId, 10);
+        const teamId = parseInt(request.params.teamId, 10);
+        if (Number.isNaN(gameId) || Number.isNaN(teamId)) {
+          return reply.status(400).send({ message: 'Invalid game or team id' });
+        }
+
+        const game = await getGameCore(gameId);
+        if (!game) return reply.status(404).send({ message: 'Game not found' });
+
+        const [leagueRow] = await db
+          .select({ seasonId: leagues.seasonId })
+          .from(leagues)
+          .where(eq(leagues.id, game.leagueId))
+          .limit(1);
+
+        const seasonId = leagueRow?.seasonId ?? null;
+        if (seasonId == null) {
+          return reply.send({ lineup: null, gamesSampled: 0, message: 'No season for league' });
+        }
+
+        const seasonGames = await db
+          .select({ id: games.id })
+          .from(games)
+          .innerJoin(leagues, eq(games.leagueId, leagues.id))
+          .where(
+            and(
+              eq(leagues.seasonId, seasonId),
+              or(eq(games.homeTeamId, teamId), eq(games.awayTeamId, teamId)),
+              sql`${games.status} IN ('final', 'live', 'suspended')`,
+            ),
+          );
+
+        const gameIds = seasonGames.map((g) => g.id).filter((id) => id !== gameId);
+        if (gameIds.length === 0) {
+          return reply.send({ lineup: null, gamesSampled: 0, message: 'No other games in season yet' });
+        }
+
+        const rows = await db
+          .select({
+            gameId: gameLineups.gameId,
+            battingOrder: gameLineups.battingOrder,
+            playerId: gameLineups.playerId,
+            position: gameLineups.position,
+          })
+          .from(gameLineups)
+          .where(
+            and(
+              eq(gameLineups.teamId, teamId),
+              eq(gameLineups.isStarter, true),
+              sql`${gameLineups.battingOrder} >= 1 AND ${gameLineups.battingOrder} <= 9`,
+              inArray(gameLineups.gameId, gameIds),
+            ),
+          );
+
+        const byGame = new Map<number, typeof rows>();
+        for (const r of rows) {
+          const arr = byGame.get(r.gameId) ?? [];
+          arr.push(r);
+          byGame.set(r.gameId, arr);
+        }
+
+        const counts = new Map<string, { count: number; slots: typeof rows }>();
+        for (const [, slotRows] of byGame) {
+          if (slotRows.length !== 9) continue;
+          const bo = new Set(slotRows.map((s) => s.battingOrder));
+          if (bo.size !== 9) continue;
+          const sorted = [...slotRows].sort((a, b) => a.battingOrder - b.battingOrder);
+          const sig = sorted.map((s) => `${s.playerId}:${s.position}`).join('|');
+          const prev = counts.get(sig);
+          if (prev) prev.count++;
+          else counts.set(sig, { count: 1, slots: sorted });
+        }
+
+        let best: { count: number; slots: typeof rows } | null = null;
+        for (const v of counts.values()) {
+          if (!best || v.count > best.count) best = v;
+        }
+
+        if (!best) {
+          return reply.send({ lineup: null, gamesSampled: 0, message: 'No full starter lineups found' });
+        }
+
+        const lineup = best.slots.map((s) => ({
+          playerId: s.playerId,
+          position: s.position,
+          battingOrder: s.battingOrder,
+        }));
+
+        return reply.send({
+          lineup,
+          gamesSampled: best.count,
+          gamesInSeason: gameIds.length,
+        });
+      } catch (err) {
+        request.log.error(err);
+        return reply.status(500).send({ message: 'Failed to compute most common lineup' });
+      }
+    },
+  );
 
   // ── POST /:gameId/lineup ── Set lineup for a team
   app.post<{
