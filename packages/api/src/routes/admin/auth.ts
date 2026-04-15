@@ -1,9 +1,12 @@
 import type { FastifyInstance } from 'fastify';
-import { hash, verify } from 'argon2';
+import { verify } from 'argon2';
 import { nanoid } from 'nanoid';
 import { db } from '../../db/index.js';
 import { users, sessions } from '../../db/schema/index.js';
 import { eq, and, gt } from 'drizzle-orm';
+import { checkLoginRateLimit, clientIpFromRequest } from '../../lib/login-rate-limit.js';
+
+const SESSION_DAYS = 7;
 
 export async function authRoutes(app: FastifyInstance) {
   // POST /login - accepts {email, password}
@@ -14,6 +17,17 @@ export async function authRoutes(app: FastifyInstance) {
       const { email, password } = request.body ?? {};
       if (!email || !password) {
         return reply.status(400).send({ message: 'Email and password required' });
+      }
+
+      const ip = clientIpFromRequest(request.headers as Record<string, unknown>, request.ip);
+      const rl = checkLoginRateLimit(ip);
+      if (!rl.ok) {
+        return reply
+          .status(429)
+          .header('Retry-After', String(rl.retryAfterSec))
+          .send({
+            message: `Too many login attempts. Try again in ${rl.retryAfterSec} seconds.`,
+          });
       }
 
       const [user] = await db
@@ -33,7 +47,7 @@ export async function authRoutes(app: FastifyInstance) {
 
       const sessionId = nanoid(40);
       const expiresAt = new Date();
-      expiresAt.setDate(expiresAt.getDate() + 30);
+      expiresAt.setDate(expiresAt.getDate() + SESSION_DAYS);
 
       await db.insert(sessions).values({
         id: sessionId,

@@ -31,6 +31,10 @@ export function LoginPage() {
           <img src="/lbss-logo.png" alt="LBSS" className="h-14 w-14 mx-auto object-contain" />
           <h1 className="mt-4 font-heading text-2xl font-bold">LBSS Admin</h1>
           <p className="mt-1 text-sm text-text-muted">Sign in to the management panel</p>
+          <p className="mt-3 text-xs text-text-faint max-w-xs mx-auto leading-relaxed">
+            Sessions expire after 7 days. Too many failed attempts will temporarily lock this browser&apos;s IP from
+            signing in.
+          </p>
         </div>
         {error && (
           <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
@@ -42,6 +46,8 @@ export function LoginPage() {
             <label className="block text-sm font-medium mb-1.5">Email</label>
             <input
               type="email"
+              name="email"
+              autoComplete="username"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="w-full px-3 py-2.5 border border-border rounded-lg bg-surface-alt text-sm focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent"
@@ -53,6 +59,8 @@ export function LoginPage() {
             <label className="block text-sm font-medium mb-1.5">Password</label>
             <input
               type="password"
+              name="password"
+              autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="w-full px-3 py-2.5 border border-border rounded-lg bg-surface-alt text-sm focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent"

@@ -237,11 +237,17 @@ export function UsersPage() {
                   </label>
                   <input
                     type="password"
+                    name="new-password"
+                    autoComplete="new-password"
                     value={form.password}
                     onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
                     className={inputClass}
                     required={!editing}
+                    minLength={12}
                   />
+                  <p className="mt-1.5 text-xs text-text-faint">
+                    At least 12 characters with uppercase, lowercase, a number, and a symbol (!@#$…).
+                  </p>
                 </div>
               )}
               <div>

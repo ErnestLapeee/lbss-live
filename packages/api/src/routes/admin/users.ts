@@ -3,6 +3,7 @@ import { hash } from 'argon2';
 import { db } from '../../db/index.js';
 import { users } from '../../db/schema/index.js';
 import { eq } from 'drizzle-orm';
+import { validatePasswordStrength } from '../../lib/password-policy.js';
 
 export async function adminUsersRoutes(app: FastifyInstance) {
   // GET / - list all users
@@ -39,6 +40,11 @@ export async function adminUsersRoutes(app: FastifyInstance) {
         return reply
           .status(400)
           .send({ message: 'email, password, and displayName required' });
+      }
+
+      const passwordCheck = validatePasswordStrength(password);
+      if (!passwordCheck.ok) {
+        return reply.status(400).send({ message: passwordCheck.message });
       }
 
       const passwordHash = await hash(password);
