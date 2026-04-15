@@ -1365,11 +1365,11 @@ export function LiveGameClient({
                                   </div>
                                 )}
 
-                                {runnerSummary && (
+                                {playMode === 'compact' && runnerSummary && (
                                   <div className="text-[11px] text-gray-600 mt-1.5">{runnerSummary}</div>
                                 )}
 
-                                {playMode === 'expanded' && ab.betweenEvents.length > 0 && (
+                                {playMode === 'compact' && ab.betweenEvents.length > 0 && (
                                   <div className="mt-1.5 space-y-1">
                                     {ab.betweenEvents.map((re, rei) => {
                                       const reFormatted = formatPlayByPlay(re);
