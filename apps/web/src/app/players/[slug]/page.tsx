@@ -2,7 +2,6 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { apiFetch } from '@/lib/api';
 import { notFound } from 'next/navigation';
-import { TeamMark } from '@/components/ui/team-mark';
 import { PlayerProfileClient } from './player-profile-client';
 
 type Props = { params: Promise<{ slug: string }> };
@@ -45,8 +44,6 @@ export default async function PlayerProfilePage({ params }: Props) {
     player.weightKg && `${player.weightKg} kg`,
   ].filter(Boolean);
 
-  const headTeam = battingStats[0] as { teamName?: string; teamLogoUrl?: string | null; seasonYear?: number } | undefined;
-
   return (
     <div>
       {/* Player header */}
@@ -62,12 +59,7 @@ export default async function PlayerProfilePage({ params }: Props) {
                 alt=""
                 className="h-28 w-28 rounded-2xl object-cover border border-border bg-surface-alt shrink-0 shadow-sm"
               />
-            ) : (
-              <div className="h-28 w-28 rounded-2xl border border-border bg-surface-alt shrink-0 flex items-center justify-center font-heading text-3xl font-bold text-text-faint">
-                {String(player.firstName?.[0] ?? '?')}
-                {String(player.lastName?.[0] ?? '')}
-              </div>
-            )}
+            ) : null}
             <div className="flex-1 min-w-0">
               <h1 className="font-heading text-3xl font-bold text-text tracking-tight">
                 {player.firstName} {player.lastName}
@@ -82,18 +74,6 @@ export default async function PlayerProfilePage({ params }: Props) {
                 </div>
               )}
             </div>
-            {headTeam?.teamName && (
-              <div className="flex flex-col items-start sm:items-end gap-2 shrink-0 pt-1">
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-text-faint">Team</span>
-                <TeamMark variant="card" name={headTeam.teamName} logoUrl={headTeam.teamLogoUrl} />
-                <span className="text-xs text-text-muted text-left sm:text-right max-w-[200px] leading-snug">
-                  {headTeam.teamName}
-                  {headTeam.seasonYear != null && (
-                    <span className="block text-[10px] text-text-faint mt-0.5">{headTeam.seasonYear}</span>
-                  )}
-                </span>
-              </div>
-            )}
           </div>
         </div>
       </div>
