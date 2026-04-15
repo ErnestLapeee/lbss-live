@@ -8,6 +8,18 @@ import { useApiBase } from '@/lib/api-context';
 import { getStatAbbreviationMeaning } from '@/lib/stat-abbreviations';
 import { aggregatePitchingStatsByPitcher, inningsFromOuts } from '@lbss/shared';
 
+/** Fetch a JSON array from the public proxy; returns null on non-OK or parse errors so callers do not replace state with []. */
+async function fetchPublicJsonArray(url: string): Promise<any[] | null> {
+  try {
+    const r = await fetch(url);
+    if (!r.ok) return null;
+    const data = await r.json();
+    return Array.isArray(data) ? data : null;
+  } catch {
+    return null;
+  }
+}
+
 const POS_LABELS: Record<number, string> = {
   1: 'P', 2: 'C', 3: '1B', 4: '2B', 5: '3B', 6: 'SS', 7: 'LF', 8: 'CF', 9: 'RF', 10: 'DH',
 };
@@ -46,7 +58,8 @@ const RUNNER_EVENT_TYPES = new Set([
   'runner_interference', 'appeal_play', 'tagged_out', 'force_out',
   'hit_by_ball', 'missed_base', 'left_base_early', 'left_base_path',
   'offensive_interference', 'passed_runner', 'hesitation',
-  'double_play', 'triple_play', 'illegal_pitch',
+  /** Not double_play / triple_play — those close the at-bat as the plate appearance result (GIDP, etc.). */
+  'illegal_pitch',
 ]);
 
 interface AtBat {
@@ -255,13 +268,13 @@ export function LiveGameClient({
   useEffect(() => {
     if (!lastEvent) return;
     Promise.all([
-      fetch(`/api/proxy/public/games/${gameId}/events`).then(r => r.json()).catch(() => []),
-      fetch(`/api/proxy/public/games/${gameId}/boxscore`).then(r => r.json()).catch(() => []),
-      fetch(`/api/proxy/public/games/${gameId}/pitching-boxscore`).then(r => r.json()).catch(() => []),
+      fetchPublicJsonArray(`/api/proxy/public/games/${gameId}/events`),
+      fetchPublicJsonArray(`/api/proxy/public/games/${gameId}/boxscore`),
+      fetchPublicJsonArray(`/api/proxy/public/games/${gameId}/pitching-boxscore`),
     ]).then(([evts, box, pbox]) => {
-      if (Array.isArray(evts)) setEvents(evts);
-      if (Array.isArray(box)) setBattingBox(box);
-      if (Array.isArray(pbox)) setPitchingBox(pbox);
+      if (evts !== null) setEvents(evts);
+      if (box !== null) setBattingBox(box);
+      if (pbox !== null) setPitchingBox(pbox);
     });
   }, [lastEvent, gameId]);
 
@@ -272,15 +285,17 @@ export function LiveGameClient({
     const interval = setInterval(async () => {
       try {
         const [gData, evts, box, pbox] = await Promise.all([
-          fetch(`/api/proxy/public/games/${gameId}`).then(r => r.json()).catch(() => null),
-          fetch(`/api/proxy/public/games/${gameId}/events`).then(r => r.json()).catch(() => []),
-          fetch(`/api/proxy/public/games/${gameId}/boxscore`).then(r => r.json()).catch(() => []),
-          fetch(`/api/proxy/public/games/${gameId}/pitching-boxscore`).then(r => r.json()).catch(() => []),
+          fetch(`/api/proxy/public/games/${gameId}`)
+            .then(async r => (r.ok ? r.json() : null))
+            .catch(() => null),
+          fetchPublicJsonArray(`/api/proxy/public/games/${gameId}/events`),
+          fetchPublicJsonArray(`/api/proxy/public/games/${gameId}/boxscore`),
+          fetchPublicJsonArray(`/api/proxy/public/games/${gameId}/pitching-boxscore`),
         ]);
         if (gData && typeof gData === 'object' && gData.id) setGame(gData);
-        if (Array.isArray(evts)) setEvents(evts);
-        if (Array.isArray(box)) setBattingBox(box);
-        if (Array.isArray(pbox)) setPitchingBox(pbox);
+        if (evts !== null) setEvents(evts);
+        if (box !== null) setBattingBox(box);
+        if (pbox !== null) setPitchingBox(pbox);
       } catch {}
     }, 8000);
     return () => clearInterval(interval);
