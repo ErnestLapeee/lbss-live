@@ -682,22 +682,23 @@ export function LiveGameClient({
     const lob = teamLobMap[teamId] ?? 0;
 
     return (
-      <div className="mb-6">
-        <h4 className="text-xs font-bold uppercase tracking-wider text-gray-600 mb-2">{teamName}</h4>
-        <div className="overflow-x-auto">
-          <table className="w-full text-[11px] whitespace-nowrap font-mono">
-            <thead>
-              <tr className="text-gray-500 border-b border-gray-200">
-                <th className="text-left py-1.5 pl-2 pr-1 w-8">#</th>
-                <th className="text-left py-1.5 pr-2 min-w-[90px]">Player</th>
-                <th className="text-center px-0.5 w-7">Pos</th>
-                {['PA','AB','R','H','2B','3B','HR','RBI','BB','HBP','SO','Kc','Ks','SB','CS','SF','SH','B','GDP','FC','CI','AVG','OPS'].map((h) => (
-                  <th key={h} title={getStatAbbreviationMeaning(h) ?? undefined} className={`text-center px-1 ${h === 'AVG' || h === 'OPS' ? 'w-9 text-gray-700' : 'w-8'}`}>
-                    {h === 'SH' ? 'SAC' : h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
+      <div className="mb-8">
+        <h4 className="mb-3 text-sm font-semibold text-slate-800">{teamName}</h4>
+        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+          <div className="overflow-x-auto overscroll-x-contain">
+            <table className="w-full min-w-[920px] text-[11px] whitespace-nowrap font-mono">
+              <thead>
+                <tr className="border-b border-slate-200 bg-slate-100 text-slate-600">
+                  <th className="py-2 pl-3 pr-1 text-left text-[10px] font-semibold uppercase tracking-wide">#</th>
+                  <th className="min-w-[90px] py-2 pr-2 text-left text-[10px] font-semibold uppercase tracking-wide">Player</th>
+                  <th className="w-7 px-0.5 py-2 text-center text-[10px] font-semibold uppercase tracking-wide">Pos</th>
+                  {['PA','AB','R','H','2B','3B','HR','RBI','BB','HBP','SO','Kc','Ks','SB','CS','SF','SH','B','GDP','FC','CI','AVG','OPS'].map((h) => (
+                    <th key={h} title={getStatAbbreviationMeaning(h) ?? undefined} className={`px-1 py-2 text-center text-[10px] font-semibold uppercase tracking-wide ${h === 'AVG' || h === 'OPS' ? 'w-9 text-slate-700' : 'w-8'}`}>
+                      {h === 'SH' ? 'SAC' : h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
             <tbody>
               {rows.map((p, i) => {
                 const box = battingMap[p.playerId];
@@ -726,37 +727,38 @@ export function LiveGameClient({
                 const tb = box?.totalBases ?? live?.tb ?? 0;
                 const displayAvg = fmtAvg(h, ab);
                 const displayOps = fmtOps(h, ab, bb, hbp, sf, tb);
+                const rowBg = i % 2 === 0 ? 'bg-white' : 'bg-slate-50/80';
                 return (
-                  <tr key={p.playerId} className={`border-b border-gray-100 ${i % 2 === 0 ? '' : 'bg-gray-50'}`}>
-                    <td className="py-1.5 pl-2 pr-1 text-gray-500">{p.isStarter ? (p.battingOrder || i + 1) : ''}</td>
-                    <td className={`py-1.5 pr-2 text-gray-900 font-sans ${p.isStarter ? 'font-medium' : 'pl-4 text-gray-700'}`}>
+                  <tr key={p.playerId} className={`border-b border-slate-100 last:border-0 ${rowBg}`}>
+                    <td className="py-2 pl-3 pr-1 text-slate-500">{p.isStarter ? (p.battingOrder || i + 1) : ''}</td>
+                    <td className={`py-2 pr-2 font-sans text-slate-900 ${p.isStarter ? 'font-medium' : 'pl-4 text-slate-700'}`}>
                       {p.isStarter ? '' : '↳ '}
                       {p.firstName?.charAt(0)}. {p.lastName}
                     </td>
-                    <td className="text-center text-gray-500">{POS_LABELS[p.position] || '—'}</td>
-                    <td className="text-center text-gray-700 font-mono">{pa}</td>
-                    <td className="text-center text-gray-700 font-mono">{ab}</td>
-                    <td className="text-center text-gray-700 font-mono">{r}</td>
-                    <td className={`text-center font-mono ${h > 0 ? 'text-gray-900 font-bold' : 'text-gray-700'}`}>{h}</td>
-                    <td className="text-center text-gray-700 font-mono">{dbl}</td>
-                    <td className="text-center text-gray-700 font-mono">{trp}</td>
-                    <td className={`text-center font-mono ${hr > 0 ? 'text-amber-700 font-bold' : 'text-gray-700'}`}>{hr}</td>
-                    <td className={`text-center font-mono ${rbi > 0 ? 'text-gray-900 font-bold' : 'text-gray-700'}`}>{rbi}</td>
-                    <td className="text-center text-gray-700 font-mono">{bb}</td>
-                    <td className="text-center text-gray-700 font-mono">{hbp}</td>
-                    <td className="text-center text-gray-700 font-mono">{so}</td>
-                    <td className="text-center text-gray-600 font-mono">{kc}</td>
-                    <td className="text-center text-gray-600 font-mono">{ks}</td>
-                    <td className="text-center text-gray-700 font-mono">{sb}</td>
-                    <td className="text-center text-gray-700 font-mono">{cs}</td>
-                    <td className="text-center text-gray-700 font-mono">{sf}</td>
-                    <td className="text-center text-gray-700 font-mono">{sac}</td>
-                    <td className="text-center text-gray-700 font-mono">{b}</td>
-                    <td className="text-center text-gray-700 font-mono">{gdp}</td>
-                    <td className="text-center text-gray-700 font-mono">{fc}</td>
-                    <td className="text-center text-gray-700 font-mono">{ci}</td>
-                    <td className="text-center text-gray-700 font-mono text-[10px]">{displayAvg}</td>
-                    <td className="text-center text-gray-700 font-mono text-[10px]">{displayOps}</td>
+                    <td className="text-center text-slate-500">{POS_LABELS[p.position] || '—'}</td>
+                    <td className="text-center font-mono text-slate-800">{pa}</td>
+                    <td className="text-center font-mono text-slate-800">{ab}</td>
+                    <td className="text-center font-mono text-slate-800">{r}</td>
+                    <td className={`text-center font-mono ${h > 0 ? 'font-bold text-slate-900' : 'text-slate-800'}`}>{h}</td>
+                    <td className="text-center font-mono text-slate-800">{dbl}</td>
+                    <td className="text-center font-mono text-slate-800">{trp}</td>
+                    <td className={`text-center font-mono ${hr > 0 ? 'font-bold text-amber-800' : 'text-slate-800'}`}>{hr}</td>
+                    <td className={`text-center font-mono ${rbi > 0 ? 'font-bold text-slate-900' : 'text-slate-800'}`}>{rbi}</td>
+                    <td className="text-center font-mono text-slate-800">{bb}</td>
+                    <td className="text-center font-mono text-slate-800">{hbp}</td>
+                    <td className="text-center font-mono text-slate-800">{so}</td>
+                    <td className="text-center font-mono text-slate-600">{kc}</td>
+                    <td className="text-center font-mono text-slate-600">{ks}</td>
+                    <td className="text-center font-mono text-slate-800">{sb}</td>
+                    <td className="text-center font-mono text-slate-800">{cs}</td>
+                    <td className="text-center font-mono text-slate-800">{sf}</td>
+                    <td className="text-center font-mono text-slate-800">{sac}</td>
+                    <td className="text-center font-mono text-slate-800">{b}</td>
+                    <td className="text-center font-mono text-slate-800">{gdp}</td>
+                    <td className="text-center font-mono text-slate-800">{fc}</td>
+                    <td className="text-center font-mono text-slate-800">{ci}</td>
+                    <td className="text-center font-mono text-[10px] text-slate-800">{displayAvg}</td>
+                    <td className="text-center font-mono text-[10px] text-slate-800">{displayOps}</td>
                   </tr>
                 );
               })}
@@ -796,8 +798,8 @@ export function LiveGameClient({
               }, 0);
               return (
                 <tfoot>
-                  <tr className="border-t border-gray-200 text-gray-700 font-bold">
-                    <td className="py-1.5 pl-2" colSpan={3}>Totals</td>
+                  <tr className="border-t-2 border-slate-200 bg-slate-100 font-semibold text-slate-900">
+                    <td className="py-2 pl-3" colSpan={3}>Totals</td>
                     <td className="text-center font-mono">{tPA}</td>
                     <td className="text-center font-mono">{tAB}</td>
                     <td className="text-center font-mono">{tR}</td>
@@ -826,10 +828,11 @@ export function LiveGameClient({
               );
             })()}
           </table>
+          </div>
         </div>
         {(battingNotes.length > 0 || lob > 0) && (
-          <div className="mt-1 text-[10px] text-gray-600">
-            <span className="font-semibold text-gray-700">Batting notes:</span>{' '}
+          <div className="mt-2 text-[10px] text-slate-600">
+            <span className="font-semibold text-slate-700">Batting notes:</span>{' '}
             {[...battingNotes, `LOB: ${lob}`].join(' | ')}
           </div>
         )}
@@ -1256,9 +1259,9 @@ export function LiveGameClient({
   return (
     <div className="min-h-screen bg-[#f5f5f5]">
       {/* Header */}
-      <div className="bg-white border-b border-[#d1d5db]">
-        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center gap-4">
-          <Link href="/schedule" className="text-sm text-[#6b7280] hover:text-[#111827] transition-colors">← Schedule</Link>
+      <div className="border-b border-slate-200 bg-white">
+        <div className="mx-auto flex max-w-6xl items-center gap-4 px-4 py-3">
+          <Link href="/schedule" className="text-sm text-slate-600 transition-colors hover:text-slate-900">← Schedule</Link>
           <div className="flex items-center gap-2">
             {status === 'live' && (
               <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-live/20 text-live text-[10px] font-bold uppercase">
@@ -1273,7 +1276,7 @@ export function LiveGameClient({
               <span className="text-[10px] text-green-400">Connected</span>
             )}
             {viewerCount > 0 && (
-              <span className="flex items-center gap-1 text-[10px] text-[#6b7280]">
+              <span className="flex items-center gap-1 text-[10px] text-slate-500">
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
                 {viewerCount} watching
               </span>
@@ -1282,7 +1285,7 @@ export function LiveGameClient({
         </div>
       </div>
 
-      <div className="max-w-6xl mx-auto px-4 py-4 space-y-4">
+      <div className="mx-auto max-w-6xl space-y-3 px-4 py-4">
         {/* Scoreboard */}
         <div className="relative overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-sm ring-1 ring-slate-100">
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-slate-50/80 to-white" />
@@ -1409,7 +1412,7 @@ export function LiveGameClient({
         </div>
 
         {/* Tab bar */}
-        <div className="flex gap-1 rounded-xl bg-slate-200/70 p-1 ring-1 ring-slate-300/60">
+        <div className="flex gap-1 rounded-2xl bg-slate-100 p-1 ring-1 ring-slate-200/90">
           {([
             { key: 'plays' as Tab, label: 'Play-by-Play' },
             { key: 'boxscore' as Tab, label: 'Box Score' },
@@ -1431,12 +1434,12 @@ export function LiveGameClient({
         </div>
 
         {/* Tab content */}
-        <div className="rounded-xl border border-slate-200/90 bg-white p-4 shadow-sm sm:p-5">
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm ring-1 ring-slate-100 sm:p-6">
           {/* PLAY-BY-PLAY */}
           {tab === 'plays' && (
             <div>
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">Play-by-Play</h3>
+              <div className="mb-4 flex items-center justify-between">
+                <h3 className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Play-by-Play</h3>
                 <div className="flex items-center gap-0.5 rounded-lg bg-slate-100/90 p-0.5 ring-1 ring-slate-200/80">
                   <button
                     type="button"
@@ -1455,22 +1458,22 @@ export function LiveGameClient({
                 </div>
               </div>
               {loading ? (
-                <p className="text-gray-400 text-sm">Loading...</p>
+                <p className="text-sm text-slate-500">Loading...</p>
               ) : groupedAtBats.length === 0 ? (
-                <p className="text-gray-400 text-sm">No plays recorded yet</p>
+                <p className="text-sm text-slate-500">No plays recorded yet</p>
               ) : (
                 <div className="space-y-5">
                   {groupedAtBats.map(group => (
                     <div key={group.key}>
                       {/* Inning header */}
                       <div className="flex items-center gap-2 mb-2">
-                        <div className="text-[11px] font-bold text-gray-800 bg-gray-100 border border-gray-200 rounded px-2.5 py-1">
+                        <div className="rounded border border-slate-200 bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-800">
                           {group.half === 'top' ? 'Top' : 'Bottom'} {ordinalInning(group.inning)}
                         </div>
-                        <div className="text-[10px] text-gray-500">
+                        <div className="text-[10px] text-slate-500">
                           {group.half === 'top' ? game.awayTeamName : game.homeTeamName} batting
                         </div>
-                        <div className="flex-1 border-t border-gray-200" />
+                        <div className="flex-1 border-t border-slate-200" />
                       </div>
 
                       {/* At-bats in this inning-half (newest first, cumulative outs) */}
@@ -1640,11 +1643,7 @@ export function LiveGameClient({
           {/* BOX SCORE */}
           {tab === 'boxscore' && (
             <div>
-              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3">Box Score</h3>
-              <p className="mb-4 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-[11px] leading-relaxed text-slate-500">
-                <span>All counts from this game.</span>
-                <span className="font-medium text-slate-600">AVG / OPS = this game only (not season).</span>
-              </p>
+              <h3 className="mb-5 text-[11px] font-bold uppercase tracking-wider text-slate-500">Box score</h3>
               {renderBattingTable(game.awayTeamName, awayLineup, awayBatting)}
               {renderBattingTable(game.homeTeamName, homeLineup, homeBatting)}
             </div>
@@ -1653,22 +1652,18 @@ export function LiveGameClient({
           {/* PITCHING */}
           {tab === 'pitching' && (
             <div>
-              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3">Pitching</h3>
-              <p className="mb-5 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-[11px] leading-relaxed text-slate-500">
-                <span>All counts from this game.</span>
-                <span className="font-medium text-slate-600">ERA / WHIP = this game only (not season).</span>
-              </p>
+              <h3 className="mb-5 text-[11px] font-bold uppercase tracking-wider text-slate-500">Pitching</h3>
               {renderPitchingTable(game.awayTeamName, awayPitching)}
               {renderPitchingTable(game.homeTeamName, homePitching)}
               {awayPitching.length === 0 && homePitching.length === 0 && (
-                <p className="text-gray-400 text-sm">No pitching data yet</p>
+                <p className="text-sm text-slate-500">No pitching data yet</p>
               )}
             </div>
           )}
         </div>
 
         {/* Game info footer */}
-        <div className="text-center text-xs text-gray-400 space-y-0.5 pb-8">
+        <div className="space-y-0.5 pb-8 text-center text-xs text-slate-500">
           {game.venue && <p>{game.venue}</p>}
           <p>{new Date(game.scheduledAt).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
         </div>
