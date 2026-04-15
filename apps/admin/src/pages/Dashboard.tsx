@@ -14,11 +14,9 @@ interface DashboardStats {
 }
 
 export function Dashboard() {
-  const { user } = useAuth();
   const [stats, setStats] = useState<DashboardStats>({ seasons: 0, teams: 0, players: 0, games: 0 });
   const [loading, setLoading] = useState(true);
   const [backupLoading, setBackupLoading] = useState(false);
-  const canBackup = isAdmin(user?.role);
 
   useEffect(() => {
     async function load() {
