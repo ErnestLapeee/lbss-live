@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { apiFetch } from '@/lib/api';
 import { PageHeader } from '@/components/ui/page-header';
+import { TeamMark } from '@/components/ui/team-mark';
 import { SeasonSelect } from '../standings/season-select';
 
 export const metadata: Metadata = { title: 'Teams' };
@@ -51,7 +52,6 @@ export default async function TeamsPage({ searchParams }: Props) {
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {teams.map((team: any) => {
-              const abbr = team.shortName || team.name.split(' ').map((w: string) => w[0]).join('').slice(0, 3);
               const href =
                 currentSeasonId != null
                   ? `/teams/${team.slug}?season=${currentSeasonId}`
@@ -62,9 +62,12 @@ export default async function TeamsPage({ searchParams }: Props) {
                   href={href}
                   className="group flex items-center gap-4 rounded-xl border border-border bg-surface p-5 hover:border-accent/30 hover:shadow-md transition-all"
                 >
-                  <div className="flex h-14 w-14 items-center justify-center rounded border border-[#ccc] bg-[#f0f0f0] font-heading text-lg font-bold shrink-0 text-[#111]">
-                    {abbr}
-                  </div>
+                  <TeamMark
+                    variant="card"
+                    name={team.name}
+                    shortName={team.shortName}
+                    logoUrl={team.logoUrl}
+                  />
                   <div className="min-w-0 flex-1">
                     <h3 className="font-heading text-base font-bold group-hover:text-accent transition-colors truncate">
                       {team.name}

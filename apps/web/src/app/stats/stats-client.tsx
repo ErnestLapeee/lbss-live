@@ -6,6 +6,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import { usePlayerModal } from '@/components/player-modal';
 import { getStatAbbreviationMeaning } from '@/lib/stat-abbreviations';
 import { HorizontalScrollArea } from '@/components/stats/horizontal-scroll-area';
+import { TeamMark } from '@/components/ui/team-mark';
 
 
 /* ── Types ── */
@@ -366,25 +367,6 @@ function formatStatValue(value: string | number | null | undefined): string {
     return num.toFixed(3).replace(/^0/, '');
   }
   return String(value).includes('.') ? num.toFixed(2) : String(Math.round(num));
-}
-
-function TeamLogo({ name, shortName, logoUrl, size = 'sm' }: { name: string; shortName?: string | null; logoUrl?: string | null; size?: 'sm' | 'md' }) {
-  const dim = size === 'md' ? 'w-8 h-8' : 'w-5 h-5';
-  const textSize = size === 'md' ? 'text-[10px]' : 'text-[8px]';
-
-  if (logoUrl) {
-    return <img src={logoUrl} alt={name} className={`${dim} object-contain rounded`} />;
-  }
-
-  const abbr = shortName || (name.length <= 3
-    ? name.toUpperCase()
-    : name.split(' ').map(w => w[0]).join('').slice(0, 3).toUpperCase());
-
-  return (
-    <div className={`${dim} rounded border border-[#ccc] bg-[#e8e8e8] flex items-center justify-center shrink-0`}>
-      <span className={`${textSize} font-bold text-[#333]`}>{abbr}</span>
-    </div>
-  );
 }
 
 /* ── Main Component ── */
@@ -795,11 +777,11 @@ export function StatsClient({
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
                             {selectedSeasonId != null && (
-                              <TeamLogo
+                              <TeamMark
+                                variant="tableSm"
                                 name={leader.teamName}
                                 shortName={leader.teamShortName}
                                 logoUrl={leader.teamLogoUrl}
-                                size="sm"
                               />
                             )}
                             <span className="font-semibold text-sm truncate">
@@ -823,11 +805,11 @@ export function StatsClient({
                                 {idx + 2}
                               </span>
                               {selectedSeasonId != null && (
-                                <TeamLogo
+                                <TeamMark
+                                  variant="tableSm"
                                   name={player.teamName}
                                   shortName={player.teamShortName}
                                   logoUrl={player.teamLogoUrl}
-                                  size="sm"
                                 />
                               )}
                               <span className="text-sm truncate flex-1">
@@ -941,11 +923,11 @@ export function StatsClient({
                             cellValue = (
                               <div className="flex items-center gap-2">
                                 {selectedSeasonId != null && (
-                                  <TeamLogo
+                                  <TeamMark
+                                    variant="tableSm"
                                     name={stat.teamName}
                                     shortName={stat.teamShortName}
                                     logoUrl={stat.teamLogoUrl}
-                                    size="sm"
                                   />
                                 )}
                                 <button

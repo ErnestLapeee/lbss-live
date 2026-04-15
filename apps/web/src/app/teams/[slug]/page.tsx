@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { apiFetch } from '@/lib/api';
 import { notFound } from 'next/navigation';
+import { TeamMark } from '@/components/ui/team-mark';
 import { RosterTable } from './roster-table';
 
 type Props = {
@@ -42,8 +43,6 @@ export default async function TeamDetailPage({ params, searchParams }: Props) {
     }
   } catch {}
 
-  const abbr = team.shortName || team.name.split(' ').map((w: string) => w[0]).join('').slice(0, 3);
-
   return (
     <div>
       {/* Team header */}
@@ -53,9 +52,7 @@ export default async function TeamDetailPage({ params, searchParams }: Props) {
             &larr; All Teams
           </Link>
           <div className="flex items-center gap-4">
-            <div className="flex h-14 w-14 items-center justify-center rounded border border-[#ccc] bg-[#f0f0f0] font-heading text-xl font-bold text-[#111]">
-              {abbr}
-            </div>
+            <TeamMark variant="card" name={team.name} shortName={team.shortName} logoUrl={team.logoUrl} />
             <div>
               <h1 className="font-heading text-2xl font-bold text-[#111] tracking-tight">{team.name}</h1>
               <p className="text-sm text-[#666] mt-0.5">

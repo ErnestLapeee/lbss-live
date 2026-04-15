@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { PageHeader } from '@/components/ui/page-header';
+import { TeamMark } from '@/components/ui/team-mark';
 
 
 interface Game {
@@ -13,6 +14,8 @@ interface Game {
   awayTeamName: string | null;
   homeTeamShort: string | null;
   awayTeamShort: string | null;
+  homeTeamLogoUrl?: string | null;
+  awayTeamLogoUrl?: string | null;
   homeScore: number;
   awayScore: number;
   status: string;
@@ -26,6 +29,10 @@ interface Game {
   currentBatter: { name: string; battingOrder: number } | null;
   homeLineScore: number[] | null;
   awayLineScore: number[] | null;
+  homeTeamHits?: number | null;
+  awayTeamHits?: number | null;
+  homeTeamErrors?: number | null;
+  awayTeamErrors?: number | null;
   winPitcher: { name: string; ip: string; h: number; er: number; bb: number; k: number } | null;
   lossPitcher: { name: string; ip: string; h: number; er: number; bb: number; k: number } | null;
   savePitcher: { name: string; ip: string; h: number; er: number; bb: number; k: number } | null;
@@ -287,11 +294,13 @@ function LiveCard({ game }: { game: Game }) {
           {/* Away row */}
           <div className="flex items-center h-12">
             <div className="flex items-center gap-3 flex-1 min-w-0">
-              <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-xs font-heading font-black shrink-0 ${
-                awayLeading ? 'bg-accent/10 text-accent-light' : 'bg-surface-alt text-text-faint'
-              }`}>
-                {(game.awayTeamShort || game.awayTeamName || '??').slice(0, 3).toUpperCase()}
-              </div>
+              <TeamMark
+                variant="live"
+                name={game.awayTeamName || 'Away'}
+                shortName={game.awayTeamShort}
+                logoUrl={game.awayTeamLogoUrl}
+                emphasized={awayLeading}
+              />
               <div className="min-w-0">
                 <div className={`text-sm font-bold truncate leading-tight ${awayLeading ? 'text-text' : 'text-text-muted'}`}>
                   {game.awayTeamName || 'Away'}
@@ -319,11 +328,13 @@ function LiveCard({ game }: { game: Game }) {
           {/* Home row */}
           <div className="flex items-center h-12">
             <div className="flex items-center gap-3 flex-1 min-w-0">
-              <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-xs font-heading font-black shrink-0 ${
-                homeLeading ? 'bg-accent/10 text-accent-light' : 'bg-surface-alt text-text-faint'
-              }`}>
-                {(game.homeTeamShort || game.homeTeamName || '??').slice(0, 3).toUpperCase()}
-              </div>
+              <TeamMark
+                variant="live"
+                name={game.homeTeamName || 'Home'}
+                shortName={game.homeTeamShort}
+                logoUrl={game.homeTeamLogoUrl}
+                emphasized={homeLeading}
+              />
               <div className="min-w-0">
                 <div className={`text-sm font-bold truncate leading-tight ${homeLeading ? 'text-text' : 'text-text-muted'}`}>
                   {game.homeTeamName || 'Home'}
@@ -390,8 +401,20 @@ function FinalCard({ game }: { game: Game }) {
 
           {/* Score rows */}
           <div className="space-y-1.5">
-            <FinalTeamRow name={game.awayTeamName} short={game.awayTeamShort} score={game.awayScore ?? 0} won={awayWon} />
-            <FinalTeamRow name={game.homeTeamName} short={game.homeTeamShort} score={game.homeScore ?? 0} won={homeWon} />
+            <FinalTeamRow
+              name={game.awayTeamName}
+              short={game.awayTeamShort}
+              logoUrl={game.awayTeamLogoUrl}
+              score={game.awayScore ?? 0}
+              won={awayWon}
+            />
+            <FinalTeamRow
+              name={game.homeTeamName}
+              short={game.homeTeamShort}
+              logoUrl={game.homeTeamLogoUrl}
+              score={game.homeScore ?? 0}
+              won={homeWon}
+            />
           </div>
 
           {/* Linescore + pitchers */}
@@ -414,20 +437,20 @@ function FinalCard({ game }: { game: Game }) {
                   <tr>
                     <td className="pr-1 font-bold text-text-faint/80">{game.awayTeamShort || game.awayTeamName?.slice(0, 3)?.toUpperCase()}</td>
                     {Array.from({ length: maxInn }, (_, i) => (
-                      <td key={i} className="text-center">{i < awayLS.length ? awayLS[i] : ''}</td>
+                      <td key={i} className="text-center tabular-nums">{awayLS[i] ?? 0}</td>
                     ))}
                     <td className={`text-center border-l border-border/50 ${awayWon ? 'font-bold text-text' : ''}`}>{game.awayScore ?? 0}</td>
-                    <td className="text-center">—</td>
-                    <td className="text-center">—</td>
+                    <td className="text-center tabular-nums">{game.awayTeamHits ?? '—'}</td>
+                    <td className="text-center tabular-nums">{game.awayTeamErrors ?? '—'}</td>
                   </tr>
                   <tr>
                     <td className="pr-1 font-bold text-text-faint/80">{game.homeTeamShort || game.homeTeamName?.slice(0, 3)?.toUpperCase()}</td>
                     {Array.from({ length: maxInn }, (_, i) => (
-                      <td key={i} className="text-center">{i < homeLS.length ? homeLS[i] : ''}</td>
+                      <td key={i} className="text-center tabular-nums">{homeLS[i] ?? 0}</td>
                     ))}
                     <td className={`text-center border-l border-border/50 ${homeWon ? 'font-bold text-text' : ''}`}>{game.homeScore ?? 0}</td>
-                    <td className="text-center">—</td>
-                    <td className="text-center">—</td>
+                    <td className="text-center tabular-nums">{game.homeTeamHits ?? '—'}</td>
+                    <td className="text-center tabular-nums">{game.homeTeamErrors ?? '—'}</td>
                   </tr>
                 </tbody>
               </table>
@@ -504,17 +527,19 @@ function UpcomingCard({ game }: { game: Game }) {
    Shared sub-components
    ═══════════════════════════════════════════ */
 
-function FinalTeamRow({ name, short, score, won }: {
-  name: string | null; short: string | null; score: number; won: boolean;
+function FinalTeamRow({ name, short, logoUrl, score, won }: {
+  name: string | null; short: string | null; logoUrl?: string | null; score: number; won: boolean;
 }) {
   return (
     <div className="flex items-center justify-between">
       <div className="flex items-center gap-2 min-w-0">
-        <div className={`w-7 h-7 rounded flex items-center justify-center text-[10px] font-heading font-black shrink-0 ${
-          won ? 'bg-surface-alt text-text' : 'bg-surface-alt/50 text-text-faint'
-        }`}>
-          {(short || name || '?').slice(0, 2).toUpperCase()}
-        </div>
+        <TeamMark
+          variant="final"
+          name={name || 'TBD'}
+          shortName={short}
+          logoUrl={logoUrl}
+          won={won}
+        />
         <span className={`text-sm font-semibold truncate ${won ? 'text-text' : 'text-text-muted'}`}>
           {name || 'TBD'}
         </span>

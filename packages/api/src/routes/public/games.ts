@@ -7,13 +7,29 @@ import {
   seasons,
   playerGameBatting,
   playerGamePitching,
+  playerGameFielding,
   playerSeasonBatting,
   playerSeasonPitching,
   gameLineups,
   players,
   gameEvents,
 } from '../../db/schema/index.js';
-import { eq, and, gte, lte, sql, desc } from 'drizzle-orm';
+import { eq, and, gte, lte, sql, desc, sum, inArray } from 'drizzle-orm';
+
+/** Pad inning-by-inning lines so zeros render and short arrays align to innings played. */
+function padLineScores(
+  home: number[] | null | undefined,
+  away: number[] | null | undefined,
+  inningsCount: number | null | undefined
+): { homeLineScore: number[]; awayLineScore: number[] } {
+  const h = home ?? [];
+  const a = away ?? [];
+  const len = Math.max(h.length, a.length, inningsCount ?? 9, 1);
+  return {
+    homeLineScore: Array.from({ length: len }, (_, i) => Number(h[i] ?? 0)),
+    awayLineScore: Array.from({ length: len }, (_, i) => Number(a[i] ?? 0)),
+  };
+}
 
 export async function gamesRoutes(app: FastifyInstance) {
   // GET / - list games with optional filters: seasonId, leagueId, status, from/to dates
@@ -64,6 +80,7 @@ export async function gamesRoutes(app: FastifyInstance) {
         currentHalf: games.currentHalf,
         currentOuts: games.currentOuts,
         isFinalized: games.isFinalized,
+        inningsCount: games.inningsCount,
       };
 
       const gamesList = conditions.length > 0
@@ -90,12 +107,12 @@ export async function gamesRoutes(app: FastifyInstance) {
       // Collect all team IDs for a single batch query
       const teamIds = new Set<number>();
       for (const g of gamesList) { teamIds.add(g.homeTeamId); teamIds.add(g.awayTeamId); }
-      const teamMap: Record<number, { name: string; shortName: string | null }> = {};
+      const teamMap: Record<number, { name: string; shortName: string | null; logoUrl: string | null }> = {};
       if (teamIds.size > 0) {
-        const teamRows = await db.select({ id: teams.id, name: teams.name, shortName: teams.shortName })
+        const teamRows = await db.select({ id: teams.id, name: teams.name, shortName: teams.shortName, logoUrl: teams.logoUrl })
           .from(teams)
           .where(sql`${teams.id} = ANY(${sql.raw(`ARRAY[${[...teamIds].join(',')}]`)})`);
-        for (const t of teamRows) teamMap[t.id] = { name: t.name, shortName: t.shortName };
+        for (const t of teamRows) teamMap[t.id] = { name: t.name, shortName: t.shortName, logoUrl: t.logoUrl };
       }
 
       // Batch fetch linescores + game state for live/final games
@@ -235,10 +252,47 @@ export async function gamesRoutes(app: FastifyInstance) {
         }
       }
 
+      // Team hits & fielding errors (final games) for schedule mini box R/H/E
+      const finalStatIds = gamesList.filter(g => g.status === 'final').map(g => g.id);
+      const hitsByGameTeam: Record<number, Record<number, number>> = {};
+      const errorsByGameTeam: Record<number, Record<number, number>> = {};
+      if (finalStatIds.length > 0) {
+        const hitRows = await db
+          .select({
+            gameId: playerGameBatting.gameId,
+            teamId: playerGameBatting.teamId,
+            totalHits: sum(playerGameBatting.hits),
+          })
+          .from(playerGameBatting)
+          .where(inArray(playerGameBatting.gameId, finalStatIds))
+          .groupBy(playerGameBatting.gameId, playerGameBatting.teamId);
+        for (const r of hitRows) {
+          if (!hitsByGameTeam[r.gameId]) hitsByGameTeam[r.gameId] = {};
+          hitsByGameTeam[r.gameId][r.teamId] = Number(r.totalHits ?? 0);
+        }
+        const errRows = await db
+          .select({
+            gameId: playerGameFielding.gameId,
+            teamId: playerGameFielding.teamId,
+            totalErr: sum(playerGameFielding.errors),
+          })
+          .from(playerGameFielding)
+          .where(inArray(playerGameFielding.gameId, finalStatIds))
+          .groupBy(playerGameFielding.gameId, playerGameFielding.teamId);
+        for (const r of errRows) {
+          if (!errorsByGameTeam[r.gameId]) errorsByGameTeam[r.gameId] = {};
+          errorsByGameTeam[r.gameId][r.teamId] = Number(r.totalErr ?? 0);
+        }
+      }
+
       const result = gamesList.map(g => {
         const ht = teamMap[g.homeTeamId];
         const at = teamMap[g.awayTeamId];
         const ls = linescoreMap[g.id];
+        const paddedLines =
+          g.status === 'live' || g.status === 'final'
+            ? padLineScores(ls?.homeLineScore, ls?.awayLineScore, g.inningsCount)
+            : null;
         const pitchers = wpMap[g.id] || [];
         const wp = pitchers.find(p => p.decision === 'W');
         const lp = pitchers.find(p => p.decision === 'L');
@@ -255,8 +309,14 @@ export async function gamesRoutes(app: FastifyInstance) {
           awayTeamName: at?.name ?? null,
           homeTeamShort: ht?.shortName ?? null,
           awayTeamShort: at?.shortName ?? null,
-          homeLineScore: ls?.homeLineScore ?? null,
-          awayLineScore: ls?.awayLineScore ?? null,
+          homeTeamLogoUrl: ht?.logoUrl ?? null,
+          awayTeamLogoUrl: at?.logoUrl ?? null,
+          homeLineScore: paddedLines?.homeLineScore ?? null,
+          awayLineScore: paddedLines?.awayLineScore ?? null,
+          homeTeamHits: g.status === 'final' ? (hitsByGameTeam[g.id]?.[g.homeTeamId] ?? 0) : null,
+          awayTeamHits: g.status === 'final' ? (hitsByGameTeam[g.id]?.[g.awayTeamId] ?? 0) : null,
+          homeTeamErrors: g.status === 'final' ? (errorsByGameTeam[g.id]?.[g.homeTeamId] ?? 0) : null,
+          awayTeamErrors: g.status === 'final' ? (errorsByGameTeam[g.id]?.[g.awayTeamId] ?? 0) : null,
           bases,
           currentBatter,
           winPitcher: wp ? { name: `${wp.firstName.charAt(0)}. ${wp.lastName}`, ip: wp.ip, h: wp.h, er: wp.er, bb: wp.bb, k: wp.k } : null,
