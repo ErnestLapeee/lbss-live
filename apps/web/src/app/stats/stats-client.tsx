@@ -352,7 +352,7 @@ const FIELDING_COLUMNS: Column[] = [
 ];
 
 const BATTING_LEADER_CATS = ['battingAvg', 'homeRuns', 'rbi', 'hits', 'stolenBases', 'ops'];
-const PITCHING_LEADER_CATS = ['era', 'strikeouts', 'wins', 'whip', 'saves', 'inningsPitched'];
+const PITCHING_LEADER_CATS = ['era', 'strikeouts', 'wins', 'whip', 'strikes', 'inningsPitched'];
 
 /* ── Helpers ── */
 

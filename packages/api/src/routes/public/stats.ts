@@ -988,7 +988,7 @@ export async function statsRoutes(app: FastifyInstance) {
         const descCategories = [
           { key: 'strikeouts', column: playerSeasonPitching.strikeouts, label: 'Strikeouts' },
           { key: 'wins', column: playerSeasonPitching.wins, label: 'Wins' },
-          { key: 'saves', column: playerSeasonPitching.saves, label: 'Saves' },
+          { key: 'strikes', column: playerSeasonPitching.strikes, label: 'Strikes' },
           { key: 'inningsPitched', column: playerSeasonPitching.inningsPitched, label: 'Innings Pitched' },
         ];
         const leaders: Record<string, { label: string; players: any[] }> = {
@@ -1018,7 +1018,7 @@ export async function statsRoutes(app: FastifyInstance) {
             SUM(COALESCE(walks_allowed, 0))::int AS bb,
             SUM(COALESCE(strikeouts, 0))::int AS k,
             SUM(COALESCE(wins, 0))::int AS wins,
-            SUM(COALESCE(saves, 0))::int AS saves,
+            SUM(COALESCE(strikes, 0))::int AS strikes,
             SUM(COALESCE(home_runs_allowed, 0))::int AS hr
           FROM player_season_pitching GROUP BY player_id
         ),
@@ -1027,7 +1027,7 @@ export async function statsRoutes(app: FastifyInstance) {
         )
         SELECT p.id AS player_id, p.slug AS player_slug, p.first_name, p.last_name,
           t.name AS team_name, t.short_name AS team_short_name, t.logo_url AS team_logo_url,
-          tot.ip, tot.er, tot.h, tot.bb, tot.k, tot.wins, tot.saves, tot.hr
+          tot.ip, tot.er, tot.h, tot.bb, tot.k, tot.wins, tot.strikes, tot.hr
         FROM totals tot
         JOIN latest ls ON tot.player_id = ls.player_id
         JOIN players p ON p.id = tot.player_id
@@ -1064,7 +1064,7 @@ export async function statsRoutes(app: FastifyInstance) {
       leaders.era = { label: 'ERA', players: eraSorted.slice(0, 5).map(p => ({ ...p, value: p.era })) };
       const whipSorted = [...qualifiedPitching].sort((a, b) => (parseFloat(a.whip ?? '999') - parseFloat(b.whip ?? '999')));
       leaders.whip = { label: 'WHIP', players: whipSorted.slice(0, 5).map(p => ({ ...p, value: p.whip })) };
-      ['strikeouts', 'wins', 'saves', 'inningsPitched'].forEach(key => {
+      ['strikeouts', 'wins', 'strikes', 'inningsPitched'].forEach(key => {
         const sorted = [...withRates].sort((a, b) => (Number((b as Record<string, unknown>)[key]) - Number((a as Record<string, unknown>)[key])));
         const label = key === 'inningsPitched' ? 'Innings Pitched' : key.charAt(0).toUpperCase() + key.slice(1);
         leaders[key] = { label, players: sorted.slice(0, 5).map(p => ({ ...p, value: (p as Record<string, unknown>)[key] })) };
