@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
+import { useAdminSeason } from '@/context/AdminSeasonContext';
 
 function slugify(text: string): string {
   return text
@@ -9,8 +10,8 @@ function slugify(text: string): string {
 }
 
 export function LeaguesPage() {
+  const { seasons, selectedSeasonId } = useAdminSeason();
   const [items, setItems] = useState<any[]>([]);
-  const [seasons, setSeasons] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -28,12 +29,8 @@ export function LeaguesPage() {
     setLoading(true);
     setError(null);
     try {
-      const [leaguesData, seasonsData] = await Promise.all([
-        apiGet<any[]>('/admin/leagues'),
-        apiGet<any[]>('/admin/seasons'),
-      ]);
+      const leaguesData = await apiGet<any[]>('/admin/leagues');
       setItems(Array.isArray(leaguesData) ? leaguesData : []);
-      setSeasons(Array.isArray(seasonsData) ? seasonsData : []);
     } catch (err: any) {
       setError(err.message || 'Failed to load leagues');
     } finally {
@@ -45,7 +42,12 @@ export function LeaguesPage() {
     load();
   }, []);
 
-  const seasonMap = Object.fromEntries(seasons.map((s) => [s.id, s]));
+  const seasonMap = useMemo(() => Object.fromEntries(seasons.map((s) => [s.id, s])), [seasons]);
+
+  const filteredItems = useMemo(() => {
+    if (!selectedSeasonId) return items;
+    return items.filter((i) => i.seasonId === selectedSeasonId);
+  }, [items, selectedSeasonId]);
 
   const openCreate = () => {
     setEditing(null);
@@ -117,7 +119,14 @@ export function LeaguesPage() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h1 className="font-heading text-2xl font-bold">Leagues</h1>
+        <div>
+          <h1 className="font-heading text-2xl font-bold">Leagues</h1>
+          <p className="text-sm text-text-muted mt-1">
+            {selectedSeasonId
+              ? `Showing leagues for the workspace season (${seasonMap[selectedSeasonId]?.year ?? '?'}). Switch season in the top bar to see others.`
+              : 'Choose a workspace season in the top bar to filter this list.'}
+          </p>
+        </div>
         <button
           onClick={openCreate}
           className="px-4 py-2 bg-accent hover:bg-accent-light text-white text-sm font-semibold rounded-lg transition-colors"
@@ -150,14 +159,16 @@ export function LeaguesPage() {
                   Loading...
                 </td>
               </tr>
-            ) : items.length === 0 ? (
+            ) : filteredItems.length === 0 ? (
               <tr>
                 <td className="px-4 py-8 text-center text-text-muted" colSpan={5}>
-                  No data yet. Create your first entry.
+                  {items.length === 0
+                    ? 'No data yet. Create your first entry.'
+                    : 'No leagues for the selected workspace season. Switch season in the top bar or create a league.'}
                 </td>
               </tr>
             ) : (
-              items.map((item) => (
+              filteredItems.map((item) => (
                 <tr key={item.id} className="border-b border-border last:border-0 hover:bg-surface-alt/50">
                   <td className="px-4 py-3">{item.name}</td>
                   <td className="px-4 py-3">{seasonMap[item.seasonId]?.year ?? '—'}</td>

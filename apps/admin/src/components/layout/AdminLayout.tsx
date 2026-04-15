@@ -1,5 +1,6 @@
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/lib/auth';
+import { useAdminSeason } from '@/context/AdminSeasonContext';
 
 const sidebarItems = [
   { label: 'Dashboard', href: '/', icon: '□' },
@@ -16,6 +17,7 @@ export function AdminLayout() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, logout } = useAuth();
+  const { seasons, selectedSeasonId, setSelectedSeasonId, seasonsLoading } = useAdminSeason();
 
   const handleLogout = async () => {
     await logout();
@@ -59,10 +61,34 @@ export function AdminLayout() {
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col overflow-hidden">
-        <header className="h-14 border-b border-border bg-surface flex items-center justify-between px-6 shrink-0">
-          <h2 className="font-heading font-semibold text-lg">LBSS Administration</h2>
-          <div className="flex items-center gap-4">
-            <span className="text-sm text-text-muted">{user?.displayName || user?.email || 'Admin'}</span>
+        <header className="h-14 border-b border-border bg-surface flex items-center justify-between px-6 shrink-0 gap-4">
+          <h2 className="font-heading font-semibold text-lg shrink-0">LBSS Administration</h2>
+          <div className="flex items-center gap-4 min-w-0 flex-1 justify-end">
+            <label className="flex items-center gap-2 text-sm min-w-0 max-w-[min(100%,20rem)]">
+              <span className="text-text-muted shrink-0 hidden sm:inline">Workspace season</span>
+              <select
+                value={selectedSeasonId ?? ''}
+                disabled={seasonsLoading || seasons.length === 0}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setSelectedSeasonId(v ? parseInt(v, 10) : null);
+                }}
+                className="min-w-0 max-w-full px-2 py-1.5 border border-border rounded-lg bg-surface-alt text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                title="Schedules, rosters, licenses, and game lists use this season"
+              >
+                {seasons.length === 0 ? (
+                  <option value="">No seasons</option>
+                ) : (
+                  seasons.map((s: { id: number; year: number; name: string; isActive: boolean }) => (
+                    <option key={s.id} value={s.id}>
+                      {s.year} – {s.name}
+                      {s.isActive ? ' ★' : ''}
+                    </option>
+                  ))
+                )}
+              </select>
+            </label>
+            <span className="text-sm text-text-muted truncate">{user?.displayName || user?.email || 'Admin'}</span>
             <button
               onClick={handleLogout}
               className="text-sm text-accent hover:text-accent-light transition-colors"

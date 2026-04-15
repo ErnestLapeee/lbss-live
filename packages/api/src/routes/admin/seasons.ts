@@ -16,7 +16,7 @@ import {
   seasons,
   standings,
 } from '../../db/schema/index.js';
-import { desc, eq, inArray, sql } from 'drizzle-orm';
+import { desc, eq, inArray, ne, sql } from 'drizzle-orm';
 
 async function seasonsHavePlayoffColumns(): Promise<boolean> {
   try {
@@ -141,23 +141,29 @@ export async function adminSeasonsRoutes(app: FastifyInstance) {
 
       const hasPoCols = await seasonsHavePlayoffColumns();
 
-      const [season] = await db
-        .insert(seasons)
-        .values({
-          year,
-          name,
-          startDate: startDate ?? null,
-          endDate: endDate ?? null,
-          isActive: isActive ?? false,
-          ...(hasPoCols
-            ? {
-              hasPlayoffs: hasPlayoffs ?? false,
-              regularSeasonGamesPerTeam: regularSeasonGamesPerTeam ?? null,
-              playoffSettings: playoffSettings ?? {},
-            }
-            : {}),
-        })
-        .returning();
+      const [season] = await db.transaction(async (tx) => {
+        if (isActive) {
+          await tx.update(seasons).set({ isActive: false });
+        }
+        const [row] = await tx
+          .insert(seasons)
+          .values({
+            year,
+            name,
+            startDate: startDate ?? null,
+            endDate: endDate ?? null,
+            isActive: isActive ?? false,
+            ...(hasPoCols
+              ? {
+                hasPlayoffs: hasPlayoffs ?? false,
+                regularSeasonGamesPerTeam: regularSeasonGamesPerTeam ?? null,
+                playoffSettings: playoffSettings ?? {},
+              }
+              : {}),
+          })
+          .returning();
+        return [row];
+      });
 
       return reply.status(201).send({
         ...season,
@@ -195,22 +201,28 @@ export async function adminSeasonsRoutes(app: FastifyInstance) {
 
       const hasPoCols = await seasonsHavePlayoffColumns();
 
-      const [season] = await db
-        .update(seasons)
-        .set({
-          ...(year !== undefined && { year }),
-          ...(name !== undefined && { name }),
-          ...(startDate !== undefined && { startDate }),
-          ...(endDate !== undefined && { endDate }),
-          ...(isActive !== undefined && { isActive }),
-          ...(hasPoCols ? {
-            ...(hasPlayoffs !== undefined && { hasPlayoffs }),
-            ...(regularSeasonGamesPerTeam !== undefined && { regularSeasonGamesPerTeam }),
-            ...(playoffSettings !== undefined && { playoffSettings }),
-          } : {}),
-        })
-        .where(eq(seasons.id, id))
-        .returning();
+      const [season] = await db.transaction(async (tx) => {
+        if (isActive === true) {
+          await tx.update(seasons).set({ isActive: false }).where(ne(seasons.id, id));
+        }
+        const [row] = await tx
+          .update(seasons)
+          .set({
+            ...(year !== undefined && { year }),
+            ...(name !== undefined && { name }),
+            ...(startDate !== undefined && { startDate }),
+            ...(endDate !== undefined && { endDate }),
+            ...(isActive !== undefined && { isActive }),
+            ...(hasPoCols ? {
+              ...(hasPlayoffs !== undefined && { hasPlayoffs }),
+              ...(regularSeasonGamesPerTeam !== undefined && { regularSeasonGamesPerTeam }),
+              ...(playoffSettings !== undefined && { playoffSettings }),
+            } : {}),
+          })
+          .where(eq(seasons.id, id))
+          .returning();
+        return [row];
+      });
 
       if (!season) {
         return reply.status(404).send({ message: 'Season not found' });

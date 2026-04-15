@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
+import { useAdminSeason } from '@/context/AdminSeasonContext';
 
 /* ───── types ───── */
 interface RosterPlayer {
@@ -26,13 +27,6 @@ interface TeamWithRoster {
   players: RosterPlayer[];
 }
 
-interface Season {
-  id: number;
-  name: string;
-  year: number;
-  isActive: boolean;
-}
-
 interface Player {
   id: number;
   firstName: string;
@@ -45,8 +39,7 @@ const THROWS_OPTIONS = ['R', 'L', 'S'];
 
 /* ───── component ───── */
 export function TeamsPage() {
-  const [seasons, setSeasons] = useState<Season[]>([]);
-  const [selectedSeasonId, setSelectedSeasonId] = useState<number | null>(null);
+  const { selectedSeasonId, seasonsLoading } = useAdminSeason();
   const [teams, setTeams] = useState<TeamWithRoster[]>([]);
   const [allPlayers, setAllPlayers] = useState<Player[]>([]);
   const [loading, setLoading] = useState(true);
@@ -78,19 +71,6 @@ export function TeamsPage() {
   const [saving, setSaving] = useState(false);
 
   /* ───── data loading ───── */
-  const loadSeasons = useCallback(async () => {
-    try {
-      const data = await apiGet<Season[]>('/admin/seasons');
-      const list = Array.isArray(data) ? data : [];
-      setSeasons(list);
-      // Auto-select active season
-      if (!selectedSeasonId && list.length > 0) {
-        const active = list.find(s => s.isActive) || list[0];
-        setSelectedSeasonId(active.id);
-      }
-    } catch { /* ignore */ }
-  }, [selectedSeasonId]);
-
   const loadRosters = useCallback(async () => {
     if (!selectedSeasonId) return;
     setLoading(true);
@@ -109,8 +89,10 @@ export function TeamsPage() {
     }
   }, [selectedSeasonId]);
 
-  useEffect(() => { loadSeasons(); }, []);
-  useEffect(() => { if (selectedSeasonId) loadRosters(); }, [selectedSeasonId]);
+  useEffect(() => {
+    if (!selectedSeasonId) return;
+    loadRosters();
+  }, [selectedSeasonId, loadRosters]);
 
   /* ───── derived: unassigned players ───── */
   const assignedPlayerIds = new Set(teams.flatMap(t => t.players.map(p => p.playerId)));
@@ -298,25 +280,17 @@ export function TeamsPage() {
     <div>
       {/* header */}
       <div className="flex items-center justify-between mb-6 gap-4 flex-wrap">
-        <h1 className="font-heading text-2xl font-bold">Teams & Rosters</h1>
-        <div className="flex items-center gap-3">
-          <select
-            value={selectedSeasonId ?? ''}
-            onChange={(e) => setSelectedSeasonId(e.target.value ? parseInt(e.target.value, 10) : null)}
-            className="px-3 py-2 border border-border rounded-lg bg-surface-alt text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-          >
-            <option value="">Select season</option>
-            {seasons.map(s => (
-              <option key={s.id} value={s.id}>{s.name} ({s.year})</option>
-            ))}
-          </select>
-          <button
-            onClick={openCreateTeam}
-            className="px-4 py-2 bg-accent hover:bg-accent-light text-white text-sm font-semibold rounded-lg transition-colors"
-          >
-            + Add Team
-          </button>
+        <div>
+          <h1 className="font-heading text-2xl font-bold">Teams & Rosters</h1>
+          <p className="text-sm text-text-muted mt-1">Rosters use the workspace season in the top bar.</p>
         </div>
+        <button
+          type="button"
+          onClick={openCreateTeam}
+          className="px-4 py-2 bg-accent hover:bg-accent-light text-white text-sm font-semibold rounded-lg transition-colors"
+        >
+          + Add Team
+        </button>
       </div>
 
       {error && (
@@ -325,10 +299,12 @@ export function TeamsPage() {
         </div>
       )}
 
-      {!selectedSeasonId ? (
+      {seasonsLoading ? (
+        <div className="text-center py-16 text-text-muted">Loading seasons…</div>
+      ) : !selectedSeasonId ? (
         <div className="text-center py-16 text-text-muted">
-          <p className="text-lg mb-2">Select a season to view team rosters</p>
-          <p className="text-sm">If you haven't created a season yet, go to the Seasons page first.</p>
+          <p className="text-lg mb-2">No season available</p>
+          <p className="text-sm">Create a season on the Seasons page, then choose it in the workspace menu above.</p>
         </div>
       ) : loading ? (
         <div className="text-center py-16 text-text-muted">Loading rosters...</div>

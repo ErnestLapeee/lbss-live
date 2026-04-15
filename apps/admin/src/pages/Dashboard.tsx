@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { apiGet } from '@/lib/api';
+import { useAdminSeason } from '@/context/AdminSeasonContext';
 
 function getApiBase(): string {
   const raw = typeof window !== 'undefined' ? (window as any).__LBSS_API_URL__ : undefined;
@@ -14,33 +15,62 @@ interface DashboardStats {
 }
 
 export function Dashboard() {
+  const { selectedSeasonId, seasonsLoading } = useAdminSeason();
   const [stats, setStats] = useState<DashboardStats>({ seasons: 0, teams: 0, players: 0, games: 0 });
   const [loading, setLoading] = useState(true);
   const [backupLoading, setBackupLoading] = useState(false);
 
   useEffect(() => {
-    async function load() {
+    if (seasonsLoading) return;
+
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
       try {
-        const [seasonsRes, teamsRes, playersRes, gamesRes] = await Promise.all([
-          apiGet<any[]>('/admin/seasons').catch(() => []),
-          apiGet<any[]>('/admin/teams').catch(() => []),
-          apiGet<any[]>('/admin/players').catch(() => []),
-          apiGet<any[]>('/admin/games').catch(() => []),
+        const seasonsRes = await apiGet<any[]>('/admin/seasons').catch(() => []);
+        const totalSeasons = Array.isArray(seasonsRes) ? seasonsRes.length : 0;
+
+        if (!selectedSeasonId) {
+          if (!cancelled) {
+            setStats({ seasons: totalSeasons, teams: 0, players: 0, games: 0 });
+          }
+          return;
+        }
+
+        const [gamesRes, rostersRes] = await Promise.all([
+          apiGet<any[]>(`/admin/games?seasonId=${selectedSeasonId}`).catch(() => []),
+          apiGet<any[]>(`/admin/teams/rosters?seasonId=${selectedSeasonId}`).catch(() => []),
         ]);
-        setStats({
-          seasons: Array.isArray(seasonsRes) ? seasonsRes.length : 0,
-          teams: Array.isArray(teamsRes) ? teamsRes.length : 0,
-          players: Array.isArray(playersRes) ? playersRes.length : 0,
-          games: Array.isArray(gamesRes) ? gamesRes.length : 0,
-        });
+
+        const games = Array.isArray(gamesRes) ? gamesRes : [];
+        const rosters = Array.isArray(rostersRes) ? rostersRes : [];
+
+        const rosteredIds = new Set<number>();
+        for (const t of rosters) {
+          for (const p of t.players ?? []) {
+            rosteredIds.add(p.playerId);
+          }
+        }
+
+        if (!cancelled) {
+          setStats({
+            seasons: totalSeasons,
+            teams: rosters.length,
+            players: rosteredIds.size,
+            games: games.length,
+          });
+        }
       } catch {
-        // ignore errors, show 0
+        if (!cancelled) setStats({ seasons: 0, teams: 0, players: 0, games: 0 });
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
-    }
-    load();
-  }, []);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedSeasonId, seasonsLoading]);
 
   const handleBackup = async () => {
     setBackupLoading(true);
@@ -64,21 +94,24 @@ export function Dashboard() {
   };
 
   const cards = [
-    { label: 'Seasons', value: stats.seasons },
-    { label: 'Teams', value: stats.teams },
-    { label: 'Registered Players', value: stats.players },
-    { label: 'Games', value: stats.games },
+    { label: 'Seasons (total)', value: stats.seasons },
+    { label: 'Teams (workspace)', value: stats.teams },
+    { label: 'Players rostered (workspace)', value: stats.players },
+    { label: 'Games (workspace)', value: stats.games },
   ];
 
   return (
     <div>
-      <h1 className="font-heading text-2xl font-bold mb-6">Dashboard</h1>
+      <h1 className="font-heading text-2xl font-bold mb-2">Dashboard</h1>
+      <p className="text-sm text-text-muted mb-6">
+        Teams, rostered players, and games reflect the workspace season in the top bar. Seasons counts all seasons.
+      </p>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         {cards.map((card) => (
           <div key={card.label} className="bg-surface rounded-xl border border-border p-5">
             <div className="text-sm text-text-muted">{card.label}</div>
             <div className="mt-1 font-heading text-3xl font-bold">
-              {loading ? '...' : card.value}
+              {loading || seasonsLoading ? '...' : card.value}
             </div>
           </div>
         ))}
@@ -86,7 +119,7 @@ export function Dashboard() {
       <div className="bg-surface rounded-xl border border-border p-6 mb-4">
         <h2 className="font-heading text-lg font-semibold mb-4">Quick Start</h2>
         <p className="text-text-muted text-sm">
-          Use the sidebar to create seasons, leagues, teams, and players. Add games to the schedule and manage your federation data.
+          Use the sidebar to create seasons, leagues, teams, and players. Pick the active year in the workspace menu, then add games to the schedule and manage your federation data.
         </p>
       </div>
       <div className="bg-surface rounded-xl border border-border p-6">

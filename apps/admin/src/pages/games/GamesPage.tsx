@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
+import { useAdminSeason } from '@/context/AdminSeasonContext';
 
 interface Game {
   id: number;
@@ -24,6 +25,7 @@ interface Team {
 interface League {
   id: number;
   name: string;
+  seasonId: number;
 }
 
 const STATUS_OPTIONS = [
@@ -60,6 +62,7 @@ function formatDatetimeLocal(iso: string) {
 
 export function GamesPage() {
   const navigate = useNavigate();
+  const { selectedSeasonId, seasonsLoading } = useAdminSeason();
   const [games, setGames] = useState<Game[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
   const [leagues, setLeagues] = useState<League[]>([]);
@@ -81,32 +84,58 @@ export function GamesPage() {
 
   const teamMap = Object.fromEntries(teams.map((t) => [t.id, t.name]));
 
-  const loadData = async () => {
+  const leaguesForSeason = useMemo(
+    () =>
+      selectedSeasonId == null
+        ? []
+        : leagues.filter((l) => l.seasonId === selectedSeasonId),
+    [leagues, selectedSeasonId],
+  );
+
+  /** Include current game’s league when editing (e.g. league moved to another season). */
+  const leaguesForForm = useMemo(() => {
+    if (!editing) return leaguesForSeason;
+    const extra = leagues.find((l) => l.id === editing.leagueId);
+    if (extra && !leaguesForSeason.some((l) => l.id === extra.id)) {
+      return [...leaguesForSeason, extra];
+    }
+    return leaguesForSeason;
+  }, [editing, leagues, leaguesForSeason]);
+
+  const loadData = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
-      const [gamesRes, teamsRes, leaguesRes] = await Promise.all([
-        apiGet<Game[]>('/admin/games'),
+      const [teamsRes, leaguesRes] = await Promise.all([
         apiGet<Team[]>('/admin/teams'),
         apiGet<League[]>('/admin/leagues'),
       ]);
-      setGames(Array.isArray(gamesRes) ? gamesRes : []);
       setTeams(Array.isArray(teamsRes) ? teamsRes : []);
       setLeagues(Array.isArray(leaguesRes) ? leaguesRes : []);
+
+      if (!selectedSeasonId) {
+        setGames([]);
+        return;
+      }
+
+      const gamesRes = await apiGet<Game[]>(`/admin/games?seasonId=${selectedSeasonId}`);
+      setGames(Array.isArray(gamesRes) ? gamesRes : []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load data');
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedSeasonId]);
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [loadData]);
 
   const openCreate = () => {
     setEditing(null);
+    const firstLeague = leaguesForSeason[0];
     setForm({
-      leagueId: leagues[0]?.id ? String(leagues[0].id) : '',
+      leagueId: firstLeague?.id ? String(firstLeague.id) : '',
       homeTeamId: '',
       awayTeamId: '',
       scheduledAt: '',
@@ -215,11 +244,18 @@ export function GamesPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="font-heading text-2xl font-bold">Games</h1>
+      <div className="flex items-center justify-between mb-6 gap-4 flex-wrap">
+        <div>
+          <h1 className="font-heading text-2xl font-bold">Games</h1>
+          <p className="text-sm text-text-muted mt-1">
+            Schedule is filtered by the workspace season (top bar). Create leagues for that season first.
+          </p>
+        </div>
         <button
+          type="button"
           onClick={openCreate}
-          className="px-4 py-2 bg-accent hover:bg-accent-light text-white text-sm font-semibold rounded-lg transition-colors"
+          disabled={!selectedSeasonId || leaguesForSeason.length === 0}
+          className="px-4 py-2 bg-accent hover:bg-accent-light disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg transition-colors"
         >
           + Create New
         </button>
@@ -244,7 +280,19 @@ export function GamesPage() {
             </tr>
           </thead>
           <tbody>
-            {loading ? (
+            {seasonsLoading ? (
+              <tr>
+                <td className="px-4 py-8 text-center text-text-muted" colSpan={6}>
+                  Loading seasons…
+                </td>
+              </tr>
+            ) : !selectedSeasonId ? (
+              <tr>
+                <td className="px-4 py-8 text-center text-text-muted" colSpan={6}>
+                  Add a season, then pick it in the workspace menu above.
+                </td>
+              </tr>
+            ) : loading ? (
               <tr>
                 <td className="px-4 py-8 text-center text-text-muted" colSpan={6}>
                   Loading...
@@ -253,7 +301,9 @@ export function GamesPage() {
             ) : games.length === 0 ? (
               <tr>
                 <td className="px-4 py-8 text-center text-text-muted" colSpan={6}>
-                  No data yet. Create your first entry.
+                  {leaguesForSeason.length === 0
+                    ? 'No leagues for this season yet. Create a league first.'
+                    : 'No games scheduled yet. Create your first game.'}
                 </td>
               </tr>
             ) : (
@@ -329,7 +379,7 @@ export function GamesPage() {
                   required
                 >
                   <option value="">Select league</option>
-                  {leagues.map((l) => (
+                  {leaguesForForm.map((l) => (
                     <option key={l.id} value={l.id}>
                       {l.name}
                     </option>

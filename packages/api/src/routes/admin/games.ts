@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { db } from '../../db/index.js';
-import { games, gameEvents, gameLineups, playerGameBatting, playerGamePitching, playerGameFielding, playerSeasonBatting, playerSeasonPitching, playerSeasonFielding, standings } from '../../db/schema/index.js';
-import { eq, and, sql } from 'drizzle-orm';
+import { games, gameEvents, gameLineups, leagues, playerGameBatting, playerGamePitching, playerGameFielding, playerSeasonBatting, playerSeasonPitching, playerSeasonFielding, standings } from '../../db/schema/index.js';
+import { eq, and, sql, inArray, asc } from 'drizzle-orm';
 import { finalizeGame, recomputeSeasonBatting, recomputeSeasonPitching, recomputeSeasonFielding, recomputeStandings } from '../../services/finalize-game.js';
 
 export async function adminGamesRoutes(app: FastifyInstance) {
@@ -13,12 +13,12 @@ export async function adminGamesRoutes(app: FastifyInstance) {
     return seasonId ? Number(seasonId) : null;
   }
 
-  // GET / - list all games
-  app.get('/', async (request, reply) => {
+  // GET / - list games; optional ?seasonId= filters to leagues in that season
+  app.get<{ Querystring: { seasonId?: string } }>('/', async (request, reply) => {
     try {
       // IMPORTANT: do not `select()` all columns from games, because production DB may lag behind
       // app schema during deployments/migration rollbacks (e.g. playoff columns). Keep this to core columns.
-      const result = await db.select({
+      const gameSelect = {
         id: games.id,
         leagueId: games.leagueId,
         homeTeamId: games.homeTeamId,
@@ -37,7 +37,29 @@ export async function adminGamesRoutes(app: FastifyInstance) {
         finalizedBy: games.finalizedBy,
         createdAt: games.createdAt,
         updatedAt: games.updatedAt,
-      }).from(games).orderBy(games.scheduledAt);
+      };
+
+      const seasonIdStr = request.query?.seasonId;
+
+      if (seasonIdStr !== undefined && seasonIdStr !== '') {
+        const sid = parseInt(seasonIdStr, 10);
+        if (isNaN(sid)) {
+          return reply.status(400).send({ message: 'Invalid seasonId' });
+        }
+        const leagueRows = await db.select({ id: leagues.id }).from(leagues).where(eq(leagues.seasonId, sid));
+        const leagueIds = leagueRows.map((r) => r.id);
+        if (leagueIds.length === 0) {
+          return reply.send([]);
+        }
+        const filtered = await db
+          .select(gameSelect)
+          .from(games)
+          .where(inArray(games.leagueId, leagueIds))
+          .orderBy(asc(games.scheduledAt));
+        return reply.send(filtered);
+      }
+
+      const result = await db.select(gameSelect).from(games).orderBy(asc(games.scheduledAt));
       return reply.send(result);
     } catch (err) {
       request.log.error(err);

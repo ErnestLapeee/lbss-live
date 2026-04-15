@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
+import { useAdminSeason } from '@/context/AdminSeasonContext';
 
 export function SeasonsPage() {
+  const { reloadSeasons } = useAdminSeason();
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -105,6 +107,7 @@ export function SeasonsPage() {
     try {
       await apiDelete(`/admin/seasons/${id}`);
       await load();
+      await reloadSeasons();
     } catch (err: any) {
       alert(err.message || 'Failed to delete');
     }
@@ -246,9 +249,12 @@ export function SeasonsPage() {
                   className="w-4 h-4 rounded border-border text-accent focus:ring-accent"
                 />
                 <label htmlFor="isActive" className="text-sm font-medium">
-                  Active
+                  Active (workspace default)
                 </label>
               </div>
+              <p className="text-xs text-text-muted -mt-1 ml-6">
+                Only one season can be active at a time. Saving will clear &quot;active&quot; on all other seasons.
+              </p>
               <div className="flex items-center gap-2">
                 <input
                   type="checkbox"

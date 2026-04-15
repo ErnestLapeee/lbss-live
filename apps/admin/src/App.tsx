@@ -1,4 +1,5 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
+import { AdminSeasonProvider } from './context/AdminSeasonContext';
 import { AdminLayout } from './components/layout/AdminLayout';
 import { RequireAuth } from './components/RequireAuth';
 import { Dashboard } from './pages/Dashboard';
@@ -29,7 +30,9 @@ export function App() {
         path="/"
         element={
           <RequireAuth>
-            <AdminLayout />
+            <AdminSeasonProvider>
+              <AdminLayout />
+            </AdminSeasonProvider>
           </RequireAuth>
         }
       >

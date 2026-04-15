@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
+import { useAdminSeason } from '@/context/AdminSeasonContext';
 
 interface Player {
   id: number;
@@ -31,9 +32,8 @@ const BATS_OPTIONS = ['R', 'L', 'S'];
 const THROWS_OPTIONS = ['R', 'L', 'S'];
 
 export function PlayersPage() {
+  const { selectedSeasonId, seasonsLoading } = useAdminSeason();
   const [players, setPlayers] = useState<Player[]>([]);
-  const [seasons, setSeasons] = useState<Season[]>([]);
-  const [selectedSeasonId, setSelectedSeasonId] = useState<number | null>(null);
   const [licenseMap, setLicenseMap] = useState<Map<number, string>>(new Map());
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -47,20 +47,11 @@ export function PlayersPage() {
     bats: '', throws: '', heightCm: '', weightKg: '', bio: '',
   });
 
-  const loadData = async () => {
+  const loadPlayers = async () => {
     setLoading(true);
     try {
-      const [playersData, seasonsData] = await Promise.all([
-        apiGet<Player[]>('/admin/players'),
-        apiGet<Season[]>('/admin/seasons'),
-      ]);
+      const playersData = await apiGet<Player[]>('/admin/players');
       setPlayers(Array.isArray(playersData) ? playersData : []);
-      const sList = Array.isArray(seasonsData) ? seasonsData : [];
-      setSeasons(sList);
-      if (!selectedSeasonId && sList.length > 0) {
-        const active = sList.find(s => s.isActive) || sList[0];
-        setSelectedSeasonId(active.id);
-      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load');
     } finally {
@@ -82,8 +73,13 @@ export function PlayersPage() {
     } catch { /* ignore - licenses endpoint may not have data yet */ }
   }, [selectedSeasonId]);
 
-  useEffect(() => { loadData(); }, []);
-  useEffect(() => { loadLicenses(); }, [selectedSeasonId]);
+  useEffect(() => {
+    loadPlayers();
+  }, []);
+
+  useEffect(() => {
+    loadLicenses();
+  }, [loadLicenses]);
 
   const openCreate = () => {
     setEditing(null);
@@ -126,7 +122,7 @@ export function PlayersPage() {
         await apiPost('/admin/players', payload);
       }
       setShowForm(false);
-      loadData();
+      loadPlayers();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save');
     } finally {
@@ -138,7 +134,7 @@ export function PlayersPage() {
     if (!confirm(`Deactivate ${p.firstName} ${p.lastName}?`)) return;
     try {
       await apiDelete(`/admin/players/${p.id}`);
-      loadData();
+      loadPlayers();
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Failed');
     }
@@ -174,16 +170,13 @@ export function PlayersPage() {
           onChange={e => setSearch(e.target.value)}
           className="w-full max-w-sm px-3 py-2 border border-border rounded-lg bg-surface text-sm focus:outline-none focus:ring-2 focus:ring-accent"
         />
-        <select
-          value={selectedSeasonId ?? ''}
-          onChange={e => setSelectedSeasonId(e.target.value ? parseInt(e.target.value, 10) : null)}
-          className="px-3 py-2 border border-border rounded-lg bg-surface-alt text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-        >
-          <option value="">License season</option>
-          {seasons.map(s => (
-            <option key={s.id} value={s.id}>{s.name} ({s.year})</option>
-          ))}
-        </select>
+        {seasonsLoading ? (
+          <span className="text-xs text-text-muted">Loading seasons…</span>
+        ) : !selectedSeasonId ? (
+          <span className="text-xs text-amber-600">Add a season to see license status</span>
+        ) : (
+          <span className="text-xs text-text-muted">License column = workspace season</span>
+        )}
       </div>
 
       {error && (
