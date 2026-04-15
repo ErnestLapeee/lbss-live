@@ -325,6 +325,7 @@ export function LiveGameClient({
     const away: number[] = [];
     for (const e of events) {
       if (e.eventType === 'pitch' || e.eventType === 'end_half_inning') continue;
+      if (e.eventType === 'substitution') continue;
       if (e.eventType === 'adjust_score') {
         let detail: { homeDelta?: number; awayDelta?: number } = {};
         try {
@@ -410,6 +411,20 @@ export function LiveGameClient({
         continue;
       }
 
+      if (evt.eventType === 'substitution') {
+        group.atBats.push({
+          batterId: null,
+          batterName: 'Substitution',
+          result: evt,
+          pitches: [],
+          betweenEvents: [],
+          inning: evt.inning,
+          half: evt.half,
+        });
+        currentAB = null;
+        continue;
+      }
+
       if (evt.eventType === 'pitch') {
         if (!currentAB) {
           currentAB = { batterId: evt.batterId, batterName: evt.batterName || 'Unknown', result: null, pitches: [], betweenEvents: [], inning: evt.inning, half: evt.half };
@@ -460,7 +475,7 @@ export function LiveGameClient({
     const sacBunt = new Set(['sacrifice_bunt', 'sac_bunt_error']);
 
     for (const evt of events) {
-      if (evt.eventType === 'end_half_inning' || evt.eventType === 'pitch' || evt.eventType === 'adjust_score') continue;
+      if (evt.eventType === 'end_half_inning' || evt.eventType === 'pitch' || evt.eventType === 'adjust_score' || evt.eventType === 'substitution') continue;
       if (RUNNER_EVENT_TYPES.has(evt.eventType)) {
         if (evt.eventType === 'stolen_base' && evt.batterId) getOrCreate(evt.batterId).sb++;
         if (evt.eventType === 'caught_stealing' && evt.batterId) getOrCreate(evt.batterId).cs++;
@@ -623,6 +638,9 @@ export function LiveGameClient({
     if (t === 'adjust_score') {
       return { tag: 'NOTE', cls: 'text-slate-500' };
     }
+    if (t === 'substitution') {
+      return { tag: 'SUB', cls: 'text-slate-600' };
+    }
     if ((ab.result?.runsScored ?? 0) > 0) {
       return { tag: 'SCORING', cls: 'text-emerald-700' };
     }
@@ -651,7 +669,7 @@ export function LiveGameClient({
     const map: Record<number, number> = {};
     if (!game) return map;
     const filtered = events
-      .filter(e => e.eventType !== 'pitch' && e.eventType !== 'end_half_inning' && e.eventType !== 'adjust_score')
+      .filter(e => e.eventType !== 'pitch' && e.eventType !== 'end_half_inning' && e.eventType !== 'adjust_score' && e.eventType !== 'substitution')
       .sort((a, b) => a.eventNumber - b.eventNumber);
     let outs = 0;
     for (const evt of filtered) {

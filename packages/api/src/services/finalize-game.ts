@@ -55,6 +55,7 @@ const NON_PA_EVENTS = new Set([
   'offensive_interference', 'passed_runner', 'hesitation',
   'double_play', 'triple_play', 'advance_on_error',
   'adjust_score',
+  'substitution',
 ]);
 
 const GROUND_BALL_OUTS = new Set(['ground_out', 'bunt_out']);

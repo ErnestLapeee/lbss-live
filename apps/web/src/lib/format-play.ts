@@ -151,6 +151,11 @@ function fsPhrase(fs: string | null | undefined): string {
   return ` (${formatFS(fs)})`;
 }
 
+/** Admin scoring records vacant-slot outs as strikeout + this detail (see LiveScoringPage). */
+function isAutomaticOutEmptySlot(detail: string | null | undefined): boolean {
+  return String(detail || '').toLowerCase() === 'automatic_out_empty_slot';
+}
+
 // ── The formatter ──────────────────────────────────────────────────
 export function formatPlayByPlay(
   play: PlayInput,
@@ -178,6 +183,41 @@ export function formatPlayByPlay(
     if (a !== 0) parts.push(`${a > 0 ? '+' : ''}${a} away`);
     if (h !== 0) parts.push(`${h > 0 ? '+' : ''}${h} home`);
     title = parts.length > 0 ? `Score adjustment (${parts.join(', ')})` : 'Score adjustment';
+    return { title, subtitle: '', chips: [] };
+  }
+
+  if (play.eventType === 'substitution') {
+    let detail: {
+      kind?: string;
+      outName?: string;
+      inName?: string;
+      position?: number;
+      changes?: Array<{ firstName?: string; lastName?: string; oldPosition?: number; newPosition?: number }>;
+    } = {};
+    try {
+      detail = JSON.parse(play.eventDetail || '{}') as typeof detail;
+    } catch { /* ignore */ }
+    if (detail.kind === 'position_swap' && Array.isArray(detail.changes) && detail.changes.length > 0) {
+      const parts = detail.changes.map((c) => {
+        const nm = `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim() || 'Player';
+        const o = posLabel(c.oldPosition ?? 0);
+        const n = posLabel(c.newPosition ?? 0);
+        return `${nm} ${o}→${n}`;
+      });
+      title = `Defensive position change: ${parts.join('; ')}`;
+    } else if (detail.kind === 'player_change' || detail.outName != null || detail.inName != null) {
+      const pos = posLabel(detail.position ?? 0);
+      const role = detail.position ? ` (${pos})` : '';
+      const outN = lastName(detail.outName);
+      const inN = lastName(detail.inName);
+      if (detail.position === 1) {
+        title = `Pitching change: ${inN} replaces ${outN}${role}`;
+      } else {
+        title = `Substitution: ${inN} replaces ${outN}${role}`;
+      }
+    } else {
+      title = 'Substitution';
+    }
     return { title, subtitle: '', chips: [] };
   }
 
@@ -237,7 +277,9 @@ export function formatPlayByPlay(
 
   // ═══ STRIKEOUTS ═══
   else if (STRIKEOUT_TYPES.has(play.eventType)) {
-    if (play.eventType === 'strikeout_looking') {
+    if (isAutomaticOutEmptySlot(play.eventDetail)) {
+      title = 'Automatic out (empty lineup slot)';
+    } else if (play.eventType === 'strikeout_looking') {
       title = `${batter} called out on strikes`;
     } else if (play.eventType === 'strikeout_swinging' || play.eventType === 'strikeout') {
       title = `${batter} strikes out swinging`;

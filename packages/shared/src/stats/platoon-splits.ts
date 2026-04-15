@@ -56,6 +56,7 @@ const NON_PA_EVENTS = new Set([
   'triple_play',
   'advance_on_error',
   'adjust_score',
+  'substitution',
 ]);
 
 function isPlateAppearance(t: string): boolean {

@@ -10,7 +10,7 @@ import {
   licenses,
   leagues,
 } from '../../db/schema/index.js';
-import { eq, and, desc, max, sql } from 'drizzle-orm';
+import { eq, and, desc, max, sql, inArray } from 'drizzle-orm';
 import { getIO } from '../../app.js';
 import { finalizeGame } from '../../services/finalize-game.js';
 
@@ -39,6 +39,34 @@ const BETWEEN_PITCH_EVENTS = new Set([
   'double_play', 'triple_play', 'illegal_pitch', 'end_half_inning',
   'adjust_score',
 ]);
+
+function normalizeHalf(h: string | undefined): 'top' | 'bot' {
+  const s = String(h ?? 'top').trim().toLowerCase();
+  if (s === 'bottom' || s === 'bot') return 'bot';
+  return 'top';
+}
+
+/** Same rules as PUT /event — keeps box score / state from bad client payloads. */
+function normalizeIncomingRunScoring(body: {
+  runsScored?: number;
+  runnersScored?: number[];
+  runnerScoredReasons?: string[];
+}):
+  | { ok: true; runsScored: number; runnersScored: number[]; runnerScoredReasons: string[] }
+  | { ok: false; message: string } {
+  const rs = Array.isArray(body.runnersScored) ? body.runnersScored.map(Number).filter((n) => !Number.isNaN(n)) : [];
+  const rr = Array.isArray(body.runnerScoredReasons) ? body.runnerScoredReasons.map(String) : [];
+  const runsScored = Number(body.runsScored ?? 0);
+
+  if (rr.length !== 0 && rr.length !== rs.length) {
+    return { ok: false, message: 'runnerScoredReasons length must match runnersScored length (or be empty)' };
+  }
+  if (rs.length !== runsScored) {
+    return { ok: false, message: `runsScored (${runsScored}) must equal runnersScored length (${rs.length})` };
+  }
+  const runnerScoredReasons = rr.length === 0 && rs.length > 0 ? rs.map(() => 'on_play') : rr;
+  return { ok: true, runsScored, runnersScored: rs, runnerScoredReasons };
+}
 
 function computeGameState(events: any[]): GameState {
   const state: GameState = {
@@ -85,6 +113,12 @@ function computeGameState(events: any[]): GameState {
         while (state.awayLineScore.length < inn) state.awayLineScore.push(0);
         state.awayLineScore[inn - 1] += awayDelta;
       }
+      state.eventCount++;
+      continue;
+    }
+
+    // Roster-only: does not change score, outs, bases, or count
+    if (event.eventType === 'substitution') {
       state.eventCount++;
       continue;
     }
@@ -415,6 +449,14 @@ export async function adminScoringRoutes(app: FastifyInstance) {
       const batterSideNorm =
         rawSide === 'L' || rawSide === 'R' ? rawSide : null;
 
+      const runNorm = normalizeIncomingRunScoring(body);
+      if (!runNorm.ok) return reply.status(400).send({ message: runNorm.message });
+
+      const outsRecorded = Number(body.outsRecorded ?? 0);
+      if (outsRecorded < 0 || outsRecorded > 3) {
+        return reply.status(400).send({ message: 'outsRecorded must be between 0 and 3' });
+      }
+
       // Insert event
       const [event] = await db.insert(gameEvents).values({
         gameId,
@@ -427,16 +469,16 @@ export async function adminScoringRoutes(app: FastifyInstance) {
         eventType: body.eventType,
         eventDetail: body.eventDetail ?? null,
         rbi: body.rbi ?? 0,
-        runsScored: body.runsScored ?? 0,
-        outsRecorded: body.outsRecorded ?? 0,
+        runsScored: runNorm.runsScored,
+        outsRecorded,
         errorsOnPlay: body.errorsOnPlay ?? 0,
         balls: body.balls ?? 0,
         strikes: body.strikes ?? 0,
         runnerFirstId: body.runnerFirstId ?? null,
         runnerSecondId: body.runnerSecondId ?? null,
         runnerThirdId: body.runnerThirdId ?? null,
-        runnersScored: body.runnersScored ?? [],
-        runnerScoredReasons: body.runnerScoredReasons ?? [],
+        runnersScored: runNorm.runnersScored,
+        runnerScoredReasons: runNorm.runnerScoredReasons,
         fieldingSequence: body.fieldingSequence ?? null,
         putoutFielderIds: body.putoutFielderIds ?? [],
         assistFielderIds: body.assistFielderIds ?? [],
@@ -797,6 +839,81 @@ export async function adminScoringRoutes(app: FastifyInstance) {
       }
 
       const user = (request as any).user;
+      const halfNorm = normalizeHalf(half);
+      const inningNum = Math.max(1, Math.floor(Number(inning)) || 1);
+
+      const allEventsBefore = await db.select().from(gameEvents)
+        .where(and(eq(gameEvents.gameId, gameId), eq(gameEvents.isDeleted, false)))
+        .orderBy(gameEvents.eventNumber);
+      const stateBefore = computeGameState(allEventsBefore);
+
+      const [maxEvt] = await db
+        .select({ maxNum: max(gameEvents.eventNumber) })
+        .from(gameEvents)
+        .where(eq(gameEvents.gameId, gameId));
+      const eventNumber = ((maxEvt?.maxNum as number) || 0) + 1;
+
+      const nameRows = await db.select({
+        id: players.id,
+        firstName: players.firstName,
+        lastName: players.lastName,
+      }).from(players).where(inArray(players.id, [outPlayerId, inPlayerId]));
+      const outRow = nameRows.find((r) => r.id === outPlayerId);
+      const inRow = nameRows.find((r) => r.id === inPlayerId);
+      const outName = `${outRow?.firstName ?? ''} ${outRow?.lastName ?? ''}`.trim() || `Player #${outPlayerId}`;
+      const inName = `${inRow?.firstName ?? ''} ${inRow?.lastName ?? ''}`.trim() || `Player #${inPlayerId}`;
+
+      const detail = JSON.stringify({
+        kind: 'player_change',
+        position,
+        teamId,
+        outPlayerId,
+        inPlayerId,
+        outName,
+        inName,
+      });
+
+      await db.insert(gameEvents).values({
+        gameId,
+        eventNumber,
+        inning: inningNum,
+        half: halfNorm,
+        batterId: null,
+        pitcherId: null,
+        eventType: 'substitution',
+        eventDetail: detail,
+        rbi: 0,
+        runsScored: 0,
+        outsRecorded: 0,
+        errorsOnPlay: 0,
+        balls: 0,
+        strikes: 0,
+        runnerFirstId: stateBefore.bases.first,
+        runnerSecondId: stateBefore.bases.second,
+        runnerThirdId: stateBefore.bases.third,
+        runnersScored: [],
+        runnerScoredReasons: [],
+        createdBy: user?.id ?? null,
+      });
+
+      const allAfter = await db.select().from(gameEvents)
+        .where(and(eq(gameEvents.gameId, gameId), eq(gameEvents.isDeleted, false)))
+        .orderBy(gameEvents.eventNumber);
+      const newState = computeGameState(allAfter);
+
+      await db.update(games).set({
+        homeScore: newState.homeScore,
+        awayScore: newState.awayScore,
+        currentInning: newState.inning,
+        currentHalf: newState.half,
+        currentOuts: newState.outs,
+        updatedAt: new Date(),
+      }).where(eq(games.id, gameId));
+
+      try {
+        getIO().to(`game:${gameId}`).emit('game:update', { state: newState });
+      } catch {}
+
       const [game] = await db.select({ isFinalized: games.isFinalized }).from(games).where(eq(games.id, gameId)).limit(1);
       if (game?.isFinalized) await finalizeGame(gameId, user?.id, { recompute: true });
 
@@ -822,17 +939,116 @@ export async function adminScoringRoutes(app: FastifyInstance) {
         return reply.status(400).send({ message: 'No changes provided' });
       }
 
+      const snapshots: Array<{
+        playerId: number;
+        oldPosition: number;
+        newPosition: number;
+        firstName: string;
+        lastName: string;
+      }> = [];
+
       for (const change of changes) {
+        const [row] = await db.select({
+          position: gameLineups.position,
+          playerId: gameLineups.playerId,
+          firstName: players.firstName,
+          lastName: players.lastName,
+        })
+          .from(gameLineups)
+          .innerJoin(players, eq(players.id, gameLineups.playerId))
+          .where(and(
+            eq(gameLineups.gameId, gameId),
+            eq(gameLineups.playerId, change.playerId),
+            eq(gameLineups.isActive, true),
+          ))
+          .limit(1);
+
+        if (row) {
+          snapshots.push({
+            playerId: change.playerId,
+            oldPosition: row.position,
+            newPosition: change.newPosition,
+            firstName: row.firstName,
+            lastName: row.lastName,
+          });
+        }
+
         await db.update(gameLineups)
           .set({ position: change.newPosition })
           .where(and(
             eq(gameLineups.gameId, gameId),
             eq(gameLineups.playerId, change.playerId),
-            eq(gameLineups.isActive, true)
+            eq(gameLineups.isActive, true),
           ));
       }
 
       const user = (request as any).user;
+
+      if (snapshots.length > 0) {
+        const allEventsBefore = await db.select().from(gameEvents)
+          .where(and(eq(gameEvents.gameId, gameId), eq(gameEvents.isDeleted, false)))
+          .orderBy(gameEvents.eventNumber);
+        const stateBefore = computeGameState(allEventsBefore);
+
+        const [maxEvt] = await db
+          .select({ maxNum: max(gameEvents.eventNumber) })
+          .from(gameEvents)
+          .where(eq(gameEvents.gameId, gameId));
+        const eventNumber = ((maxEvt?.maxNum as number) || 0) + 1;
+
+        const detail = JSON.stringify({
+          kind: 'position_swap',
+          changes: snapshots.map((s) => ({
+            playerId: s.playerId,
+            firstName: s.firstName,
+            lastName: s.lastName,
+            oldPosition: s.oldPosition,
+            newPosition: s.newPosition,
+          })),
+        });
+
+        await db.insert(gameEvents).values({
+          gameId,
+          eventNumber,
+          inning: stateBefore.inning,
+          half: stateBefore.half,
+          batterId: null,
+          pitcherId: null,
+          eventType: 'substitution',
+          eventDetail: detail,
+          rbi: 0,
+          runsScored: 0,
+          outsRecorded: 0,
+          errorsOnPlay: 0,
+          balls: 0,
+          strikes: 0,
+          runnerFirstId: stateBefore.bases.first,
+          runnerSecondId: stateBefore.bases.second,
+          runnerThirdId: stateBefore.bases.third,
+          runnersScored: [],
+          runnerScoredReasons: [],
+          createdBy: user?.id ?? null,
+        });
+
+        const allAfter = await db.select().from(gameEvents)
+          .where(and(eq(gameEvents.gameId, gameId), eq(gameEvents.isDeleted, false)))
+          .orderBy(gameEvents.eventNumber);
+        const newState = computeGameState(allAfter);
+
+        await db.update(games).set({
+          homeScore: newState.homeScore,
+          awayScore: newState.awayScore,
+          currentInning: newState.inning,
+          currentHalf: newState.half,
+          currentOuts: newState.outs,
+          updatedAt: new Date(),
+        }).where(eq(games.id, gameId));
+
+        try {
+          getIO().to(`game:${gameId}`).emit('game:update', { state: newState });
+        } catch {}
+      }
+
       const [game] = await db.select({ isFinalized: games.isFinalized }).from(games).where(eq(games.id, gameId)).limit(1);
       if (game?.isFinalized) await finalizeGame(gameId, user?.id, { recompute: true });
 

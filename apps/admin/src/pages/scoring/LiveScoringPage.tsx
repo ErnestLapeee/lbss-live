@@ -24,6 +24,34 @@ function formatScoringMiniPbpLine(evt: GameEvent): string {
       return parts.length ? `Score adjustment (${parts.join(', ')})` : 'Score adjustment';
     } catch { return 'Score adjustment'; }
   }
+  if (evt.eventType === 'substitution') {
+    try {
+      const d = JSON.parse(evt.eventDetail || '{}') as {
+        kind?: string;
+        outName?: string;
+        inName?: string;
+        position?: number;
+        changes?: Array<{ firstName?: string; lastName?: string; oldPosition?: number; newPosition?: number }>;
+      };
+      if (d.kind === 'position_swap' && Array.isArray(d.changes) && d.changes.length > 0) {
+        const POS: Record<number, string> = { 1: 'P', 2: 'C', 3: '1B', 4: '2B', 5: '3B', 6: 'SS', 7: 'LF', 8: 'CF', 9: 'RF', 10: 'DH' };
+        const parts = d.changes.map((c) => {
+          const nm = `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim();
+          const o = POS[c.oldPosition ?? 0] ?? '?';
+          const n = POS[c.newPosition ?? 0] ?? '?';
+          return `${nm} ${o}→${n}`;
+        });
+        return `Position change: ${parts.join('; ')}`;
+      }
+      if (d.kind === 'player_change' || d.outName != null || d.inName != null) {
+        const pos = d.position === 1 ? 'P' : (d.position != null ? (POS_LABELS[d.position] ?? `#${d.position}`) : '');
+        const prefix = d.position === 1 ? 'Pitching change' : 'Substitution';
+        const role = pos ? ` (${pos})` : '';
+        return `${prefix}: ${d.inName ?? '?'} for ${d.outName ?? '?'}${role}`;
+      }
+    } catch { /* fall through */ }
+    return 'Substitution';
+  }
   return evt.eventDetail || evt.eventType;
 }
 
@@ -305,7 +333,7 @@ export function LiveScoringPage() {
     'runner_interference', 'appeal_play', 'tagged_out', 'force_out',
     'hit_by_ball', 'missed_base', 'left_base_early', 'left_base_path',
     'offensive_interference', 'passed_runner', 'hesitation', 'double_play', 'triple_play',
-    'end_half_inning', 'adjust_score', 'illegal_pitch',
+    'end_half_inning', 'adjust_score', 'illegal_pitch', 'substitution',
   ]), []);
 
   const derivedBatterIdx = useMemo(() => {

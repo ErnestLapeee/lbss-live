@@ -194,6 +194,16 @@ describe('Strikeouts', () => {
     }));
     expect(result.title).toBe('Gordon Hahn strikes out swinging');
   });
+
+  it('automatic out (empty lineup slot)', () => {
+    const result = formatPlayByPlay(make({
+      eventType: 'strikeout',
+      batterName: null,
+      eventDetail: 'automatic_out_empty_slot',
+      outsRecorded: 1,
+    }));
+    expect(result.title).toBe('Automatic out (empty lineup slot)');
+  });
 });
 
 // ── Outs in play ───────────────────────────────────────────────────
