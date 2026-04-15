@@ -186,7 +186,6 @@ export function PlayerModal({ slug, firstName, lastName, onClose }: PlayerModalP
   // Aggregate batting totals from season stats
   const batTotals = battingStats && battingStats.length > 0 ? battingStats[0] : null;
   const pitchTotals = pitchingStats && pitchingStats.length > 0 ? pitchingStats[0] : null;
-  const fieldTotals = fieldingStats && fieldingStats.length > 0 ? fieldingStats[0] : null;
 
   const sumBattingRows = (rows: any[]) => {
     if (!rows.length) return null;
@@ -483,6 +482,8 @@ export function PlayerModal({ slug, firstName, lastName, onClose }: PlayerModalP
                 }
                 const tc = (total.putouts || 0) + (total.assists || 0) + (total.errors || 0);
                 const fpct = tc > 0 ? (((total.putouts || 0) + (total.assists || 0)) / tc).toFixed(3) : null;
+                const totalInnOuts = rows.reduce((s: number, r: any) => s + ipToOuts(r.innings), 0);
+                const totalInnStr = totalInnOuts > 0 ? outsToIp(totalInnOuts) : '—';
 
                 return (
                   <div className="space-y-3">
@@ -513,7 +514,8 @@ export function PlayerModal({ slug, firstName, lastName, onClose }: PlayerModalP
                               </td>
                               <td className="px-2 py-1.5 text-left">{r.teamName ?? '—'}</td>
                               <td className="px-2 py-1.5 text-left">
-                                {r.position != null ? (POS_LABELS[r.position] || String(r.position)) : '—'}
+                                {r.positionLabel
+                                  || (r.position != null ? (POS_LABELS[r.position] || String(r.position)) : '—')}
                               </td>
                               <td className="px-2 py-1.5 text-right">{r.games}</td>
                               <td className="px-2 py-1.5 text-right">{r.innings ?? '—'}</td>
@@ -527,7 +529,7 @@ export function PlayerModal({ slug, firstName, lastName, onClose }: PlayerModalP
                         <tr className="bg-[#f3f3f3] border-t border-[#ccc]">
                           <td className="px-2 py-1.5 font-semibold text-left" colSpan={3}>TOTAL</td>
                           <td className="px-2 py-1.5 font-semibold text-right">{total.games || 0}</td>
-                          <td className="px-2 py-1.5 font-semibold text-right">—</td>
+                          <td className="px-2 py-1.5 font-semibold text-right">{totalInnStr}</td>
                           <td className="px-2 py-1.5 font-semibold text-right">{total.putouts || 0}</td>
                           <td className="px-2 py-1.5 font-semibold text-right">{total.assists || 0}</td>
                           <td className="px-2 py-1.5 font-semibold text-right">{total.errors || 0}</td>

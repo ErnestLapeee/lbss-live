@@ -7,6 +7,41 @@ import {
 } from '../../db/schema/index.js';
 import { eq, and, desc, sql, isNotNull } from 'drizzle-orm';
 
+/** Same abbreviations as team roster / modal (1–10). */
+const FIELDING_POS_LABELS: Record<number, string> = {
+  1: 'P', 2: 'C', 3: '1B', 4: '2B', 5: '3B', 6: 'SS', 7: 'LF', 8: 'CF', 9: 'RF', 10: 'DH',
+};
+
+/** Primary / secondary position from games played at each spot (60% rule for slash). */
+function fieldingPositionLabel(
+  entries: { position: number; games: number }[],
+): string | null {
+  const valid = entries.filter((e) => e.games > 0);
+  if (valid.length === 0) return null;
+  const sorted = [...valid].sort((a, b) => b.games - a.games);
+  const top = sorted[0]!;
+  const second = sorted[1];
+  const topLabel = FIELDING_POS_LABELS[top.position] || String(top.position);
+  if (second && second.games >= top.games * 0.6) {
+    const secLabel = FIELDING_POS_LABELS[second.position] || String(second.position);
+    return `${topLabel}/${secLabel}`;
+  }
+  return topLabel;
+}
+
+type PosCountRow = { seasonId: number; teamId: number; position: number | null; games: number };
+
+function fieldingPosMap(rows: PosCountRow[]): Map<string, { position: number; games: number }[]> {
+  const m = new Map<string, { position: number; games: number }[]>();
+  for (const row of rows) {
+    if (row.position == null) continue;
+    const key = `${row.seasonId}:${row.teamId}`;
+    if (!m.has(key)) m.set(key, []);
+    m.get(key)!.push({ position: row.position, games: Number(row.games) });
+  }
+  return m;
+}
+
 async function gamesHavePlayoffSeriesId(): Promise<boolean> {
   try {
     const rows = await db.execute(sql`
@@ -351,6 +386,7 @@ export async function playersRoutes(app: FastifyInstance) {
         .select({
           id: playerSeasonFielding.id,
           seasonId: playerSeasonFielding.seasonId,
+          teamId: playerSeasonFielding.teamId,
           seasonLabel: sql<string | null>`NULL`.as('season_label'),
           games: playerSeasonFielding.games,
           innings: playerSeasonFielding.innings,
@@ -379,12 +415,74 @@ export async function playersRoutes(app: FastifyInstance) {
             .where(and(eq(playerSeasonFielding.playerId, player.id), eq(playerSeasonFielding.seasonId, seasonIdNum)))
             .orderBy(desc(seasons.year)));
 
-      if (!isAllTime) return reply.send(stats);
+      const posRowsAll = await db
+        .select({
+          seasonId: seasons.id,
+          teamId: playerGameFielding.teamId,
+          position: playerGameFielding.position,
+          games: sql<number>`count(*)::int`.as('games'),
+        })
+        .from(playerGameFielding)
+        .innerJoin(games, eq(playerGameFielding.gameId, games.id))
+        .innerJoin(leagues, eq(games.leagueId, leagues.id))
+        .innerJoin(seasons, eq(leagues.seasonId, seasons.id))
+        .where(
+          and(
+            eq(playerGameFielding.playerId, player.id),
+            eq(games.isFinalized, true),
+            isNotNull(playerGameFielding.position),
+          ),
+        )
+        .groupBy(seasons.id, playerGameFielding.teamId, playerGameFielding.position);
+
+      let posRowsPlayoff: PosCountRow[] = [];
+      if (await gamesHavePlayoffSeriesId()) {
+        posRowsPlayoff = await db
+          .select({
+            seasonId: seasons.id,
+            teamId: playerGameFielding.teamId,
+            position: playerGameFielding.position,
+            games: sql<number>`count(*)::int`.as('games'),
+          })
+          .from(playerGameFielding)
+          .innerJoin(games, eq(playerGameFielding.gameId, games.id))
+          .innerJoin(leagues, eq(games.leagueId, leagues.id))
+          .innerJoin(seasons, eq(leagues.seasonId, seasons.id))
+          .where(
+            and(
+              eq(playerGameFielding.playerId, player.id),
+              eq(games.isFinalized, true),
+              isNotNull(playerGameFielding.position),
+              isNotNull(games.playoffSeriesId),
+            ),
+          )
+          .groupBy(seasons.id, playerGameFielding.teamId, playerGameFielding.position);
+      }
+
+      const mapAll = fieldingPosMap(posRowsAll);
+      const mapPlayoff = fieldingPosMap(posRowsPlayoff);
+
+      const enrichFieldingRows = (rows: any[]) =>
+        rows.map((row) => {
+          const tid = row.teamId as number | undefined;
+          const sid = row.seasonId as number | undefined;
+          const isPlayoff = row.seasonLabel === 'Playoffs';
+          const m = isPlayoff ? mapPlayoff : mapAll;
+          const key = tid != null && sid != null ? `${sid}:${tid}` : null;
+          const entries = key ? m.get(key) ?? [] : [];
+          return {
+            ...row,
+            positionLabel: fieldingPositionLabel(entries),
+          };
+        });
+
+      if (!isAllTime) return reply.send(enrichFieldingRows(stats));
 
       let playoffRows: any[] = [];
       if (await gamesHavePlayoffSeriesId()) playoffRows = await db.select({
         id: sql<number>`-(${seasons.id} * 1000 + ${playerGameFielding.teamId})`.as('id'),
         seasonId: seasons.id,
+        teamId: playerGameFielding.teamId,
         seasonLabel: sql<string>`'Playoffs'`.as('season_label'),
         games: sql<number>`COUNT(DISTINCT ${playerGameFielding.gameId})`.as('games'),
         innings: sql<number>`COALESCE(SUM(COALESCE(${playerGameFielding.innings}, 0)), 0)`.as('innings'),
@@ -422,7 +520,7 @@ export async function playersRoutes(app: FastifyInstance) {
         return aPo - bPo;
       });
 
-      return reply.send(merged);
+      return reply.send(enrichFieldingRows(merged));
     } catch (err) {
       request.log.error(err);
       return reply.status(500).send({ message: 'Failed to fetch fielding stats' });
