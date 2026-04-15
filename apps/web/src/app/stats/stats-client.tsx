@@ -889,12 +889,12 @@ export function StatsClient({
               )}
             </div>
 
-            <div className="rounded-xl border border-border bg-surface overflow-hidden">
+            <div className="rounded-xl border border-border bg-surface overflow-hidden shadow-sm">
               <HorizontalScrollArea>
-                <table className="w-full text-sm whitespace-nowrap">
+                <table className="min-w-full w-max text-[13px] leading-snug whitespace-nowrap border-separate border-spacing-0">
                   <thead>
-                    <tr className="sticky top-0 z-20 border-b border-border bg-surface-alt shadow-[0_1px_0_0_rgba(0,0,0,0.06)]">
-                      <th className="px-3 py-2.5 text-center text-[10px] font-bold uppercase tracking-wider text-text-faint w-10">
+                    <tr className="sticky top-0 z-20 border-b border-border bg-[#e6e9ee] shadow-[inset_0_-1px_0_0_rgba(0,0,0,0.06)]">
+                      <th className="px-2.5 py-2.5 text-center text-[10px] font-bold uppercase tracking-wider text-text-muted w-10">
                         #
                       </th>
                       {displayColumns.map(col => (
@@ -904,10 +904,10 @@ export function StatsClient({
                         <th
                           key={col.key}
                           title={meaning ?? undefined}
-                          className={`px-3 py-2.5 text-[10px] font-bold uppercase tracking-wider cursor-pointer select-none transition-colors hover:text-accent ${
+                          className={`px-2.5 py-2.5 text-[10px] font-bold uppercase tracking-wider cursor-pointer select-none transition-colors hover:text-accent ${
                             col.align === 'left' ? 'text-left' : 'text-right'
-                          } ${sortKey === col.key ? 'text-accent' : 'text-text-faint'} ${
-                            col.sticky ? 'sticky left-0 top-0 z-30 bg-surface-alt shadow-[1px_0_0_0_rgba(0,0,0,0.04)]' : ''
+                          } ${sortKey === col.key ? 'text-accent' : 'text-text-muted'} ${
+                            col.sticky ? 'sticky left-0 top-0 z-30 bg-[#e6e9ee] shadow-[2px_0_6px_-2px_rgba(0,0,0,0.08)]' : ''
                           }`}
                           onClick={() => handleSort(col.key)}
                         >
@@ -929,9 +929,9 @@ export function StatsClient({
                     {currentData.map((stat: any, idx: number) => (
                       <tr
                         key={stat.playerId}
-                        className="border-b border-border/50 last:border-0 hover:bg-surface-alt/50 transition-colors"
+                        className="group border-b border-border/40 last:border-0 transition-colors odd:bg-white even:bg-[#f7f8fa] hover:bg-[#eef2f7]"
                       >
-                        <td className="px-3 py-2 text-center text-[11px] text-text-faint font-mono">
+                        <td className="px-2.5 py-2 text-center text-[12px] tabular-nums text-text-muted">
                           {idx + 1}
                         </td>
                         {displayColumns.map(col => {
@@ -967,7 +967,11 @@ export function StatsClient({
                           } else {
                             const raw = stat[col.key];
                             cellValue = (
-                              <span className={`font-mono ${col.highlight ? 'font-bold stat-value' : 'text-text-muted'}`}>
+                              <span
+                                className={`tabular-nums tracking-tight ${
+                                  col.highlight ? 'font-semibold text-text stat-value' : 'text-text-muted'
+                                }`}
+                              >
                                 {formatStatValue(raw)}
                               </span>
                             );
@@ -976,9 +980,13 @@ export function StatsClient({
                           return (
                             <td
                               key={col.key}
-                              className={`px-3 py-2 ${
+                              className={`px-2.5 py-2 ${
                                 col.align === 'left' ? 'text-left' : 'text-right'
-                              } ${col.sticky ? 'sticky left-0 z-10 bg-surface' : ''}`}
+                              } ${
+                                col.sticky
+                                  ? 'sticky left-0 z-10 bg-white shadow-[2px_0_8px_-3px_rgba(0,0,0,0.07)] group-even:bg-[#f7f8fa] group-hover:bg-[#eef2f7]'
+                                  : ''
+                              }`}
                             >
                               {cellValue}
                             </td>

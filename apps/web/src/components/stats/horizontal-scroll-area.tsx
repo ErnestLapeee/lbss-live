@@ -9,9 +9,28 @@ function isInteractiveTarget(el: EventTarget | null): boolean {
   return Boolean(el.closest('a, button, input, select, textarea, [role="button"], label'));
 }
 
+/** LTR scroll offset: 0 = start of content (left in LTR). Works with RTL scroll containers. */
+function getScrollLeftNormalized(el: HTMLElement): number {
+  const max = Math.max(0, el.scrollWidth - el.clientWidth);
+  if (getComputedStyle(el).direction === 'rtl') {
+    return max - el.scrollLeft;
+  }
+  return el.scrollLeft;
+}
+
+function setScrollLeftNormalized(el: HTMLElement, value: number): void {
+  const max = Math.max(0, el.scrollWidth - el.clientWidth);
+  const clamped = Math.max(0, Math.min(value, max));
+  if (getComputedStyle(el).direction === 'rtl') {
+    el.scrollLeft = max - clamped;
+  } else {
+    el.scrollLeft = clamped;
+  }
+}
+
 /**
- * Scrollable table viewport: horizontal + vertical overflow with click-drag to pan
- * (grab). Skips interactive elements; small movements still count as clicks.
+ * Scrollable table viewport: vertical scrollbar on the left (RTL wrapper trick),
+ * horizontal at bottom. Click-drag pans both axes; skips interactive elements.
  */
 export function HorizontalScrollArea({ children, className = '' }: { children: ReactNode; className?: string }) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -26,7 +45,7 @@ export function HorizontalScrollArea({ children, className = '' }: { children: R
 
       const startX = e.clientX;
       const startY = e.clientY;
-      const startScrollLeft = el.scrollLeft;
+      const startScrollLeft = getScrollLeftNormalized(el);
       const startScrollTop = el.scrollTop;
       let active = false;
 
@@ -42,9 +61,8 @@ export function HorizontalScrollArea({ children, className = '' }: { children: R
         }
         ev.preventDefault();
 
-        const maxX = Math.max(0, el.scrollWidth - el.clientWidth);
         const maxY = Math.max(0, el.scrollHeight - el.clientHeight);
-        el.scrollLeft = Math.max(0, Math.min(startScrollLeft - dx, maxX));
+        setScrollLeftNormalized(el, startScrollLeft - dx);
         el.scrollTop = Math.max(0, Math.min(startScrollTop - dy, maxY));
       };
 
@@ -69,10 +87,13 @@ export function HorizontalScrollArea({ children, className = '' }: { children: R
   return (
     <div
       ref={scrollRef}
-      className={`overflow-auto cursor-grab max-h-[min(72vh,calc(100dvh-12rem))] [-ms-overflow-style:auto] [scrollbar-width:thin] ${className}`}
+      dir="rtl"
+      className={`stats-table-scroll overflow-auto cursor-grab max-h-[min(72vh,calc(100dvh-12rem))] ${className}`}
       title="Drag to scroll the table"
     >
-      {children}
+      <div dir="ltr" className="min-w-full inline-block text-left">
+        {children}
+      </div>
     </div>
   );
 }
