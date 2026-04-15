@@ -124,7 +124,7 @@ const RUNNER_OUT_TYPES = [
 
 /* ── (Field positions are defined inline in the SVG) ── */
 
-type ScoringStep = 'pitch' | 'strikeout_type' | 'out_type' | 'safe_type' | 'fielding' | 'hit_location' | 'runner' | 'batter_advance' | 'runner_out_detail' | 'runner_out_fielding' | 'runner_action' | 'sub_defense' | 'sub_offense' | 'swap_position' | 'swap_position_pick' | 'misc' | 'adjust_score';
+type ScoringStep = 'pitch' | 'strikeout_type' | 'out_type' | 'safe_type' | 'fielding' | 'hit_location' | 'runner' | 'batter_advance' | 'runner_out_detail' | 'runner_out_fielding' | 'runner_advance_error_fielding' | 'runner_action' | 'sub_defense' | 'sub_offense' | 'swap_position' | 'swap_position_pick' | 'misc' | 'adjust_score';
 
 const BATTED_BALL_EVENTS = new Set([
   'single', 'double', 'triple', 'home_run', 'inside_park_hr', 'ground_rule_double',
@@ -142,6 +142,8 @@ interface RunnerQuestion {
   minDestination: 'first' | 'second' | 'third' | 'home';
   advanceReason?: string;
   fielding?: number[];
+  /** Defensive positions charged with an error when this runner advanced on error (e.g. throwing error on a ground out). */
+  advanceErrorFielding?: number[];
 }
 
 const RUNNER_OUTS_NEED_FIELDING = new Set([
@@ -264,6 +266,10 @@ export function LiveScoringPage() {
   // Runner out fielding sub-step (after picking out type in runner resolution)
   const [runnerOutPendingType, setRunnerOutPendingType] = useState<string | null>(null);
   const [runnerOutFielding, setRunnerOutFielding] = useState<number[]>([]);
+
+  // After "advanced on error" on a non-error batter play (e.g. ground out) — which fielder(s) committed the error
+  const [runnerAdvanceErrorFielding, setRunnerAdvanceErrorFielding] = useState<number[]>([]);
+  const [runnerAdvanceErrorPending, setRunnerAdvanceErrorPending] = useState<{ reason: string; dest: string } | null>(null);
 
   // Hit location state
   const [hitLocationX, setHitLocationX] = useState<number | null>(null);
@@ -485,6 +491,16 @@ export function LiveScoringPage() {
 
   const ERROR_EVENTS = new Set(['error', 'sac_bunt_error', 'sac_fly_error']);
 
+/** Runner picked "advanced on error" / "error" — need who committed the error, unless the batter play is already an error type (fielding captured earlier). */
+function needsRunnerAdvanceErrorFieldingPrompt(
+  advanceReason: string,
+  selectedEvent: string | null,
+): boolean {
+  if (advanceReason !== 'advance_on_error' && advanceReason !== 'error') return false;
+  if (selectedEvent && ERROR_EVENTS.has(selectedEvent)) return false;
+  return true;
+}
+
   const NO_FIELDING_OUTS = new Set(['strikeout_swinging', 'strikeout_looking', 'caught_foul_tip', 'bunt_foul',
     'hit_by_batted_ball', 'runner_interference_batter', 'offensive_interference_batter',
     'batting_out_of_turn', 'fan_interference', 'thrown_bat', 'out_of_box', 'left_base_path_batter', 'other_out']);
@@ -671,6 +687,7 @@ export function LiveScoringPage() {
       const runnersScored: number[] = [];
 
       const detailParts: string[] = [];
+      const errorFielderIds: number[] = [];
       for (const r of runners) {
         if (r.outcome === 'safe') {
           if (r.base === 'first') runnerFirstId = null;
@@ -678,10 +695,17 @@ export function LiveScoringPage() {
           else if (r.base === 'third') runnerThirdId = null;
 
           const stayed = r.destination === r.base;
-          if (r.destination === 'home') { runnersScored.push(r.playerId); runsScored++; detailParts.push(`${r.playerName} scores`); }
-          else if (r.destination === 'third') { runnerThirdId = r.playerId; detailParts.push(`${r.playerName}${stayed ? ' stays at 3rd' : ' to 3rd'}`); }
-          else if (r.destination === 'second') { runnerSecondId = r.playerId; detailParts.push(`${r.playerName}${stayed ? ' stays at 2nd' : ' to 2nd'}`); }
-          else if (r.destination === 'first') { runnerFirstId = r.playerId; detailParts.push(`${r.playerName} stays at 1st`); }
+          const eStr = r.advanceErrorFielding?.length ? ` E${r.advanceErrorFielding.join('')}` : '';
+          if (r.advanceErrorFielding?.length) {
+            for (const posNum of r.advanceErrorFielding) {
+              const fielder = fieldingLineup.find(l => l.position === posNum);
+              if (fielder) errorFielderIds.push(fielder.playerId);
+            }
+          }
+          if (r.destination === 'home') { runnersScored.push(r.playerId); runsScored++; detailParts.push(`${r.playerName} scores${eStr}`); }
+          else if (r.destination === 'third') { runnerThirdId = r.playerId; detailParts.push(`${r.playerName}${stayed ? ' stays at 3rd' : ' to 3rd'}${eStr}`); }
+          else if (r.destination === 'second') { runnerSecondId = r.playerId; detailParts.push(`${r.playerName}${stayed ? ' stays at 2nd' : ' to 2nd'}${eStr}`); }
+          else if (r.destination === 'first') { runnerFirstId = r.playerId; detailParts.push(`${r.playerName} stays at 1st${eStr}`); }
         } else if (r.outcome === 'out') {
           if (r.base === 'first') runnerFirstId = null;
           else if (r.base === 'second') runnerSecondId = null;
@@ -695,6 +719,9 @@ export function LiveScoringPage() {
 
       const outsRecorded = runners.filter(r => r.outcome === 'out').length;
       const detail = `${action.replace(/_/g, ' ')}: ${detailParts.join(', ')}`;
+      const errorsOnPlay = new Set(errorFielderIds).size;
+      const errPosSeq = runners.flatMap(r => r.advanceErrorFielding ?? []);
+      const fsErr = errPosSeq.length > 0 ? `E${errPosSeq.join('')}` : null;
 
       await apiPost(`/admin/scoring/${gameId}/event`, {
         // IMPORTANT: for runner events like stolen_base / caught_stealing we store the initiating runner in batterId
@@ -706,6 +733,9 @@ export function LiveScoringPage() {
         outsRecorded, balls, strikes,
         runnerFirstId, runnerSecondId, runnerThirdId, runnersScored,
         eventDetail: detail,
+        putoutFielderIds: [], assistFielderIds: [], errorFielderIds,
+        fieldingSequence: fsErr,
+        errorsOnPlay,
       });
       setBetweenPitchEvent(null);
       setBetweenPitchInitiatorRunnerId(null);
@@ -958,14 +988,25 @@ export function LiveScoringPage() {
         }
       }
 
+      // Runners who advanced on a fielding error (e.g. throwing error on a ground out)
+      for (const r of runners) {
+        if (r.outcome === 'safe' && r.advanceErrorFielding && r.advanceErrorFielding.length > 0) {
+          for (const posNum of r.advanceErrorFielding) {
+            const fielder = fieldingLineup.find(l => l.position === posNum);
+            if (fielder) errorFielderIds.push(fielder.playerId);
+          }
+        }
+      }
+
       const isErrorPlay = ERROR_EVENTS.has(eventType);
       const DEST_SHORT: Record<string, string> = { first: '1st', second: '2nd', third: '3rd', home: 'home' };
       const runnerParts: string[] = [];
       for (const r of runners) {
+        const eStr = r.advanceErrorFielding?.length ? ` E${r.advanceErrorFielding.join('')}` : '';
         if (r.outcome === 'safe' && r.destination === 'home') {
-          runnerParts.push(`${r.playerName} scores`);
+          runnerParts.push(`${r.playerName} scores${eStr}`);
         } else if (r.outcome === 'safe' && r.destination && r.destination !== r.base) {
-          runnerParts.push(`${r.playerName} to ${DEST_SHORT[r.destination] || r.destination}`);
+          runnerParts.push(`${r.playerName} to ${DEST_SHORT[r.destination] || r.destination}${eStr}`);
         } else if (r.outcome === 'out') {
           const fldStr = r.fielding?.length ? ` (${r.fielding.join('-')})` : '';
           runnerParts.push(`${r.playerName} out${fldStr}`);
@@ -981,12 +1022,14 @@ export function LiveScoringPage() {
       }
       const detail = `${currentBatter.firstName} ${currentBatter.lastName}: ${eventType.replace(/_/g, ' ')}${fieldingSequence ? ` (${isErrorPlay ? 'E' : ''}${fieldingSequence})` : ''}${runnerSuffix}${batterAdvanceSuffix}`;
       const paSide = batterSideForCurrentPa();
+      const errorsOnPlay = new Set(errorFielderIds).size;
       await apiPost(`/admin/scoring/${gameId}/event`, {
         eventType, batterId: currentBatter.playerId, pitcherId: currentPitcher?.playerId,
         inning: gameState.inning, half: gameState.half, rbi, runsScored, outsRecorded,
         balls, strikes, runnerFirstId, runnerSecondId, runnerThirdId, runnersScored, runnerScoredReasons, fieldingSequence, eventDetail: detail,
         hitLocationX, hitLocationY, hitType, hitHardness,
         putoutFielderIds, assistFielderIds, errorFielderIds,
+        errorsOnPlay,
         ...(paSide ? { batterSide: paSide } : {}),
       });
       setBalls(0); setStrikes(0); setStep('pitch'); setSelectedEvent(null);
@@ -995,6 +1038,42 @@ export function LiveScoringPage() {
       setHitLocationX(null); setHitLocationY(null); setHitType(null); setHitHardness(null);
       await loadState();
     } catch (err: any) { alert(err.message || 'Failed'); } finally { setSubmitting(false); }
+  };
+
+  /** Completes the current runner answer after picking error fielder(s) for "advanced on error" / "error" on a safe advance. */
+  const finishRunnerAdvanceErrorFielding = () => {
+    const pending = runnerAdvanceErrorPending;
+    if (!pending || runnerQuestions.length === 0) return;
+    const idx = currentRunnerIdx;
+    const updated = [...runnerQuestions];
+    updated[idx] = {
+      ...updated[idx],
+      outcome: 'safe',
+      destination: pending.dest as 'first' | 'second' | 'third' | 'home',
+      advanceReason: pending.reason,
+      advanceErrorFielding: runnerAdvanceErrorFielding.length > 0 ? [...runnerAdvanceErrorFielding] : undefined,
+    };
+    setRunnerQuestions(updated);
+    setRunnerAdvanceErrorPending(null);
+    setRunnerAdvanceErrorFielding([]);
+    setRunnerOutSafeTab('safe');
+    let nextIdx = idx + 1;
+    while (nextIdx < updated.length && updated[nextIdx].outcome !== null) nextIdx++;
+    if (nextIdx < updated.length) {
+      setCurrentRunnerIdx(nextIdx);
+      setRunnerSafeDest(updated[nextIdx].minDestination);
+      setStep('runner');
+    } else {
+      setRunnerSafeDest(null);
+      if (betweenPitchEvent) {
+        submitBetweenPitchPlay(betweenPitchEvent, updated);
+      } else if (selectedEvent && ERROR_EVENTS.has(selectedEvent)) {
+        setRunnerQuestions(updated);
+        setStep('batter_advance');
+      } else {
+        submitPlay(selectedEvent!, updated, fieldingPositions);
+      }
+    }
   };
 
   const handleUndo = async () => {
@@ -1111,7 +1190,7 @@ export function LiveScoringPage() {
       cancelWizard(); await loadState();
     } catch (err: any) { alert(err.message || 'Failed'); } finally { setSubmitting(false); }
   };
-  const cancelWizard = () => { setStep('pitch'); setSelectedEvent(null); setFieldingPositions([]); setRunnerQuestions([]); setCurrentRunnerIdx(0); setActiveRunnerBase(null); setRunnerActionType(null); setRunnerActionDest(null); setRunnerActionOutType(null); setRunnerActionFielding([]); setSubPosition(null); setSubBattingSlot(null); setRunnerOutSafeTab('safe'); setRunnerSafeDest(null); setHitLocationX(null); setHitLocationY(null); setHitType(null); setHitHardness(null); setBetweenPitchEvent(null); setBetweenPitchInitiatorRunnerId(null); setOutSafeMorePage(false); setRunnerOutPendingType(null); setRunnerOutFielding([]); };
+  const cancelWizard = () => { setStep('pitch'); setSelectedEvent(null); setFieldingPositions([]); setRunnerQuestions([]); setCurrentRunnerIdx(0); setActiveRunnerBase(null); setRunnerActionType(null); setRunnerActionDest(null); setRunnerActionOutType(null); setRunnerActionFielding([]); setSubPosition(null); setSubBattingSlot(null); setRunnerOutSafeTab('safe'); setRunnerSafeDest(null); setHitLocationX(null); setHitLocationY(null); setHitType(null); setHitHardness(null); setBetweenPitchEvent(null); setBetweenPitchInitiatorRunnerId(null); setOutSafeMorePage(false); setRunnerOutPendingType(null); setRunnerOutFielding([]); setRunnerAdvanceErrorPending(null); setRunnerAdvanceErrorFielding([]); };
 
   if (!gameIdStr || Number.isNaN(gameId) || gameId <= 0) {
     return (
@@ -1764,6 +1843,58 @@ export function LiveScoringPage() {
               </div>
             )}
 
+            {/* Runner advanced on error — pick fielder(s) charged with the error */}
+            {step === 'runner_advance_error_fielding' && runnerAdvanceErrorPending && runnerQuestions.length > 0 && (() => {
+              const q = runnerQuestions[currentRunnerIdx];
+              const fld = runnerAdvanceErrorFielding;
+              const POS_GRID = [
+                { pos: 1, label: 'P' },  { pos: 2, label: 'C' },  { pos: 3, label: '1B' },
+                { pos: 4, label: '2B' }, { pos: 5, label: '3B' }, { pos: 6, label: 'SS' },
+                { pos: 7, label: 'LF' }, { pos: 8, label: 'CF' }, { pos: 9, label: 'RF' },
+              ];
+              const reasonLabel = runnerAdvanceErrorPending.reason === 'advance_on_error' ? 'ADVANCED ON ERROR' : 'ERROR ON ADVANCE';
+              return (
+                <div className="bg-[#111d30] rounded-xl border border-amber-500/30 overflow-hidden">
+                  <div className="px-4 py-3 border-b border-white/5 text-center">
+                    <p className="text-[10px] text-amber-400 font-bold uppercase mb-1 tracking-widest">{reasonLabel}</p>
+                    <p className="text-xs text-white/80 font-bold tracking-wide">{q.playerName}</p>
+                    <p className="text-[10px] text-white/40 mt-1">tap position(s) — who committed the error</p>
+                    {fld.length > 0 && (
+                      <p className="text-sm text-white font-bold mt-2 tracking-wider">E{fld.join('')}</p>
+                    )}
+                  </div>
+                  <div className="p-3">
+                    <div className="grid grid-cols-3 gap-2">
+                      {POS_GRID.map(p => {
+                        const fielder = fieldingLineup.find(l => l.position === p.pos);
+                        return (
+                          <button key={p.pos} type="button" onClick={() => setRunnerAdvanceErrorFielding([...runnerAdvanceErrorFielding, p.pos])}
+                            className="py-3 bg-white/5 hover:bg-white/10 border border-white/10 text-white text-xs font-bold rounded-lg transition-colors">
+                            <span className="block text-base">{p.label}</span>
+                            {fielder && <span className="block text-[9px] text-white/40 mt-0.5">{fielder.lastName}</span>}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div className="flex gap-2 px-3 pb-3">
+                    <button type="button" onClick={() => setRunnerAdvanceErrorFielding(runnerAdvanceErrorFielding.slice(0, -1))}
+                      disabled={fld.length === 0}
+                      className="flex-1 py-2.5 bg-white/5 hover:bg-white/10 text-white/60 text-xs font-bold rounded-lg uppercase disabled:opacity-30 transition-colors">
+                      UNDO
+                    </button>
+                    <button type="button" onClick={() => finishRunnerAdvanceErrorFielding()}
+                      disabled={fld.length === 0}
+                      className="flex-[2] py-2.5 bg-amber-700 hover:bg-amber-600 text-white text-xs font-bold rounded-lg uppercase disabled:opacity-30 transition-colors">
+                      {fld.length > 0 ? `SUBMIT (E${fld.join('')})` : 'SELECT FIELDER(S)'}
+                    </button>
+                  </div>
+                  <button type="button" onClick={() => { setRunnerAdvanceErrorPending(null); setRunnerAdvanceErrorFielding([]); setStep('runner'); }}
+                    className="w-full py-3 text-white/40 text-xs font-bold uppercase border-t border-white/10 hover:text-white/60 transition-colors">← BACK</button>
+                </div>
+              );
+            })()}
+
             {/* RUNNER step (after play) - iScore style */}
             {(step === 'runner' || step === 'runner_out_detail' || step === 'runner_out_fielding') && runnerQuestions.length > 0 && (() => {
               const q = runnerQuestions[currentRunnerIdx];
@@ -1955,7 +2086,15 @@ export function LiveScoringPage() {
                             if (!stayedAtBase) {
                               options.push({ key: 'held2', label: 'HELD UP', action: () => answerRunner('safe', q.base, 'held') });
                             }
-                            options.push({ key: 'error', label: 'ERROR', action: () => answerRunner('safe', dest, 'error') });
+                            options.push({ key: 'error', label: 'ERROR', action: () => {
+                              if (needsRunnerAdvanceErrorFieldingPrompt('error', selectedEvent)) {
+                                setRunnerAdvanceErrorPending({ reason: 'error', dest });
+                                setRunnerAdvanceErrorFielding([]);
+                                setStep('runner_advance_error_fielding');
+                              } else {
+                                answerRunner('safe', dest, 'error');
+                              }
+                            } });
                             options.push({ key: 'defensive_indifference', label: 'DEF. INDIFFERENCE', action: () => answerRunner('safe', dest, 'defensive_indifference') });
                           } else {
                             if (stayedAtBase) {
@@ -1967,9 +2106,25 @@ export function LiveScoringPage() {
                             }
                             // Allow "advanced on (same) error" even when the batter event is a hit.
                             // This is needed for plays like: single + runner(s) score on an outfield error.
-                            options.push({ key: 'advance_on_error', label: 'ADVANCED ON ERROR', action: () => answerRunner('safe', dest, 'advance_on_error') });
+                            options.push({ key: 'advance_on_error', label: 'ADVANCED ON ERROR', action: () => {
+                              if (needsRunnerAdvanceErrorFieldingPrompt('advance_on_error', selectedEvent)) {
+                                setRunnerAdvanceErrorPending({ reason: 'advance_on_error', dest });
+                                setRunnerAdvanceErrorFielding([]);
+                                setStep('runner_advance_error_fielding');
+                              } else {
+                                answerRunner('safe', dest, 'advance_on_error');
+                              }
+                            } });
                             options.push({ key: 'stolen_base', label: 'STOLEN BASE', action: () => answerRunner('safe', dest, 'stolen_base') });
-                            options.push({ key: 'error', label: 'ERROR', action: () => answerRunner('safe', dest, 'error') });
+                            options.push({ key: 'error', label: 'ERROR', action: () => {
+                              if (needsRunnerAdvanceErrorFieldingPrompt('error', selectedEvent)) {
+                                setRunnerAdvanceErrorPending({ reason: 'error', dest });
+                                setRunnerAdvanceErrorFielding([]);
+                                setStep('runner_advance_error_fielding');
+                              } else {
+                                answerRunner('safe', dest, 'error');
+                              }
+                            } });
                             options.push({ key: 'passed_ball', label: 'PASSED BALL', action: () => answerRunner('safe', dest, 'passed_ball') });
                             options.push({ key: 'wild_pitch', label: 'WILD PITCH', action: () => answerRunner('safe', dest, 'wild_pitch') });
                             options.push({ key: 'defensive_indifference', label: 'DEF. INDIFFERENCE', action: () => answerRunner('safe', dest, 'defensive_indifference') });
