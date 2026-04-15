@@ -22,7 +22,8 @@ RUN pnpm install --frozen-lockfile
 COPY packages/shared packages/shared
 COPY apps/web apps/web
 
-# Build Next.js (must run after install)
+# Shared must be built first (package exports dist/*.js)
+RUN pnpm --filter @lbss/shared build
 RUN pnpm --filter @lbss/web build
 
 ENV NODE_ENV=production
