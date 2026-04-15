@@ -42,9 +42,18 @@ function parseDateOrNull(v: unknown): { ok: true; value: string | null } | { ok:
   return { ok: true, value: new Date(t).toISOString().slice(0, 10) };
 }
 
+/** Walk `cause` chain — Drizzle/postgres-js often wrap the PostgresError. */
 function pgErrorCode(err: unknown): string | undefined {
-  const e = err as { code?: string; cause?: { code?: string } };
-  return e?.code ?? e?.cause?.code;
+  let e: unknown = err;
+  const seen = new Set<unknown>();
+  for (let i = 0; i < 12 && e && typeof e === 'object'; i++) {
+    if (seen.has(e)) break;
+    seen.add(e);
+    const code = (e as { code?: string }).code;
+    if (typeof code === 'string' && /^[0-9A-Z]{5}$/.test(code)) return code;
+    e = (e as { cause?: unknown }).cause;
+  }
+  return undefined;
 }
 
 export async function adminSeasonsRoutes(app: FastifyInstance) {
@@ -195,7 +204,8 @@ export async function adminSeasonsRoutes(app: FastifyInstance) {
               : {}),
             ...(hasPoCols ? playoffColumnsForSeasonKind(kind, true, { hasPlayoffs, regularSeasonGamesPerTeam, playoffSettings }) : {}),
           })
-          .returning();
+          // Omit columns missing in older DBs — bare `.returning()` asks Postgres for every Drizzle column and can 500.
+          .returning(seasonsRowSelectShape(flags));
         return [row];
       });
 
@@ -221,6 +231,17 @@ export async function adminSeasonsRoutes(app: FastifyInstance) {
       }
       if (code === '23514') {
         return reply.status(400).send({ message: 'Season data violates a database constraint.' });
+      }
+      if (code === '42703') {
+        return reply.status(500).send({
+          message:
+            'Database schema mismatch (missing column). Apply API migrations on this database (pnpm db:migrate / drizzle migrate).',
+        });
+      }
+      if (code === '23502') {
+        return reply.status(400).send({
+          message: 'Required season field is missing in the database row (NOT NULL). Check migrations.',
+        });
       }
       return reply.status(500).send({ message: 'Failed to create season' });
     }
@@ -362,7 +383,7 @@ export async function adminSeasonsRoutes(app: FastifyInstance) {
               : {}),
           })
           .where(eq(seasons.id, id))
-          .returning();
+          .returning(seasonsRowSelectShape(flags));
         return [row];
       });
 
@@ -392,6 +413,17 @@ export async function adminSeasonsRoutes(app: FastifyInstance) {
       }
       if (code === '23514') {
         return reply.status(400).send({ message: 'Season data violates a database constraint.' });
+      }
+      if (code === '42703') {
+        return reply.status(500).send({
+          message:
+            'Database schema mismatch (missing column). Apply API migrations on this database (pnpm db:migrate / drizzle migrate).',
+        });
+      }
+      if (code === '23502') {
+        return reply.status(400).send({
+          message: 'Required season field is missing in the database row (NOT NULL). Check migrations.',
+        });
       }
       return reply.status(500).send({ message: 'Failed to update season' });
     }

@@ -33,5 +33,7 @@ RUN test -f packages/api/dist/db/schema/index.js || (echo "Missing packages/api/
 ENV NODE_ENV=production
 EXPOSE 3000
 
+# Apply pending SQL migrations before serving (avoids 500s when RETURNING/INSERT expect newer columns)
+# Railway must set DATABASE_URL for drizzle-kit migrate.
 # Run from repo root so node_modules resolution works; no --env-file (Railway injects env)
-CMD ["node", "packages/api/dist/index.js"]
+CMD ["sh", "-c", "pnpm --filter @lbss/api run db:migrate && node packages/api/dist/index.js"]
