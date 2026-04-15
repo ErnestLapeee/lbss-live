@@ -193,6 +193,7 @@ export async function adminScoringRoutes(app: FastifyInstance) {
         isActive: gameLineups.isActive,
         firstName: players.firstName,
         lastName: players.lastName,
+        bats: players.bats,
       })
         .from(gameLineups)
         .innerJoin(players, eq(gameLineups.playerId, players.id))
@@ -394,6 +395,8 @@ export async function adminScoringRoutes(app: FastifyInstance) {
       hitLocationY?: number | null;
       hitType?: string | null;
       hitHardness?: string | null;
+      /** Switch hitter: L or R — box side for this PA (stored on events with this batter). */
+      batterSide?: 'L' | 'R' | null;
     };
   }>('/:gameId/event', async (request, reply) => {
     try {
@@ -408,6 +411,10 @@ export async function adminScoringRoutes(app: FastifyInstance) {
         .where(eq(gameEvents.gameId, gameId));
       const eventNumber = ((maxEvt?.maxNum as number) || 0) + 1;
 
+      const rawSide = body.batterSide;
+      const batterSideNorm =
+        rawSide === 'L' || rawSide === 'R' ? rawSide : null;
+
       // Insert event
       const [event] = await db.insert(gameEvents).values({
         gameId,
@@ -415,6 +422,7 @@ export async function adminScoringRoutes(app: FastifyInstance) {
         inning: body.inning,
         half: body.half,
         batterId: body.batterId ?? null,
+        batterSide: batterSideNorm,
         pitcherId: body.pitcherId ?? null,
         eventType: body.eventType,
         eventDetail: body.eventDetail ?? null,
@@ -609,6 +617,11 @@ export async function adminScoringRoutes(app: FastifyInstance) {
         runnersScored: (v) => v ?? [],
         runnerScoredReasons: (v) => v ?? [],
         batterId: (v) => v ?? null,
+        batterSide: (v) => {
+          if (v === '' || v == null) return null;
+          const c = String(v).trim().toUpperCase().charAt(0);
+          return c === 'L' || c === 'R' ? c : null;
+        },
         pitcherId: (v) => v ?? null,
       };
 

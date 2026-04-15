@@ -26,6 +26,8 @@ export const gameEvents = pgTable(
     inning: integer('inning').notNull(),
     half: varchar('half', { length: 3 }).notNull(),
     batterId: integer('batter_id').references(() => players.id),
+    /** For switch hitters (roster bats=S): L or R — which side they batted from this PA. */
+    batterSide: varchar('batter_side', { length: 1 }),
     pitcherId: integer('pitcher_id').references(() => players.id),
     eventType: varchar('event_type', { length: 30 }).notNull(),
     eventDetail: text('event_detail'),

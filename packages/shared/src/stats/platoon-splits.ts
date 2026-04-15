@@ -72,8 +72,8 @@ function isAtBat(t: string): boolean {
   return true;
 }
 
-export type BattingPlatoonBucket = 'vsRhp' | 'vsLhp' | 'other';
-export type PitchingPlatoonBucket = 'vsRhb' | 'vsLhb' | 'vsSwitch' | 'other';
+export type BattingPlatoonBucket = 'vsRhp' | 'vsLhp';
+export type PitchingPlatoonBucket = 'vsRhb' | 'vsLhb';
 
 /** Raw PA row from game_events (batting perspective: this player is the batter). */
 export interface PlatoonBattingEventRow {
@@ -184,21 +184,24 @@ function applyPaToLine(line: PlatoonBattingLine, e: PlatoonBattingEventRow | Pla
   if (SACRIFICE_BUNT_EVENTS.has(t)) line.sacrificeBunts++;
 }
 
-/** Normalize pitcher throws for batting split: R vs L; everything else → other. */
-export function battingBucketFromPitcherThrows(raw: string | null | undefined): BattingPlatoonBucket {
+/** R vs L only; switch / missing / other → excluded from splits. */
+export function battingBucketFromPitcherThrows(
+  raw: string | null | undefined,
+): BattingPlatoonBucket | null {
   const c = (raw ?? '').trim().charAt(0).toUpperCase();
   if (c === 'R') return 'vsRhp';
   if (c === 'L') return 'vsLhp';
-  return 'other';
+  return null;
 }
 
-/** Normalize batter bats for pitching split. */
-export function pitchingBucketFromBatterBats(raw: string | null | undefined): PitchingPlatoonBucket {
+/** R vs L only; switch / missing / other → excluded from splits. */
+export function pitchingBucketFromBatterBats(
+  raw: string | null | undefined,
+): PitchingPlatoonBucket | null {
   const c = (raw ?? '').trim().charAt(0).toUpperCase();
   if (c === 'R') return 'vsRhb';
   if (c === 'L') return 'vsLhb';
-  if (c === 'S') return 'vsSwitch';
-  return 'other';
+  return null;
 }
 
 function accumulateBatting(rows: (PlatoonBattingEventRow | PlatoonPitchingEventRow)[]): PlatoonBattingLine {
@@ -218,16 +221,15 @@ export function aggregateBattingPlatoon(rows: PlatoonBattingEventRow[]): Record<
   const buckets: Record<BattingPlatoonBucket, PlatoonBattingEventRow[]> = {
     vsRhp: [],
     vsLhp: [],
-    other: [],
   };
   for (const r of rows) {
     if (!isPlateAppearance(r.eventType)) continue;
-    buckets[battingBucketFromPitcherThrows(r.pitcherThrows)].push(r);
+    const b = battingBucketFromPitcherThrows(r.pitcherThrows);
+    if (b) buckets[b].push(r);
   }
   return {
     vsRhp: accumulateBatting(buckets.vsRhp),
     vsLhp: accumulateBatting(buckets.vsLhp),
-    other: accumulateBatting(buckets.other),
   };
 }
 
@@ -239,17 +241,14 @@ export function aggregatePitchingPlatoon(rows: PlatoonPitchingEventRow[]): Recor
   const buckets: Record<PitchingPlatoonBucket, PlatoonPitchingEventRow[]> = {
     vsRhb: [],
     vsLhb: [],
-    vsSwitch: [],
-    other: [],
   };
   for (const r of rows) {
     if (!isPlateAppearance(r.eventType)) continue;
-    buckets[pitchingBucketFromBatterBats(r.batterBats)].push(r);
+    const b = pitchingBucketFromBatterBats(r.batterBats);
+    if (b) buckets[b].push(r);
   }
   return {
     vsRhb: accumulateBatting(buckets.vsRhb),
     vsLhb: accumulateBatting(buckets.vsLhb),
-    vsSwitch: accumulateBatting(buckets.vsSwitch),
-    other: accumulateBatting(buckets.other),
   };
 }

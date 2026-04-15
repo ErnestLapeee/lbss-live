@@ -57,6 +57,13 @@
       "when": 1773800000000,
       "tag": "0009_lineup_exit_inning",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1773900000000,
+      "tag": "0010_game_events_batter_side",
+      "breakpoints": true
     }
   ]
 }

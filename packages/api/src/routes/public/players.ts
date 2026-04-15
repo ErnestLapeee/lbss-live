@@ -688,7 +688,13 @@ export async function playersRoutes(app: FastifyInstance) {
 
       const pitchingEv = await db.execute(sql`
         SELECT ge.event_type, ge.rbi, ge.outs_recorded, ge.hit_type, ge.event_number,
-          b.bats AS batter_bats
+          COALESCE(
+            NULLIF(TRIM(ge.batter_side::text), ''),
+            CASE
+              WHEN UPPER(TRIM(COALESCE(b.bats, ''))) IN ('R', 'L') THEN UPPER(TRIM(b.bats))
+              ELSE NULL
+            END
+          ) AS batter_bats
         FROM game_events ge
         JOIN games g ON ge.game_id = g.id
         JOIN leagues l ON g.league_id = l.id

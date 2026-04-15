@@ -430,7 +430,7 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
                 Platoon splits (batting)
               </h3>
               <p className="text-xs text-text-muted mb-3 max-w-2xl">
-                Plate appearances vs right-handed and left-handed pitchers (from roster &ldquo;throws&rdquo;). Other: missing data, switch pitcher, or rare cases.
+                Plate appearances vs RHP and LHP only (roster &ldquo;throws&rdquo;). PAs with unknown or non-R/L pitcher hand are excluded.
               </p>
               <div className="rounded-xl border border-border bg-surface overflow-x-auto max-w-3xl">
                 <table className="w-full text-sm">
@@ -452,7 +452,6 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
                       [
                         ['vsRhp', 'vs RHP'],
                         ['vsLhp', 'vs LHP'],
-                        ['other', 'Other'],
                       ] as const
                     ).map(([k, label]) => {
                       const line = platoonSplits.batting[k];
@@ -582,7 +581,7 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
                 Platoon splits (pitching)
               </h3>
               <p className="text-xs text-text-muted mb-3 max-w-2xl">
-                How hitters fared against this pitcher by batter box side (roster &ldquo;bats&rdquo;). Not ERA/IP—sample sizes are often small in league play.
+                Opponent slash vs RHB and LHB. Uses roster &ldquo;bats&rdquo; for fixed hitters; switch hitters count when the scorer recorded LHB/RHB for that PA. Not ERA/IP—samples are often small.
               </p>
               <div className="rounded-xl border border-border bg-surface overflow-x-auto max-w-4xl">
                 <table className="w-full text-sm">
@@ -604,8 +603,6 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
                       [
                         ['vsRhb', 'vs RHB'],
                         ['vsLhb', 'vs LHB'],
-                        ['vsSwitch', 'vs SHB'],
-                        ['other', 'Other'],
                       ] as const
                     ).map(([k, label]) => {
                       const line = platoonSplits.pitching[k];

@@ -4,9 +4,9 @@ import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
 
 /* ── Types ── */
 interface Player { playerId: number; firstName: string; lastName: string; jerseyNumber?: string; teamId: number; licensePaid?: string | null }
-interface LineupEntry { id: number; playerId: number; battingOrder: number; position: number; isActive: boolean; isStarter: boolean; firstName: string; lastName: string; teamId: number }
+interface LineupEntry { id: number; playerId: number; battingOrder: number; position: number; isActive: boolean; isStarter: boolean; firstName: string; lastName: string; teamId: number; bats?: string | null }
 interface GameState { inning: number; half: 'top' | 'bot'; outs: number; homeScore: number; awayScore: number; bases: { first: number | null; second: number | null; third: number | null }; homeLineScore: number[]; awayLineScore: number[]; eventCount: number; balls: number; strikes: number }
-interface GameEvent { id: number; eventNumber: number; eventType: string; batterId?: number; pitcherId?: number; inning: number; half: string; runsScored?: number; rbi?: number; outsRecorded?: number; eventDetail?: string; fieldingSequence?: string; hitLocationX?: string | null; hitLocationY?: string | null; hitType?: string | null; hitHardness?: string | null; runnerFirstId?: number | null; runnerSecondId?: number | null; runnerThirdId?: number | null; runnersScored?: number[] }
+interface GameEvent { id: number; eventNumber: number; eventType: string; batterId?: number; batterSide?: string | null; pitcherId?: number; inning: number; half: string; runsScored?: number; rbi?: number; outsRecorded?: number; eventDetail?: string; fieldingSequence?: string; hitLocationX?: string | null; hitLocationY?: string | null; hitType?: string | null; hitHardness?: string | null; runnerFirstId?: number | null; runnerSecondId?: number | null; runnerThirdId?: number | null; runnersScored?: number[] }
 interface GameData { id: number; status: string; homeTeamId: number; awayTeamId: number; homeTeamName: string; awayTeamName: string; isFinalized: boolean }
 
 function formatScoringMiniPbpLine(evt: GameEvent): string {
@@ -207,6 +207,8 @@ export function LiveScoringPage() {
   const [balls, setBalls] = useState(0);
   const [strikes, setStrikes] = useState(0);
   const [skipOffset, setSkipOffset] = useState<Record<string, number>>({ home: 0, away: 0 });
+  /** Switch hitter (bats=S): which box side for the current PA — required before recording pitches/plays. */
+  const [switchBatSide, setSwitchBatSide] = useState<'L' | 'R' | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   const [step, setStep] = useState<ScoringStep>('pitch');
@@ -330,6 +332,16 @@ export function LiveScoringPage() {
   const currentBatter = battingLineup.find(l => l.battingOrder === battingOrderSlot) ?? null;
   const isEmptySlot = !currentBatter && battingLineup.length > 0;
 
+  /** Per-PA box side for roster switch hitters; sent on events as batterSide (L/R). */
+  const batterSideForCurrentPa = (): 'L' | 'R' | undefined => {
+    if (!currentBatter || (currentBatter.bats || '').trim().toUpperCase() !== 'S') return undefined;
+    return switchBatSide ?? undefined;
+  };
+
+  useEffect(() => {
+    setSwitchBatSide(null);
+  }, [currentBatter?.playerId, rawIdx, battingSide]);
+
   const getPlayerName = (id: number) => {
     const p = [...homeLineup, ...awayLineup].find(l => l.playerId === id);
     return p ? `${p.firstName.charAt(0)}. ${p.lastName}` : `#${id}`;
@@ -393,6 +405,7 @@ export function LiveScoringPage() {
   // ── Pitch handlers (each creates a DB event) ──
   const handleBall = async () => {
     if (submitting || !currentBatter || !gameState) return;
+    if ((currentBatter.bats || '').trim().toUpperCase() === 'S' && !switchBatSide) return;
     const newBalls = balls + 1;
     if (newBalls >= 4) {
       selectOutcome('walk');
@@ -407,6 +420,7 @@ export function LiveScoringPage() {
 
   const handleStrike = async () => {
     if (submitting || !currentBatter || !gameState) return;
+    if ((currentBatter.bats || '').trim().toUpperCase() === 'S' && !switchBatSide) return;
     if (strikes + 1 >= 3) {
       // Strike 3 → show strikeout type menu
       setStep('strikeout_type');
@@ -421,6 +435,7 @@ export function LiveScoringPage() {
 
   const handleFoul = async () => {
     if (submitting || !currentBatter || !gameState) return;
+    if ((currentBatter.bats || '').trim().toUpperCase() === 'S' && !switchBatSide) return;
     if (strikes < 2) setStrikes(strikes + 1);
     setSubmitting(true);
     try { await submitPitchEvent('foul'); await loadState(); }
@@ -428,8 +443,14 @@ export function LiveScoringPage() {
     finally { setSubmitting(false); }
   };
 
-  const handleOut = () => { setOutSafeTab('out'); setStep('out_type'); };
-  const handleInPlay = () => { setOutSafeTab('safe'); setStep('safe_type'); };
+  const handleOut = () => {
+    if (currentBatter && (currentBatter.bats || '').trim().toUpperCase() === 'S' && !switchBatSide) return;
+    setOutSafeTab('out'); setStep('out_type');
+  };
+  const handleInPlay = () => {
+    if (currentBatter && (currentBatter.bats || '').trim().toUpperCase() === 'S' && !switchBatSide) return;
+    setOutSafeTab('safe'); setStep('safe_type');
+  };
 
   const ERROR_EVENTS = new Set(['error', 'sac_bunt_error', 'sac_fly_error']);
 
@@ -798,6 +819,10 @@ export function LiveScoringPage() {
     batterDestOverride?: 'first' | 'second' | 'third' | 'home'
   ) => {
     if (!currentBatter || !gameState || submitting) return;
+    if ((currentBatter.bats || '').trim().toUpperCase() === 'S' && !switchBatSide) {
+      alert('Select LHB or RHB for this switch hitter before submitting the play.');
+      return;
+    }
     setSubmitting(true);
     try {
       const isOut = OUT_EVENTS.includes(eventType);
@@ -907,12 +932,14 @@ export function LiveScoringPage() {
       }
       const runnerSuffix = runnerParts.length > 0 ? `. ${runnerParts.join(', ')}` : '';
       const detail = `${currentBatter.firstName} ${currentBatter.lastName}: ${eventType.replace(/_/g, ' ')}${fieldingSequence ? ` (${isErrorPlay ? 'E' : ''}${fieldingSequence})` : ''}${runnerSuffix}`;
+      const paSide = batterSideForCurrentPa();
       await apiPost(`/admin/scoring/${gameId}/event`, {
         eventType, batterId: currentBatter.playerId, pitcherId: currentPitcher?.playerId,
         inning: gameState.inning, half: gameState.half, rbi, runsScored, outsRecorded,
         balls, strikes, runnerFirstId, runnerSecondId, runnerThirdId, runnersScored, runnerScoredReasons, fieldingSequence, eventDetail: detail,
         hitLocationX, hitLocationY, hitType, hitHardness,
         putoutFielderIds, assistFielderIds, errorFielderIds,
+        ...(paSide ? { batterSide: paSide } : {}),
       });
       setBalls(0); setStrikes(0); setStep('pitch'); setSelectedEvent(null);
       setFieldingPositions([]); setRunnerQuestions([]); setCurrentRunnerIdx(0);
@@ -971,8 +998,13 @@ export function LiveScoringPage() {
   };
   const handleMiscEvent = async (eventType: string, detail: string) => {
     if (!gameState || submitting) return;
+    if (currentBatter && (currentBatter.bats || '').trim().toUpperCase() === 'S' && !switchBatSide) {
+      alert('Select LHB or RHB for this switch hitter first.');
+      return;
+    }
     setSubmitting(true);
     try {
+      const miscSide = batterSideForCurrentPa();
       if (eventType === 'balk') {
         const r1 = gameState.bases.first;
         const r2 = gameState.bases.second;
@@ -1012,6 +1044,7 @@ export function LiveScoringPage() {
             runnerThirdId,
             runnersScored,
             eventDetail: `balk: ${detailParts.join(', ')}`,
+            ...(miscSide ? { batterSide: miscSide } : {}),
           });
           cancelWizard();
           await loadState();
@@ -1025,6 +1058,7 @@ export function LiveScoringPage() {
         outsRecorded: 0, balls, strikes,
         runnerFirstId: gameState.bases.first, runnerSecondId: gameState.bases.second, runnerThirdId: gameState.bases.third,
         runnersScored: [], eventDetail: detail,
+        ...(miscSide ? { batterSide: miscSide } : {}),
       });
       cancelWizard(); await loadState();
     } catch (err: any) { alert(err.message || 'Failed'); } finally { setSubmitting(false); }
@@ -1389,27 +1423,71 @@ export function LiveScoringPage() {
 
             {/* PITCH step */}
             {step === 'pitch' && currentBatter && (
-              <div className="grid grid-cols-5 gap-1.5">
-                <button onClick={handleBall} disabled={submitting}
-                  className="py-4 bg-[#1a6b3a] hover:bg-[#20804a] text-white font-bold text-sm rounded-lg transition-all disabled:opacity-30 border border-[#20804a]/50">
-                  BALL
-                </button>
-                <button onClick={handleStrike} disabled={submitting}
-                  className="py-4 bg-[#8b2020] hover:bg-[#a02828] text-white font-bold text-sm rounded-lg transition-all disabled:opacity-30 border border-[#a02828]/50">
-                  STRIKE
-                </button>
-                <button onClick={handleFoul} disabled={submitting}
-                  className="py-4 bg-[#8b7020] hover:bg-[#a08428] text-white font-bold text-sm rounded-lg transition-all disabled:opacity-30 border border-[#a08428]/50">
-                  FOUL
-                </button>
-                <button onClick={handleOut} disabled={submitting}
-                  className="py-4 bg-[#1a5c3a] hover:bg-[#237548] text-white font-bold text-sm rounded-lg transition-all disabled:opacity-30 border border-[#237548]/50">
-                  OUT
-                </button>
-                <button onClick={handleInPlay} disabled={submitting}
-                  className="py-4 bg-[#1a3a8b] hover:bg-[#2248a0] text-white font-bold text-sm rounded-lg transition-all disabled:opacity-30 border border-[#2248a0]/50">
-                  IN PLAY
-                </button>
+              <div className="space-y-2">
+                {(currentBatter.bats || '').trim().toUpperCase() === 'S' && (
+                  <div className="rounded-lg border border-amber-500/35 bg-amber-950/35 px-3 py-2">
+                    <p className="text-[10px] text-amber-100/90 font-bold uppercase tracking-wide mb-2">
+                      Switch hitter — batting from this PA:
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setSwitchBatSide('L')}
+                        className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition-colors ${
+                          switchBatSide === 'L' ? 'bg-amber-500 text-black' : 'bg-white/10 text-white/75 hover:bg-white/15'
+                        }`}
+                      >
+                        LHB
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSwitchBatSide('R')}
+                        className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition-colors ${
+                          switchBatSide === 'R' ? 'bg-amber-500 text-black' : 'bg-white/10 text-white/75 hover:bg-white/15'
+                        }`}
+                      >
+                        RHB
+                      </button>
+                    </div>
+                  </div>
+                )}
+                <div className="grid grid-cols-5 gap-1.5">
+                  <button
+                    onClick={handleBall}
+                    disabled={submitting || ((currentBatter.bats || '').trim().toUpperCase() === 'S' && !switchBatSide)}
+                    className="py-4 bg-[#1a6b3a] hover:bg-[#20804a] text-white font-bold text-sm rounded-lg transition-all disabled:opacity-30 border border-[#20804a]/50"
+                  >
+                    BALL
+                  </button>
+                  <button
+                    onClick={handleStrike}
+                    disabled={submitting || ((currentBatter.bats || '').trim().toUpperCase() === 'S' && !switchBatSide)}
+                    className="py-4 bg-[#8b2020] hover:bg-[#a02828] text-white font-bold text-sm rounded-lg transition-all disabled:opacity-30 border border-[#a02828]/50"
+                  >
+                    STRIKE
+                  </button>
+                  <button
+                    onClick={handleFoul}
+                    disabled={submitting || ((currentBatter.bats || '').trim().toUpperCase() === 'S' && !switchBatSide)}
+                    className="py-4 bg-[#8b7020] hover:bg-[#a08428] text-white font-bold text-sm rounded-lg transition-all disabled:opacity-30 border border-[#a08428]/50"
+                  >
+                    FOUL
+                  </button>
+                  <button
+                    onClick={handleOut}
+                    disabled={submitting || ((currentBatter.bats || '').trim().toUpperCase() === 'S' && !switchBatSide)}
+                    className="py-4 bg-[#1a5c3a] hover:bg-[#237548] text-white font-bold text-sm rounded-lg transition-all disabled:opacity-30 border border-[#237548]/50"
+                  >
+                    OUT
+                  </button>
+                  <button
+                    onClick={handleInPlay}
+                    disabled={submitting || ((currentBatter.bats || '').trim().toUpperCase() === 'S' && !switchBatSide)}
+                    className="py-4 bg-[#1a3a8b] hover:bg-[#2248a0] text-white font-bold text-sm rounded-lg transition-all disabled:opacity-30 border border-[#2248a0]/50"
+                  >
+                    IN PLAY
+                  </button>
+                </div>
               </div>
             )}
 
@@ -2434,6 +2512,7 @@ function EventTimelinePanel({ gameId, events, homeLineup, awayLineup, onClose, o
       runsScored: evt.runsScored ?? 0,
       outsRecorded: evt.outsRecorded ?? 0,
       batterId: evt.batterId ?? null,
+      batterSide: evt.batterSide ?? null,
       pitcherId: evt.pitcherId ?? null,
       errorsOnPlay: (evt as any).errorsOnPlay ?? 0,
       runnersScored: scored,
@@ -2545,6 +2624,18 @@ function EventTimelinePanel({ gameId, events, homeLineup, awayLineup, onClose, o
                           {[...allPlayers.entries()].sort((a, b) => a[1].localeCompare(b[1])).map(([id, name]) => (
                             <option key={id} value={id}>{name}</option>
                           ))}
+                        </select>
+                      </div>
+                      <div className="flex gap-2 text-[10px]">
+                        <label className="text-white/40 w-16 shrink-0">Bat side:</label>
+                        <select
+                          value={editForm.batterSide ?? ''}
+                          onChange={e => setEditForm(f => ({ ...f, batterSide: e.target.value === '' ? null : e.target.value }))}
+                          className="flex-1 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-[10px]"
+                        >
+                          <option value="">—</option>
+                          <option value="L">LHB</option>
+                          <option value="R">RHB</option>
                         </select>
                       </div>
                       <div className="flex gap-2 text-[10px]">
