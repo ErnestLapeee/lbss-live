@@ -24,7 +24,7 @@ export async function adminUsersRoutes(app: FastifyInstance) {
     }
   });
 
-  // POST / - create user
+  // POST / - create user (disabled by default; use DB + db:set-password or seed)
   app.post<{
     Body: {
       email: string;
@@ -33,6 +33,12 @@ export async function adminUsersRoutes(app: FastifyInstance) {
       role?: string;
     };
   }>('/', async (request, reply) => {
+    if (process.env.ALLOW_ADMIN_USER_CREATE !== 'true') {
+      return reply.status(403).send({
+        message:
+          'Creating users from the admin UI is disabled. Add users in the database or set ALLOW_ADMIN_USER_CREATE=true for a controlled environment.',
+      });
+    }
     try {
       const { email, password, displayName, role } = request.body ?? {};
 

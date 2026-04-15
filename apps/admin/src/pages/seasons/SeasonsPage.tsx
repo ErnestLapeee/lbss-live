@@ -82,10 +82,15 @@ export function SeasonsPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const yearNum = parseInt(form.year, 10);
+    if (!Number.isFinite(yearNum) || yearNum < 1800 || yearNum > 2300) {
+      alert('Enter a valid year (1800–2300).');
+      return;
+    }
     setSaving(true);
     try {
       const base = {
-        year: parseInt(form.year, 10),
+        year: yearNum,
         name: form.name,
         startDate: form.startDate || null,
         endDate: form.endDate || null,

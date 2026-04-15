@@ -22,6 +22,31 @@ import { getSeasonsColumnFlagsCached } from '../../lib/seasons-playoff-columns-c
 import { seasonsRowSelectShape } from '../../lib/seasons-drizzle-select.js';
 import { playoffColumnsForSeasonKind, type SeasonKind } from '../../lib/season-kind-playoffs.js';
 
+function normalizeYear(v: unknown): number | null {
+  if (v == null) return null;
+  const n =
+    typeof v === 'number' && Number.isFinite(v)
+      ? Math.trunc(v)
+      : parseInt(String(v).trim(), 10);
+  return Number.isFinite(n) && n >= 1800 && n <= 2300 ? n : null;
+}
+
+/** Returns null for empty/omitted; rejects invalid non-empty strings via parseDateOrNull. */
+function parseDateOrNull(v: unknown): { ok: true; value: string | null } | { ok: false } {
+  if (v == null) return { ok: true, value: null };
+  const s = String(v).trim();
+  if (!s) return { ok: true, value: null };
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return { ok: true, value: s };
+  const t = Date.parse(s);
+  if (Number.isNaN(t)) return { ok: false };
+  return { ok: true, value: new Date(t).toISOString().slice(0, 10) };
+}
+
+function pgErrorCode(err: unknown): string | undefined {
+  const e = err as { code?: string; cause?: { code?: string } };
+  return e?.code ?? e?.cause?.code;
+}
+
 export async function adminSeasonsRoutes(app: FastifyInstance) {
   // GET / - list all seasons
   app.get('/', async (request, reply) => {
@@ -107,13 +132,48 @@ export async function adminSeasonsRoutes(app: FastifyInstance) {
         year, name, startDate, endDate, isActive, hasPlayoffs, regularSeasonGamesPerTeam, playoffSettings,
         seasonKind, parentSeasonId,
       } = request.body ?? {};
-      if (!year || !name) {
-        return reply.status(400).send({ message: 'year and name required' });
+      const yearNum = normalizeYear(year);
+      const nameTrim = String(name ?? '').trim();
+      if (yearNum == null || !nameTrim) {
+        return reply
+          .status(400)
+          .send({ message: 'Valid year (1800–2300) and non-empty name are required' });
+      }
+
+      const startParsed = parseDateOrNull(startDate);
+      const endParsed = parseDateOrNull(endDate);
+      if (!startParsed.ok || !endParsed.ok) {
+        return reply.status(400).send({ message: 'Invalid start or end date (use YYYY-MM-DD)' });
       }
 
       const flags = await getSeasonsColumnFlagsCached();
       const hasPoCols = flags.hasPlayoffOptionals;
       const kind: SeasonKind = seasonKind === 'playoff' ? 'playoff' : 'regular';
+
+      let parentIdForInsert: number | null = null;
+      if (kind === 'playoff') {
+        const raw = parentSeasonId as unknown;
+        const hasParent =
+          raw != null && !(typeof raw === 'string' && !String(raw).trim());
+        if (hasParent) {
+          const pid =
+            typeof raw === 'number' && Number.isFinite(raw)
+              ? Math.trunc(raw)
+              : parseInt(String(raw).trim(), 10);
+          if (!Number.isFinite(pid)) {
+            return reply.status(400).send({ message: 'Invalid parent season id' });
+          }
+          const [parent] = await db
+            .select({ id: seasons.id })
+            .from(seasons)
+            .where(eq(seasons.id, pid))
+            .limit(1);
+          if (!parent) {
+            return reply.status(400).send({ message: 'Parent season not found' });
+          }
+          parentIdForInsert = pid;
+        }
+      }
 
       const [season] = await db.transaction(async (tx) => {
         if (isActive) {
@@ -122,15 +182,15 @@ export async function adminSeasonsRoutes(app: FastifyInstance) {
         const [row] = await tx
           .insert(seasons)
           .values({
-            year,
-            name,
-            startDate: startDate ?? null,
-            endDate: endDate ?? null,
+            year: yearNum,
+            name: nameTrim,
+            startDate: startParsed.value,
+            endDate: endParsed.value,
             isActive: isActive ?? false,
             ...(flags.hasSeasonKindOptionals
               ? {
                   seasonKind: kind === 'playoff' ? 'playoff' : 'regular',
-                  parentSeasonId: kind === 'playoff' ? (parentSeasonId ?? null) : null,
+                  parentSeasonId: kind === 'playoff' ? parentIdForInsert : null,
                 }
               : {}),
             ...(hasPoCols ? playoffColumnsForSeasonKind(kind, true, { hasPlayoffs, regularSeasonGamesPerTeam, playoffSettings }) : {}),
@@ -149,6 +209,19 @@ export async function adminSeasonsRoutes(app: FastifyInstance) {
       });
     } catch (err) {
       request.log.error(err);
+      const code = pgErrorCode(err);
+      if (code === '23505') {
+        return reply.status(409).send({
+          message:
+            'Duplicate key (often: a season with this year already exists). Run DB migration 0011 if you need multiple seasons per calendar year.',
+        });
+      }
+      if (code === '23503') {
+        return reply.status(400).send({ message: 'Invalid reference (e.g. parent season).' });
+      }
+      if (code === '23514') {
+        return reply.status(400).send({ message: 'Season data violates a database constraint.' });
+      }
       return reply.status(500).send({ message: 'Failed to create season' });
     }
   });
@@ -198,6 +271,67 @@ export async function adminSeasonsRoutes(app: FastifyInstance) {
       const nextKind: SeasonKind =
         seasonKind !== undefined ? (seasonKind === 'playoff' ? 'playoff' : 'regular') : prevKind;
 
+      let parentIdPut: number | null | undefined = undefined;
+      if (flags.hasSeasonKindOptionals && parentSeasonId !== undefined && nextKind === 'playoff') {
+        const raw = parentSeasonId as unknown;
+        if (raw == null || (typeof raw === 'string' && !String(raw).trim())) {
+          parentIdPut = null;
+        } else {
+          const pid =
+            typeof raw === 'number' && Number.isFinite(raw)
+              ? Math.trunc(raw)
+              : parseInt(String(raw).trim(), 10);
+          if (!Number.isFinite(pid)) {
+            return reply.status(400).send({ message: 'Invalid parent season id' });
+          }
+          const [parent] = await db
+            .select({ id: seasons.id })
+            .from(seasons)
+            .where(eq(seasons.id, pid))
+            .limit(1);
+          if (!parent) {
+            return reply.status(400).send({ message: 'Parent season not found' });
+          }
+          parentIdPut = pid;
+        }
+      }
+
+      let yearPatch: number | undefined;
+      if (year !== undefined) {
+        const y = normalizeYear(year);
+        if (y == null) {
+          return reply.status(400).send({ message: 'Invalid year' });
+        }
+        yearPatch = y;
+      }
+
+      let namePatch: string | undefined;
+      if (name !== undefined) {
+        const t = String(name).trim();
+        if (!t) {
+          return reply.status(400).send({ message: 'Name cannot be empty' });
+        }
+        namePatch = t;
+      }
+
+      let startPatch: string | null | undefined;
+      if (startDate !== undefined) {
+        const p = parseDateOrNull(startDate);
+        if (!p.ok) {
+          return reply.status(400).send({ message: 'Invalid start date (use YYYY-MM-DD)' });
+        }
+        startPatch = p.value;
+      }
+
+      let endPatch: string | null | undefined;
+      if (endDate !== undefined) {
+        const p = parseDateOrNull(endDate);
+        if (!p.ok) {
+          return reply.status(400).send({ message: 'Invalid end date (use YYYY-MM-DD)' });
+        }
+        endPatch = p.value;
+      }
+
       const [season] = await db.transaction(async (tx) => {
         if (isActive === true) {
           await tx.update(seasons).set({ isActive: false }).where(ne(seasons.id, id));
@@ -205,10 +339,10 @@ export async function adminSeasonsRoutes(app: FastifyInstance) {
         const [row] = await tx
           .update(seasons)
           .set({
-            ...(year !== undefined && { year }),
-            ...(name !== undefined && { name }),
-            ...(startDate !== undefined && { startDate }),
-            ...(endDate !== undefined && { endDate }),
+            ...(yearPatch !== undefined && { year: yearPatch }),
+            ...(namePatch !== undefined && { name: namePatch }),
+            ...(startPatch !== undefined && { startDate: startPatch }),
+            ...(endPatch !== undefined && { endDate: endPatch }),
             ...(isActive !== undefined && { isActive }),
             ...(flags.hasSeasonKindOptionals
               ? {
@@ -216,7 +350,7 @@ export async function adminSeasonsRoutes(app: FastifyInstance) {
                     seasonKind: nextKind === 'playoff' ? 'playoff' : 'regular',
                     ...(nextKind === 'regular' ? { parentSeasonId: null } : {}),
                   }),
-                  ...(nextKind === 'playoff' && parentSeasonId !== undefined && { parentSeasonId }),
+                  ...(nextKind === 'playoff' && parentSeasonId !== undefined && { parentSeasonId: parentIdPut }),
                 }
               : {}),
             ...(hasPoCols
@@ -246,6 +380,19 @@ export async function adminSeasonsRoutes(app: FastifyInstance) {
       });
     } catch (err) {
       request.log.error(err);
+      const code = pgErrorCode(err);
+      if (code === '23505') {
+        return reply.status(409).send({
+          message:
+            'Duplicate key (often: a season with this year already exists). Run DB migration 0011 if you need multiple seasons per calendar year.',
+        });
+      }
+      if (code === '23503') {
+        return reply.status(400).send({ message: 'Invalid reference (e.g. parent season).' });
+      }
+      if (code === '23514') {
+        return reply.status(400).send({ message: 'Season data violates a database constraint.' });
+      }
       return reply.status(500).send({ message: 'Failed to update season' });
     }
   });

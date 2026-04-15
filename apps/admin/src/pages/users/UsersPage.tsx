@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
+import { apiGet, apiPut, apiDelete } from '@/lib/api';
 
 interface User {
   id: number;
@@ -21,7 +21,6 @@ export function UsersPage() {
 
   const [form, setForm] = useState({
     email: '',
-    password: '',
     displayName: '',
     role: 'public',
   });
@@ -42,23 +41,10 @@ export function UsersPage() {
     loadData();
   }, []);
 
-  const openCreate = () => {
-    setEditing(null);
-    setForm({
-      email: '',
-      password: '',
-      displayName: '',
-      role: 'public',
-    });
-    setShowForm(true);
-    setError(null);
-  };
-
   const openEdit = (u: User) => {
     setEditing(u);
     setForm({
       email: u.email,
-      password: '',
       displayName: u.displayName,
       role: u.role ?? 'public',
     });
@@ -71,25 +57,12 @@ export function UsersPage() {
     setSaving(true);
     setError(null);
     try {
-      if (editing) {
-        await apiPut(`/admin/users/${editing.id}`, {
-          email: form.email.trim(),
-          displayName: form.displayName.trim(),
-          role: form.role,
-        });
-      } else {
-        if (!form.password.trim()) {
-          setError('Password is required for new users');
-          setSaving(false);
-          return;
-        }
-        await apiPost('/admin/users', {
-          email: form.email.trim(),
-          password: form.password,
-          displayName: form.displayName.trim(),
-          role: form.role,
-        });
-      }
+      if (!editing) return;
+      await apiPut(`/admin/users/${editing.id}`, {
+        email: form.email.trim(),
+        displayName: form.displayName.trim(),
+        role: form.role,
+      });
       setShowForm(false);
       loadData();
     } catch (err) {
@@ -127,14 +100,14 @@ export function UsersPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="mb-6">
         <h1 className="font-heading text-2xl font-bold">Users</h1>
-        <button
-          onClick={openCreate}
-          className="px-4 py-2 bg-accent hover:bg-accent-light text-white text-sm font-semibold rounded-lg transition-colors"
-        >
-          + Create New
-        </button>
+        <p className="mt-2 text-sm text-text-muted max-w-2xl">
+          New accounts and passwords are not created here. Add rows in the database (or run the API{' '}
+          <code className="text-xs bg-surface-alt px-1 rounded">db:set-password</code> script) and use{' '}
+          <code className="text-xs bg-surface-alt px-1 rounded">ALLOW_ADMIN_USER_CREATE=true</code> only if you
+          intentionally enable API user creation.
+        </p>
       </div>
 
       {error && (
@@ -164,7 +137,7 @@ export function UsersPage() {
             ) : users.length === 0 ? (
               <tr>
                 <td className="px-4 py-8 text-center text-text-muted" colSpan={5}>
-                  No data yet. Create your first entry.
+                  No users loaded.
                 </td>
               </tr>
             ) : (
@@ -230,26 +203,6 @@ export function UsersPage() {
                   required
                 />
               </div>
-              {!editing && (
-                <div>
-                  <label className="block text-sm font-medium text-text-muted mb-1">
-                    Password *
-                  </label>
-                  <input
-                    type="password"
-                    name="new-password"
-                    autoComplete="new-password"
-                    value={form.password}
-                    onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
-                    className={inputClass}
-                    required={!editing}
-                    minLength={12}
-                  />
-                  <p className="mt-1.5 text-xs text-text-faint">
-                    At least 12 characters with uppercase, lowercase, a number, and a symbol (!@#$…).
-                  </p>
-                </div>
-              )}
               <div>
                 <label className="block text-sm font-medium text-text-muted mb-1">
                   Display Name *

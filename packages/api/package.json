@@ -12,7 +12,8 @@
     "db:migrate": "drizzle-kit migrate",
     "db:seed": "tsx --env-file=../../.env src/db/seed.ts",
     "db:studio": "drizzle-kit studio",
-    "backfill-game-stats": "tsx --env-file=../../.env scripts/backfill-game-stats.ts"
+    "backfill-game-stats": "tsx --env-file=../../.env scripts/backfill-game-stats.ts",
+    "db:set-password": "tsx --env-file=../../.env scripts/set-user-password.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.0",
