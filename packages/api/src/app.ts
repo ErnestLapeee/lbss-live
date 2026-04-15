@@ -2,7 +2,7 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import cookie from '@fastify/cookie';
 import { Server as SocketIOServer } from 'socket.io';
-import { ensureGameEventsBatterSideColumn } from './db/ensure-schema.js';
+import { ensureOptionalSchemaColumns } from './db/ensure-schema.js';
 import { publicRoutes } from './routes/public/index.js';
 import { adminRoutes } from './routes/admin/index.js';
 
@@ -14,7 +14,7 @@ export function getIO(): SocketIOServer {
 }
 
 export async function buildApp() {
-  await ensureGameEventsBatterSideColumn();
+  await ensureOptionalSchemaColumns();
 
   const app = Fastify({ logger: true });
 
