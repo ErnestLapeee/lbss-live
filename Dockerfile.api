@@ -12,6 +12,7 @@ WORKDIR /app
 
 # Copy dependency manifests first for better layer caching (all paths relative to repo root)
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc tsconfig.base.json ./
+COPY scripts/prepare-shared.cjs scripts/prepare-shared.cjs
 COPY packages/shared/package.json packages/shared/
 COPY packages/api/package.json packages/api/
 

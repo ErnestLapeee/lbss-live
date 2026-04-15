@@ -12,6 +12,7 @@ WORKDIR /app
 
 # Copy dependency manifests (repo root + shared + web)
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc tsconfig.base.json ./
+COPY scripts/prepare-shared.cjs scripts/prepare-shared.cjs
 COPY packages/shared/package.json packages/shared/
 COPY apps/web/package.json apps/web/
 
