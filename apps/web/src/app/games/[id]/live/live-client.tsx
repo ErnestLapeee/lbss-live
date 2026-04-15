@@ -774,12 +774,6 @@ export function LiveGameClient({
     third: Boolean(evt?.runnerThirdId),
   });
 
-  const outLabel = (outs: number) => {
-    if (outs <= 0) return '0 outs';
-    if (outs === 1) return '1 out';
-    return `${outs} outs`;
-  };
-
   const pitchSymbol = (evt: GameEvent): 'B' | 'S' | 'F' | 'X' | 'P' => {
     const detail = String(evt.eventDetail || '').toLowerCase();
     if (detail === 'ball') return 'B';
@@ -817,26 +811,7 @@ export function LiveGameClient({
     </svg>
   );
 
-  const OutsDots = ({ outs }: { outs: number }) => (
-    <div className="flex items-center gap-1" aria-label={outLabel(outs)}>
-      {[0, 1, 2].map(i => (
-        <span key={i} className={`w-2 h-2 rounded-full border ${i < outs ? 'bg-slate-600 border-slate-500' : 'border-slate-300'}`} />
-      ))}
-    </div>
-  );
-
   const pitchSequenceInline = (symbols: ('B' | 'S' | 'F' | 'X' | 'P')[]) => symbols.join(' ');
-
-  const meaningfulFinalCount = (resultType: string | undefined, finalCount: string) => {
-    if (!resultType) return null;
-    const showFor = new Set([
-      'walk', 'intentional_walk', 'strikeout', 'strikeout_swinging', 'strikeout_looking',
-      'caught_foul_tip', 'dropped_third_strike_out', 'wild_pitch_third_strike',
-    ]);
-    if (!showFor.has(resultType)) return null;
-    if (finalCount === '3-2') return 'Full count';
-    return finalCount;
-  };
 
   const pitchLabel = (evt?: GameEvent | null) => {
     const detail = String(evt?.eventDetail || '').toLowerCase();
@@ -1114,37 +1089,37 @@ export function LiveGameClient({
 
           {/* Line score */}
           <div className="mt-4 overflow-x-auto">
-            <table className="w-full text-[10px] font-mono max-w-xl mx-auto">
+            <table className="w-full min-w-[min(100%,28rem)] text-[11px] font-mono max-w-2xl mx-auto">
               <thead>
-                <tr className="text-[#6b7280]">
-                  <th className="text-left px-1 w-16"></th>
+                <tr className="text-gray-400">
+                  <th className="text-left px-2 py-1 align-bottom font-sans font-semibold text-[10px] uppercase tracking-wide">Team</th>
                   {Array.from({ length: maxInnings }, (_, i) => (
-                    <th key={i} className="text-center w-5">{i + 1}</th>
+                    <th key={i} className="text-center w-6 px-0.5">{i + 1}</th>
                   ))}
-                  <th className="text-center w-6 border-l border-[#d1d5db] font-bold">R</th>
-                  <th className="text-center w-6 font-bold">H</th>
-                  <th className="text-center w-6 font-bold">E</th>
+                  <th className="text-center w-7 border-l border-white/20 font-bold">R</th>
+                  <th className="text-center w-7 font-bold">H</th>
+                  <th className="text-center w-7 font-bold">E</th>
                 </tr>
               </thead>
               <tbody>
                 <tr>
-                  <td className="text-[#4b5563] px-1 font-semibold text-[11px]">{game.awayTeamName?.slice(0, 5)}</td>
+                  <td className="text-left align-top px-2 py-1.5 font-sans font-semibold text-gray-100 leading-snug break-words max-w-[14rem]">{game.awayTeamName}</td>
                   {Array.from({ length: maxInnings }, (_, i) => {
                     const hasVal = i < awayLineScore.length;
                     const isCurrent = status === 'live' && i + 1 === displayInning && displayHalf === 'top';
                     const isFuture = i + 1 > Math.max(awayLineScore.length, homeLineScore.length);
                     return (
-                      <td key={i} className={`text-center ${isCurrent ? 'text-live font-bold' : hasVal ? 'text-[#4b5563]' : 'text-[#d1d5db]'}`}>
+                      <td key={i} className={`text-center tabular-nums ${isCurrent ? 'text-live font-bold' : hasVal ? 'text-gray-200' : 'text-gray-500'}`}>
                         {hasVal ? awayLineScore[i] : (isCurrent ? '•' : isFuture ? '' : '')}
                       </td>
                     );
                   })}
                   <td className="text-center font-bold text-white border-l border-white/25">{displayScore.away}</td>
-                  <td className="text-center text-[#4b5563]">{awayBatting.reduce((s, b) => s + (b.hits || 0), 0) || awayLineup.reduce((s, p) => s + (liveBattingMap[p.playerId]?.h ?? 0), 0)}</td>
-                  <td className="text-center text-[#4b5563]">{errorCounts.away}</td>
+                  <td className="text-center text-gray-200 tabular-nums">{awayBatting.reduce((s, b) => s + (b.hits || 0), 0) || awayLineup.reduce((s, p) => s + (liveBattingMap[p.playerId]?.h ?? 0), 0)}</td>
+                  <td className="text-center text-gray-200 tabular-nums">{errorCounts.away}</td>
                 </tr>
                 <tr>
-                  <td className="text-[#4b5563] px-1 font-semibold text-[11px]">{game.homeTeamName?.slice(0, 5)}</td>
+                  <td className="text-left align-top px-2 py-1.5 font-sans font-semibold text-gray-100 leading-snug break-words max-w-[14rem]">{game.homeTeamName}</td>
                   {Array.from({ length: maxInnings }, (_, i) => {
                     const hasVal = i < homeLineScore.length;
                     const isCurrent = status === 'live' && i + 1 === displayInning && displayHalf === 'bot';
@@ -1152,14 +1127,14 @@ export function LiveGameClient({
                     const isTopOfThis = status === 'live' && i + 1 === displayInning && displayHalf === 'top';
                     const isFuture = i + 1 > Math.max(awayLineScore.length, homeLineScore.length);
                     return (
-                      <td key={i} className={`text-center ${isCurrent ? 'text-live font-bold' : hasVal ? 'text-[#4b5563]' : 'text-[#d1d5db]'}`}>
+                      <td key={i} className={`text-center tabular-nums ${isCurrent ? 'text-live font-bold' : hasVal ? 'text-gray-200' : 'text-gray-500'}`}>
                         {hasVal ? homeLineScore[i] : (isCurrent ? '•' : (isTopOfThis || isFuture) ? '' : '')}
                       </td>
                     );
                   })}
                   <td className="text-center font-bold text-white border-l border-white/25">{displayScore.home}</td>
-                  <td className="text-center text-[#4b5563]">{homeBatting.reduce((s, b) => s + (b.hits || 0), 0) || homeLineup.reduce((s, p) => s + (liveBattingMap[p.playerId]?.h ?? 0), 0)}</td>
-                  <td className="text-center text-[#4b5563]">{errorCounts.home}</td>
+                  <td className="text-center text-gray-200 tabular-nums">{homeBatting.reduce((s, b) => s + (b.hits || 0), 0) || homeLineup.reduce((s, p) => s + (liveBattingMap[p.playerId]?.h ?? 0), 0)}</td>
+                  <td className="text-center text-gray-200 tabular-nums">{errorCounts.home}</td>
                 </tr>
               </tbody>
             </table>
@@ -1268,41 +1243,34 @@ export function LiveGameClient({
                             const pitchSummary = pitchSymbols.length > 8
                               ? `${pitchSequenceInline(pitchSymbols.slice(0, 8))} ...`
                               : pitchSequenceInline(pitchSymbols);
-                            const finalCountHint = meaningfulFinalCount(ab.result?.eventType, pitchBreakdown.finalCount);
                             const cardKey = `${group.key}-${abIdx}-${ab.result?.id ?? 'runner'}`;
                             const showPitchDetails = playMode === 'expanded' || Boolean(openPitchCards[cardKey]);
                             const contextLine = `${group.half === 'top' ? game.awayTeamName : game.homeTeamName} batting • ${group.half === 'top' ? game.homeTeamName : game.awayTeamName} pitching`;
 
                             return (
-                              <div key={`ab-${abIdx}`} className={`${borderClass} rounded-lg border border-gray-200 bg-gray-100 px-3 py-3 shadow-sm`}>
+                              <div key={`ab-${abIdx}`} className={`${borderClass} rounded-lg border border-gray-300/90 bg-gray-200/90 px-3 py-3 shadow-sm`}>
                                 <div className="flex items-start justify-between gap-3">
                                   <div className="min-w-0 flex-1">
                                     <div className="flex items-center gap-2 mb-1.5">
                                       <span className={`text-[9px] font-medium uppercase tracking-[0.12em] ${tone.cls}`}>{tone.tag}</span>
                                       {ab.pitches.length > 0 && (
-                                        <span className="text-[9px] text-gray-500">{ab.pitches.length} pitch{ab.pitches.length === 1 ? '' : 'es'}</span>
+                                        <span className="text-[9px] text-gray-600">{ab.pitches.length} pitch{ab.pitches.length === 1 ? '' : 'es'}</span>
                                       )}
                                     </div>
-                                    <div className="text-[14px] leading-snug text-gray-900 font-semibold">
+                                    <div className="text-[14px] leading-snug text-gray-950 font-semibold">
                                       {formatted ? formatted.title : ab.pitches.length > 0 ? `${ab.batterName} at bat` : stateEvt ? formatEventLine(stateEvt) : `${ab.batterName} play`}
                                     </div>
-                                    <div className="text-[10px] text-gray-700 mt-1">
+                                    <div className="text-[10px] text-gray-800 mt-1">
                                       {formatted?.subtitle ? `${formatted.subtitle} • ${contextLine}` : contextLine}
                                     </div>
                                   </div>
-                                  <div className="flex items-center gap-2 shrink-0 pt-0.5">
-                                    <div className="flex flex-col items-end gap-1">
-                                      <BaseDiamond first={bases.first} second={bases.second} third={bases.third} />
-                                      <OutsDots outs={Math.max(0, Math.min(3, outsAfter))} />
-                                    </div>
+                                  <div className="shrink-0 pt-0.5">
+                                    <BaseDiamond first={bases.first} second={bases.second} third={bases.third} />
                                   </div>
                                 </div>
-                                <div className="mt-2.5 text-[10px] text-gray-600 flex flex-wrap items-center gap-x-3 gap-y-1">
+                                <div className="mt-2.5 text-[10px] text-gray-700 flex flex-wrap items-center gap-x-3 gap-y-1">
                                   {pitchSummary && (
                                     <span className="font-mono tracking-wide">Pitches: {pitchSummary}</span>
-                                  )}
-                                  {finalCountHint && (
-                                    <span className="text-gray-600">({finalCountHint})</span>
                                   )}
                                   {playMode === 'expanded' && formatted?.chips?.map((chip, ci) => (
                                     <span key={ci}>{chip}</span>
@@ -1327,10 +1295,9 @@ export function LiveGameClient({
                                         <div className="text-[10px] uppercase tracking-[0.1em] text-gray-500">Pitch sequence</div>
                                         {pitchBreakdown.rows.map((row, ri) => (
                                           <div key={`${cardKey}-pitch-${ri}`} className="text-[11px] text-gray-800">
-                                            <span className="text-gray-500">Pitch {row.pitchNo}</span>
+                                            <span className="text-gray-600">Pitch {row.pitchNo}</span>
                                             <span className="mx-1.5 text-gray-400">-</span>
                                             <span>{row.label}</span>
-                                            <span className="ml-2 text-gray-500">{row.count}</span>
                                             {row.runnerNotes.map((note, ni) => (
                                               <div key={`${cardKey}-pitch-${ri}-runner-${ni}`} className="text-[10px] text-gray-600 ml-4 mt-0.5">
                                                 {note}
@@ -1338,11 +1305,6 @@ export function LiveGameClient({
                                             ))}
                                           </div>
                                         ))}
-                                        {finalCountHint && (
-                                          <div className="text-[10px] text-gray-600">
-                                            {finalCountHint === 'Full count' ? 'Final count 3-2 (Full count)' : `Final count ${pitchBreakdown.finalCount}`}
-                                          </div>
-                                        )}
                                       </div>
                                     )}
                                   </div>
