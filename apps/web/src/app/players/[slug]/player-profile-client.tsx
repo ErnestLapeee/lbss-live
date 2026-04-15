@@ -21,6 +21,9 @@ interface PlayerProfileClientProps {
 type Tab = 'batting' | 'pitching' | 'fielding' | 'gamelog' | 'spraychart';
 
 const fmtRate = (v: any) => (v != null && v !== '' ? Number(v).toFixed(3).replace(/^0/, '') : '—');
+/** Strikeout rate for platoon pitching rows: SO / PA. */
+const fmtKPct = (so: number, pa: number) =>
+  pa > 0 ? `${((so / pa) * 100).toFixed(1)}%` : '—';
 const fmtEra = (v: any) => (v != null && v !== '' ? Number(v).toFixed(2) : '—');
 const fmtIp = (v: any) => (v != null ? v : '—');
 const n = (v: any) => v ?? 0;
@@ -425,13 +428,10 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
           {/* Platoon splits (batting): vs RHP / LHP from opposing pitcher&apos;s throwing hand */}
           {platoonSplits && (
             <div>
-              <h3 className="font-heading text-sm font-bold mb-2 flex items-center gap-2">
+              <h3 className="font-heading text-sm font-bold mb-3 flex items-center gap-2">
                 <div className="w-1 h-4 rounded-full bg-accent" />
                 Platoon splits (batting)
               </h3>
-              <p className="text-xs text-text-muted mb-3 max-w-2xl">
-                Plate appearances vs RHP and LHP only (roster &ldquo;throws&rdquo;). PAs with unknown or non-R/L pitcher hand are excluded.
-              </p>
               <div className="rounded-xl border border-border bg-surface overflow-x-auto max-w-3xl">
                 <table className="w-full text-sm">
                   <thead>
@@ -576,18 +576,15 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
           {/* Opponent slash by batter hand (same PA rules as batting line, from the batter&apos;s perspective) */}
           {platoonSplits && (
             <div className="mt-8">
-              <h3 className="font-heading text-sm font-bold mb-2 flex items-center gap-2">
+              <h3 className="font-heading text-sm font-bold mb-3 flex items-center gap-2">
                 <div className="w-1 h-4 rounded-full bg-accent" />
                 Platoon splits (pitching)
               </h3>
-              <p className="text-xs text-text-muted mb-3 max-w-2xl">
-                Opponent slash vs RHB and LHB. Uses roster &ldquo;bats&rdquo; for fixed hitters; switch hitters count when the scorer recorded LHB/RHB for that PA. Not ERA/IP—samples are often small.
-              </p>
               <div className="rounded-xl border border-border bg-surface overflow-x-auto max-w-4xl">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-border bg-surface-alt">
-                      {['Split', 'PA', 'AB', 'H', '2B', '3B', 'HR', 'BB', 'SO', 'AVG', 'OBP', 'SLG', 'OPS'].map(col => (
+                      {['Split', 'PA', 'AB', 'H', '2B', '3B', 'HR', 'BB', 'SO', 'K%', 'AVG', 'OBP', 'SLG', 'OPS'].map(col => (
                         <th
                           key={col}
                           title={getStatAbbreviationMeaning(col) ?? undefined}
@@ -606,6 +603,8 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
                       ] as const
                     ).map(([k, label]) => {
                       const line = platoonSplits.pitching[k];
+                      const pa = Number(line?.plateAppearances ?? 0);
+                      const so = Number(line?.strikeouts ?? 0);
                       return (
                         <tr key={k} className="border-b border-border last:border-0">
                           <td className="px-2 py-2 font-semibold text-xs">{label}</td>
@@ -617,6 +616,7 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
                           <td className="px-2 py-2 text-right font-mono text-xs">{n(line?.homeRuns)}</td>
                           <td className="px-2 py-2 text-right font-mono text-xs">{n(line?.walks)}</td>
                           <td className="px-2 py-2 text-right font-mono text-xs">{n(line?.strikeouts)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs">{fmtKPct(so, pa)}</td>
                           <td className="px-2 py-2 text-right font-mono text-xs font-bold">{fmtRate(line?.battingAvg)}</td>
                           <td className="px-2 py-2 text-right font-mono text-xs">{fmtRate(line?.onBasePct)}</td>
                           <td className="px-2 py-2 text-right font-mono text-xs">{fmtRate(line?.sluggingPct)}</td>
