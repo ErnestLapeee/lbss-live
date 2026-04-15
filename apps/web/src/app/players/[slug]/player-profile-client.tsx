@@ -234,8 +234,12 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
   const [fieldingByPos, setFieldingByPos] = useState<any[] | null>(null);
   const [gameLog, setGameLog] = useState<{ batting: any[]; pitching: any[] } | null>(null);
   const [sprayData, setSprayData] = useState<any[] | null>(null);
+  const [platoonSplits, setPlatoonSplits] = useState<{
+    batting: Record<string, any>;
+    pitching: Record<string, any>;
+  } | null>(null);
 
-  // Season filter applies only to game log and spray chart; tables show season rows + TOTAL
+  // Season filter: platoon splits, game log, spray chart (career tables stay all-time)
   const filterParam = selectedSeasonId != null ? `seasonId=${selectedSeasonId}` : '';
 
   // Batting: use server-provided all-time only (no refetch on season change)
@@ -272,6 +276,15 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
     fetchJson(url).then(d => setSprayData(Array.isArray(d) ? d : []));
   }, [tab, slug, filterParam]);
 
+  // Platoon / handedness splits from events (vs RHP/LHP batting; vs RHB/LHB pitching)
+  useEffect(() => {
+    if (tab !== 'batting' && tab !== 'pitching') return;
+    const url = filterParam ? `/api/public/players/${slug}/splits?${filterParam}` : `/api/public/players/${slug}/splits`;
+    fetchJson(url).then(d =>
+      setPlatoonSplits(d && typeof d === 'object' && d.batting && d.pitching ? d : null)
+    );
+  }, [tab, slug, filterParam]);
+
   const tabs: { key: Tab; label: string }[] = [
     { key: 'batting', label: 'Batting' },
     { key: 'pitching', label: 'Pitching' },
@@ -298,6 +311,30 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
           </button>
         ))}
       </div>
+
+      {(tab === 'batting' || tab === 'pitching' || tab === 'gamelog' || tab === 'spraychart') && (
+        <div className="flex flex-wrap items-center gap-2 mb-5">
+          <label htmlFor="profile-season-filter" className="text-xs font-medium text-text-muted">
+            Season:
+          </label>
+          <select
+            id="profile-season-filter"
+            value={selectedSeasonId ?? 'all'}
+            onChange={e => setSelectedSeasonId(e.target.value === 'all' ? null : Number(e.target.value))}
+            className="rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent/50 min-w-[160px]"
+          >
+            <option value="all">All time</option>
+            {seasons.map(s => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+          <span className="text-[11px] text-text-faint max-w-md">
+            Filters platoon splits, game log, and spray chart.
+          </span>
+        </div>
+      )}
 
       {/* BATTING TAB */}
       {tab === 'batting' && (
@@ -385,22 +422,60 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
             </div>
           )}
 
-          {/* Spray chart */}
-          {sprayData && sprayData.length > 0 && (
+          {/* Platoon splits (batting): vs RHP / LHP from opposing pitcher&apos;s throwing hand */}
+          {platoonSplits && (
             <div>
-              <h3 className="font-heading text-sm font-bold mb-3 flex items-center gap-2">
+              <h3 className="font-heading text-sm font-bold mb-2 flex items-center gap-2">
                 <div className="w-1 h-4 rounded-full bg-accent" />
-                Spray Chart
+                Platoon splits (batting)
               </h3>
-              <div className="rounded-xl border border-border bg-surface p-4">
-                <SprayChart hits={sprayData.map((h: any) => ({
-                  hitLocationX: Number(h.hit_location_x),
-                  hitLocationY: Number(h.hit_location_y),
-                  hitType: h.hit_type,
-                  hitHardness: h.hit_hardness,
-                  eventType: h.event_type,
-                  isOut: (h.outs_recorded ?? 0) > 0,
-                }))} />
+              <p className="text-xs text-text-muted mb-3 max-w-2xl">
+                Plate appearances vs right-handed and left-handed pitchers (from roster &ldquo;throws&rdquo;). Other: missing data, switch pitcher, or rare cases.
+              </p>
+              <div className="rounded-xl border border-border bg-surface overflow-x-auto max-w-3xl">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border bg-surface-alt">
+                      {['Split', 'PA', 'AB', 'H', '2B', '3B', 'HR', 'BB', 'SO', 'AVG', 'OBP', 'SLG', 'OPS'].map(col => (
+                        <th
+                          key={col}
+                          title={getStatAbbreviationMeaning(col) ?? undefined}
+                          className={`px-2 py-2 text-[10px] font-bold uppercase tracking-wider text-text-faint whitespace-nowrap ${col === 'Split' ? 'text-left' : 'text-right'}`}
+                        >
+                          {col}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(
+                      [
+                        ['vsRhp', 'vs RHP'],
+                        ['vsLhp', 'vs LHP'],
+                        ['other', 'Other'],
+                      ] as const
+                    ).map(([k, label]) => {
+                      const line = platoonSplits.batting[k];
+                      return (
+                        <tr key={k} className="border-b border-border last:border-0">
+                          <td className="px-2 py-2 font-semibold text-xs">{label}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs">{n(line?.plateAppearances)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs">{n(line?.atBats)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs">{n(line?.hits)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs">{n(line?.doubles)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs">{n(line?.triples)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs">{n(line?.homeRuns)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs">{n(line?.walks)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs">{n(line?.strikeouts)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs font-bold">{fmtRate(line?.battingAvg)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs">{fmtRate(line?.onBasePct)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs">{fmtRate(line?.sluggingPct)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs font-bold">{fmtRate(line?.ops)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             </div>
           )}
@@ -496,6 +571,65 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
                   })()}
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {/* Opponent slash by batter hand (same PA rules as batting line, from the batter&apos;s perspective) */}
+          {platoonSplits && (
+            <div className="mt-8">
+              <h3 className="font-heading text-sm font-bold mb-2 flex items-center gap-2">
+                <div className="w-1 h-4 rounded-full bg-accent" />
+                Platoon splits (pitching)
+              </h3>
+              <p className="text-xs text-text-muted mb-3 max-w-2xl">
+                How hitters fared against this pitcher by batter box side (roster &ldquo;bats&rdquo;). Not ERA/IP—sample sizes are often small in league play.
+              </p>
+              <div className="rounded-xl border border-border bg-surface overflow-x-auto max-w-4xl">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border bg-surface-alt">
+                      {['Split', 'PA', 'AB', 'H', '2B', '3B', 'HR', 'BB', 'SO', 'AVG', 'OBP', 'SLG', 'OPS'].map(col => (
+                        <th
+                          key={col}
+                          title={getStatAbbreviationMeaning(col) ?? undefined}
+                          className={`px-2 py-2 text-[10px] font-bold uppercase tracking-wider text-text-faint whitespace-nowrap ${col === 'Split' ? 'text-left' : 'text-right'}`}
+                        >
+                          {col}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(
+                      [
+                        ['vsRhb', 'vs RHB'],
+                        ['vsLhb', 'vs LHB'],
+                        ['vsSwitch', 'vs SHB'],
+                        ['other', 'Other'],
+                      ] as const
+                    ).map(([k, label]) => {
+                      const line = platoonSplits.pitching[k];
+                      return (
+                        <tr key={k} className="border-b border-border last:border-0">
+                          <td className="px-2 py-2 font-semibold text-xs">{label}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs">{n(line?.plateAppearances)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs">{n(line?.atBats)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs">{n(line?.hits)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs">{n(line?.doubles)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs">{n(line?.triples)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs">{n(line?.homeRuns)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs">{n(line?.walks)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs">{n(line?.strikeouts)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs font-bold">{fmtRate(line?.battingAvg)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs">{fmtRate(line?.onBasePct)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs">{fmtRate(line?.sluggingPct)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs font-bold">{fmtRate(line?.ops)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </div>
@@ -637,24 +771,6 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
       {/* GAME LOG TAB */}
       {tab === 'gamelog' && (
         <div className="space-y-6">
-          <div className="flex items-center gap-2">
-            <label
-              className="text-xs font-medium text-text-muted"
-              title="Filters the game log (per-game lines) for a specific season or all time."
-            >
-              Season (game log):
-            </label>
-            <select
-              value={selectedSeasonId ?? 'all'}
-              onChange={(e) => setSelectedSeasonId(e.target.value === 'all' ? null : Number(e.target.value))}
-              className="rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent/50"
-            >
-              <option value="all">All time</option>
-              {seasons.map(s => (
-                <option key={s.id} value={s.id}>{s.name}</option>
-              ))}
-            </select>
-          </div>
           {gameLog === null ? (
             <p className="text-sm text-text-muted py-4">Loading...</p>
           ) : (
@@ -813,25 +929,6 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
       {/* SPRAY CHART TAB */}
       {tab === 'spraychart' && (
         <div className="space-y-4">
-          <div className="flex items-center gap-2">
-            <label
-              className="text-xs font-medium text-text-muted"
-              title="Filters the spray chart for balls in play by season or all time."
-            >
-              Season (spray chart):
-            </label>
-            <select
-              value={selectedSeasonId ?? 'all'}
-              onChange={(e) => setSelectedSeasonId(e.target.value === 'all' ? null : Number(e.target.value))}
-              className="rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent/50"
-            >
-              <option value="all">All time</option>
-              {seasons.map(s => (
-                <option key={s.id} value={s.id}>{s.name}</option>
-              ))}
-            </select>
-          </div>
-
           {sprayData && sprayData.length > 0 ? (
             <div className="rounded-xl border border-border bg-surface p-4">
               <SprayChart
