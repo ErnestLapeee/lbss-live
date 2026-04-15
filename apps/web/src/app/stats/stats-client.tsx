@@ -1043,9 +1043,34 @@ function sortData<T extends { firstName: string; lastName: string; teamName: str
         aVal = parseBaseballInnings(aVal);
         bVal = parseBaseballInnings(bVal);
       } else {
-      const missingSentinel = sortDir === 'asc' ? Infinity : -Infinity;
-      aVal = aVal !== null && aVal !== undefined ? parseFloat(String(aVal)) : missingSentinel;
-      bVal = bVal !== null && bVal !== undefined ? parseFloat(String(bVal)) : missingSentinel;
+        const ratePitchKeys = new Set(['era', 'whip', 'fip', 'k9', 'bb9', 'h9', 'babip', 'walkRate']);
+        const rateBatKeys = new Set(['battingAvg', 'onBasePct', 'sluggingPct', 'ops', 'babip']);
+        const ipA = parseBaseballInnings((a as any).inningsPitched);
+        const ipB = parseBaseballInnings((b as any).inningsPitched);
+        const abA = Number((a as any).atBats ?? 0);
+        const abB = Number((b as any).atBats ?? 0);
+        const minAb = 10;
+        const missingSentinel = sortDir === 'asc' ? Infinity : -Infinity;
+        const unqualifiedPitch = ratePitchKeys.has(sortKey) && ipA <= 0;
+        const unqualifiedPitchB = ratePitchKeys.has(sortKey) && ipB <= 0;
+        const unqualifiedBat = rateBatKeys.has(sortKey) && abA < minAb;
+        const unqualifiedBatB = rateBatKeys.has(sortKey) && abB < minAb;
+        if (unqualifiedPitch) {
+          aVal = sortDir === 'asc' ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY;
+        } else if (unqualifiedBat) {
+          aVal = sortDir === 'asc' ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY;
+        } else {
+          aVal = aVal !== null && aVal !== undefined ? parseFloat(String(aVal)) : missingSentinel;
+          if (Number.isNaN(aVal)) aVal = missingSentinel;
+        }
+        if (unqualifiedPitchB) {
+          bVal = sortDir === 'asc' ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY;
+        } else if (unqualifiedBatB) {
+          bVal = sortDir === 'asc' ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY;
+        } else {
+          bVal = bVal !== null && bVal !== undefined ? parseFloat(String(bVal)) : missingSentinel;
+          if (Number.isNaN(bVal)) bVal = missingSentinel;
+        }
       }
     }
 

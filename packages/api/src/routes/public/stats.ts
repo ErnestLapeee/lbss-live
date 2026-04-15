@@ -14,9 +14,12 @@ import {
   leagues,
   gameLineups,
 } from '../../db/schema/index.js';
-import { eq, desc, asc, and, sql } from 'drizzle-orm';
+import { eq, desc, asc, and, sql, gte } from 'drizzle-orm';
 
 const ALL_TIME = 'all';
+
+/** Min plate appearances to qualify for AVG / OPS leaderboards (avoids 0-PA players topping rate boards). */
+const MIN_PA_BATTING_RATE_LEADERS = 10;
 
 function computeBattingRates(t: {
   atBats: number;
@@ -556,12 +559,20 @@ export async function statsRoutes(app: FastifyInstance) {
         const leaders: Record<string, { label: string; players: any[] }> = {};
         for (const cat of categories) {
           const col = colMap[cat.key];
+          const qualifiesRates = cat.key === 'battingAvg' || cat.key === 'ops';
           const rows = await db
             .select({ ...baseFields, value: col })
             .from(playerSeasonBatting)
             .innerJoin(players, eq(playerSeasonBatting.playerId, players.id))
             .innerJoin(teams, eq(playerSeasonBatting.teamId, teams.id))
-            .where(eq(playerSeasonBatting.seasonId, seasonIdNum))
+            .where(
+              qualifiesRates
+                ? and(
+                    eq(playerSeasonBatting.seasonId, seasonIdNum),
+                    gte(playerSeasonBatting.atBats, MIN_PA_BATTING_RATE_LEADERS),
+                  )
+                : eq(playerSeasonBatting.seasonId, seasonIdNum),
+            )
             .orderBy(cat.desc ? desc(col) : asc(col))
             .limit(5);
           leaders[cat.key] = { label: cat.label, players: rows };
@@ -615,6 +626,7 @@ export async function statsRoutes(app: FastifyInstance) {
           teamName: r.team_name,
           teamShortName: r.team_short_name,
           teamLogoUrl: r.team_logo_url,
+          atBats: ab,
           battingAvg: ab > 0 ? (h / ab).toFixed(3) : null,
           homeRuns: r.home_runs,
           rbi: r.rbi,
@@ -626,7 +638,11 @@ export async function statsRoutes(app: FastifyInstance) {
       });
       const leaders: Record<string, { label: string; players: any[] }> = {};
       for (const cat of categories) {
-        const sorted = [...withRates].sort((a, b) => {
+        const pool =
+          cat.key === 'battingAvg' || cat.key === 'ops'
+            ? withRates.filter((r) => Number((r as { atBats?: number }).atBats ?? 0) >= MIN_PA_BATTING_RATE_LEADERS)
+            : withRates;
+        const sorted = [...pool].sort((a, b) => {
           const va = cat.getVal(a);
           const vb = cat.getVal(b);
           return cat.desc ? (vb > va ? 1 : vb < va ? -1 : 0) : (va > vb ? 1 : va < vb ? -1 : 0);
@@ -716,7 +732,11 @@ export async function statsRoutes(app: FastifyInstance) {
           .innerJoin(players, eq(playerSeasonPitching.playerId, players.id))
           .innerJoin(teams, eq(playerSeasonPitching.teamId, teams.id))
           .where(eq(playerSeasonPitching.seasonId, seasonIdNum))
-          .orderBy(asc(playerSeasonPitching.era));
+          .orderBy(
+            asc(
+              sql`CASE WHEN ${playerSeasonPitching.inningsPitched}::numeric > 0 THEN ${playerSeasonPitching.era}::numeric ELSE 999 END`,
+            ),
+          );
         const pgPitchCounts = await db
           .select({
             playerId: playerGamePitching.playerId,
@@ -944,7 +964,12 @@ export async function statsRoutes(app: FastifyInstance) {
           .from(playerSeasonPitching)
           .innerJoin(players, eq(playerSeasonPitching.playerId, players.id))
           .innerJoin(teams, eq(playerSeasonPitching.teamId, teams.id))
-          .where(eq(playerSeasonPitching.seasonId, seasonIdNum))
+          .where(
+            and(
+              eq(playerSeasonPitching.seasonId, seasonIdNum),
+              sql`${playerSeasonPitching.inningsPitched}::numeric > 0`,
+            ),
+          )
           .orderBy(asc(playerSeasonPitching.era))
           .limit(5);
         const whipLeaders = await db
@@ -952,7 +977,12 @@ export async function statsRoutes(app: FastifyInstance) {
           .from(playerSeasonPitching)
           .innerJoin(players, eq(playerSeasonPitching.playerId, players.id))
           .innerJoin(teams, eq(playerSeasonPitching.teamId, teams.id))
-          .where(eq(playerSeasonPitching.seasonId, seasonIdNum))
+          .where(
+            and(
+              eq(playerSeasonPitching.seasonId, seasonIdNum),
+              sql`${playerSeasonPitching.inningsPitched}::numeric > 0`,
+            ),
+          )
           .orderBy(asc(playerSeasonPitching.whip))
           .limit(5);
         const descCategories = [
@@ -1028,10 +1058,11 @@ export async function statsRoutes(app: FastifyInstance) {
           inningsPitched: ip.toFixed(1),
         };
       });
+      const qualifiedPitching = withRates.filter((p) => Number(p.inningsPitched) > 0);
       const leaders: Record<string, { label: string; players: any[] }> = {};
-      const eraSorted = [...withRates].sort((a, b) => (parseFloat(a.era ?? '999') - parseFloat(b.era ?? '999')));
+      const eraSorted = [...qualifiedPitching].sort((a, b) => (parseFloat(a.era ?? '999') - parseFloat(b.era ?? '999')));
       leaders.era = { label: 'ERA', players: eraSorted.slice(0, 5).map(p => ({ ...p, value: p.era })) };
-      const whipSorted = [...withRates].sort((a, b) => (parseFloat(a.whip ?? '999') - parseFloat(b.whip ?? '999')));
+      const whipSorted = [...qualifiedPitching].sort((a, b) => (parseFloat(a.whip ?? '999') - parseFloat(b.whip ?? '999')));
       leaders.whip = { label: 'WHIP', players: whipSorted.slice(0, 5).map(p => ({ ...p, value: p.whip })) };
       ['strikeouts', 'wins', 'saves', 'inningsPitched'].forEach(key => {
         const sorted = [...withRates].sort((a, b) => (Number((b as Record<string, unknown>)[key]) - Number((a as Record<string, unknown>)[key])));
