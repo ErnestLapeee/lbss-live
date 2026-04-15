@@ -1538,6 +1538,8 @@ export function LiveGameClient({
                                 }
                               }
                             }
+                            /** Must match PitchLetterStrip length (includes synthetic B / X for result). */
+                            const displayedPitchCount = pitchSymbols.length;
                             const pitchBreakdown = derivePitchBreakdown(ab);
                             const cardKey = `${group.key}-${abIdx}-${ab.result?.id ?? 'runner'}`;
                             const showPitchDetails = playMode === 'expanded' || Boolean(openPitchCards[cardKey]);
@@ -1549,8 +1551,10 @@ export function LiveGameClient({
                                   <div className="min-w-0 flex-1">
                                     <div className="flex items-center gap-2 mb-1.5">
                                       <span className={`text-[9px] font-medium uppercase tracking-[0.12em] ${tone.cls}`}>{tone.tag}</span>
-                                      {ab.pitches.length > 0 && (
-                                        <span className="text-[9px] text-gray-600">{ab.pitches.length} pitch{ab.pitches.length === 1 ? '' : 'es'}</span>
+                                      {displayedPitchCount > 0 && (
+                                        <span className="text-[9px] text-gray-600">
+                                          {displayedPitchCount} pitch{displayedPitchCount === 1 ? '' : 'es'}
+                                        </span>
                                       )}
                                     </div>
                                     <div className="text-[14px] leading-snug text-gray-950 font-semibold">
