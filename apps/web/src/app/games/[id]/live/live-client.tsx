@@ -779,6 +779,7 @@ export function LiveGameClient({
     if (detail === 'ball') return 'B';
     if (detail === 'foul') return 'F';
     if (detail === 'strike' || detail === 'called_strike' || detail === 'swinging_strike') return 'S';
+    if (detail === 'in_play') return 'X';
     return 'P';
   };
 
@@ -902,24 +903,87 @@ export function LiveGameClient({
       });
     }
 
-    if (ab.result) {
-      const resultPitchNo = Math.max(1, pitchEventsSorted.length);
-      const resultType = ab.result.eventType;
-      const contactLike = !['walk', 'intentional_walk', 'hit_by_pitch', 'catcher_obstruction'].includes(resultType);
-      if (contactLike) {
-        rows.push({
-          pitchNo: resultPitchNo,
-          label: 'Ball in play',
-          count: `${balls}-${strikes}`,
-          runnerNotes: [],
-        });
-      }
+    if (!ab.result) {
+      return { rows, finalCount: `${balls}-${strikes}` };
+    }
+
+    const r = ab.result;
+    const title = formatPlayByPlay(r).title;
+    const resultType = r.eventType;
+    const n = pitchEventsSorted.length;
+
+    const walkLike = new Set(['walk', 'intentional_walk', 'hit_by_pitch', 'catcher_obstruction']);
+    const strikeoutLike = new Set([
+      'strikeout', 'strikeout_swinging', 'strikeout_looking', 'caught_foul_tip', 'bunt_foul',
+      'dropped_third_strike_out', 'dropped_third_strike', 'wild_pitch_third_strike',
+    ]);
+    const hitLike = new Set([
+      'single', 'bunt_single', 'double', 'triple', 'home_run', 'inside_park_hr', 'ground_rule_double',
+    ]);
+    const inPlayOutLike = new Set([
+      'ground_out', 'fly_out', 'line_out', 'pop_out', 'bunt_out', 'foul_out', 'fielders_choice',
+      'sacrifice_fly', 'sacrifice_bunt', 'infield_fly', 'double_play', 'triple_play',
+      'error', 'sac_bunt_error', 'sac_fly_error', 'advance_on_error',
+    ]);
+
+    const replaceLastRow = (label: string) => {
+      if (rows.length === 0) return;
+      const last = rows[rows.length - 1];
+      rows[rows.length - 1] = { ...last, label };
+    };
+
+    const appendRow = (pitchNo: number, label: string) => {
       rows.push({
-        pitchNo: resultPitchNo,
-        label: formatPlayByPlay(ab.result).title,
+        pitchNo,
+        label,
         count: `${balls}-${strikes}`,
         runnerNotes: [],
       });
+    };
+
+    if (walkLike.has(resultType)) {
+      if (n === 0) {
+        appendRow(1, title);
+      } else {
+        const last = pitchEventsSorted[n - 1];
+        const d = String(last.eventDetail || '').toLowerCase();
+        const allBalls = pitchEventsSorted.every(p => String(p.eventDetail || '').toLowerCase() === 'ball');
+        if (d === 'ball') {
+          if (n === 3 && allBalls) {
+            appendRow(4, title);
+          } else {
+            replaceLastRow(title);
+          }
+        } else {
+          appendRow(n + 1, title);
+        }
+      }
+    } else if (strikeoutLike.has(resultType)) {
+      if (n === 0) {
+        appendRow(1, title);
+      } else {
+        const last = pitchEventsSorted[n - 1];
+        const d = String(last.eventDetail || '').toLowerCase();
+        if (d === 'foul') {
+          appendRow(n + 1, title);
+        } else {
+          replaceLastRow(title);
+        }
+      }
+    } else if (hitLike.has(resultType) || inPlayOutLike.has(resultType) || resultType === 'error') {
+      if (n === 0) {
+        appendRow(1, title);
+      } else {
+        const last = pitchEventsSorted[n - 1];
+        const d = String(last.eventDetail || '').toLowerCase();
+        if (d === 'in_play' || d === 'swinging_strike' || d === 'strike' || d === 'called_strike') {
+          replaceLastRow(title);
+        } else {
+          appendRow(n + 1, title);
+        }
+      }
+    } else {
+      appendRow(Math.max(1, n + 1), title);
     }
 
     return { rows, finalCount: `${balls}-${strikes}` };
@@ -1307,8 +1371,8 @@ export function LiveGameClient({
                                   <div className="min-w-0 flex-1">
                                     <div className="flex items-center gap-2 mb-1.5">
                                       <span className={`text-[9px] font-medium uppercase tracking-[0.12em] ${tone.cls}`}>{tone.tag}</span>
-                                      {ab.pitches.length > 0 && (
-                                        <span className="text-[9px] text-gray-600">{ab.pitches.length} pitch{ab.pitches.length === 1 ? '' : 'es'}</span>
+                                      {pitchSymbols.length > 0 && (
+                                        <span className="text-[9px] text-gray-600">{pitchSymbols.length} pitch{pitchSymbols.length === 1 ? '' : 'es'}</span>
                                       )}
                                     </div>
                                     <div className="text-[14px] leading-snug text-gray-950 font-semibold">
