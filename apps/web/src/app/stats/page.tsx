@@ -8,11 +8,13 @@ export const metadata: Metadata = {
   description: 'Batting and pitching statistics for the Latvijas Beisbola Liga',
 };
 
-type Props = { searchParams: Promise<{ season?: string }> };
+type Props = { searchParams: Promise<{ season?: string; includePlayoffs?: string }> };
 
 export default async function StatsPage({ searchParams }: Props) {
   const params = await searchParams;
   const seasonFromUrl = params.season;
+  const includePlayoffsAllTime =
+    params.includePlayoffs === '1' || params.includePlayoffs === 'true';
 
   // Fetch seasons server-side so the page isn't blank
   let seasons: any[] = [];
@@ -56,6 +58,7 @@ export default async function StatsPage({ searchParams }: Props) {
       <StatsClient
         initialSeasons={seasons}
         initialSeasonId={seasonId ?? null}
+        initialIncludePlayoffsAllTime={includePlayoffsAllTime}
         initialBatting={initialBatting}
         initialPitching={initialPitching}
         initialFielding={initialFielding}

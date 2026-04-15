@@ -14,7 +14,10 @@ import {
   leagues,
   gameLineups,
 } from '../../db/schema/index.js';
-import { eq, desc, asc, and, sql, gte } from 'drizzle-orm';
+import { eq, desc, asc, and, sql, gte, ne } from 'drizzle-orm';
+import { rowsFromExecute } from '../../lib/pg-result.js';
+import { seasonWithPlayoffDefaults } from '../../lib/season-playoff-response.js';
+import { parseIncludePlayoffsAllTime, sqlAllTimeSeasonWhere } from '../../lib/all-time-stats.js';
 
 const ALL_TIME = 'all';
 
@@ -80,13 +83,14 @@ function computePitchingRates(t: {
 }
 
 export async function statsRoutes(app: FastifyInstance) {
-  // GET /batting?seasonId=X or omit for all-time
+  // GET /batting?seasonId=X or omit for all-time — optional includePlayoffs=1 for all-time (includes playoff-season rows)
   app.get<{
-    Querystring: { seasonId?: string };
+    Querystring: { seasonId?: string; includePlayoffs?: string };
   }>('/batting', async (request, reply) => {
     try {
       const seasonId = request.query.seasonId;
       const isAllTime = !seasonId || seasonId === ALL_TIME;
+      const includePlayoffs = parseIncludePlayoffsAllTime(request.query as Record<string, string | string[] | undefined>, isAllTime);
       const seasonIdNum = seasonId && seasonId !== ALL_TIME ? parseInt(seasonId, 10) : null;
       if (seasonId && seasonId !== ALL_TIME && (isNaN(seasonIdNum!) || seasonIdNum! <= 0)) {
         return reply.status(400).send({ message: 'Invalid seasonId' });
@@ -162,47 +166,52 @@ export async function statsRoutes(app: FastifyInstance) {
         return reply.send(withRcGpa);
       }
 
+      const skWhere = sqlAllTimeSeasonWhere(includePlayoffs);
       const rows = await db.execute(sql`
         WITH totals AS (
           SELECT
-            player_id,
-            SUM(COALESCE(games, 0))::int AS games,
-            SUM(COALESCE(plate_appearances, 0))::int AS plate_appearances,
-            SUM(COALESCE(at_bats, 0))::int AS at_bats,
-            SUM(COALESCE(hits, 0))::int AS hits,
-            SUM(COALESCE(singles, 0))::int AS singles,
-            SUM(COALESCE(doubles, 0))::int AS doubles,
-            SUM(COALESCE(triples, 0))::int AS triples,
-            SUM(COALESCE(home_runs, 0))::int AS home_runs,
-            SUM(COALESCE(rbi, 0))::int AS rbi,
-            SUM(COALESCE(runs, 0))::int AS runs,
-            SUM(COALESCE(walks, 0))::int AS walks,
-            SUM(COALESCE(strikeouts, 0))::int AS strikeouts,
-            SUM(COALESCE(hit_by_pitch, 0))::int AS hit_by_pitch,
-            SUM(COALESCE(stolen_bases, 0))::int AS stolen_bases,
-            SUM(COALESCE(caught_stealing, 0))::int AS caught_stealing,
-            SUM(COALESCE(sacrifice_flies, 0))::int AS sacrifice_flies,
-            SUM(COALESCE(sacrifice_bunts, 0))::int AS sacrifice_bunts,
-            SUM(COALESCE(ground_outs, 0))::int AS ground_outs,
-            SUM(COALESCE(fly_outs, 0))::int AS fly_outs,
-            SUM(COALESCE(grounded_into_double_plays, 0))::int AS grounded_into_double_plays,
-            SUM(COALESCE(intentional_walks, 0))::int AS intentional_walks,
-            SUM(COALESCE(reached_on_error, 0))::int AS reached_on_error,
-            SUM(COALESCE(total_bases, 0))::int AS total_bases,
-            SUM(COALESCE(bunt_singles, 0))::int AS bunt_singles,
-            SUM(COALESCE(strikeouts_looking, 0))::int AS strikeouts_looking,
-            SUM(COALESCE(strikeouts_swinging, 0))::int AS strikeouts_swinging,
-            SUM(COALESCE(picked_off, 0))::int AS picked_off,
-            SUM(COALESCE(fielders_choice, 0))::int AS fielders_choice,
-            SUM(COALESCE(catcher_interference, 0))::int AS catcher_interference,
-            SUM(COALESCE(grounded_into_triple_play, 0))::int AS grounded_into_triple_play
-          FROM player_season_batting
-          GROUP BY player_id
+            psb.player_id,
+            SUM(COALESCE(psb.games, 0))::int AS games,
+            SUM(COALESCE(psb.plate_appearances, 0))::int AS plate_appearances,
+            SUM(COALESCE(psb.at_bats, 0))::int AS at_bats,
+            SUM(COALESCE(psb.hits, 0))::int AS hits,
+            SUM(COALESCE(psb.singles, 0))::int AS singles,
+            SUM(COALESCE(psb.doubles, 0))::int AS doubles,
+            SUM(COALESCE(psb.triples, 0))::int AS triples,
+            SUM(COALESCE(psb.home_runs, 0))::int AS home_runs,
+            SUM(COALESCE(psb.rbi, 0))::int AS rbi,
+            SUM(COALESCE(psb.runs, 0))::int AS runs,
+            SUM(COALESCE(psb.walks, 0))::int AS walks,
+            SUM(COALESCE(psb.strikeouts, 0))::int AS strikeouts,
+            SUM(COALESCE(psb.hit_by_pitch, 0))::int AS hit_by_pitch,
+            SUM(COALESCE(psb.stolen_bases, 0))::int AS stolen_bases,
+            SUM(COALESCE(psb.caught_stealing, 0))::int AS caught_stealing,
+            SUM(COALESCE(psb.sacrifice_flies, 0))::int AS sacrifice_flies,
+            SUM(COALESCE(psb.sacrifice_bunts, 0))::int AS sacrifice_bunts,
+            SUM(COALESCE(psb.ground_outs, 0))::int AS ground_outs,
+            SUM(COALESCE(psb.fly_outs, 0))::int AS fly_outs,
+            SUM(COALESCE(psb.grounded_into_double_plays, 0))::int AS grounded_into_double_plays,
+            SUM(COALESCE(psb.intentional_walks, 0))::int AS intentional_walks,
+            SUM(COALESCE(psb.reached_on_error, 0))::int AS reached_on_error,
+            SUM(COALESCE(psb.total_bases, 0))::int AS total_bases,
+            SUM(COALESCE(psb.bunt_singles, 0))::int AS bunt_singles,
+            SUM(COALESCE(psb.strikeouts_looking, 0))::int AS strikeouts_looking,
+            SUM(COALESCE(psb.strikeouts_swinging, 0))::int AS strikeouts_swinging,
+            SUM(COALESCE(psb.picked_off, 0))::int AS picked_off,
+            SUM(COALESCE(psb.fielders_choice, 0))::int AS fielders_choice,
+            SUM(COALESCE(psb.catcher_interference, 0))::int AS catcher_interference,
+            SUM(COALESCE(psb.grounded_into_triple_play, 0))::int AS grounded_into_triple_play
+          FROM player_season_batting psb
+          INNER JOIN seasons s_psb ON s_psb.id = psb.season_id
+          WHERE ${skWhere}
+          GROUP BY psb.player_id
         ),
         latest AS (
-          SELECT DISTINCT ON (player_id) player_id, team_id
-          FROM player_season_batting
-          ORDER BY player_id, season_id DESC
+          SELECT DISTINCT ON (psb.player_id) psb.player_id, psb.team_id
+          FROM player_season_batting psb
+          INNER JOIN seasons s_psb ON s_psb.id = psb.season_id
+          WHERE ${skWhere}
+          ORDER BY psb.player_id, psb.season_id DESC
         )
         SELECT
           p.id AS player_id, p.slug AS player_slug, p.first_name, p.last_name,
@@ -307,10 +316,11 @@ export async function statsRoutes(app: FastifyInstance) {
   const INFER_HARDNESS_SQL = sql`COALESCE(${gameEvents.hitHardness}, 'medium')`;
 
   // GET /batting-contact?seasonId=X or omit for all-time — hit type × hardness from game_events
-  app.get<{ Querystring: { seasonId?: string } }>('/batting-contact', async (request, reply) => {
+  app.get<{ Querystring: { seasonId?: string; includePlayoffs?: string } }>('/batting-contact', async (request, reply) => {
     try {
       const seasonId = request.query.seasonId;
       const isAllTime = !seasonId || seasonId === ALL_TIME;
+      const includePlayoffs = parseIncludePlayoffsAllTime(request.query as Record<string, string | string[] | undefined>, isAllTime);
       const seasonIdNum = seasonId && seasonId !== ALL_TIME ? parseInt(seasonId, 10) : null;
       if (seasonId && seasonId !== ALL_TIME && (isNaN(seasonIdNum!) || seasonIdNum! <= 0)) {
         return reply.status(400).send({ message: 'Invalid seasonId' });
@@ -331,6 +341,7 @@ export async function statsRoutes(app: FastifyInstance) {
         .from(gameEvents)
         .innerJoin(games, eq(gameEvents.gameId, games.id))
         .innerJoin(leagues, eq(games.leagueId, leagues.id))
+        .innerJoin(seasons, eq(leagues.seasonId, seasons.id))
         .innerJoin(gameLineups, and(eq(gameLineups.gameId, gameEvents.gameId), eq(gameLineups.playerId, gameEvents.batterId)))
         .where(
           and(
@@ -338,7 +349,9 @@ export async function statsRoutes(app: FastifyInstance) {
             sql`${INFER_HIT_TYPE_SQL} IS NOT NULL`,
             eq(gameEvents.isDeleted, false),
             battedBallFilter,
-            ...(isAllTime ? [] : [eq(leagues.seasonId, seasonIdNum!)]),
+            ...(isAllTime
+              ? [includePlayoffs ? sql`true` : ne(seasons.seasonKind, 'playoff')]
+              : [eq(leagues.seasonId, seasonIdNum!)]),
           ),
         )
         .groupBy(gameEvents.batterId, sql`${INFER_HIT_TYPE_SQL}`, sql`${INFER_HARDNESS_SQL}`);
@@ -411,10 +424,11 @@ export async function statsRoutes(app: FastifyInstance) {
   });
 
   // GET /pitching-contact?seasonId=X or omit for all-time — hit type × hardness allowed (from game_events)
-  app.get<{ Querystring: { seasonId?: string } }>('/pitching-contact', async (request, reply) => {
+  app.get<{ Querystring: { seasonId?: string; includePlayoffs?: string } }>('/pitching-contact', async (request, reply) => {
     try {
       const seasonId = request.query.seasonId;
       const isAllTime = !seasonId || seasonId === ALL_TIME;
+      const includePlayoffs = parseIncludePlayoffsAllTime(request.query as Record<string, string | string[] | undefined>, isAllTime);
       const seasonIdNum = seasonId && seasonId !== ALL_TIME ? parseInt(seasonId, 10) : null;
       if (seasonId && seasonId !== ALL_TIME && (isNaN(seasonIdNum!) || seasonIdNum! <= 0)) {
         return reply.status(400).send({ message: 'Invalid seasonId' });
@@ -435,6 +449,7 @@ export async function statsRoutes(app: FastifyInstance) {
         .from(gameEvents)
         .innerJoin(games, eq(gameEvents.gameId, games.id))
         .innerJoin(leagues, eq(games.leagueId, leagues.id))
+        .innerJoin(seasons, eq(leagues.seasonId, seasons.id))
         .innerJoin(gameLineups, and(eq(gameLineups.gameId, gameEvents.gameId), eq(gameLineups.playerId, gameEvents.pitcherId)))
         .where(
           and(
@@ -442,7 +457,9 @@ export async function statsRoutes(app: FastifyInstance) {
             sql`${INFER_HIT_TYPE_SQL} IS NOT NULL`,
             eq(gameEvents.isDeleted, false),
             battedBallFilter,
-            ...(isAllTime ? [] : [eq(leagues.seasonId, seasonIdNum!)]),
+            ...(isAllTime
+              ? [includePlayoffs ? sql`true` : ne(seasons.seasonKind, 'playoff')]
+              : [eq(leagues.seasonId, seasonIdNum!)]),
           ),
         )
         .groupBy(gameEvents.pitcherId, sql`${INFER_HIT_TYPE_SQL}`, sql`${INFER_HARDNESS_SQL}`);
@@ -516,11 +533,12 @@ export async function statsRoutes(app: FastifyInstance) {
 
   // GET /leaders?seasonId=X or omit for all-time
   app.get<{
-    Querystring: { seasonId?: string };
+    Querystring: { seasonId?: string; includePlayoffs?: string };
   }>('/leaders', async (request, reply) => {
     try {
       const seasonId = request.query.seasonId;
       const isAllTime = !seasonId || seasonId === ALL_TIME;
+      const includePlayoffs = parseIncludePlayoffsAllTime(request.query as Record<string, string | string[] | undefined>, isAllTime);
       const seasonIdNum = seasonId && seasonId !== ALL_TIME ? parseInt(seasonId, 10) : null;
       if (seasonId && seasonId !== ALL_TIME && (isNaN(seasonIdNum!) || seasonIdNum! <= 0)) {
         return reply.status(400).send({ message: 'Invalid seasonId' });
@@ -580,26 +598,33 @@ export async function statsRoutes(app: FastifyInstance) {
         return reply.send(leaders);
       }
 
+      const skWhereLeaders = sqlAllTimeSeasonWhere(includePlayoffs);
       const battingRes = await db.execute(sql`
         WITH totals AS (
-          SELECT player_id,
-            SUM(COALESCE(games, 0))::int AS games,
-            SUM(COALESCE(plate_appearances, 0))::int AS plate_appearances,
-            SUM(COALESCE(at_bats, 0))::int AS at_bats,
-            SUM(COALESCE(hits, 0))::int AS hits,
-            SUM(COALESCE(home_runs, 0))::int AS home_runs,
-            SUM(COALESCE(rbi, 0))::int AS rbi,
-            SUM(COALESCE(runs, 0))::int AS runs,
-            SUM(COALESCE(walks, 0))::int AS walks,
-            SUM(COALESCE(strikeouts, 0))::int AS strikeouts,
-            SUM(COALESCE(hit_by_pitch, 0))::int AS hit_by_pitch,
-            SUM(COALESCE(stolen_bases, 0))::int AS stolen_bases,
-            SUM(COALESCE(sacrifice_flies, 0))::int AS sacrifice_flies,
-            SUM(COALESCE(total_bases, 0))::int AS total_bases
-          FROM player_season_batting GROUP BY player_id
+          SELECT psb.player_id,
+            SUM(COALESCE(psb.games, 0))::int AS games,
+            SUM(COALESCE(psb.plate_appearances, 0))::int AS plate_appearances,
+            SUM(COALESCE(psb.at_bats, 0))::int AS at_bats,
+            SUM(COALESCE(psb.hits, 0))::int AS hits,
+            SUM(COALESCE(psb.home_runs, 0))::int AS home_runs,
+            SUM(COALESCE(psb.rbi, 0))::int AS rbi,
+            SUM(COALESCE(psb.runs, 0))::int AS runs,
+            SUM(COALESCE(psb.walks, 0))::int AS walks,
+            SUM(COALESCE(psb.strikeouts, 0))::int AS strikeouts,
+            SUM(COALESCE(psb.hit_by_pitch, 0))::int AS hit_by_pitch,
+            SUM(COALESCE(psb.stolen_bases, 0))::int AS stolen_bases,
+            SUM(COALESCE(psb.sacrifice_flies, 0))::int AS sacrifice_flies,
+            SUM(COALESCE(psb.total_bases, 0))::int AS total_bases
+          FROM player_season_batting psb
+          INNER JOIN seasons s_psb ON s_psb.id = psb.season_id
+          WHERE ${skWhereLeaders}
+          GROUP BY psb.player_id
         ),
         latest AS (
-          SELECT DISTINCT ON (player_id) player_id, team_id FROM player_season_batting ORDER BY player_id, season_id DESC
+          SELECT DISTINCT ON (psb.player_id) psb.player_id, psb.team_id FROM player_season_batting psb
+          INNER JOIN seasons s_psb ON s_psb.id = psb.season_id
+          WHERE ${skWhereLeaders}
+          ORDER BY psb.player_id, psb.season_id DESC
         )
         SELECT p.id AS player_id, p.slug AS player_slug, p.first_name, p.last_name,
           t.name AS team_name, t.short_name AS team_short_name, t.logo_url AS team_logo_url,
@@ -661,11 +686,12 @@ export async function statsRoutes(app: FastifyInstance) {
 
   // GET /pitching?seasonId=X or omit for all-time
   app.get<{
-    Querystring: { seasonId?: string };
+    Querystring: { seasonId?: string; includePlayoffs?: string };
   }>('/pitching', async (request, reply) => {
     try {
       const seasonId = request.query.seasonId;
       const isAllTime = !seasonId || seasonId === ALL_TIME;
+      const includePlayoffs = parseIncludePlayoffsAllTime(request.query as Record<string, string | string[] | undefined>, isAllTime);
       const seasonIdNum = seasonId && seasonId !== ALL_TIME ? parseInt(seasonId, 10) : null;
       if (seasonId && seasonId !== ALL_TIME && (isNaN(seasonIdNum!) || seasonIdNum! <= 0)) {
         return reply.status(400).send({ message: 'Invalid seasonId' });
@@ -773,47 +799,54 @@ export async function statsRoutes(app: FastifyInstance) {
         return reply.send(withGoAo);
       }
 
+      const skWherePitch = sqlAllTimeSeasonWhere(includePlayoffs);
       const rows = await db.execute(sql`
         WITH totals AS (
-          SELECT player_id,
-            SUM(COALESCE(games, 0))::int AS games,
-            SUM(COALESCE(games_started, 0))::int AS games_started,
-            SUM(COALESCE(wins, 0))::int AS wins,
-            SUM(COALESCE(losses, 0))::int AS losses,
-            SUM(COALESCE(saves, 0))::int AS saves,
-            SUM(COALESCE(innings_pitched, 0)::numeric)::numeric AS innings_pitched,
-            SUM(COALESCE(hits_allowed, 0))::int AS hits_allowed,
-            SUM(COALESCE(runs_allowed, 0))::int AS runs_allowed,
-            SUM(COALESCE(earned_runs, 0))::int AS earned_runs,
-            SUM(COALESCE(walks_allowed, 0))::int AS walks_allowed,
-            SUM(COALESCE(strikeouts, 0))::int AS strikeouts,
-            SUM(COALESCE(home_runs_allowed, 0))::int AS home_runs_allowed,
-            SUM(COALESCE(hit_batters, 0))::int AS hit_batters,
-            SUM(COALESCE(wild_pitches, 0))::int AS wild_pitches,
-            SUM(COALESCE(batters_faced, 0))::int AS batters_faced,
-            SUM(COALESCE(balks, 0))::int AS balks,
-            SUM(COALESCE(intentional_walks, 0))::int AS intentional_walks,
-            SUM(COALESCE(ground_outs, 0))::int AS ground_outs,
-            SUM(COALESCE(fly_outs, 0))::int AS fly_outs,
-            SUM(COALESCE(holds, 0))::int AS holds,
-            SUM(COALESCE(save_opportunities, 0))::int AS save_opportunities,
-            SUM(COALESCE(blown_saves, 0))::int AS blown_saves,
-            SUM(COALESCE(complete_games, 0))::int AS complete_games,
-            (AVG(game_score))::int AS game_score,
-            SUM(COALESCE(quality_starts, 0))::int AS quality_starts,
-            SUM(COALESCE(shutouts, 0))::int AS shutouts,
-            SUM(COALESCE(inherited_runners, 0))::int AS inherited_runners,
-            SUM(COALESCE(inherited_runners_scored, 0))::int AS inherited_runners_scored,
-            SUM(COALESCE(strikeouts_looking, 0))::int AS strikeouts_looking,
-            SUM(COALESCE(strikeouts_swinging, 0))::int AS strikeouts_swinging,
-            SUM(COALESCE(balls, 0))::int AS balls,
-            SUM(COALESCE(strikes, 0))::int AS strikes,
-            SUM(COALESCE(first_pitch_strikes, 0))::int AS first_pitch_strikes,
-            SUM(COALESCE(first_pitch_total, 0))::int AS first_pitch_total
-          FROM player_season_pitching GROUP BY player_id
+          SELECT psb.player_id,
+            SUM(COALESCE(psb.games, 0))::int AS games,
+            SUM(COALESCE(psb.games_started, 0))::int AS games_started,
+            SUM(COALESCE(psb.wins, 0))::int AS wins,
+            SUM(COALESCE(psb.losses, 0))::int AS losses,
+            SUM(COALESCE(psb.saves, 0))::int AS saves,
+            SUM(COALESCE(psb.innings_pitched, 0)::numeric)::numeric AS innings_pitched,
+            SUM(COALESCE(psb.hits_allowed, 0))::int AS hits_allowed,
+            SUM(COALESCE(psb.runs_allowed, 0))::int AS runs_allowed,
+            SUM(COALESCE(psb.earned_runs, 0))::int AS earned_runs,
+            SUM(COALESCE(psb.walks_allowed, 0))::int AS walks_allowed,
+            SUM(COALESCE(psb.strikeouts, 0))::int AS strikeouts,
+            SUM(COALESCE(psb.home_runs_allowed, 0))::int AS home_runs_allowed,
+            SUM(COALESCE(psb.hit_batters, 0))::int AS hit_batters,
+            SUM(COALESCE(psb.wild_pitches, 0))::int AS wild_pitches,
+            SUM(COALESCE(psb.batters_faced, 0))::int AS batters_faced,
+            SUM(COALESCE(psb.balks, 0))::int AS balks,
+            SUM(COALESCE(psb.intentional_walks, 0))::int AS intentional_walks,
+            SUM(COALESCE(psb.ground_outs, 0))::int AS ground_outs,
+            SUM(COALESCE(psb.fly_outs, 0))::int AS fly_outs,
+            SUM(COALESCE(psb.holds, 0))::int AS holds,
+            SUM(COALESCE(psb.save_opportunities, 0))::int AS save_opportunities,
+            SUM(COALESCE(psb.blown_saves, 0))::int AS blown_saves,
+            SUM(COALESCE(psb.complete_games, 0))::int AS complete_games,
+            (AVG(psb.game_score))::int AS game_score,
+            SUM(COALESCE(psb.quality_starts, 0))::int AS quality_starts,
+            SUM(COALESCE(psb.shutouts, 0))::int AS shutouts,
+            SUM(COALESCE(psb.inherited_runners, 0))::int AS inherited_runners,
+            SUM(COALESCE(psb.inherited_runners_scored, 0))::int AS inherited_runners_scored,
+            SUM(COALESCE(psb.strikeouts_looking, 0))::int AS strikeouts_looking,
+            SUM(COALESCE(psb.strikeouts_swinging, 0))::int AS strikeouts_swinging,
+            SUM(COALESCE(psb.balls, 0))::int AS balls,
+            SUM(COALESCE(psb.strikes, 0))::int AS strikes,
+            SUM(COALESCE(psb.first_pitch_strikes, 0))::int AS first_pitch_strikes,
+            SUM(COALESCE(psb.first_pitch_total, 0))::int AS first_pitch_total
+          FROM player_season_pitching psb
+          INNER JOIN seasons s_psb ON s_psb.id = psb.season_id
+          WHERE ${skWherePitch}
+          GROUP BY psb.player_id
         ),
         latest AS (
-          SELECT DISTINCT ON (player_id) player_id, team_id FROM player_season_pitching ORDER BY player_id, season_id DESC
+          SELECT DISTINCT ON (psb.player_id) psb.player_id, psb.team_id FROM player_season_pitching psb
+          INNER JOIN seasons s_psb ON s_psb.id = psb.season_id
+          WHERE ${skWherePitch}
+          ORDER BY psb.player_id, psb.season_id DESC
         )
         SELECT p.id AS player_id, p.slug AS player_slug, p.first_name, p.last_name,
           t.name AS team_name, t.short_name AS team_short_name, t.logo_url AS team_logo_url,
@@ -842,7 +875,14 @@ export async function statsRoutes(app: FastifyInstance) {
         })
         .from(playerGamePitching)
         .innerJoin(games, eq(playerGamePitching.gameId, games.id))
-        .where(eq(games.isFinalized, true))
+        .innerJoin(leagues, eq(games.leagueId, leagues.id))
+        .innerJoin(seasons, eq(leagues.seasonId, seasons.id))
+        .where(
+          and(
+            eq(games.isFinalized, true),
+            includePlayoffs ? sql`true` : ne(seasons.seasonKind, 'playoff'),
+          ),
+        )
         .groupBy(playerGamePitching.playerId);
       const allTimePitchCountMap = new Map<number, { balls: number; strikes: number }>(
         pgAllTimePitchCounts.map((r) => [r.playerId, { balls: Number(r.balls ?? 0), strikes: Number(r.strikes ?? 0) }]),
@@ -939,11 +979,12 @@ export async function statsRoutes(app: FastifyInstance) {
 
   // GET /pitching-leaders?seasonId=X or omit for all-time
   app.get<{
-    Querystring: { seasonId?: string };
+    Querystring: { seasonId?: string; includePlayoffs?: string };
   }>('/pitching-leaders', async (request, reply) => {
     try {
       const seasonId = request.query.seasonId;
       const isAllTime = !seasonId || seasonId === ALL_TIME;
+      const includePlayoffs = parseIncludePlayoffsAllTime(request.query as Record<string, string | string[] | undefined>, isAllTime);
       const seasonIdNum = seasonId && seasonId !== ALL_TIME ? parseInt(seasonId, 10) : null;
       if (seasonId && seasonId !== ALL_TIME && (isNaN(seasonIdNum!) || seasonIdNum! <= 0)) {
         return reply.status(400).send({ message: 'Invalid seasonId' });
@@ -1009,21 +1050,28 @@ export async function statsRoutes(app: FastifyInstance) {
         return reply.send(leaders);
       }
 
+      const skWherePitchLeaders = sqlAllTimeSeasonWhere(includePlayoffs);
       const pitchRows = await db.execute(sql`
         WITH totals AS (
-          SELECT player_id,
-            SUM(COALESCE(innings_pitched, 0)::numeric)::numeric AS ip,
-            SUM(COALESCE(earned_runs, 0))::int AS er,
-            SUM(COALESCE(hits_allowed, 0))::int AS h,
-            SUM(COALESCE(walks_allowed, 0))::int AS bb,
-            SUM(COALESCE(strikeouts, 0))::int AS k,
-            SUM(COALESCE(wins, 0))::int AS wins,
-            SUM(COALESCE(strikes, 0))::int AS strikes,
-            SUM(COALESCE(home_runs_allowed, 0))::int AS hr
-          FROM player_season_pitching GROUP BY player_id
+          SELECT psb.player_id,
+            SUM(COALESCE(psb.innings_pitched, 0)::numeric)::numeric AS ip,
+            SUM(COALESCE(psb.earned_runs, 0))::int AS er,
+            SUM(COALESCE(psb.hits_allowed, 0))::int AS h,
+            SUM(COALESCE(psb.walks_allowed, 0))::int AS bb,
+            SUM(COALESCE(psb.strikeouts, 0))::int AS k,
+            SUM(COALESCE(psb.wins, 0))::int AS wins,
+            SUM(COALESCE(psb.strikes, 0))::int AS strikes,
+            SUM(COALESCE(psb.home_runs_allowed, 0))::int AS hr
+          FROM player_season_pitching psb
+          INNER JOIN seasons s_psb ON s_psb.id = psb.season_id
+          WHERE ${skWherePitchLeaders}
+          GROUP BY psb.player_id
         ),
         latest AS (
-          SELECT DISTINCT ON (player_id) player_id, team_id FROM player_season_pitching ORDER BY player_id, season_id DESC
+          SELECT DISTINCT ON (psb.player_id) psb.player_id, psb.team_id FROM player_season_pitching psb
+          INNER JOIN seasons s_psb ON s_psb.id = psb.season_id
+          WHERE ${skWherePitchLeaders}
+          ORDER BY psb.player_id, psb.season_id DESC
         )
         SELECT p.id AS player_id, p.slug AS player_slug, p.first_name, p.last_name,
           t.name AS team_name, t.short_name AS team_short_name, t.logo_url AS team_logo_url,
@@ -1078,11 +1126,12 @@ export async function statsRoutes(app: FastifyInstance) {
 
   // GET /fielding?seasonId=X or omit for all-time
   app.get<{
-    Querystring: { seasonId?: string };
+    Querystring: { seasonId?: string; includePlayoffs?: string };
   }>('/fielding', async (request, reply) => {
     try {
       const seasonId = request.query.seasonId;
       const isAllTime = !seasonId || seasonId === ALL_TIME;
+      const includePlayoffs = parseIncludePlayoffsAllTime(request.query as Record<string, string | string[] | undefined>, isAllTime);
       const seasonIdNum = seasonId && seasonId !== ALL_TIME ? parseInt(seasonId, 10) : null;
       if (seasonId && seasonId !== ALL_TIME && (isNaN(seasonIdNum!) || seasonIdNum! <= 0)) {
         return reply.status(400).send({ message: 'Invalid seasonId' });
@@ -1122,24 +1171,31 @@ export async function statsRoutes(app: FastifyInstance) {
         return reply.send(result);
       }
 
+      const skWhereFld = sqlAllTimeSeasonWhere(includePlayoffs);
       const rows = await db.execute(sql`
         WITH totals AS (
-          SELECT player_id,
-            SUM(COALESCE(games, 0))::int AS games,
-            SUM(COALESCE(innings, 0)::numeric)::numeric AS innings,
-            SUM(COALESCE(putouts, 0))::int AS putouts,
-            SUM(COALESCE(assists, 0))::int AS assists,
-            SUM(COALESCE(errors, 0))::int AS errors,
-            SUM(COALESCE(double_plays, 0))::int AS double_plays,
-            SUM(COALESCE(triple_plays, 0))::int AS triple_plays,
-            SUM(COALESCE(passed_balls, 0))::int AS passed_balls,
-            SUM(COALESCE(catcher_stolen_bases, 0))::int AS catcher_stolen_bases,
-            SUM(COALESCE(catcher_caught_stealing, 0))::int AS catcher_caught_stealing,
-            SUM(COALESCE(pickoffs, 0))::int AS pickoffs
-          FROM player_season_fielding GROUP BY player_id
+          SELECT psb.player_id,
+            SUM(COALESCE(psb.games, 0))::int AS games,
+            SUM(COALESCE(psb.innings, 0)::numeric)::numeric AS innings,
+            SUM(COALESCE(psb.putouts, 0))::int AS putouts,
+            SUM(COALESCE(psb.assists, 0))::int AS assists,
+            SUM(COALESCE(psb.errors, 0))::int AS errors,
+            SUM(COALESCE(psb.double_plays, 0))::int AS double_plays,
+            SUM(COALESCE(psb.triple_plays, 0))::int AS triple_plays,
+            SUM(COALESCE(psb.passed_balls, 0))::int AS passed_balls,
+            SUM(COALESCE(psb.catcher_stolen_bases, 0))::int AS catcher_stolen_bases,
+            SUM(COALESCE(psb.catcher_caught_stealing, 0))::int AS catcher_caught_stealing,
+            SUM(COALESCE(psb.pickoffs, 0))::int AS pickoffs
+          FROM player_season_fielding psb
+          INNER JOIN seasons s_psb ON s_psb.id = psb.season_id
+          WHERE ${skWhereFld}
+          GROUP BY psb.player_id
         ),
         latest AS (
-          SELECT DISTINCT ON (player_id) player_id, team_id FROM player_season_fielding ORDER BY player_id, season_id DESC
+          SELECT DISTINCT ON (psb.player_id) psb.player_id, psb.team_id FROM player_season_fielding psb
+          INNER JOIN seasons s_psb ON s_psb.id = psb.season_id
+          WHERE ${skWhereFld}
+          ORDER BY psb.player_id, psb.season_id DESC
         )
         SELECT p.id AS player_id, p.slug AS player_slug, p.first_name, p.last_name,
           t.name AS team_name, t.short_name AS team_short_name, t.logo_url AS team_logo_url,
@@ -1196,13 +1252,14 @@ export async function statsRoutes(app: FastifyInstance) {
 
   // GET /fielding-by-position?seasonId=X&position=N&category=infield|outfield - seasonId optional for all-time
   app.get<{
-    Querystring: { seasonId?: string; position?: string; category?: string };
+    Querystring: { seasonId?: string; position?: string; category?: string; includePlayoffs?: string };
   }>('/fielding-by-position', async (request, reply) => {
     try {
       const seasonId = request.query.seasonId;
       const positionStr = request.query.position;
       const category = request.query.category;
       const isAllTime = !seasonId || seasonId === ALL_TIME;
+      const includePlayoffs = parseIncludePlayoffsAllTime(request.query as Record<string, string | string[] | undefined>, isAllTime);
       const seasonIdNum = seasonId && seasonId !== ALL_TIME ? parseInt(seasonId, 10) : null;
       if (seasonId && seasonId !== ALL_TIME && (isNaN(seasonIdNum!) || seasonIdNum! <= 0)) {
         return reply.status(400).send({ message: 'Invalid seasonId' });
@@ -1214,6 +1271,13 @@ export async function statsRoutes(app: FastifyInstance) {
           SELECT g.id FROM games g
           INNER JOIN leagues l ON g.league_id = l.id
           WHERE l.season_id = ${seasonIdNum}
+        )`);
+      } else if (isAllTime && !includePlayoffs) {
+        conditions.push(sql`${playerGameFielding.gameId} IN (
+          SELECT g.id FROM games g
+          INNER JOIN leagues l ON g.league_id = l.id
+          INNER JOIN seasons s_fld ON s_fld.id = l.season_id
+          WHERE COALESCE(s_fld.season_kind, 'regular') <> 'playoff'
         )`);
       }
       if (category === 'infield') {
@@ -1345,8 +1409,8 @@ export async function statsRoutes(app: FastifyInstance) {
               and table_name = 'seasons'
               and column_name in ('has_playoffs', 'regular_season_games_per_team', 'playoff_settings')
           `);
-          const list = Array.isArray((rows as any).rows) ? (rows as any).rows : (rows as any);
-          return Array.isArray(list) && list.length >= 3;
+          const list = rowsFromExecute<Record<string, unknown>>(rows);
+          return list.length >= 3;
         } catch {
           return false;
         }
@@ -1358,6 +1422,8 @@ export async function statsRoutes(app: FastifyInstance) {
           name: seasons.name,
           year: seasons.year,
           isActive: seasons.isActive,
+          seasonKind: seasons.seasonKind,
+          parentSeasonId: seasons.parentSeasonId,
           ...(hasPoCols
             ? {
               hasPlayoffs: seasons.hasPlayoffs,
@@ -1370,12 +1436,11 @@ export async function statsRoutes(app: FastifyInstance) {
         .orderBy(desc(seasons.year));
 
       return reply.send(
-        result.map((s: any) => ({
-          ...s,
-          hasPlayoffs: hasPoCols ? (s.hasPlayoffs ?? false) : false,
-          regularSeasonGamesPerTeam: hasPoCols ? (s.regularSeasonGamesPerTeam ?? null) : null,
-          playoffSettings: hasPoCols ? (s.playoffSettings ?? {}) : {},
-        }))
+        result.map((s) => ({
+          ...seasonWithPlayoffDefaults(hasPoCols, s as Record<string, unknown>),
+          seasonKind: s.seasonKind ?? 'regular',
+          parentSeasonId: s.parentSeasonId ?? null,
+        })),
       );
     } catch (err) {
       app.log.error(err);

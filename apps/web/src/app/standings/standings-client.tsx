@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { PageHeader } from '@/components/ui/page-header';
+import { PlayoffSeriesCard } from '@/components/playoffs/playoff-series-card';
 
 type Season = {
   id: number;
@@ -11,9 +12,11 @@ type Season = {
   isActive?: boolean;
   hasPlayoffs?: boolean;
   playoffSettings?: any;
+  seasonKind?: string;
 };
 type StandingsRow = {
   id: number;
+  teamId?: number;
   teamName: string;
   wins: number;
   losses: number;
@@ -42,6 +45,8 @@ type PlayoffsData = {
           bestOf: number;
           higherSeed: number | null;
           lowerSeed: number | null;
+          higherTeamId?: number | null;
+          lowerTeamId?: number | null;
           higherTeamName: string;
           lowerTeamName: string;
           wins: { higher: number; lower: number };
@@ -60,6 +65,8 @@ export function StandingsClient() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  /** Tab state is driven by `?view=playoffs` so URL and UI stay in sync (back/forward, deep links). */
+  const view = searchParams?.get('view') === 'playoffs' ? 'playoffs' : 'standings';
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [selectedSeasonId, setSelectedSeasonId] = useState<number | null>(null);
   const [standings, setStandings] = useState<LeagueStandings[]>([]);
@@ -67,7 +74,6 @@ export function StandingsClient() {
   const [loadingStandings, setLoadingStandings] = useState(false);
   const [playoffs, setPlayoffs] = useState<PlayoffsData | null>(null);
   const [loadingPlayoffs, setLoadingPlayoffs] = useState(false);
-  const [view, setView] = useState<'standings' | 'playoffs'>('standings');
 
   // Load seasons once (client-side so dropdown always appears)
   useEffect(() => {
@@ -115,25 +121,19 @@ export function StandingsClient() {
         return;
       }
       setLoadingStandings(true);
-      const season = seasons.find((s) => s.id === seasonId);
-      const year = season?.year;
-      if (year == null) {
-        setStandings([]);
-        setLoadingStandings(false);
-        return;
-      }
       try {
         const seasonDetail: { leagues?: { id: number; name: string }[] } = await fetch(
-          proxy(`/api/public/seasons/${year}`)
+          proxy(`/api/public/seasons/by-id/${seasonId}`)
         ).then((r) => (r.ok ? r.json() : { leagues: [] }));
         const leagueList = seasonDetail.leagues || [];
-        const results: LeagueStandings[] = [];
-        for (const league of leagueList) {
-          const rows: StandingsRow[] = await fetch(
-            proxy(`/api/public/standings/${league.id}`)
-          ).then((r) => (r.ok ? r.json() : []));
-          results.push({ leagueName: league.name, leagueId: league.id, rows });
-        }
+        const results: LeagueStandings[] = await Promise.all(
+          leagueList.map(async (league) => {
+            const rows: StandingsRow[] = await fetch(proxy(`/api/public/standings/${league.id}`)).then((r) =>
+              r.ok ? r.json() : [],
+            );
+            return { leagueName: league.name, leagueId: league.id, rows };
+          }),
+        );
         setStandings(results);
       } catch {
         setStandings([]);
@@ -152,7 +152,12 @@ export function StandingsClient() {
   useEffect(() => {
     if (selectedSeasonId == null) {
       setPlayoffs(null);
-      setView('standings');
+      const params = new URLSearchParams(searchParams?.toString() ?? '');
+      if (params.get('view') === 'playoffs') {
+        params.delete('view');
+        const qs = params.toString();
+        router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+      }
       return;
     }
     let cancelled = false;
@@ -163,12 +168,20 @@ export function StandingsClient() {
         if (cancelled) return;
         const d = data && typeof data === 'object' ? data : null;
         setPlayoffs(d);
-        if (!d?.playoffs) setView('standings');
+        if (!d?.playoffs) {
+          const params = new URLSearchParams(searchParams?.toString() ?? '');
+          params.delete('view');
+          const qs = params.toString();
+          router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+        }
       })
       .catch(() => {
         if (!cancelled) {
           setPlayoffs(null);
-          setView('standings');
+          const params = new URLSearchParams(searchParams?.toString() ?? '');
+          params.delete('view');
+          const qs = params.toString();
+          router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
         }
       })
       .finally(() => {
@@ -177,22 +190,37 @@ export function StandingsClient() {
     return () => {
       cancelled = true;
     };
-  }, [selectedSeasonId]);
+  }, [selectedSeasonId, pathname, router, searchParams]);
 
   const handleSeasonChange = (value: string) => {
     const id = value === '' || value === 'all' ? null : parseInt(value, 10);
     const newId = id ?? seasons.find((s) => s.isActive)?.id ?? seasons[0]?.id ?? null;
     setSelectedSeasonId(newId);
     // When switching seasons, default to standings view; playoffs will be available if configured.
-    setView('standings');
     const params = new URLSearchParams(searchParams?.toString() ?? '');
     if (newId != null) {
       params.set('season', String(newId));
     } else {
       params.delete('season');
     }
+    params.delete('view');
     const qs = params.toString();
-    router.push(qs ? `${pathname}?${qs}` : pathname);
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  };
+
+  const goToStandingsTab = () => {
+    const params = new URLSearchParams(searchParams?.toString() ?? '');
+    if (selectedSeasonId != null) params.set('season', String(selectedSeasonId));
+    params.delete('view');
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  };
+
+  const goToPlayoffsTab = () => {
+    const params = new URLSearchParams(searchParams?.toString() ?? '');
+    if (selectedSeasonId != null) params.set('season', String(selectedSeasonId));
+    params.set('view', 'playoffs');
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
   };
 
   const currentSeason = selectedSeasonId != null ? seasons.find((s) => s.id === selectedSeasonId) : null;
@@ -244,6 +272,8 @@ export function StandingsClient() {
           bestOf: provisionalConfig.bestOf,
           higherSeed: sorted.indexOf(p.hi) + 1,
           lowerSeed: sorted.indexOf(p.lo) + 1,
+          higherTeamId: p.hi.teamId ?? null,
+          lowerTeamId: p.lo.teamId ?? null,
           higherTeamName: p.hi.teamName,
           lowerTeamName: p.lo.teamName,
           wins: { higher: 0, lower: 0 },
@@ -269,11 +299,13 @@ export function StandingsClient() {
               value={selectedSeasonId ?? ''}
               onChange={(e) => handleSeasonChange(e.target.value)}
               className="rounded-lg border border-border bg-surface px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-accent/50"
-              aria-label="Select season by year"
+              aria-label="Select season"
             >
               {seasons.map((s) => (
                 <option key={s.id} value={s.id}>
-                  {(s.name || s.year) ?? s.id}
+                  {s.year != null ? `${s.year} – ` : ''}
+                  {s.name ?? ''}
+                  {s.seasonKind === 'playoff' ? ' (Playoffs)' : ''}
                 </option>
               ))}
             </select>
@@ -288,7 +320,8 @@ export function StandingsClient() {
         {hasPlayoffs && (
           <div className="mb-6 flex gap-2">
             <button
-              onClick={() => setView('standings')}
+              type="button"
+              onClick={goToStandingsTab}
               className={`px-4 py-2 text-xs font-bold uppercase rounded-lg border transition-colors ${
                 view === 'standings'
                   ? 'bg-surface border-border text-text'
@@ -298,7 +331,8 @@ export function StandingsClient() {
               Standings
             </button>
             <button
-              onClick={() => setView('playoffs')}
+              type="button"
+              onClick={goToPlayoffsTab}
               className={`px-4 py-2 text-xs font-bold uppercase rounded-lg border transition-colors ${
                 view === 'playoffs'
                   ? 'bg-surface border-border text-text'
@@ -344,20 +378,7 @@ export function StandingsClient() {
                             </div>
                             <div className="space-y-2">
                               {r.series.map((s) => (
-                                <div key={s.id ?? s.label} className="border border-border rounded-lg bg-surface-alt p-3">
-                                  <div className="text-[10px] text-text-faint font-semibold mb-2 flex justify-between">
-                                    <span>{s.label}</span>
-                                    <span>Bo{s.bestOf}</span>
-                                  </div>
-                                  <div className="text-[11px] font-medium flex items-center justify-between">
-                                    <span className="truncate">{s.higherSeed ? `${s.higherSeed}. ` : ''}{s.higherTeamName}</span>
-                                    <span className="font-mono text-text-faint">{s.wins?.higher ?? 0}</span>
-                                  </div>
-                                  <div className="text-[11px] font-medium flex items-center justify-between mt-1">
-                                    <span className="truncate">{s.lowerSeed ? `${s.lowerSeed}. ` : ''}{s.lowerTeamName}</span>
-                                    <span className="font-mono text-text-faint">{s.wins?.lower ?? 0}</span>
-                                  </div>
-                                </div>
+                                <PlayoffSeriesCard key={s.id ?? `${r.roundNumber}-${s.label}`} series={s} />
                               ))}
                             </div>
                           </div>
@@ -483,36 +504,11 @@ export function StandingsClient() {
                             </div>
                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                               {r.series.map((s) => (
-                                <div key={s.id ?? s.label} className="border border-border rounded-lg bg-surface-alt p-3">
-                                  <div className="text-[10px] text-text-faint font-semibold mb-2 flex items-center justify-between">
-                                    <span>{s.label}</span>
-                                    <span className="font-mono">Bo{s.bestOf}</span>
-                                  </div>
-
-                                  <div className="space-y-2">
-                                    <div className="flex items-start justify-between gap-2">
-                                      <div className="min-w-0">
-                                        <div className="text-[11px] font-semibold truncate">
-                                          <span className="text-text-faint mr-1">{s.higherSeed ? `${s.higherSeed}.` : '—'}</span>
-                                          {s.higherTeamName}
-                                        </div>
-                                        <div className="text-[10px] text-text-faint truncate">{recordText(s.higherTeamName)}</div>
-                                      </div>
-                                      <div className="font-mono text-[11px] text-text-faint">{s.wins?.higher ?? 0}</div>
-                                    </div>
-
-                                    <div className="flex items-start justify-between gap-2">
-                                      <div className="min-w-0">
-                                        <div className="text-[11px] font-semibold truncate">
-                                          <span className="text-text-faint mr-1">{s.lowerSeed ? `${s.lowerSeed}.` : '—'}</span>
-                                          {s.lowerTeamName}
-                                        </div>
-                                        <div className="text-[10px] text-text-faint truncate">{recordText(s.lowerTeamName)}</div>
-                                      </div>
-                                      <div className="font-mono text-[11px] text-text-faint">{s.wins?.lower ?? 0}</div>
-                                    </div>
-                                  </div>
-                                </div>
+                                <PlayoffSeriesCard
+                                  key={s.id ?? `${r.roundNumber}-${s.label}`}
+                                  series={s}
+                                  recordText={recordText}
+                                />
                               ))}
                             </div>
                           </div>

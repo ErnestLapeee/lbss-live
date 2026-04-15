@@ -16,6 +16,7 @@ export interface AdminSeasonRow {
   year: number;
   name: string;
   isActive: boolean;
+  seasonKind?: string;
 }
 
 interface AdminSeasonContextValue {

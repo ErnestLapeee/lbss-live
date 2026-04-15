@@ -1,16 +1,30 @@
 import type { FastifyInstance } from 'fastify';
 import { db } from '../../db/index.js';
-import { games, gameEvents, gameLineups, leagues, playerGameBatting, playerGamePitching, playerGameFielding, playerSeasonBatting, playerSeasonPitching, playerSeasonFielding, standings } from '../../db/schema/index.js';
+import {
+  games,
+  gameEvents,
+  gameLineups,
+  leagues,
+  playerGameBatting,
+  playerGamePitching,
+  playerGameFielding,
+  playerSeasonBatting,
+  playerSeasonPitching,
+  playerSeasonFielding,
+  standings,
+  playoffSeries,
+} from '../../db/schema/index.js';
 import { eq, and, sql, inArray, asc } from 'drizzle-orm';
 import { finalizeGame, recomputeSeasonBatting, recomputeSeasonPitching, recomputeSeasonFielding, recomputeStandings } from '../../services/finalize-game.js';
+import { firstRowFromExecute } from '../../lib/pg-result.js';
 
 export async function adminGamesRoutes(app: FastifyInstance) {
   async function getSeasonIdForLeague(leagueId: number): Promise<number | null> {
     const seasonResult = await db.execute(
       sql`SELECT s.id FROM seasons s JOIN leagues l ON l.season_id = s.id WHERE l.id = ${leagueId} LIMIT 1`
     );
-    const seasonId = ((seasonResult as any).rows?.[0] ?? (seasonResult as any)?.[0])?.id;
-    return seasonId ? Number(seasonId) : null;
+    const row = firstRowFromExecute<{ id: number }>(seasonResult);
+    return row?.id != null ? Number(row.id) : null;
   }
 
   // GET / - list games; optional ?seasonId= filters to leagues in that season
@@ -107,6 +121,51 @@ export async function adminGamesRoutes(app: FastifyInstance) {
     }
   });
 
+  // POST /bulk/playoff-series — set playoffSeriesId on many games (must be registered before /:id)
+  app.post<{
+    Body: { gameIds: number[]; playoffSeriesId: number | null };
+  }>('/bulk/playoff-series', async (request, reply) => {
+    try {
+      const { gameIds, playoffSeriesId: seriesRaw } = request.body ?? {};
+      if (!Array.isArray(gameIds) || gameIds.length === 0) {
+        return reply.status(400).send({ message: 'gameIds array required' });
+      }
+      const ids = [...new Set(gameIds.map(Number).filter((n) => !isNaN(n)))];
+      if (ids.length === 0) {
+        return reply.status(400).send({ message: 'No valid game ids' });
+      }
+
+      let playoffSeriesId: number | null;
+      if (seriesRaw === null || seriesRaw === undefined) {
+        playoffSeriesId = null;
+      } else {
+        const sid = Number(seriesRaw);
+        if (isNaN(sid)) {
+          return reply.status(400).send({ message: 'Invalid playoffSeriesId' });
+        }
+        const [row] = await db
+          .select({ id: playoffSeries.id })
+          .from(playoffSeries)
+          .where(eq(playoffSeries.id, sid))
+          .limit(1);
+        if (!row) {
+          return reply.status(400).send({ message: 'playoffSeriesId not found' });
+        }
+        playoffSeriesId = sid;
+      }
+
+      await db
+        .update(games)
+        .set({ playoffSeriesId, updatedAt: new Date() })
+        .where(inArray(games.id, ids));
+
+      return reply.send({ updated: ids.length });
+    } catch (err) {
+      request.log.error(err);
+      return reply.status(500).send({ message: 'Failed to update games' });
+    }
+  });
+
   // PUT /:id - update game
   app.put<{
     Params: { id: string };
@@ -185,10 +244,7 @@ export async function adminGamesRoutes(app: FastifyInstance) {
       // Recompute season aggregates if the game belonged to a league
       if (leagueId) {
         try {
-          const seasonResult = await db.execute(
-            sql`SELECT s.id FROM seasons s JOIN leagues l ON l.season_id = s.id WHERE l.id = ${leagueId} LIMIT 1`
-          );
-          const seasonId = ((seasonResult as any).rows?.[0] ?? (seasonResult as any)?.[0])?.id;
+          const seasonId = await getSeasonIdForLeague(leagueId);
 
           if (seasonId) {
             // Delete stale season rows then recompute from remaining games
@@ -223,7 +279,7 @@ export async function adminGamesRoutes(app: FastifyInstance) {
         return reply.status(400).send({ message: 'Invalid game id' });
       }
 
-      const user = (request as any).user;
+      const user = request.user;
       const result = await finalizeGame(id, user?.id);
       return reply.send(result);
     } catch (err: any) {

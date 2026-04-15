@@ -19,9 +19,14 @@ export async function adminPlayoffsRoutes(app: FastifyInstance) {
   });
 
   // POST / - create playoffs for a season
-  app.post<{ Body: { seasonId: number; name: string; isActive?: boolean; config?: any } }>('/', async (request, reply) => {
+  app.post<{ Body: { seasonId: number; name: string; isActive?: boolean; config?: unknown } }>('/', async (request, reply) => {
     try {
-      const { seasonId, name, isActive, config } = request.body ?? ({} as any);
+      const { seasonId, name, isActive, config } = (request.body ?? {}) as Partial<{
+        seasonId: number;
+        name: string;
+        isActive?: boolean;
+        config?: unknown;
+      }>;
       if (!seasonId || !name) return reply.status(400).send({ message: 'seasonId and name required' });
 
       const [season] = await db.select().from(seasons).where(eq(seasons.id, seasonId)).limit(1);
@@ -45,7 +50,7 @@ export async function adminPlayoffsRoutes(app: FastifyInstance) {
   });
 
   // PUT /:id - update playoffs
-  app.put<{ Params: { id: string }; Body: { name?: string; isActive?: boolean; config?: any } }>('/:id', async (request, reply) => {
+  app.put<{ Params: { id: string }; Body: { name?: string; isActive?: boolean; config?: unknown } }>('/:id', async (request, reply) => {
     try {
       const id = parseInt(request.params.id, 10);
       if (isNaN(id)) return reply.status(400).send({ message: 'Invalid playoffs id' });
@@ -116,7 +121,16 @@ export async function adminPlayoffsRoutes(app: FastifyInstance) {
     try {
       const playoffsId = parseInt(request.params.id, 10);
       if (isNaN(playoffsId)) return reply.status(400).send({ message: 'Invalid playoffs id' });
-      const body = request.body ?? ({} as any);
+      const body = (request.body ?? {}) as Partial<{
+        roundNumber: number;
+        seriesIndex: number;
+        label?: string;
+        bestOf?: number;
+        higherSeed?: number | null;
+        lowerSeed?: number | null;
+        higherTeamId?: number | null;
+        lowerTeamId?: number | null;
+      }>;
       if (!body.roundNumber || body.seriesIndex == null) {
         return reply.status(400).send({ message: 'roundNumber and seriesIndex required' });
       }

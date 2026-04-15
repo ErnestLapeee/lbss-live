@@ -13,6 +13,18 @@ import {
 import { eq, and, or, desc, max, sql, inArray } from 'drizzle-orm';
 import { getIO } from '../../app.js';
 import { finalizeGame } from '../../services/finalize-game.js';
+import { firstRowFromExecute } from '../../lib/pg-result.js';
+
+/** JSONB array columns — normalize without `as any` on DB rows. */
+function jsonbNumberArray(v: unknown): number[] {
+  if (!Array.isArray(v)) return [];
+  return v.map((x) => Number(x)).filter((n) => Number.isFinite(n));
+}
+
+function jsonbStringArray(v: unknown): string[] {
+  if (!Array.isArray(v)) return [];
+  return v.map((x) => String(x));
+}
 
 // ── Game state reducer (inline for speed) ──
 
@@ -278,7 +290,29 @@ export async function adminScoringRoutes(app: FastifyInstance) {
     }
   }
 
-  async function getGameCore(gameId: number) {
+  /** Raw row shape from `getGameCore` SQL (camelCase aliases). */
+  interface GameCoreRow extends Record<string, unknown> {
+    id: number;
+    leagueId: number;
+    homeTeamId: number;
+    awayTeamId: number;
+    scheduledAt: Date | string;
+    venue: string | null;
+    status: string;
+    homeScore: number;
+    awayScore: number;
+    inningsCount: number | null;
+    currentInning: number | null;
+    currentHalf: string | null;
+    currentOuts: number | null;
+    isFinalized: boolean;
+    finalizedAt: Date | string | null;
+    finalizedBy: number | null;
+    createdAt: Date | string;
+    updatedAt: Date | string;
+  }
+
+  async function getGameCore(gameId: number): Promise<GameCoreRow | null> {
     const res = await db.execute(sql`
       SELECT
         id,
@@ -303,7 +337,7 @@ export async function adminScoringRoutes(app: FastifyInstance) {
       WHERE id = ${gameId}
       LIMIT 1
     `);
-    return (((res as any).rows?.[0] ?? (res as any)?.[0]) ?? null) as any | null;
+    return firstRowFromExecute<GameCoreRow>(res);
   }
 
   // ── GET /:gameId/state ── Full game state
@@ -645,7 +679,7 @@ export async function adminScoringRoutes(app: FastifyInstance) {
     try {
       const gameId = parseInt(request.params.gameId, 10);
       const body = request.body;
-      const user = (request as any).user;
+      const user = request.user;
 
       // Get next event number
       const [maxEvt] = await db
@@ -783,7 +817,7 @@ export async function adminScoringRoutes(app: FastifyInstance) {
 
       try { getIO().to(`game:${gameId}`).emit('game:update', { state }); } catch {}
 
-      const user = (request as any).user;
+      const user = request.user;
       const [game] = await db.select({ isFinalized: games.isFinalized }).from(games).where(eq(games.id, gameId)).limit(1);
       if (game?.isFinalized) await finalizeGame(gameId, user?.id, { recompute: true });
 
@@ -860,7 +894,7 @@ export async function adminScoringRoutes(app: FastifyInstance) {
 
       try { getIO().to(`game:${gameId}`).emit('game:update', { state }); } catch {}
 
-      const user = (request as any).user;
+      const user = request.user;
       const [game] = await db.select({ isFinalized: games.isFinalized }).from(games).where(eq(games.id, gameId)).limit(1);
       if (game?.isFinalized) await finalizeGame(gameId, user?.id, { recompute: true });
 
@@ -923,9 +957,15 @@ export async function adminScoringRoutes(app: FastifyInstance) {
 
       // Basic validation / normalization for scorer attribution.
       if ('runnersScored' in updates || 'runnerScoredReasons' in updates || 'runsScored' in updates) {
-        const nextRunners: number[] = ('runnersScored' in updates ? updates.runnersScored : (existing.runnersScored as any)) ?? [];
-        const nextReasons: string[] = ('runnerScoredReasons' in updates ? updates.runnerScoredReasons : ((existing as any).runnerScoredReasons as any)) ?? [];
-        const nextRunsScored: number = ('runsScored' in updates ? updates.runsScored : (existing.runsScored as any)) ?? 0;
+        const nextRunners: number[] = 'runnersScored' in updates
+          ? updates.runnersScored
+          : jsonbNumberArray(existing.runnersScored);
+        const nextReasons: string[] = 'runnerScoredReasons' in updates
+          ? updates.runnerScoredReasons
+          : jsonbStringArray(existing.runnerScoredReasons);
+        const nextRunsScored: number = 'runsScored' in updates
+          ? updates.runsScored
+          : Number(existing.runsScored ?? 0);
 
         const rs = Array.isArray(nextRunners) ? nextRunners : [];
         const rr = Array.isArray(nextReasons) ? nextReasons : [];
@@ -962,7 +1002,7 @@ export async function adminScoringRoutes(app: FastifyInstance) {
 
       try { getIO().to(`game:${gameId}`).emit('game:update', { state }); } catch {}
 
-      const user = (request as any).user;
+      const user = request.user;
       const [game] = await db.select({ isFinalized: games.isFinalized }).from(games).where(eq(games.id, gameId)).limit(1);
       if (game?.isFinalized) await finalizeGame(gameId, user?.id, { recompute: true });
 
@@ -1005,7 +1045,7 @@ export async function adminScoringRoutes(app: FastifyInstance) {
 
       try { getIO().to(`game:${gameId}`).emit('game:update', { state }); } catch {}
 
-      const user = (request as any).user;
+      const user = request.user;
       const [game] = await db.select({ isFinalized: games.isFinalized }).from(games).where(eq(games.id, gameId)).limit(1);
       if (game?.isFinalized) await finalizeGame(gameId, user?.id, { recompute: true });
 
@@ -1070,7 +1110,7 @@ export async function adminScoringRoutes(app: FastifyInstance) {
         return reply.status(400).send({ message: applied.message });
       }
 
-      const user = (request as any).user;
+      const user = request.user;
       const halfNorm = normalizeHalf(half);
       const inningNum = Math.max(1, Math.floor(Number(inning)) || 1);
 
@@ -1215,7 +1255,7 @@ export async function adminScoringRoutes(app: FastifyInstance) {
           ));
       }
 
-      const user = (request as any).user;
+      const user = request.user;
 
       if (snapshots.length > 0) {
         const allEventsBefore = await db.select().from(gameEvents)
@@ -1299,7 +1339,7 @@ export async function adminScoringRoutes(app: FastifyInstance) {
   }>('/:gameId/adjust-score', async (request, reply) => {
     try {
       const gameId = parseInt(request.params.gameId, 10);
-      const user = (request as any).user;
+      const user = request.user;
       const targetHome = Math.max(0, Math.floor(Number(request.body?.homeScore) || 0));
       const targetAway = Math.max(0, Math.floor(Number(request.body?.awayScore) || 0));
 
@@ -1378,7 +1418,7 @@ export async function adminScoringRoutes(app: FastifyInstance) {
   app.post<{ Params: { gameId: string } }>('/:gameId/finalize', async (request, reply) => {
     try {
       const gameId = parseInt(request.params.gameId, 10);
-      const user = (request as any).user;
+      const user = request.user;
 
       const result = await finalizeGame(gameId, user?.id);
 

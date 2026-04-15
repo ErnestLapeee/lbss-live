@@ -3,7 +3,7 @@
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 
 interface SeasonSelectProps {
-  seasons: { id: number; name?: string; year?: number }[];
+  seasons: { id: number; name?: string; year?: number; seasonKind?: string }[];
   currentSeasonId: number | null;
 }
 
@@ -37,6 +37,7 @@ export function SeasonSelect({ seasons, currentSeasonId }: SeasonSelectProps) {
         {seasons.map((s) => (
           <option key={s.id} value={s.id}>
             {s.name || s.year || s.id}
+            {s.seasonKind === 'playoff' ? ' (Playoffs)' : ''}
           </option>
         ))}
       </select>

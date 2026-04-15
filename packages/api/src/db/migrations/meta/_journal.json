@@ -64,6 +64,13 @@
       "when": 1773900000000,
       "tag": "0010_game_events_batter_side",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1774000000000,
+      "tag": "0011_season_kind_playoff",
+      "breakpoints": true
     }
   ]
 }

@@ -17,6 +17,8 @@ import {
   standings,
 } from '../../db/schema/index.js';
 import { desc, eq, inArray, ne, sql } from 'drizzle-orm';
+import { rowsFromExecute } from '../../lib/pg-result.js';
+import { seasonWithPlayoffDefaults } from '../../lib/season-playoff-response.js';
 
 async function seasonsHavePlayoffColumns(): Promise<boolean> {
   try {
@@ -27,9 +29,8 @@ async function seasonsHavePlayoffColumns(): Promise<boolean> {
         and table_name = 'seasons'
         and column_name in ('has_playoffs', 'regular_season_games_per_team', 'playoff_settings')
     `);
-    // drizzle returns different shapes depending on driver; handle common cases.
-    const list = Array.isArray((rows as any).rows) ? (rows as any).rows : (rows as any);
-    return Array.isArray(list) && list.length >= 3;
+    const list = rowsFromExecute<Record<string, unknown>>(rows);
+    return list.length >= 3;
   } catch {
     return false;
   }
@@ -48,6 +49,8 @@ export async function adminSeasonsRoutes(app: FastifyInstance) {
           startDate: seasons.startDate,
           endDate: seasons.endDate,
           isActive: seasons.isActive,
+          seasonKind: seasons.seasonKind,
+          parentSeasonId: seasons.parentSeasonId,
           ...(hasPoCols
             ? {
               hasPlayoffs: seasons.hasPlayoffs,
@@ -61,12 +64,11 @@ export async function adminSeasonsRoutes(app: FastifyInstance) {
         .orderBy(desc(seasons.year));
 
       return reply.send(
-        result.map((s: any) => ({
-          ...s,
-          hasPlayoffs: hasPoCols ? (s.hasPlayoffs ?? false) : false,
-          regularSeasonGamesPerTeam: hasPoCols ? (s.regularSeasonGamesPerTeam ?? null) : null,
-          playoffSettings: hasPoCols ? (s.playoffSettings ?? {}) : {},
-        }))
+        result.map((s) => ({
+          ...seasonWithPlayoffDefaults(hasPoCols, s as Record<string, unknown>),
+          seasonKind: s.seasonKind ?? 'regular',
+          parentSeasonId: s.parentSeasonId ?? null,
+        })),
       );
     } catch (err) {
       request.log.error(err);
@@ -91,6 +93,8 @@ export async function adminSeasonsRoutes(app: FastifyInstance) {
           startDate: seasons.startDate,
           endDate: seasons.endDate,
           isActive: seasons.isActive,
+          seasonKind: seasons.seasonKind,
+          parentSeasonId: seasons.parentSeasonId,
           ...(hasPoCols
             ? {
               hasPlayoffs: seasons.hasPlayoffs,
@@ -109,10 +113,9 @@ export async function adminSeasonsRoutes(app: FastifyInstance) {
       }
 
       return reply.send({
-        ...season,
-        hasPlayoffs: hasPoCols ? ((season as any).hasPlayoffs ?? false) : false,
-        regularSeasonGamesPerTeam: hasPoCols ? ((season as any).regularSeasonGamesPerTeam ?? null) : null,
-        playoffSettings: hasPoCols ? ((season as any).playoffSettings ?? {}) : {},
+        ...seasonWithPlayoffDefaults(hasPoCols, season as Record<string, unknown>),
+        seasonKind: season.seasonKind ?? 'regular',
+        parentSeasonId: season.parentSeasonId ?? null,
       });
     } catch (err) {
       request.log.error(err);
@@ -130,11 +133,18 @@ export async function adminSeasonsRoutes(app: FastifyInstance) {
       isActive?: boolean;
       hasPlayoffs?: boolean;
       regularSeasonGamesPerTeam?: number;
-      playoffSettings?: any;
+      playoffSettings?: unknown;
+      /** `playoff` = separate playoff campaign season (e.g. "LBL Playoffs 2025"). */
+      seasonKind?: 'regular' | 'playoff';
+      /** Regular season this playoff season continues (optional). */
+      parentSeasonId?: number | null;
     };
   }>('/', async (request, reply) => {
     try {
-      const { year, name, startDate, endDate, isActive, hasPlayoffs, regularSeasonGamesPerTeam, playoffSettings } = request.body ?? {};
+      const {
+        year, name, startDate, endDate, isActive, hasPlayoffs, regularSeasonGamesPerTeam, playoffSettings,
+        seasonKind, parentSeasonId,
+      } = request.body ?? {};
       if (!year || !name) {
         return reply.status(400).send({ message: 'year and name required' });
       }
@@ -153,6 +163,8 @@ export async function adminSeasonsRoutes(app: FastifyInstance) {
             startDate: startDate ?? null,
             endDate: endDate ?? null,
             isActive: isActive ?? false,
+            seasonKind: seasonKind === 'playoff' ? 'playoff' : 'regular',
+            parentSeasonId: parentSeasonId ?? null,
             ...(hasPoCols
               ? {
                 hasPlayoffs: hasPlayoffs ?? false,
@@ -165,12 +177,9 @@ export async function adminSeasonsRoutes(app: FastifyInstance) {
         return [row];
       });
 
-      return reply.status(201).send({
-        ...season,
-        hasPlayoffs: hasPoCols ? (season as any).hasPlayoffs ?? false : false,
-        regularSeasonGamesPerTeam: hasPoCols ? (season as any).regularSeasonGamesPerTeam ?? null : null,
-        playoffSettings: hasPoCols ? (season as any).playoffSettings ?? {} : {},
-      });
+      return reply.status(201).send(
+        seasonWithPlayoffDefaults(hasPoCols, season as Record<string, unknown>),
+      );
     } catch (err) {
       request.log.error(err);
       return reply.status(500).send({ message: 'Failed to create season' });
@@ -188,7 +197,9 @@ export async function adminSeasonsRoutes(app: FastifyInstance) {
       isActive?: boolean;
       hasPlayoffs?: boolean;
       regularSeasonGamesPerTeam?: number | null;
-      playoffSettings?: any;
+      playoffSettings?: unknown;
+      seasonKind?: 'regular' | 'playoff';
+      parentSeasonId?: number | null;
     };
   }>('/:id', async (request, reply) => {
     try {
@@ -197,7 +208,10 @@ export async function adminSeasonsRoutes(app: FastifyInstance) {
         return reply.status(400).send({ message: 'Invalid season id' });
       }
 
-      const { year, name, startDate, endDate, isActive, hasPlayoffs, regularSeasonGamesPerTeam, playoffSettings } = request.body ?? {};
+      const {
+        year, name, startDate, endDate, isActive, hasPlayoffs, regularSeasonGamesPerTeam, playoffSettings,
+        seasonKind, parentSeasonId,
+      } = request.body ?? {};
 
       const hasPoCols = await seasonsHavePlayoffColumns();
 
@@ -213,6 +227,8 @@ export async function adminSeasonsRoutes(app: FastifyInstance) {
             ...(startDate !== undefined && { startDate }),
             ...(endDate !== undefined && { endDate }),
             ...(isActive !== undefined && { isActive }),
+            ...(seasonKind !== undefined && { seasonKind: seasonKind === 'playoff' ? 'playoff' : 'regular' }),
+            ...(parentSeasonId !== undefined && { parentSeasonId }),
             ...(hasPoCols ? {
               ...(hasPlayoffs !== undefined && { hasPlayoffs }),
               ...(regularSeasonGamesPerTeam !== undefined && { regularSeasonGamesPerTeam }),
@@ -229,10 +245,9 @@ export async function adminSeasonsRoutes(app: FastifyInstance) {
       }
 
       return reply.send({
-        ...season,
-        hasPlayoffs: hasPoCols ? (season as any).hasPlayoffs ?? false : false,
-        regularSeasonGamesPerTeam: hasPoCols ? (season as any).regularSeasonGamesPerTeam ?? null : null,
-        playoffSettings: hasPoCols ? (season as any).playoffSettings ?? {} : {},
+        ...seasonWithPlayoffDefaults(hasPoCols, season as Record<string, unknown>),
+        seasonKind: (season as { seasonKind?: string }).seasonKind ?? 'regular',
+        parentSeasonId: (season as { parentSeasonId?: number | null }).parentSeasonId ?? null,
       });
     } catch (err) {
       request.log.error(err);

@@ -12,6 +12,7 @@ import {
   teams, seasons, games, leagues,
 } from '../../db/schema/index.js';
 import { eq, and, desc, sql, isNotNull } from 'drizzle-orm';
+import { rowsFromExecute } from '../../lib/pg-result.js';
 
 /** Same abbreviations as team roster / modal (1–10). */
 const FIELDING_POS_LABELS: Record<number, string> = {
@@ -58,8 +59,8 @@ async function gamesHavePlayoffSeriesId(): Promise<boolean> {
         and column_name = 'playoff_series_id'
       limit 1
     `);
-    const list = Array.isArray((rows as any).rows) ? (rows as any).rows : (rows as any);
-    return Array.isArray(list) && list.length > 0;
+    const list = rowsFromExecute<Record<string, unknown>>(rows);
+    return list.length > 0;
   } catch {
     return false;
   }
@@ -76,8 +77,8 @@ async function gameEventsHasBatterSideColumn(): Promise<boolean> {
         and column_name = 'batter_side'
       limit 1
     `);
-    const list = Array.isArray((rows as any).rows) ? (rows as any).rows : (rows as any);
-    return Array.isArray(list) && list.length > 0;
+    const list = rowsFromExecute<Record<string, unknown>>(rows);
+    return list.length > 0;
   } catch {
     return false;
   }
@@ -660,8 +661,8 @@ export async function playersRoutes(app: FastifyInstance) {
         ORDER BY g.scheduled_at DESC
       `);
 
-      const bLog = (battingLog as any).rows ?? battingLog;
-      const pLog = (pitchingLog as any).rows ?? pitchingLog;
+      const bLog = rowsFromExecute<Record<string, unknown>>(battingLog);
+      const pLog = rowsFromExecute<Record<string, unknown>>(pitchingLog);
 
       return reply.send({ batting: bLog, pitching: pLog });
     } catch (err) {
@@ -739,8 +740,8 @@ export async function playersRoutes(app: FastifyInstance) {
       `,
       );
 
-      const bRows = (battingEv as { rows?: unknown[] }).rows ?? battingEv;
-      const pRows = (pitchingEv as { rows?: unknown[] }).rows ?? pitchingEv;
+      const bRows = rowsFromExecute<Record<string, unknown>>(battingEv);
+      const pRows = rowsFromExecute<Record<string, unknown>>(pitchingEv);
 
       const battingIn: PlatoonBattingEventRow[] = (bRows as Record<string, unknown>[]).map((r) => ({
         eventType: String(r.event_type ?? ''),
@@ -800,8 +801,7 @@ export async function playersRoutes(app: FastifyInstance) {
         ORDER BY ge.created_at DESC
       `);
 
-      const rows = (hitData as any).rows ?? hitData;
-      return reply.send(rows);
+      return reply.send(rowsFromExecute<Record<string, unknown>>(hitData));
     } catch (err) {
       request.log.error(err);
       return reply.status(500).send({ message: 'Failed to fetch spray chart data' });

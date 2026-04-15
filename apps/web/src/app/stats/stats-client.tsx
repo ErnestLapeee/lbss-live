@@ -16,6 +16,8 @@ interface Season {
   name: string;
   year: number;
   isActive: boolean;
+  seasonKind?: string;
+  parentSeasonId?: number | null;
 }
 
 interface BattingStat {
@@ -371,6 +373,8 @@ function formatStatValue(value: string | number | null | undefined): string {
 interface StatsClientProps {
   initialSeasons: Season[];
   initialSeasonId: number | null;
+  /** When viewing all-time, include stats from seasons with seasonKind=playoff (default false). */
+  initialIncludePlayoffsAllTime?: boolean;
   initialBatting: BattingStat[];
   initialPitching: PitchingStat[];
   initialFielding: FieldingStat[];
@@ -380,6 +384,7 @@ interface StatsClientProps {
 
 export function StatsClient({
   initialSeasons, initialSeasonId,
+  initialIncludePlayoffsAllTime = false,
   initialBatting, initialPitching, initialFielding,
   initialBattingLeaders, initialPitchingLeaders,
 }: StatsClientProps) {
@@ -422,11 +427,15 @@ export function StatsClient({
   const [loading, setLoading] = useState(false);
   const [sortKey, setSortKey] = useState<string>('battingAvg');
   const [sortDir, setSortDir] = useState<SortDirection>('desc');
+  const [includePlayoffsAllTime, setIncludePlayoffsAllTime] = useState(!!initialIncludePlayoffsAllTime);
 
   // Track whether this is the first render (skip initial fetch since data comes from server)
   const isInitialLoad = useRef(true);
 
-  const seasonParam = selectedSeasonId != null ? `seasonId=${selectedSeasonId}` : 'seasonId=all';
+  const seasonParam =
+    selectedSeasonId != null
+      ? `seasonId=${selectedSeasonId}`
+      : `seasonId=all&includePlayoffs=${includePlayoffsAllTime ? '1' : '0'}`;
 
   // Re-fetch stats when season changes (but not on first mount — server already provided data)
   useEffect(() => {
@@ -651,17 +660,45 @@ export function StatsClient({
                 const v = e.target.value;
                 const newId = v === 'all' ? null : Number(v);
                 setSelectedSeasonId(newId);
-                const q = newId == null ? 'all' : String(newId);
-                router.replace(`${pathname}?season=${q}`, { scroll: false });
+                const sp = new URLSearchParams();
+                if (newId == null) {
+                  sp.set('season', 'all');
+                  if (includePlayoffsAllTime) sp.set('includePlayoffs', '1');
+                } else {
+                  sp.set('season', String(newId));
+                }
+                router.replace(`${pathname}?${sp.toString()}`, { scroll: false });
               }}
               className="rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-accent/50"
             >
               <option value="all">All time</option>
               {seasons.map(s => (
-                <option key={s.id} value={s.id}>{s.name}</option>
+                <option key={s.id} value={s.id}>
+                  {s.name}{s.seasonKind === 'playoff' ? ' (Playoffs)' : ''}
+                </option>
               ))}
             </select>
           </div>
+          {selectedSeasonId == null && (
+            <label className="flex cursor-pointer items-center gap-2 text-sm text-text-muted">
+              <input
+                type="checkbox"
+                checked={includePlayoffsAllTime}
+                onChange={(e) => {
+                  const checked = e.target.checked;
+                  setIncludePlayoffsAllTime(checked);
+                  const sp = new URLSearchParams();
+                  sp.set('season', 'all');
+                  if (checked) sp.set('includePlayoffs', '1');
+                  router.replace(`${pathname}?${sp.toString()}`, { scroll: false });
+                }}
+                className="rounded border-border"
+              />
+              <span title="By default, all-time totals exclude dedicated playoff seasons (season kind = playoff).">
+                Include playoff seasons in all-time
+              </span>
+            </label>
+          )}
           {tab === 'batting' && (
             <div className="flex items-center gap-2">
               <label className="text-sm font-medium text-text-muted">View:</label>

@@ -31,8 +31,8 @@ export default async function HomePage() {
 
   // Mini-standings: active season -> leagues -> standings rows (include 0-game teams)
   try {
-    if (activeSeason?.year) {
-      const seasonDetail = await apiFetch(`/api/public/seasons/${activeSeason.year}`, { noCache: true });
+    if (activeSeason?.id) {
+      const seasonDetail = await apiFetch(`/api/public/seasons/by-id/${activeSeason.id}`, { noCache: true });
       const leagues = (seasonDetail && typeof seasonDetail === 'object' && 'leagues' in seasonDetail)
         ? ((seasonDetail as any).leagues ?? [])
         : [];

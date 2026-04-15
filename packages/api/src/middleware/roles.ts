@@ -9,11 +9,12 @@ const ROLE_HIERARCHY: Record<string, number> = {
 
 export function requireRole(minRole: string) {
   return async (request: FastifyRequest, reply: FastifyReply) => {
-    const user = (request as any).user;
+    const user = request.user;
     if (!user) {
       return reply.status(401).send({ message: 'Authentication required' });
     }
-    const userLevel = ROLE_HIERARCHY[user.role] || 0;
+    const roleKey = user.role ?? 'public';
+    const userLevel = ROLE_HIERARCHY[roleKey] ?? 0;
     const requiredLevel = ROLE_HIERARCHY[minRole] || 0;
     if (userLevel < requiredLevel) {
       return reply.status(403).send({ message: 'Insufficient permissions' });

@@ -1,6 +1,6 @@
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/lib/auth';
-import { useAdminSeason } from '@/context/AdminSeasonContext';
+import { useAdminSeason, type AdminSeasonRow } from '@/context/AdminSeasonContext';
 
 const sidebarItems = [
   { label: 'Dashboard', href: '/', icon: '□' },
@@ -79,9 +79,10 @@ export function AdminLayout() {
                 {seasons.length === 0 ? (
                   <option value="">No seasons</option>
                 ) : (
-                  seasons.map((s: { id: number; year: number; name: string; isActive: boolean }) => (
+                  seasons.map((s: AdminSeasonRow) => (
                     <option key={s.id} value={s.id}>
                       {s.year} – {s.name}
+                      {s.seasonKind === 'playoff' ? ' (Playoffs)' : ''}
                       {s.isActive ? ' ★' : ''}
                     </option>
                   ))

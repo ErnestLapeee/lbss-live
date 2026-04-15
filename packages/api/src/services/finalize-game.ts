@@ -14,6 +14,7 @@ import {
 } from '../db/schema/index.js';
 import { eq, and, sql, desc } from 'drizzle-orm';
 import { aggregatePitchingStatsByPitcher, inningsFromOuts } from '@lbss/shared';
+import { firstRowFromExecute, rowsFromExecute } from '../lib/pg-result.js';
 
 /* ═══════════════════════════════════════════════════════════════
    Event-type classification helpers (MLB Rules 9.02 – 9.16)
@@ -715,8 +716,7 @@ export async function finalizeGame(gameId: number, userId?: number, options?: Fi
   const seasonResult = await db.execute(
     sql`SELECT s.id FROM seasons s JOIN leagues l ON l.season_id = s.id WHERE l.id = ${game.leagueId} LIMIT 1`
   );
-  const rows = (seasonResult as any).rows ?? seasonResult;
-  const seasonIdVal = Array.isArray(rows) ? rows[0]?.id : undefined;
+  const seasonIdVal = firstRowFromExecute<{ id: number }>(seasonResult)?.id;
 
   if (seasonIdVal) {
     try {
@@ -1195,7 +1195,7 @@ export async function recomputeStandings(leagueId: number) {
   const leagueTeams = await db.execute(
     sql`SELECT t.id FROM teams t JOIN league_teams lt ON lt.team_id = t.id WHERE lt.league_id = ${leagueId}`
   );
-  const teamIds = ((leagueTeams as any).rows ?? (leagueTeams as any[]))?.map((r: any) => r.id) ?? [];
+  const teamIds = rowsFromExecute<{ id: number }>(leagueTeams).map((r) => r.id);
 
   if (teamIds.length === 0) {
     const gameTeams = new Set<number>();

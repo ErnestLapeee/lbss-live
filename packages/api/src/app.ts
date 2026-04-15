@@ -13,6 +13,13 @@ export function getIO(): SocketIOServer {
   return io;
 }
 
+/** Reject malformed client payloads (Socket.io often sends strings). */
+function parsePositiveIntId(raw: unknown): number | null {
+  const n = typeof raw === 'number' ? raw : Number(raw);
+  if (!Number.isFinite(n) || n <= 0 || !Number.isInteger(n)) return null;
+  return n;
+}
+
 export async function buildApp() {
   await ensureOptionalSchemaColumns();
 
@@ -49,22 +56,26 @@ export async function buildApp() {
     io.on('connection', (socket) => {
       app.log.info(`Socket connected: ${socket.id}`);
 
-      socket.on('game:subscribe', async (gameId: number) => {
-        socket.join(`game:${gameId}`);
-        app.log.info(`Socket ${socket.id} subscribed to game:${gameId}`);
+      socket.on('game:subscribe', async (gameId: unknown) => {
+        const id = parsePositiveIntId(gameId);
+        if (id == null) return;
+        socket.join(`game:${id}`);
+        app.log.info(`Socket ${socket.id} subscribed to game:${id}`);
         // Broadcast updated viewer count to the room
-        const room = io!.sockets.adapter.rooms.get(`game:${gameId}`);
+        const room = io!.sockets.adapter.rooms.get(`game:${id}`);
         const count = room ? room.size : 1;
-        io!.to(`game:${gameId}`).emit('game:viewers', { gameId, count });
+        io!.to(`game:${id}`).emit('game:viewers', { gameId: id, count });
       });
 
-      socket.on('game:unsubscribe', (gameId: number) => {
-        socket.leave(`game:${gameId}`);
+      socket.on('game:unsubscribe', (gameId: unknown) => {
+        const id = parsePositiveIntId(gameId);
+        if (id == null) return;
+        socket.leave(`game:${id}`);
         // Broadcast updated viewer count after leaving
         setTimeout(() => {
-          const room = io!.sockets.adapter.rooms.get(`game:${gameId}`);
+          const room = io!.sockets.adapter.rooms.get(`game:${id}`);
           const count = room ? room.size : 0;
-          io!.to(`game:${gameId}`).emit('game:viewers', { gameId, count });
+          io!.to(`game:${id}`).emit('game:viewers', { gameId: id, count });
         }, 100);
       });
 

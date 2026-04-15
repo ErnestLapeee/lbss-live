@@ -1,3 +1,4 @@
+import type { InferSelectModel } from 'drizzle-orm';
 import {
   pgTable,
   serial,
@@ -18,6 +19,9 @@ export const users = pgTable('users', {
   isActive: boolean('is_active').default(true),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 });
+
+/** Authenticated admin user row (session → requireAuth). */
+export type AuthUser = InferSelectModel<typeof users>;
 
 export const sessions = pgTable('sessions', {
   id: varchar('id', { length: 255 }).primaryKey(),

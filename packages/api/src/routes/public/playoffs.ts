@@ -1,7 +1,11 @@
 import type { FastifyInstance } from 'fastify';
+import { alias } from 'drizzle-orm/pg-core';
 import { db } from '../../db/index.js';
 import { games, leagues, playoffs, playoffSeries, seasons, standings, teams } from '../../db/schema/index.js';
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
+
+const seriesGamesHome = alias(teams, 'series_games_home');
+const seriesGamesAway = alias(teams, 'series_games_away');
 
 type SeedRow = {
   seed: number;
@@ -17,12 +21,51 @@ type SeedRow = {
   runsAllowed: number;
 };
 
-function toNum(v: any): number {
+/** Row shape from standings + teams join (numeric columns may arrive as string from driver). */
+type StandingSeedSource = {
+  teamId: number;
+  teamName: string;
+  wins: unknown;
+  losses: unknown;
+  ties: unknown;
+  gamesPlayed: unknown;
+  winPct: unknown;
+  gamesBehind: unknown;
+  runsScored: unknown;
+  runsAllowed: unknown;
+};
+
+type BracketSeriesOut = {
+  id: number | null;
+  label: string;
+  bestOf: number;
+  higherSeed: number | null;
+  lowerSeed: number | null;
+  higherTeamId: number | null;
+  lowerTeamId: number | null;
+  higherTeamName: string;
+  lowerTeamName: string;
+  wins: { higher: number; lower: number };
+  winnerTeamId: number | null;
+};
+
+type BracketRoundOut = {
+  roundNumber: number;
+  name: string;
+  series: BracketSeriesOut[];
+};
+
+function toNum(v: unknown): number {
   const n = typeof v === 'number' ? v : v == null ? NaN : Number(v);
   return Number.isFinite(n) ? n : 0;
 }
 
-function sortSeeds(rows: any[]): SeedRow[] {
+function playoffConfigOptionalNumber(cfg: unknown, key: string): number {
+  if (cfg == null || typeof cfg !== 'object') return 0;
+  return toNum((cfg as Record<string, unknown>)[key]);
+}
+
+function sortSeeds(rows: StandingSeedSource[]): SeedRow[] {
   const sorted = [...rows].sort((a, b) => {
     const aPct = toNum(a.winPct);
     const bPct = toNum(b.winPct);
@@ -43,20 +86,20 @@ function sortSeeds(rows: any[]): SeedRow[] {
     seed: i + 1,
     teamId: r.teamId,
     teamName: r.teamName,
-    wins: r.wins ?? 0,
-    losses: r.losses ?? 0,
-    ties: r.ties ?? 0,
-    gamesPlayed: r.gamesPlayed ?? 0,
+    wins: toNum(r.wins),
+    losses: toNum(r.losses),
+    ties: toNum(r.ties),
+    gamesPlayed: toNum(r.gamesPlayed),
     winPct: toNum(r.winPct),
     gamesBehind: toNum(r.gamesBehind),
-    runsScored: r.runsScored ?? 0,
-    runsAllowed: r.runsAllowed ?? 0,
+    runsScored: toNum(r.runsScored),
+    runsAllowed: toNum(r.runsAllowed),
   }));
 }
 
-function buildDefaultBracket(seeds: SeedRow[], bestOfDefault = 1) {
+function buildDefaultBracket(seeds: SeedRow[], bestOfDefault = 1): { rounds: BracketRoundOut[] } {
   const n = seeds.length;
-  if (n < 2) return { rounds: [] as any[] };
+  if (n < 2) return { rounds: [] };
 
   // Round 1 pairings: 1 vs N, 2 vs N-1, ...
   const round1Pairs: Array<{ higher: SeedRow; lower: SeedRow; idx: number }> = [];
@@ -88,6 +131,36 @@ function buildDefaultBracket(seeds: SeedRow[], bestOfDefault = 1) {
 }
 
 export async function playoffsRoutes(app: FastifyInstance) {
+  // GET /series/:seriesId/games — all games linked to a playoff series (bracket cell → schedule → box score)
+  app.get<{ Params: { seriesId: string } }>('/series/:seriesId/games', async (request, reply) => {
+    try {
+      const seriesId = parseInt(request.params.seriesId, 10);
+      if (isNaN(seriesId)) return reply.status(400).send({ message: 'Invalid series id' });
+      const rows = await db
+        .select({
+          id: games.id,
+          scheduledAt: games.scheduledAt,
+          homeTeamId: games.homeTeamId,
+          awayTeamId: games.awayTeamId,
+          homeTeamName: seriesGamesHome.name,
+          awayTeamName: seriesGamesAway.name,
+          homeScore: games.homeScore,
+          awayScore: games.awayScore,
+          status: games.status,
+          playoffSeriesId: games.playoffSeriesId,
+        })
+        .from(games)
+        .leftJoin(seriesGamesHome, eq(games.homeTeamId, seriesGamesHome.id))
+        .leftJoin(seriesGamesAway, eq(games.awayTeamId, seriesGamesAway.id))
+        .where(eq(games.playoffSeriesId, seriesId))
+        .orderBy(asc(games.scheduledAt));
+      return reply.send(rows);
+    } catch (err) {
+      request.log.error(err);
+      return reply.status(500).send({ message: 'Failed to fetch series games' });
+    }
+  });
+
   // GET /season/:seasonId - playoff picture + bracket for a season (all leagues)
   app.get<{ Params: { seasonId: string } }>('/season/:seasonId', async (request, reply) => {
     try {
@@ -104,16 +177,28 @@ export async function playoffsRoutes(app: FastifyInstance) {
 
       // If no playoffs row exists yet, but the season is marked as having playoffs,
       // synthesize a default "playoff picture" (current seeding + default bracket) from standings.
-      const po = poRow ?? (
-        (season as any).hasPlayoffs
-          ? ({
+      type PlayoffsContext = {
+        id: number | null;
+        name: string;
+        isActive: boolean;
+        config: unknown;
+      };
+
+      const po: PlayoffsContext | null = poRow
+        ? {
+          id: poRow.id,
+          name: poRow.name,
+          isActive: poRow.isActive ?? true,
+          config: poRow.config,
+        }
+        : season.hasPlayoffs
+          ? {
             id: null,
-            name: `${(season as any).name ?? (season as any).year ?? 'Season'} Playoffs`,
+            name: `${season.name ?? String(season.year ?? 'Season')} Playoffs`,
             isActive: true,
-            config: (season as any).playoffSettings ?? {},
-          } as any)
-          : null
-      );
+            config: season.playoffSettings ?? {},
+          }
+          : null;
 
       if (!po) return reply.send({ seasonId, playoffs: null, leagues: [] });
 
@@ -122,7 +207,12 @@ export async function playoffsRoutes(app: FastifyInstance) {
         .where(eq(leagues.seasonId, seasonId))
         .orderBy(asc(leagues.id));
 
-      const leaguesOut: any[] = [];
+      const leaguesOut: Array<{
+        leagueId: number;
+        leagueName: string;
+        seeds: SeedRow[];
+        bracket: { rounds: BracketRoundOut[] };
+      }> = [];
       for (const lg of leagueRows) {
         // standings rows for seeding
         const st = await db.select({
@@ -142,7 +232,7 @@ export async function playoffsRoutes(app: FastifyInstance) {
           .orderBy(desc(standings.winPct));
 
         const seedsAll = sortSeeds(st);
-        const desiredSeeds = Math.max(2, toNum((po.config as any)?.seeds) || 4);
+        const desiredSeeds = Math.max(2, playoffConfigOptionalNumber(po.config, 'seeds') || 4);
         const seeds = seedsAll.slice(0, desiredSeeds);
 
         // Load any manually configured series (rounds)
@@ -155,9 +245,9 @@ export async function playoffsRoutes(app: FastifyInstance) {
         for (const s of seedsAll) teamNameById.set(s.teamId, s.teamName);
 
         const bracket = seriesRows.length === 0
-          ? buildDefaultBracket(seeds, toNum((po.config as any)?.bestOf) || 1)
+          ? buildDefaultBracket(seeds, playoffConfigOptionalNumber(po.config, 'bestOf') || 1)
           : (() => {
-            const byRound = new Map<number, any[]>();
+            const byRound = new Map<number, BracketSeriesOut[]>();
             for (const s of seriesRows) {
               if (!byRound.has(s.roundNumber)) byRound.set(s.roundNumber, []);
               const hiTeamId = s.higherTeamId ?? (s.higherSeed ? seedsAll.find(x => x.seed === s.higherSeed)?.teamId : null) ?? null;

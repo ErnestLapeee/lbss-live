@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useState, useCallback, useRef } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { PageHeader } from '@/components/ui/page-header';
 import { TeamMark } from '@/components/ui/team-mark';
 
@@ -45,6 +46,7 @@ interface Season {
   id: number;
   name: string;
   year: number;
+  seasonKind?: string;
 }
 
 interface ScheduleClientProps {
@@ -54,9 +56,26 @@ interface ScheduleClientProps {
 }
 
 export function ScheduleClient({ initialGames, seasons, defaultSeasonId }: ScheduleClientProps) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [games, setGames] = useState<Game[]>(initialGames);
   const [selectedSeasonId, setSelectedSeasonId] = useState<number | null>(defaultSeasonId);
   const isFirstRun = useRef(true);
+
+  useEffect(() => {
+    const raw = searchParams?.get('season');
+    if (raw === 'all') {
+      setSelectedSeasonId(null);
+      return;
+    }
+    if (raw) {
+      const sid = parseInt(raw, 10);
+      if (!isNaN(sid) && seasons.some((s) => s.id === sid)) {
+        setSelectedSeasonId(sid);
+      }
+    }
+  }, [searchParams, seasons]);
 
   const fetchData = useCallback(async () => {
     try {
@@ -117,12 +136,22 @@ export function ScheduleClient({ initialGames, seasons, defaultSeasonId }: Sched
             <label className="text-sm font-medium text-text-muted whitespace-nowrap">Season:</label>
             <select
               value={selectedSeasonId ?? 'all'}
-              onChange={(e) => setSelectedSeasonId(e.target.value === 'all' ? null : Number(e.target.value))}
+              onChange={(e) => {
+                const v = e.target.value;
+                const next = v === 'all' ? null : Number(v);
+                setSelectedSeasonId(next);
+                const sp = new URLSearchParams(searchParams?.toString() ?? '');
+                if (next == null) sp.set('season', 'all');
+                else sp.set('season', String(next));
+                router.replace(`${pathname}?${sp.toString()}`, { scroll: false });
+              }}
               className="rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-accent/50 min-w-[160px]"
             >
               <option value="all">All seasons</option>
               {seasons.map(s => (
-                <option key={s.id} value={s.id}>{s.name}</option>
+                <option key={s.id} value={s.id}>
+                  {s.name}{s.seasonKind === 'playoff' ? ' (Playoffs)' : ''}
+                </option>
               ))}
             </select>
             <span className="text-xs text-text-faint">

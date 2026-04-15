@@ -71,6 +71,9 @@ export function GamesPage() {
   const [editing, setEditing] = useState<Game | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [bulkGameIds, setBulkGameIds] = useState('');
+  const [bulkSeriesIdInput, setBulkSeriesIdInput] = useState('');
+  const [bulkSaving, setBulkSaving] = useState(false);
 
   const [form, setForm] = useState({
     leagueId: '',
@@ -209,6 +212,44 @@ export function GamesPage() {
     }
   };
 
+  const handleBulkPlayoffSeries = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const ids = bulkGameIds
+      .split(/[\s,]+/)
+      .map((x) => parseInt(x.trim(), 10))
+      .filter((n) => !isNaN(n));
+    if (ids.length === 0) {
+      setError('Enter at least one game ID (comma or space separated).');
+      return;
+    }
+    const raw = bulkSeriesIdInput.trim();
+    let playoffSeriesId: number | null;
+    if (raw === '') {
+      playoffSeriesId = null;
+    } else {
+      const n = parseInt(raw, 10);
+      if (isNaN(n)) {
+        setError('Invalid playoff series ID.');
+        return;
+      }
+      playoffSeriesId = n;
+    }
+    setBulkSaving(true);
+    setError(null);
+    try {
+      await apiPost<{ updated: number }>('/admin/games/bulk/playoff-series', {
+        gameIds: ids,
+        playoffSeriesId,
+      });
+      setBulkGameIds('');
+      loadData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Bulk update failed');
+    } finally {
+      setBulkSaving(false);
+    }
+  };
+
   const handleFinalize = async (g: Game) => {
     if (g.isFinalized) return;
     if (!confirm('Finalize this game? This cannot be undone.')) return;
@@ -266,6 +307,46 @@ export function GamesPage() {
           {error}
         </div>
       )}
+
+      <details className="mb-4 rounded-xl border border-border bg-surface-alt/50 p-4 text-sm">
+        <summary className="cursor-pointer font-medium text-text-muted select-none">
+          Bulk attach games to a playoff series
+        </summary>
+        <form onSubmit={handleBulkPlayoffSeries} className="mt-3 grid gap-3 sm:grid-cols-[1fr_auto_auto] sm:items-end">
+          <div>
+            <label className="block text-xs font-medium text-text-muted mb-1">Game IDs</label>
+            <input
+              type="text"
+              value={bulkGameIds}
+              onChange={(e) => setBulkGameIds(e.target.value)}
+              className={inputClass}
+              placeholder="e.g. 101, 102, 103"
+              disabled={bulkSaving}
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-text-muted mb-1">Playoff series ID</label>
+            <input
+              type="number"
+              value={bulkSeriesIdInput}
+              onChange={(e) => setBulkSeriesIdInput(e.target.value)}
+              className={inputClass}
+              placeholder="Clear to detach"
+              disabled={bulkSaving}
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={bulkSaving}
+            className="px-4 py-2 bg-surface border border-border rounded-lg text-sm font-semibold hover:bg-surface-alt disabled:opacity-50"
+          >
+            {bulkSaving ? 'Applying…' : 'Apply'}
+          </button>
+        </form>
+        <p className="mt-2 text-xs text-text-faint">
+          Sets <code className="text-text-muted">playoff_series_id</code> for all listed games. Leave series empty to clear.
+        </p>
+      </details>
 
       <div className="bg-surface rounded-xl border border-border overflow-hidden">
         <table className="w-full text-sm">

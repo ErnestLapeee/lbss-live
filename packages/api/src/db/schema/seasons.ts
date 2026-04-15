@@ -11,11 +11,19 @@ import {
 
 export const seasons = pgTable('seasons', {
   id: serial('id').primaryKey(),
-  year: integer('year').notNull().unique(),
+  /** Calendar year for display/sorting; not globally unique (regular + playoff can share a year). */
+  year: integer('year').notNull(),
   name: varchar('name', { length: 100 }).notNull(),
   startDate: date('start_date'),
   endDate: date('end_date'),
   isActive: boolean('is_active').default(false),
+  /**
+   * `regular` = standard league season; `playoff` = separate season row (e.g. "LBL Playoffs 2025")
+   * so stats and schedules can be isolated from regular-season data.
+   */
+  seasonKind: varchar('season_kind', { length: 20 }).notNull().default('regular'),
+  /** Links a playoff season to the regular season it continues (optional). */
+  parentSeasonId: integer('parent_season_id'),
   // Playoffs are optional and fully configurable per season.
   hasPlayoffs: boolean('has_playoffs').default(false),
   // Used for "playoff picture" (seed race) calculations.

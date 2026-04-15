@@ -84,8 +84,8 @@ export async function authRoutes(app: FastifyInstance) {
   app.get('/me', async (request, reply) => {
     try {
       // Check if requireAuth already populated the user
-      if ((request as any).user) {
-        const u = (request as any).user;
+      if (request.user) {
+        const u = request.user;
         return reply.send({ id: u.id, email: u.email, displayName: u.displayName, role: u.role });
       }
 

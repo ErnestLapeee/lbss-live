@@ -37,6 +37,6 @@ export async function requireAuth(request: FastifyRequest, reply: FastifyReply) 
     return reply.status(401).send({ message: 'User not found or inactive' });
   }
 
-  (request as any).user = user;
-  (request as any).sessionId = sessionId;
+  request.user = user;
+  request.sessionId = sessionId;
 }
