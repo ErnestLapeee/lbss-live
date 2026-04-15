@@ -37,6 +37,7 @@ const BETWEEN_PITCH_EVENTS = new Set([
   'hit_by_ball', 'missed_base', 'left_base_early', 'left_base_path',
   'offensive_interference', 'passed_runner', 'hesitation',
   'double_play', 'triple_play', 'illegal_pitch', 'end_half_inning',
+  'adjust_score',
 ]);
 
 function computeGameState(events: any[]): GameState {
@@ -60,6 +61,29 @@ function computeGameState(events: any[]): GameState {
       else if (detail === 'foul') { if (state.strikes < 2) state.strikes++; }
       else if (detail === 'strike' || detail === 'called_strike' || detail === 'swinging_strike') {
         state.strikes = Math.min(2, state.strikes + 1);
+      }
+      state.eventCount++;
+      continue;
+    }
+
+    // Manual correction: deltas vs. play-by-play totals (logged as an event so state stays consistent)
+    if (event.eventType === 'adjust_score') {
+      let detail: { homeDelta?: number; awayDelta?: number } = {};
+      try {
+        detail = JSON.parse(event.eventDetail || '{}') as typeof detail;
+      } catch { /* ignore */ }
+      const homeDelta = Number(detail.homeDelta) || 0;
+      const awayDelta = Number(detail.awayDelta) || 0;
+      state.homeScore += homeDelta;
+      state.awayScore += awayDelta;
+      const inn = Math.max(1, event.inning || 1);
+      if (homeDelta !== 0) {
+        while (state.homeLineScore.length < inn) state.homeLineScore.push(0);
+        state.homeLineScore[inn - 1] += homeDelta;
+      }
+      if (awayDelta !== 0) {
+        while (state.awayLineScore.length < inn) state.awayLineScore.push(0);
+        state.awayLineScore[inn - 1] += awayDelta;
       }
       state.eventCount++;
       continue;
@@ -813,17 +837,75 @@ export async function adminScoringRoutes(app: FastifyInstance) {
   }>('/:gameId/adjust-score', async (request, reply) => {
     try {
       const gameId = parseInt(request.params.gameId, 10);
-      const { homeScore, awayScore } = request.body;
+      const user = (request as any).user;
+      const targetHome = Math.max(0, Math.floor(Number(request.body?.homeScore) || 0));
+      const targetAway = Math.max(0, Math.floor(Number(request.body?.awayScore) || 0));
+
+      const allEvents = await db.select().from(gameEvents)
+        .where(and(eq(gameEvents.gameId, gameId), eq(gameEvents.isDeleted, false)))
+        .orderBy(gameEvents.eventNumber);
+
+      const state = computeGameState(allEvents);
+      const homeDelta = targetHome - state.homeScore;
+      const awayDelta = targetAway - state.awayScore;
+
+      if (homeDelta === 0 && awayDelta === 0) {
+        return reply.send({ success: true, noOp: true, state });
+      }
+
+      const [maxEvt] = await db
+        .select({ maxNum: max(gameEvents.eventNumber) })
+        .from(gameEvents)
+        .where(eq(gameEvents.gameId, gameId));
+      const eventNumber = ((maxEvt?.maxNum as number) || 0) + 1;
+
+      const detail = JSON.stringify({ homeDelta, awayDelta });
+      await db.insert(gameEvents).values({
+        gameId,
+        eventNumber,
+        inning: state.inning,
+        half: state.half,
+        batterId: null,
+        pitcherId: null,
+        eventType: 'adjust_score',
+        eventDetail: detail,
+        rbi: 0,
+        runsScored: 0,
+        outsRecorded: 0,
+        errorsOnPlay: 0,
+        balls: 0,
+        strikes: 0,
+        runnerFirstId: null,
+        runnerSecondId: null,
+        runnerThirdId: null,
+        runnersScored: [],
+        runnerScoredReasons: [],
+        createdBy: user?.id ?? null,
+      });
+
+      const allAfter = await db.select().from(gameEvents)
+        .where(and(eq(gameEvents.gameId, gameId), eq(gameEvents.isDeleted, false)))
+        .orderBy(gameEvents.eventNumber);
+
+      const newState = computeGameState(allAfter);
 
       await db.update(games).set({
-        homeScore,
-        awayScore,
+        homeScore: newState.homeScore,
+        awayScore: newState.awayScore,
+        currentInning: newState.inning,
+        currentHalf: newState.half,
+        currentOuts: newState.outs,
         updatedAt: new Date(),
       }).where(eq(games.id, gameId));
 
-      try { getIO().to(`game:${gameId}`).emit('game:update', { state: { homeScore, awayScore } }); } catch {}
+      try {
+        getIO().to(`game:${gameId}`).emit('game:update', { state: newState });
+      } catch {}
 
-      return reply.send({ success: true });
+      const [game] = await db.select({ isFinalized: games.isFinalized }).from(games).where(eq(games.id, gameId)).limit(1);
+      if (game?.isFinalized) await finalizeGame(gameId, user?.id, { recompute: true });
+
+      return reply.send({ success: true, state: newState });
     } catch (err) {
       request.log.error(err);
       return reply.status(500).send({ message: 'Failed to adjust score' });

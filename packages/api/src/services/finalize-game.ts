@@ -54,6 +54,7 @@ const NON_PA_EVENTS = new Set([
   'hit_by_ball', 'missed_base', 'left_base_early', 'left_base_path',
   'offensive_interference', 'passed_runner', 'hesitation',
   'double_play', 'triple_play', 'advance_on_error',
+  'adjust_score',
 ]);
 
 const GROUND_BALL_OUTS = new Set(['ground_out', 'bunt_out']);

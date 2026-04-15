@@ -9,6 +9,21 @@ interface GameState { inning: number; half: 'top' | 'bot'; outs: number; homeSco
 interface GameEvent { id: number; eventNumber: number; eventType: string; batterId?: number; pitcherId?: number; inning: number; half: string; runsScored?: number; rbi?: number; outsRecorded?: number; eventDetail?: string; fieldingSequence?: string; hitLocationX?: string | null; hitLocationY?: string | null; hitType?: string | null; hitHardness?: string | null; runnerFirstId?: number | null; runnerSecondId?: number | null; runnerThirdId?: number | null; runnersScored?: number[] }
 interface GameData { id: number; status: string; homeTeamId: number; awayTeamId: number; homeTeamName: string; awayTeamName: string; isFinalized: boolean }
 
+function formatScoringMiniPbpLine(evt: GameEvent): string {
+  if (evt.eventType === 'adjust_score') {
+    try {
+      const d = JSON.parse(evt.eventDetail || '{}') as { homeDelta?: number; awayDelta?: number };
+      const h = Number(d.homeDelta) || 0;
+      const a = Number(d.awayDelta) || 0;
+      const parts: string[] = [];
+      if (a !== 0) parts.push(`${a > 0 ? '+' : ''}${a} away`);
+      if (h !== 0) parts.push(`${h > 0 ? '+' : ''}${h} home`);
+      return parts.length ? `Score adjustment (${parts.join(', ')})` : 'Score adjustment';
+    } catch { return 'Score adjustment'; }
+  }
+  return evt.eventDetail || evt.eventType;
+}
+
 const POS_LABELS: Record<number, string> = { 1:'P',2:'C',3:'1B',4:'2B',5:'3B',6:'SS',7:'LF',8:'CF',9:'RF',10:'DH' };
 const OUT_EVENTS = ['ground_out','fly_out','line_out','pop_out','strikeout_swinging','strikeout_looking','sacrifice_fly','sacrifice_bunt','bunt_out','infield_fly','dropped_third_strike_out','caught_foul_tip','bunt_foul','hit_by_batted_ball','runner_interference_batter','offensive_interference_batter','batting_out_of_turn','fan_interference','thrown_bat','out_of_box','left_base_path_batter','other_out'];
 
@@ -180,6 +195,7 @@ export function LiveScoringPage() {
   const [homeLineup, setHomeLineup] = useState<LineupEntry[]>([]);
   const [awayLineup, setAwayLineup] = useState<LineupEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [phase, setPhase] = useState<'setup' | 'scoring'>('setup');
 
   const [homeRoster, setHomeRoster] = useState<Player[]>([]);
@@ -256,12 +272,16 @@ export function LiveScoringPage() {
   }, [events]);
 
   const loadState = useCallback(async () => {
+    setLoadError(null);
     try {
       const data: any = await apiGet(`/admin/scoring/${gameId}/state`);
       setGame(data.game); setGameState(data.state); setEvents(data.events || []);
       setHomeLineup(data.lineups?.home || []); setAwayLineup(data.lineups?.away || []);
       if (data.game.status === 'live' || data.game.status === 'suspended' || data.game.status === 'final') setPhase('scoring');
-    } catch (err) { console.error(err); } finally { setLoading(false); }
+    } catch (err: any) {
+      console.error(err);
+      setLoadError(err?.message || 'Failed to load game');
+    } finally { setLoading(false); }
   }, [gameId]);
 
   const loadRosters = useCallback(async () => {
@@ -1011,7 +1031,29 @@ export function LiveScoringPage() {
   };
   const cancelWizard = () => { setStep('pitch'); setSelectedEvent(null); setFieldingPositions([]); setRunnerQuestions([]); setCurrentRunnerIdx(0); setActiveRunnerBase(null); setRunnerActionType(null); setRunnerActionDest(null); setRunnerActionOutType(null); setRunnerActionFielding([]); setSubPosition(null); setSubBattingSlot(null); setRunnerOutSafeTab('safe'); setRunnerSafeDest(null); setHitLocationX(null); setHitLocationY(null); setHitType(null); setHitHardness(null); setBetweenPitchEvent(null); setBetweenPitchInitiatorRunnerId(null); setOutSafeMorePage(false); setRunnerOutPendingType(null); setRunnerOutFielding([]); };
 
+  if (!gameIdStr || Number.isNaN(gameId) || gameId <= 0) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-4 h-screen bg-[#0c1220] px-4">
+        <p className="text-red-400 text-center">Invalid game link.</p>
+        <button type="button" onClick={() => navigate('/games')} className="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-sm">Back to games</button>
+      </div>
+    );
+  }
+
   if (loading) return <div className="flex items-center justify-center h-screen bg-[#0c1220]"><span className="text-gray-400">Loading...</span></div>;
+
+  if (loadError && !game) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-4 h-screen bg-[#0c1220] px-4">
+        <p className="text-red-400 text-center max-w-md">{loadError}</p>
+        <div className="flex gap-2">
+          <button type="button" onClick={() => { setLoading(true); void loadState(); }} className="px-4 py-2 bg-green-700 hover:bg-green-600 rounded-lg text-sm font-bold">Retry</button>
+          <button type="button" onClick={() => navigate('/games')} className="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-sm">Back to games</button>
+        </div>
+      </div>
+    );
+  }
+
   if (!game) return <div className="flex items-center justify-center h-screen bg-[#0c1220]"><span className="text-red-400">Game not found</span></div>;
 
   // ── LINEUP SETUP ──
@@ -2176,7 +2218,10 @@ export function LiveScoringPage() {
             {/* ADJUST SCORE */}
             {step === 'adjust_score' && (
               <div className="bg-[#111d30] rounded-lg border border-white/10 p-4">
-                <p className="text-xs text-white/40 uppercase font-bold text-center mb-4">Adjust Score</p>
+                <p className="text-xs text-white/40 uppercase font-bold text-center mb-2">Adjust Score</p>
+                <p className="text-[10px] text-white/35 text-center mb-4 leading-relaxed">
+                  Saves a correction in the event log so totals stay in sync with plays. Use when the board and the book disagree.
+                </p>
                 <div className="flex items-center gap-6 justify-center mb-4">
                   <div className="text-center">
                     <p className="text-[10px] text-white/40 uppercase mb-1">{game.awayTeamName}</p>
@@ -2244,7 +2289,7 @@ export function LiveScoringPage() {
             {[...events].reverse().slice(0, 15).map(evt => (
               <div key={evt.eventNumber} className="py-0.5 leading-tight text-white/35 border-b border-white/[0.03]">
                 <span className="text-white/20">{evt.half === 'top' ? '▲' : '▼'}{evt.inning}</span>{' '}
-                {evt.eventDetail || evt.eventType}
+                {formatScoringMiniPbpLine(evt)}
               </div>
             ))}
             {events.length === 0 && <p className="text-white/15">No plays yet</p>}

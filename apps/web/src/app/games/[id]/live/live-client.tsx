@@ -37,6 +37,7 @@ const EVENT_LABELS: Record<string, string> = {
   balk: 'Balk', defensive_indifference: 'Defensive Indifference',
   advance_on_error: 'Error (Runner)',
   end_half_inning: 'End of Inning',
+  adjust_score: 'Score adjustment',
 };
 
 const RUNNER_EVENT_TYPES = new Set([
@@ -219,6 +220,7 @@ export function LiveGameClient({
   const [loading, setLoading] = useState(false);
   const [tab, setTab] = useState<Tab>('plays');
   const [playMode, setPlayMode] = useState<'compact' | 'expanded'>('compact');
+  const [pitchingView, setPitchingView] = useState<'core' | 'all'>('core');
   const [openPitchCards, setOpenPitchCards] = useState<Record<string, boolean>>({});
   const { connected, gameState, lastEvent, isFinal, viewerCount } = useGameSocket(gameId, apiBase);
 
@@ -272,6 +274,24 @@ export function LiveGameClient({
     const away: number[] = [];
     for (const e of events) {
       if (e.eventType === 'pitch' || e.eventType === 'end_half_inning') continue;
+      if (e.eventType === 'adjust_score') {
+        let detail: { homeDelta?: number; awayDelta?: number } = {};
+        try {
+          detail = JSON.parse(e.eventDetail || '{}') as typeof detail;
+        } catch { /* ignore */ }
+        const hd = Number(detail.homeDelta) || 0;
+        const ad = Number(detail.awayDelta) || 0;
+        const idx = e.inning - 1;
+        if (hd !== 0) {
+          while (home.length <= idx) home.push(0);
+          home[idx] += hd;
+        }
+        if (ad !== 0) {
+          while (away.length <= idx) away.push(0);
+          away[idx] += ad;
+        }
+        continue;
+      }
       const runs = e.runsScored ?? 0;
       if (runs === 0) continue;
       const idx = e.inning - 1;
@@ -325,6 +345,20 @@ export function LiveGameClient({
         if (currentAB) { /* close previous AB when inning changes */ currentAB = null; }
       }
 
+      if (evt.eventType === 'adjust_score') {
+        group.atBats.push({
+          batterId: null,
+          batterName: 'Score correction',
+          result: evt,
+          pitches: [],
+          betweenEvents: [],
+          inning: evt.inning,
+          half: evt.half,
+        });
+        currentAB = null;
+        continue;
+      }
+
       if (evt.eventType === 'pitch') {
         if (!currentAB) {
           currentAB = { batterId: evt.batterId, batterName: evt.batterName || 'Unknown', result: null, pitches: [], betweenEvents: [], inning: evt.inning, half: evt.half };
@@ -375,7 +409,7 @@ export function LiveGameClient({
     const sacBunt = new Set(['sacrifice_bunt', 'sac_bunt_error']);
 
     for (const evt of events) {
-      if (evt.eventType === 'end_half_inning' || evt.eventType === 'pitch') continue;
+      if (evt.eventType === 'end_half_inning' || evt.eventType === 'pitch' || evt.eventType === 'adjust_score') continue;
       if (RUNNER_EVENT_TYPES.has(evt.eventType)) {
         if (evt.eventType === 'stolen_base' && evt.batterId) getOrCreate(evt.batterId).sb++;
         if (evt.eventType === 'caught_stealing' && evt.batterId) getOrCreate(evt.batterId).cs++;
@@ -542,6 +576,9 @@ export function LiveGameClient({
 
   const playTone = (ab: AtBat): { tag: string; cls: string } => {
     const t = ab.result?.eventType || '';
+    if (t === 'adjust_score') {
+      return { tag: 'NOTE', cls: 'text-slate-500' };
+    }
     if ((ab.result?.runsScored ?? 0) > 0) {
       return { tag: 'SCORING', cls: 'text-emerald-700' };
     }
@@ -570,7 +607,7 @@ export function LiveGameClient({
     const map: Record<number, number> = {};
     if (!game) return map;
     const filtered = events
-      .filter(e => e.eventType !== 'pitch' && e.eventType !== 'end_half_inning')
+      .filter(e => e.eventType !== 'pitch' && e.eventType !== 'end_half_inning' && e.eventType !== 'adjust_score')
       .sort((a, b) => a.eventNumber - b.eventNumber);
     let outs = 0;
     for (const evt of filtered) {
@@ -1015,118 +1052,190 @@ export function LiveGameClient({
 
   const renderPitchingTable = (teamName: string, pitchers: PitchingBoxScore[]) => {
     if (pitchers.length === 0) return null;
+    const pitchHeadersAll = ['Dec','IP','H','R','ER','BB','SO','Kc','Ks','HR','HBP','WP','BF','NP','B','S','%S','GSc','ERA','WHIP'] as const;
+    const pitchHeadersCore = ['Dec','IP','H','R','ER','BB','SO','HR','ERA','WHIP'] as const;
+    const pitchHeaders = pitchingView === 'core' ? pitchHeadersCore : pitchHeadersAll;
+    const groupBorder = (h: string) => {
+      if (pitchingView === 'core') {
+        return ['IP','HR','ERA'].includes(h) ? 'border-l border-slate-200' : '';
+      }
+      return ['IP','Kc','HR','BF','ERA'].includes(h) ? 'border-l border-slate-200' : '';
+    };
+    const thWidth = (h: string) =>
+      h === '%S' ? 'w-11' : h === 'ERA' || h === 'WHIP' ? 'min-w-[2.75rem]' : h === 'BF' || h === 'NP' || h === 'B' || h === 'S' ? 'min-w-[2.25rem]' : 'min-w-[2rem]';
+
+    const sumIp = (arr: PitchingBoxScore[]) => {
+      let thirds = 0;
+      for (const p of arr) {
+        const s = String(p.inningsPitched || '0');
+        const parts = s.split('.');
+        thirds += parseInt(parts[0] || '0') * 3 + parseInt(parts[1] || '0');
+      }
+      const full = Math.floor(thirds / 3);
+      const rem = thirds % 3;
+      return { display: rem > 0 ? `${full}.${rem}` : `${full}`, ip: thirds / 3 };
+    };
+
+    const pitchCell = (p: PitchingBoxScore, h: string) => {
+      const dec = p.decision === 'W' ? 'W' : p.decision === 'L' ? 'L' : p.decision === 'S' ? 'S' : '';
+      const era = gameEra(p.earnedRuns ?? 0, p.inningsPitched);
+      const whip = gameWhip(p.hits ?? 0, p.walks ?? 0, p.inningsPitched);
+      switch (h) {
+        case 'Dec':
+          return (
+            <td
+              key={h}
+              className={`text-center font-semibold py-2.5 ${dec === 'W' ? 'text-emerald-700' : dec === 'L' ? 'text-rose-700' : dec === 'S' ? 'text-slate-800' : 'text-slate-400'}`}
+            >
+              {dec || '—'}
+            </td>
+          );
+        case 'IP':
+          return (
+            <td key={h} className={`text-center text-slate-800 font-mono py-2.5 ${groupBorder(h)}`}>
+              {p.inningsPitched}
+            </td>
+          );
+        case 'H': return <td key={h} className="text-center text-slate-800 font-mono py-2.5">{p.hits}</td>;
+        case 'R': return <td key={h} className="text-center text-slate-800 font-mono py-2.5">{p.runs}</td>;
+        case 'ER': return <td key={h} className="text-center text-slate-800 font-mono py-2.5">{p.earnedRuns}</td>;
+        case 'BB': return <td key={h} className="text-center text-slate-800 font-mono py-2.5">{p.walks}</td>;
+        case 'SO': return <td key={h} className="text-center text-slate-800 font-mono py-2.5">{p.strikeouts}</td>;
+        case 'Kc':
+          return (
+            <td key={h} className={`text-center text-slate-600 font-mono py-2.5 ${groupBorder(h)}`}>
+              {p.strikeoutsLooking ?? '—'}
+            </td>
+          );
+        case 'Ks': return <td key={h} className="text-center text-slate-600 font-mono py-2.5">{p.strikeoutsSwinging ?? '—'}</td>;
+        case 'HR':
+          return (
+            <td key={h} className={`text-center text-slate-800 font-mono py-2.5 ${groupBorder(h)}`}>
+              {p.homeRuns}
+            </td>
+          );
+        case 'HBP': return <td key={h} className="text-center text-slate-800 font-mono py-2.5">{p.hitBatters ?? '—'}</td>;
+        case 'WP': return <td key={h} className="text-center text-slate-800 font-mono py-2.5">{p.wildPitches ?? '—'}</td>;
+        case 'BF':
+          return (
+            <td key={h} className={`text-center text-slate-600 font-mono py-2.5 ${groupBorder(h)}`}>
+              {p.battersFaced ?? '—'}
+            </td>
+          );
+        case 'NP': return <td key={h} className="text-center text-slate-600 font-mono py-2.5">{p.pitchesThrown ?? '—'}</td>;
+        case 'B': return <td key={h} className="text-center text-slate-600 font-mono py-2.5">{p.balls ?? '—'}</td>;
+        case 'S': return <td key={h} className="text-center text-slate-600 font-mono py-2.5">{p.strikes ?? '—'}</td>;
+        case '%S': return <td key={h} className="text-center text-slate-600 font-mono py-2.5">{strikePct(p.balls, p.strikes)}</td>;
+        case 'GSc': return <td key={h} className="text-center text-slate-600 font-mono py-2.5">{p.gameScore ?? '—'}</td>;
+        case 'ERA':
+          return (
+            <td key={h} className={`text-center text-slate-900 font-mono text-[10px] py-2.5 ${groupBorder(h)}`}>
+              {era}
+            </td>
+          );
+        case 'WHIP': return <td key={h} className="text-center text-slate-900 font-mono text-[10px] py-2.5">{whip}</td>;
+        default: return null;
+      }
+    };
+
+    const ipResult = sumIp(pitchers);
+    const tH = pitchers.reduce((s, p) => s + (p.hits ?? 0), 0);
+    const tR = pitchers.reduce((s, p) => s + (p.runs ?? 0), 0);
+    const tER = pitchers.reduce((s, p) => s + (p.earnedRuns ?? 0), 0);
+    const tBB = pitchers.reduce((s, p) => s + (p.walks ?? 0), 0);
+    const tK = pitchers.reduce((s, p) => s + (p.strikeouts ?? 0), 0);
+    const tKc = pitchers.reduce((s, p) => s + (p.strikeoutsLooking ?? 0), 0);
+    const tKs = pitchers.reduce((s, p) => s + (p.strikeoutsSwinging ?? 0), 0);
+    const tHR = pitchers.reduce((s, p) => s + (p.homeRuns ?? 0), 0);
+    const tHBP = pitchers.reduce((s, p) => s + (p.hitBatters ?? 0), 0);
+    const tWP = pitchers.reduce((s, p) => s + (p.wildPitches ?? 0), 0);
+    const tBF = pitchers.reduce((s, p) => s + (p.battersFaced ?? 0), 0);
+    const tNP = pitchers.reduce((s, p) => s + (p.pitchesThrown ?? 0), 0);
+    const tBalls = pitchers.reduce((s, p) => s + (p.balls ?? 0), 0);
+    const tStrikes = pitchers.reduce((s, p) => s + (p.strikes ?? 0), 0);
+    const tERA = ipResult.ip > 0 ? ((tER / ipResult.ip) * 9).toFixed(2) : '—';
+    const tWHIP = ipResult.ip > 0 ? ((tH + tBB) / ipResult.ip).toFixed(2) : '—';
+
+    const totalCell = (h: string) => {
+      switch (h) {
+        case 'Dec': return <td key={h} className="py-2.5" />;
+        case 'IP': return <td key={h} className={`text-center font-mono py-2.5 ${groupBorder(h)}`}>{ipResult.display}</td>;
+        case 'H': return <td key={h} className="text-center font-mono py-2.5">{tH}</td>;
+        case 'R': return <td key={h} className="text-center font-mono py-2.5">{tR}</td>;
+        case 'ER': return <td key={h} className="text-center font-mono py-2.5">{tER}</td>;
+        case 'BB': return <td key={h} className="text-center font-mono py-2.5">{tBB}</td>;
+        case 'SO': return <td key={h} className="text-center font-mono py-2.5">{tK}</td>;
+        case 'Kc': return <td key={h} className={`text-center font-mono py-2.5 ${groupBorder(h)}`}>{tKc}</td>;
+        case 'Ks': return <td key={h} className="text-center font-mono py-2.5">{tKs}</td>;
+        case 'HR': return <td key={h} className={`text-center font-mono py-2.5 ${groupBorder(h)}`}>{tHR}</td>;
+        case 'HBP': return <td key={h} className="text-center font-mono py-2.5">{tHBP}</td>;
+        case 'WP': return <td key={h} className="text-center font-mono py-2.5">{tWP}</td>;
+        case 'BF': return <td key={h} className={`text-center font-mono py-2.5 ${groupBorder(h)}`}>{tBF}</td>;
+        case 'NP': return <td key={h} className="text-center font-mono py-2.5">{tNP}</td>;
+        case 'B': return <td key={h} className="text-center font-mono py-2.5">{tBalls}</td>;
+        case 'S': return <td key={h} className="text-center font-mono py-2.5">{tStrikes}</td>;
+        case '%S': return <td key={h} className="text-center font-mono py-2.5">{strikePct(tBalls, tStrikes)}</td>;
+        case 'GSc': return <td key={h} className="py-2.5" />;
+        case 'ERA': return <td key={h} className={`text-center font-mono text-[10px] py-2.5 ${groupBorder(h)}`}>{tERA}</td>;
+        case 'WHIP': return <td key={h} className="text-center font-mono text-[10px] py-2.5">{tWHIP}</td>;
+        default: return null;
+      }
+    };
+
+    const minW = pitchingView === 'core' ? 'min-w-[22rem] sm:min-w-[32rem]' : 'min-w-[920px]';
+
     return (
-      <div className="mb-6">
-        <h4 className="text-xs font-bold uppercase tracking-wider text-gray-600 mb-2">{teamName} — Pitching</h4>
-        <div className="overflow-x-auto">
-          <table className="w-full text-[11px] whitespace-nowrap font-mono">
-            <thead>
-              <tr className="text-gray-500 border-b border-gray-200">
-                <th className="text-left py-1.5 pl-2 min-w-[90px]">Pitcher</th>
-                {['Dec','IP','H','R','ER','BB','SO','Kc','Ks','HR','HBP','WP','BF','NP','B','S','%S','GSc','ERA','WHIP'].map((h) => (
-                  <th key={h} title={getStatAbbreviationMeaning(h) ?? undefined} className={`text-center px-1 ${h === '%S' ? 'w-10' : h === 'ERA' || h === 'WHIP' ? 'w-9' : h === 'BF' || h === 'NP' || h === 'B' || h === 'S' ? 'w-9' : 'w-8'}`}>
-                    {h === 'SO' ? 'K' : h}
+      <div className="mb-8">
+        <h4 className="text-sm font-semibold text-slate-800 mb-3">{teamName}</h4>
+        <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+          <div className="overflow-x-auto overscroll-x-contain">
+            <table className={`${minW} w-full text-[11px] whitespace-nowrap font-mono`}>
+              <thead>
+                <tr className="bg-slate-100 text-slate-600 border-b border-slate-200">
+                  <th className="sticky left-0 z-20 bg-slate-100 text-left py-2.5 pl-3 pr-2 min-w-[7.5rem] text-[10px] font-semibold uppercase tracking-wide text-slate-500 shadow-[4px_0_12px_-4px_rgba(15,23,42,0.12)]">
+                    Pitcher
                   </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {pitchers.map((p, i) => {
-                const dec = p.decision === 'W' ? 'W' : p.decision === 'L' ? 'L' : p.decision === 'S' ? 'S' : '';
-                const era = gameEra(p.earnedRuns ?? 0, p.inningsPitched);
-                const whip = gameWhip(p.hits ?? 0, p.walks ?? 0, p.inningsPitched);
-                return (
-                  <tr key={p.playerId} className={`border-b border-gray-100 ${i % 2 === 0 ? '' : 'bg-gray-50'}`}>
-                    <td className="py-1.5 pl-2 text-gray-900 font-sans font-medium">{p.firstName?.charAt(0)}. {p.lastName}</td>
-                    <td className={`text-center font-semibold ${dec === 'W' ? 'text-emerald-700' : dec === 'L' ? 'text-rose-700' : dec === 'S' ? 'text-gray-800' : 'text-gray-500'}`}>{dec || '—'}</td>
-                    <td className="text-center text-gray-700 font-mono">{p.inningsPitched}</td>
-                    <td className="text-center text-gray-700 font-mono">{p.hits}</td>
-                    <td className="text-center text-gray-700 font-mono">{p.runs}</td>
-                    <td className="text-center text-gray-700 font-mono">{p.earnedRuns}</td>
-                    <td className="text-center text-gray-700 font-mono">{p.walks}</td>
-                    <td className="text-center text-gray-700 font-mono">{p.strikeouts}</td>
-                    <td className="text-center text-gray-600 font-mono">{p.strikeoutsLooking ?? '—'}</td>
-                    <td className="text-center text-gray-600 font-mono">{p.strikeoutsSwinging ?? '—'}</td>
-                    <td className="text-center text-gray-700 font-mono">{p.homeRuns}</td>
-                    <td className="text-center text-gray-700 font-mono">{p.hitBatters ?? '—'}</td>
-                    <td className="text-center text-gray-700 font-mono">{p.wildPitches ?? '—'}</td>
-                    <td className="text-center text-gray-600 font-mono">{p.battersFaced ?? '—'}</td>
-                    <td className="text-center text-gray-600 font-mono">{p.pitchesThrown ?? '—'}</td>
-                    <td className="text-center text-gray-600 font-mono">{p.balls ?? '—'}</td>
-                    <td className="text-center text-gray-600 font-mono">{p.strikes ?? '—'}</td>
-                    <td className="text-center text-gray-600 font-mono">{strikePct(p.balls, p.strikes)}</td>
-                    <td className="text-center text-gray-600 font-mono">{p.gameScore ?? '—'}</td>
-                    <td className="text-center text-gray-700 font-mono text-[10px]">{era}</td>
-                    <td className="text-center text-gray-700 font-mono text-[10px]">{whip}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-            {(() => {
-              const sumIp = (arr: PitchingBoxScore[]) => {
-                let thirds = 0;
-                for (const p of arr) {
-                  const s = String(p.inningsPitched || '0');
-                  const parts = s.split('.');
-                  thirds += parseInt(parts[0] || '0') * 3 + parseInt(parts[1] || '0');
-                }
-                const full = Math.floor(thirds / 3);
-                const rem = thirds % 3;
-                return { display: rem > 0 ? `${full}.${rem}` : `${full}`, ip: thirds / 3 };
-              };
-              const ipResult = sumIp(pitchers);
-              const tH = pitchers.reduce((s, p) => s + (p.hits ?? 0), 0);
-              const tR = pitchers.reduce((s, p) => s + (p.runs ?? 0), 0);
-              const tER = pitchers.reduce((s, p) => s + (p.earnedRuns ?? 0), 0);
-              const tBB = pitchers.reduce((s, p) => s + (p.walks ?? 0), 0);
-              const tK = pitchers.reduce((s, p) => s + (p.strikeouts ?? 0), 0);
-              const tKc = pitchers.reduce((s, p) => s + (p.strikeoutsLooking ?? 0), 0);
-              const tKs = pitchers.reduce((s, p) => s + (p.strikeoutsSwinging ?? 0), 0);
-              const tHR = pitchers.reduce((s, p) => s + (p.homeRuns ?? 0), 0);
-              const tHBP = pitchers.reduce((s, p) => s + (p.hitBatters ?? 0), 0);
-              const tWP = pitchers.reduce((s, p) => s + (p.wildPitches ?? 0), 0);
-              const tBF = pitchers.reduce((s, p) => s + (p.battersFaced ?? 0), 0);
-              const tNP = pitchers.reduce((s, p) => s + (p.pitchesThrown ?? 0), 0);
-              const tBalls = pitchers.reduce((s, p) => s + (p.balls ?? 0), 0);
-              const tStrikes = pitchers.reduce((s, p) => s + (p.strikes ?? 0), 0);
-              const tERA = ipResult.ip > 0 ? ((tER / ipResult.ip) * 9).toFixed(2) : '—';
-              const tWHIP = ipResult.ip > 0 ? ((tH + tBB) / ipResult.ip).toFixed(2) : '—';
-              return (
-                <tfoot>
-                  <tr className="border-t border-gray-200 text-gray-700 font-bold">
-                    <td className="py-1.5 pl-2">Totals</td>
-                    <td></td>
-                    <td className="text-center font-mono">{ipResult.display}</td>
-                    <td className="text-center font-mono">{tH}</td>
-                    <td className="text-center font-mono">{tR}</td>
-                    <td className="text-center font-mono">{tER}</td>
-                    <td className="text-center font-mono">{tBB}</td>
-                    <td className="text-center font-mono">{tK}</td>
-                    <td className="text-center font-mono">{tKc}</td>
-                    <td className="text-center font-mono">{tKs}</td>
-                    <td className="text-center font-mono">{tHR}</td>
-                    <td className="text-center font-mono">{tHBP}</td>
-                    <td className="text-center font-mono">{tWP}</td>
-                    <td className="text-center font-mono">{tBF}</td>
-                    <td className="text-center font-mono">{tNP}</td>
-                    <td className="text-center font-mono">{tBalls}</td>
-                    <td className="text-center font-mono">{tStrikes}</td>
-                    <td className="text-center font-mono">{strikePct(tBalls, tStrikes)}</td>
-                    <td></td>
-                    <td className="text-center font-mono text-[10px]">{tERA}</td>
-                    <td className="text-center font-mono text-[10px]">{tWHIP}</td>
-                  </tr>
-                </tfoot>
-              );
-            })()}
-          </table>
+                  {pitchHeaders.map((h) => (
+                    <th
+                      key={h}
+                      title={getStatAbbreviationMeaning(h) ?? undefined}
+                      className={`text-center py-2.5 px-1.5 text-[10px] font-semibold uppercase tracking-wide ${groupBorder(h)} ${thWidth(h)}`}
+                    >
+                      {h === 'SO' ? 'K' : h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {pitchers.map((p, i) => {
+                  const rowBg = i % 2 === 0 ? 'bg-white' : 'bg-slate-50/90';
+                  return (
+                    <tr key={p.playerId} className={`border-b border-slate-100 last:border-0 ${rowBg}`}>
+                      <td className={`sticky left-0 z-10 py-2.5 pl-3 pr-2 text-slate-900 font-sans font-medium shadow-[4px_0_12px_-4px_rgba(15,23,42,0.08)] ${rowBg}`}>
+                        {p.firstName?.charAt(0)}. {p.lastName}
+                      </td>
+                      {pitchHeaders.map((h) => pitchCell(p, h))}
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot>
+                <tr className="border-t-2 border-slate-200 bg-slate-100 text-slate-900 font-semibold">
+                  <td className="sticky left-0 z-10 bg-slate-100 py-2.5 pl-3 pr-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 shadow-[4px_0_12px_-4px_rgba(15,23,42,0.12)]">
+                    Team totals
+                  </td>
+                  {pitchHeaders.map((h) => totalCell(h))}
+                </tr>
+              </tfoot>
+            </table>
+          </div>
         </div>
       </div>
     );
   };
 
   return (
-    <div className="min-h-screen bg-[#f3f4f6]">
+    <div className="min-h-screen bg-slate-100">
       {/* Header */}
       <div className="bg-white border-b border-[#d1d5db]">
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center gap-4">
@@ -1139,7 +1248,7 @@ export function LiveGameClient({
               </span>
             )}
             {status === 'final' && (
-              <span className="px-2 py-0.5 rounded-full bg-[#f3f4f6] text-[#6b7280] text-[10px] font-bold uppercase border border-[#d1d5db]">Final</span>
+              <span className="rounded-full border border-slate-200 bg-slate-100 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-600">Final</span>
             )}
             {connected && status === 'live' && (
               <span className="text-[10px] text-green-400">Connected</span>
@@ -1156,95 +1265,97 @@ export function LiveGameClient({
 
       <div className="max-w-6xl mx-auto px-4 py-4 space-y-4">
         {/* Scoreboard */}
-        <div className="relative overflow-hidden rounded-2xl border border-slate-700/70 bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 shadow-lg ring-1 ring-white/5">
-          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_80%_50%_at_50%_-20%,rgba(255,255,255,0.08),transparent)]" />
-          <div className="relative px-4 py-5 sm:px-6">
-            <div className="mx-auto grid max-w-3xl grid-cols-[1fr_auto_1fr] items-center gap-2 sm:gap-4">
-              {/* Away */}
-              <div className="flex min-w-0 items-center justify-end gap-2 sm:gap-3">
-                <div className="min-w-0 text-right">
-                  <div className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">Away</div>
-                  <div className="truncate text-sm font-bold leading-tight text-white sm:text-base">{game.awayTeamName}</div>
+        <div className="relative overflow-hidden rounded-2xl border border-slate-700/60 bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 shadow-lg ring-1 ring-white/5">
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_70%_45%_at_50%_-15%,rgba(255,255,255,0.07),transparent)]" />
+          <div className="relative px-4 py-4 sm:px-5">
+            <div className="flex flex-col gap-4">
+              {/* Main scores row */}
+              <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 sm:gap-5">
+                {/* Away */}
+                <div className="flex min-w-0 items-center justify-end gap-2 sm:gap-3">
+                  <div className="min-w-0 text-right">
+                    <div className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">Away</div>
+                    <div className="truncate text-sm font-bold leading-tight text-white sm:text-[15px]">{game.awayTeamName}</div>
+                  </div>
+                  <div className="shrink-0 text-4xl font-bold tabular-nums text-white sm:text-5xl leading-none">{displayScore.away}</div>
                 </div>
-                <div className="shrink-0 text-3xl font-bold tabular-nums text-white sm:text-4xl">{displayScore.away}</div>
+
+                {/* Inning / status + live widgets */}
+                <div className="flex min-w-[5.5rem] flex-col items-center justify-center gap-1.5 px-1">
+                  {status === 'live' ? (
+                    <>
+                      <div className="text-lg font-bold tabular-nums text-emerald-400 sm:text-xl">
+                        {displayHalf === 'top' ? '▲' : '▼'} {displayInning}
+                      </div>
+                      <svg viewBox="0 0 50 50" className="h-9 w-9 sm:h-10 sm:w-10" aria-hidden>
+                        <rect x="19" y="2" width="12" height="12" rx="1.5" transform="rotate(45 25 8)"
+                          fill={displayBases.second ? '#10b981' : '#1e293b'} stroke="#64748b" strokeWidth="1" />
+                        <rect x="35" y="18" width="12" height="12" rx="1.5" transform="rotate(45 41 24)"
+                          fill={displayBases.first ? '#10b981' : '#1e293b'} stroke="#64748b" strokeWidth="1" />
+                        <rect x="3" y="18" width="12" height="12" rx="1.5" transform="rotate(45 9 24)"
+                          fill={displayBases.third ? '#10b981' : '#1e293b'} stroke="#64748b" strokeWidth="1" />
+                      </svg>
+                      <div className="flex gap-1.5" aria-label={`${displayOuts} out${displayOuts === 1 ? '' : 's'}`}>
+                        {[0, 1, 2].map(i => (
+                          <div
+                            key={i}
+                            className={`h-2.5 w-2.5 rounded-full border-2 ${
+                              i < displayOuts ? 'border-amber-400 bg-amber-400' : 'border-slate-500 bg-slate-800'
+                            }`}
+                          />
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    <span className="inline-flex items-center rounded-full bg-white/12 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-100 ring-1 ring-white/20">
+                      {status}
+                    </span>
+                  )}
+                </div>
+
+                {/* Home */}
+                <div className="flex min-w-0 items-center justify-start gap-2 sm:gap-3">
+                  <div className="shrink-0 text-4xl font-bold tabular-nums text-white sm:text-5xl leading-none">{displayScore.home}</div>
+                  <div className="min-w-0 text-left">
+                    <div className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">Home</div>
+                    <div className="truncate text-sm font-bold leading-tight text-white sm:text-[15px]">{game.homeTeamName}</div>
+                  </div>
+                </div>
               </div>
 
-              {/* Inning / status + live widgets */}
-              <div className="flex flex-col items-center gap-2 px-1">
-                {status === 'live' ? (
-                  <>
-                    <div className="text-xl font-bold tabular-nums text-emerald-400">
-                      {displayHalf === 'top' ? '▲' : '▼'} {displayInning}
-                    </div>
-                    <svg viewBox="0 0 50 50" className="h-10 w-10" aria-hidden>
-                      <rect x="19" y="2" width="12" height="12" rx="1.5" transform="rotate(45 25 8)"
-                        fill={displayBases.second ? '#10b981' : '#1e293b'} stroke="#64748b" strokeWidth="1" />
-                      <rect x="35" y="18" width="12" height="12" rx="1.5" transform="rotate(45 41 24)"
-                        fill={displayBases.first ? '#10b981' : '#1e293b'} stroke="#64748b" strokeWidth="1" />
-                      <rect x="3" y="18" width="12" height="12" rx="1.5" transform="rotate(45 9 24)"
-                        fill={displayBases.third ? '#10b981' : '#1e293b'} stroke="#64748b" strokeWidth="1" />
-                    </svg>
-                    <div className="flex gap-1.5" aria-label={`${displayOuts} out${displayOuts === 1 ? '' : 's'}`}>
-                      {[0, 1, 2].map(i => (
-                        <div
-                          key={i}
-                          className={`h-2.5 w-2.5 rounded-full border-2 ${
-                            i < displayOuts ? 'border-amber-400 bg-amber-400' : 'border-slate-500 bg-slate-800'
-                          }`}
-                        />
+              {/* Line score */}
+              <div className="overflow-x-auto rounded-xl border border-white/12 bg-black/40 px-1 py-2 sm:px-3">
+                <table className="w-full min-w-[20rem] table-fixed text-xs font-mono sm:text-sm">
+                  <thead>
+                    <tr className="text-slate-400">
+                      <th className="w-[40%] min-w-[0] py-1.5 pl-2 pr-1 text-left align-bottom font-sans text-[10px] font-semibold uppercase tracking-wide sm:w-[36%]">Team</th>
+                      {Array.from({ length: maxInnings }, (_, i) => (
+                        <th key={i} className="w-[2.25rem] px-0 py-1.5 text-center font-normal tabular-nums sm:w-10">{i + 1}</th>
                       ))}
-                    </div>
-                  </>
-                ) : (
-                  <span className="inline-flex items-center rounded-full bg-white/10 px-4 py-1.5 text-[11px] font-bold uppercase tracking-[0.2em] text-slate-100 ring-1 ring-white/15">
-                    {status}
-                  </span>
-                )}
-              </div>
-
-              {/* Home */}
-              <div className="flex min-w-0 items-center justify-start gap-2 sm:gap-3">
-                <div className="shrink-0 text-3xl font-bold tabular-nums text-white sm:text-4xl">{displayScore.home}</div>
-                <div className="min-w-0 text-left">
-                  <div className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">Home</div>
-                  <div className="truncate text-sm font-bold leading-tight text-white sm:text-base">{game.homeTeamName}</div>
-                </div>
-              </div>
-            </div>
-
-          {/* Line score */}
-          <div className="relative mt-5 overflow-x-auto rounded-xl border border-white/10 bg-black/35 p-3 backdrop-blur-[1px]">
-            <table className="mx-auto w-full min-w-[min(100%,28rem)] max-w-2xl text-[11px] font-mono">
-              <thead>
-                <tr className="text-gray-400">
-                  <th className="text-left px-2 py-1 align-bottom font-sans font-semibold text-[10px] uppercase tracking-wide">Team</th>
-                  {Array.from({ length: maxInnings }, (_, i) => (
-                    <th key={i} className="text-center w-6 px-0.5">{i + 1}</th>
-                  ))}
-                  <th className="text-center w-7 border-l border-white/20 font-bold">R</th>
-                  <th className="text-center w-7 font-bold">H</th>
-                  <th className="text-center w-7 font-bold">E</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td className="text-left align-top px-2 py-1.5 font-sans font-semibold text-gray-100 leading-snug break-words max-w-[14rem]">{game.awayTeamName}</td>
+                      <th className="w-8 border-l border-white/10 py-1.5 text-center font-bold text-slate-200 sm:w-9">R</th>
+                      <th className="w-8 py-1.5 text-center font-bold text-slate-200 sm:w-9">H</th>
+                      <th className="w-8 py-1.5 text-center font-bold text-slate-200 sm:w-9">E</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr className="border-t border-white/[0.06] bg-white/[0.02]">
+                      <td className="text-left align-middle px-2 py-2 font-sans text-[11px] font-semibold leading-snug text-slate-100 sm:text-xs sm:leading-tight">{game.awayTeamName}</td>
                   {Array.from({ length: maxInnings }, (_, i) => {
                     const hasVal = i < awayLineScore.length;
                     const isCurrent = status === 'live' && i + 1 === displayInning && displayHalf === 'top';
                     const isFuture = i + 1 > Math.max(awayLineScore.length, homeLineScore.length);
                     return (
-                      <td key={i} className={`text-center tabular-nums ${isCurrent ? 'text-live font-bold' : hasVal ? 'text-gray-200' : 'text-gray-500'}`}>
+                      <td key={i} className={`py-2 text-center tabular-nums ${isCurrent ? 'text-live font-bold' : hasVal ? 'text-slate-200' : 'text-slate-500'}`}>
                         {hasVal ? awayLineScore[i] : (isCurrent ? '•' : isFuture ? '' : '')}
                       </td>
                     );
                   })}
-                  <td className="text-center font-bold text-white border-l border-white/25">{displayScore.away}</td>
-                  <td className="text-center text-gray-200 tabular-nums">{awayBatting.reduce((s, b) => s + (b.hits || 0), 0) || awayLineup.reduce((s, p) => s + (liveBattingMap[p.playerId]?.h ?? 0), 0)}</td>
-                  <td className="text-center text-gray-200 tabular-nums">{errorCounts.away}</td>
+                  <td className="border-l border-white/10 py-2 text-center text-base font-bold tabular-nums text-white">{displayScore.away}</td>
+                  <td className="py-2 text-center tabular-nums text-slate-200">{awayBatting.reduce((s, b) => s + (b.hits || 0), 0) || awayLineup.reduce((s, p) => s + (liveBattingMap[p.playerId]?.h ?? 0), 0)}</td>
+                  <td className="py-2 text-center tabular-nums text-slate-200">{errorCounts.away}</td>
                 </tr>
-                <tr>
-                  <td className="text-left align-top px-2 py-1.5 font-sans font-semibold text-gray-100 leading-snug break-words max-w-[14rem]">{game.homeTeamName}</td>
+                <tr className="border-t border-white/[0.06] bg-white/[0.02]">
+                  <td className="text-left align-middle px-2 py-2 font-sans text-[11px] font-semibold leading-snug text-slate-100 sm:text-xs sm:leading-tight">{game.homeTeamName}</td>
                   {Array.from({ length: maxInnings }, (_, i) => {
                     const hasVal = i < homeLineScore.length;
                     const isCurrent = status === 'live' && i + 1 === displayInning && displayHalf === 'bot';
@@ -1252,52 +1363,63 @@ export function LiveGameClient({
                     const isTopOfThis = status === 'live' && i + 1 === displayInning && displayHalf === 'top';
                     const isFuture = i + 1 > Math.max(awayLineScore.length, homeLineScore.length);
                     return (
-                      <td key={i} className={`text-center tabular-nums ${isCurrent ? 'text-live font-bold' : hasVal ? 'text-gray-200' : 'text-gray-500'}`}>
+                      <td key={i} className={`py-2 text-center tabular-nums ${isCurrent ? 'text-live font-bold' : hasVal ? 'text-slate-200' : 'text-slate-500'}`}>
                         {hasVal ? homeLineScore[i] : (isCurrent ? '•' : (isTopOfThis || isFuture) ? '' : '')}
                       </td>
                     );
                   })}
-                  <td className="text-center font-bold text-white border-l border-white/25">{displayScore.home}</td>
-                  <td className="text-center text-gray-200 tabular-nums">{homeBatting.reduce((s, b) => s + (b.hits || 0), 0) || homeLineup.reduce((s, p) => s + (liveBattingMap[p.playerId]?.h ?? 0), 0)}</td>
-                  <td className="text-center text-gray-200 tabular-nums">{errorCounts.home}</td>
+                  <td className="border-l border-white/10 py-2 text-center text-base font-bold tabular-nums text-white">{displayScore.home}</td>
+                  <td className="py-2 text-center tabular-nums text-slate-200">{homeBatting.reduce((s, b) => s + (b.hits || 0), 0) || homeLineup.reduce((s, p) => s + (liveBattingMap[p.playerId]?.h ?? 0), 0)}</td>
+                  <td className="py-2 text-center tabular-nums text-slate-200">{errorCounts.home}</td>
                 </tr>
               </tbody>
             </table>
-          </div>
+              </div>
+            </div>
           </div>
         </div>
 
         {/* Tab bar */}
-        <div className="flex gap-1 bg-white rounded-lg border border-[#d1d5db] p-1">
+        <div className="flex gap-1 rounded-xl bg-slate-200/70 p-1 ring-1 ring-slate-300/60">
           {([
             { key: 'plays' as Tab, label: 'Play-by-Play' },
             { key: 'boxscore' as Tab, label: 'Box Score' },
             { key: 'pitching' as Tab, label: 'Pitching' },
           ]).map(t => (
-            <button key={t.key} onClick={() => setTab(t.key)}
-              className={`flex-1 py-2 text-xs font-bold uppercase rounded transition-colors ${tab === t.key ? 'bg-[#e5e7eb] text-[#111827]' : 'text-[#6b7280] hover:text-[#111827]'}`}>
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => setTab(t.key)}
+              className={`flex-1 rounded-lg py-2.5 text-[11px] font-bold uppercase tracking-wide transition-all sm:text-xs ${
+                tab === t.key
+                  ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200/80'
+                  : 'text-slate-600 hover:bg-white/50 hover:text-slate-900'
+              }`}
+            >
               {t.label}
             </button>
           ))}
         </div>
 
         {/* Tab content */}
-        <div className="bg-white rounded-xl border border-[#d1d5db] p-4">
+        <div className="rounded-xl border border-slate-200/90 bg-white p-4 shadow-sm sm:p-5">
           {/* PLAY-BY-PLAY */}
           {tab === 'plays' && (
             <div>
               <div className="flex items-center justify-between mb-3">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500">Play-by-Play</h3>
-                <div className="flex items-center gap-1 bg-gray-100 border border-gray-200 rounded-md p-0.5">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">Play-by-Play</h3>
+                <div className="flex items-center gap-0.5 rounded-lg bg-slate-100/90 p-0.5 ring-1 ring-slate-200/80">
                   <button
+                    type="button"
                     onClick={() => setPlayMode('compact')}
-                    className={`px-2 py-1 text-[10px] uppercase font-bold rounded ${playMode === 'compact' ? 'bg-gray-200 text-gray-900' : 'text-gray-500 hover:text-gray-800'}`}
+                    className={`rounded-md px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${playMode === 'compact' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
                   >
                     Compact
                   </button>
                   <button
+                    type="button"
                     onClick={() => setPlayMode('expanded')}
-                    className={`px-2 py-1 text-[10px] uppercase font-bold rounded ${playMode === 'expanded' ? 'bg-gray-200 text-gray-900' : 'text-gray-500 hover:text-gray-800'}`}
+                    className={`rounded-md px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${playMode === 'expanded' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
                   >
                     Expanded
                   </button>
@@ -1489,11 +1611,11 @@ export function LiveGameClient({
           {/* BOX SCORE */}
           {tab === 'boxscore' && (
             <div>
-              <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-3">Box Score</h3>
-              <div className="text-[9px] text-gray-400 mb-4 flex gap-3">
-                <span>All counts from this game</span>
-                <span className="text-cyan-800">AVG/OPS = this game only</span>
-              </div>
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3">Box Score</h3>
+              <p className="mb-4 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-[11px] leading-relaxed text-slate-500">
+                <span>All counts from this game.</span>
+                <span className="font-medium text-slate-600">AVG / OPS = this game only (not season).</span>
+              </p>
               {renderBattingTable(game.awayTeamName, awayLineup, awayBatting)}
               {renderBattingTable(game.homeTeamName, homeLineup, homeBatting)}
             </div>
@@ -1502,11 +1624,32 @@ export function LiveGameClient({
           {/* PITCHING */}
           {tab === 'pitching' && (
             <div>
-              <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-3">Pitching</h3>
-              <div className="text-[9px] text-gray-400 mb-4 flex gap-3">
-                <span>All counts from this game</span>
-                <span className="text-amber-800">ERA / WHIP = this game only</span>
+              <div className="mb-3 flex flex-col gap-3 sm:mb-4 sm:flex-row sm:items-center sm:justify-between">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">Pitching</h3>
+                <div className="flex items-center gap-0.5 self-start rounded-lg bg-slate-100/90 p-0.5 ring-1 ring-slate-200/80 sm:self-auto">
+                  <button
+                    type="button"
+                    onClick={() => setPitchingView('core')}
+                    className={`rounded-md px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide ${pitchingView === 'core' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+                  >
+                    Core stats
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPitchingView('all')}
+                    className={`rounded-md px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide ${pitchingView === 'all' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+                  >
+                    All columns
+                  </button>
+                </div>
               </div>
+              <p className="mb-5 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-[11px] leading-relaxed text-slate-500">
+                <span>All counts from this game.</span>
+                <span className="font-medium text-slate-600">ERA / WHIP = this game only (not season).</span>
+                {pitchingView === 'core' && (
+                  <span className="text-slate-500">Core view: decision, line, runs, walks, strikeouts, HR, ERA, WHIP.</span>
+                )}
+              </p>
               {renderPitchingTable(game.awayTeamName, awayPitching)}
               {renderPitchingTable(game.homeTeamName, homePitching)}
               {awayPitching.length === 0 && homePitching.length === 0 && (

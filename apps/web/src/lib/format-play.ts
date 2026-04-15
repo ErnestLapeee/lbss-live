@@ -167,6 +167,20 @@ export function formatPlayByPlay(
   let title = '';
   const chips: string[] = [];
 
+  if (play.eventType === 'adjust_score') {
+    let detail: { homeDelta?: number; awayDelta?: number } = {};
+    try {
+      detail = JSON.parse(play.eventDetail || '{}') as typeof detail;
+    } catch { /* ignore */ }
+    const h = Number(detail.homeDelta) || 0;
+    const a = Number(detail.awayDelta) || 0;
+    const parts: string[] = [];
+    if (a !== 0) parts.push(`${a > 0 ? '+' : ''}${a} away`);
+    if (h !== 0) parts.push(`${h > 0 ? '+' : ''}${h} home`);
+    title = parts.length > 0 ? `Score adjustment (${parts.join(', ')})` : 'Score adjustment';
+    return { title, subtitle: '', chips: [] };
+  }
+
   // ── Base state after play (from runner IDs on event) ──
   const basesAfter = basesToken(
     (play.runnerFirstId ?? play.runnerFirstName) ?? null,
