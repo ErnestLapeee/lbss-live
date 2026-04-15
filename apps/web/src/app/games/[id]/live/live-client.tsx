@@ -37,34 +37,6 @@ const POS_LABELS: Record<number, string> = {
   1: 'P', 2: 'C', 3: '1B', 4: '2B', 5: '3B', 6: 'SS', 7: 'LF', 8: 'CF', 9: 'RF', 10: 'DH',
 };
 
-const EVENT_LABELS: Record<string, string> = {
-  pitch: 'Pitch',
-  single: 'Single', bunt_single: 'Bunt Single', double: 'Double', triple: 'Triple',
-  home_run: 'Home Run', inside_park_hr: 'Inside-the-park HR',
-  ground_rule_double: 'Ground Rule Double',
-  walk: 'Walk', intentional_walk: 'Intentional Walk', hit_by_pitch: 'Hit By Pitch',
-  strikeout: 'Strikeout', strikeout_swinging: 'Strikeout Swinging', strikeout_looking: 'Strikeout Looking',
-  ground_out: 'Ground Out', fly_out: 'Fly Out', line_out: 'Line Out', pop_out: 'Pop Out',
-  bunt_out: 'Bunt Out', foul_out: 'Foul Out',
-  sacrifice_fly: 'Sacrifice Fly', sacrifice_bunt: 'Sacrifice Bunt',
-  fielders_choice: "Fielder's Choice",
-  double_play: 'Double Play', triple_play: 'Triple Play',
-  error: 'Error', sac_bunt_error: 'Error on Sac Bunt', sac_fly_error: 'Error on Sac Fly',
-  dropped_third_strike: 'Dropped 3rd Strike',
-  dropped_third_strike_out: 'Dropped 3rd Strike (Out)',
-  wild_pitch_third_strike: 'Wild Pitch 3rd Strike',
-  infield_fly: 'Infield Fly',
-  caught_foul_tip: 'Caught Foul Tip',
-  bunt_foul: 'Bunt Foul (3rd Strike)',
-  catcher_obstruction: "Catcher's Obstruction",
-  stolen_base: 'Stolen Base', caught_stealing: 'Caught Stealing',
-  picked_off: 'Picked Off', wild_pitch: 'Wild Pitch', passed_ball: 'Passed Ball',
-  balk: 'Balk', defensive_indifference: 'Defensive Indifference',
-  advance_on_error: 'Error (Runner)',
-  end_half_inning: 'End of Inning',
-  adjust_score: 'Score adjustment',
-};
-
 const RUNNER_EVENT_TYPES = new Set([
   'stolen_base', 'caught_stealing', 'picked_off', 'wild_pitch', 'passed_ball',
   'balk', 'advance', 'advance_on_error', 'defensive_indifference',
@@ -638,13 +610,6 @@ export function LiveGameClient({
     );
   }
 
-  const formatEventLine = (evt: GameEvent): string => {
-    const label = EVENT_LABELS[evt.eventType] || evt.eventType.replace(/_/g, ' ');
-    const name = evt.batterName || 'Unknown';
-    const fs = evt.fieldingSequence ? ` (${evt.fieldingSequence})` : '';
-    return `${name} — ${label}${fs}`;
-  };
-
   const fmtAvg = (h: number, ab: number) => ab > 0 ? (h / ab).toFixed(3) : '—';
   const fmtOps = (h: number, ab: number, bb: number, hbp: number, sf: number, tb: number) => {
     const obpDenom = ab + bb + hbp + sf;
@@ -665,7 +630,7 @@ export function LiveGameClient({
       return { tag: 'HIT', cls: 'text-emerald-700' };
     }
     if (['walk', 'intentional_walk', 'hit_by_pitch'].includes(t)) {
-      return { tag: 'PASS', cls: 'text-emerald-700' };
+      return { tag: 'BB', cls: 'text-emerald-700' };
     }
     if (['error', 'sac_bunt_error', 'sac_fly_error', 'advance_on_error'].includes(t)) {
       return { tag: 'ERROR', cls: 'text-amber-700' };
@@ -893,9 +858,9 @@ export function LiveGameClient({
   };
 
   const baseStateFromEvent = (evt?: GameEvent | null) => ({
-    first: Boolean(evt?.runnerFirstId),
-    second: Boolean(evt?.runnerSecondId),
-    third: Boolean(evt?.runnerThirdId),
+    first: Boolean(evt?.runnerFirstId ?? evt?.runnerFirstName),
+    second: Boolean(evt?.runnerSecondId ?? evt?.runnerSecondName),
+    third: Boolean(evt?.runnerThirdId ?? evt?.runnerThirdName),
   });
 
   const pitchSymbol = (evt: GameEvent): 'B' | 'S' | 'F' | 'X' | 'P' => {
@@ -1610,7 +1575,13 @@ export function LiveGameClient({
                                       )}
                                     </div>
                                     <div className="text-[14px] leading-snug text-gray-950 font-semibold">
-                                      {formatted ? formatted.title : ab.pitches.length > 0 ? `${ab.batterName} at bat` : stateEvt ? formatEventLine(stateEvt) : `${ab.batterName} play`}
+                                      {formatted
+                                        ? formatted.title
+                                        : ab.pitches.length > 0
+                                          ? `${ab.batterName} at bat`
+                                          : stateEvt
+                                            ? formatPlayByPlay(stateEvt).title
+                                            : `${ab.batterName} play`}
                                     </div>
                                     <div className="text-[10px] text-gray-800 mt-1">
                                       {formatted?.subtitle ? `${formatted.subtitle} • ${contextLine}` : contextLine}
@@ -1663,11 +1634,11 @@ export function LiveGameClient({
                                   </div>
                                 )}
 
-                                {playMode === 'compact' && runnerSummary && (
+                                {playMode === 'compact' && runnerSummary && ab.betweenEvents.length === 0 && (
                                   <div className="text-[11px] text-gray-600 mt-1.5">{runnerSummary}</div>
                                 )}
 
-                                {playMode === 'compact' && ab.betweenEvents.length > 0 && (
+                                {ab.betweenEvents.length > 0 && (
                                   <div className="mt-1.5 space-y-1">
                                     {ab.betweenEvents.map((re, rei) => {
                                       const reFormatted = formatPlayByPlay(re);
