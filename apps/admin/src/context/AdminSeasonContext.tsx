@@ -11,6 +11,24 @@ import { apiGet } from '@/lib/api';
 
 const STORAGE_KEY = 'lbss-admin-season-id';
 
+const RETRY_DELAYS_MS = [0, 450, 1200];
+
+async function fetchAdminSeasonsWithRetry(): Promise<AdminSeasonRow[]> {
+  let lastErr: unknown;
+  for (let i = 0; i < RETRY_DELAYS_MS.length; i++) {
+    if (RETRY_DELAYS_MS[i]! > 0) {
+      await new Promise((r) => setTimeout(r, RETRY_DELAYS_MS[i]));
+    }
+    try {
+      const data = await apiGet<AdminSeasonRow[]>('/admin/seasons');
+      return Array.isArray(data) ? data : [];
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr;
+}
+
 export interface AdminSeasonRow {
   id: number;
   year: number;
@@ -76,8 +94,7 @@ export function AdminSeasonProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const reloadSeasons = useCallback(async () => {
-    const data = await apiGet<AdminSeasonRow[]>('/admin/seasons');
-    const list = Array.isArray(data) ? data : [];
+    const list = await fetchAdminSeasonsWithRetry();
     applySeasonList(list);
   }, [applySeasonList]);
 
@@ -86,9 +103,8 @@ export function AdminSeasonProvider({ children }: { children: ReactNode }) {
     (async () => {
       setLoading(true);
       try {
-        const data = await apiGet<AdminSeasonRow[]>('/admin/seasons');
+        const list = await fetchAdminSeasonsWithRetry();
         if (cancelled) return;
-        const list = Array.isArray(data) ? data : [];
         applySeasonList(list);
       } catch {
         if (!cancelled) setSeasons([]);

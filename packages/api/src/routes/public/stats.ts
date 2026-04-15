@@ -17,6 +17,7 @@ import {
 import { eq, desc, asc, and, sql, gte, ne } from 'drizzle-orm';
 import { rowsFromExecute } from '../../lib/pg-result.js';
 import { seasonWithPlayoffDefaults } from '../../lib/season-playoff-response.js';
+import { getSeasonsHavePlayoffColumnsCached } from '../../lib/seasons-playoff-columns-cache.js';
 import { parseIncludePlayoffsAllTime, sqlAllTimeSeasonWhere } from '../../lib/all-time-stats.js';
 
 const ALL_TIME = 'all';
@@ -1399,22 +1400,7 @@ export async function statsRoutes(app: FastifyInstance) {
   // GET /seasons - all seasons for the season selector
   app.get('/seasons', async (_request, reply) => {
     try {
-      // Add playoff fields when available (older DBs may not have these columns).
-      const hasPoCols = await (async () => {
-        try {
-          const rows = await db.execute(sql`
-            select 1
-            from information_schema.columns
-            where table_schema = 'public'
-              and table_name = 'seasons'
-              and column_name in ('has_playoffs', 'regular_season_games_per_team', 'playoff_settings')
-          `);
-          const list = rowsFromExecute<Record<string, unknown>>(rows);
-          return list.length >= 3;
-        } catch {
-          return false;
-        }
-      })();
+      const hasPoCols = await getSeasonsHavePlayoffColumnsCached();
 
       const result = await db
         .select({

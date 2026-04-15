@@ -16,31 +16,15 @@ import {
   seasons,
   standings,
 } from '../../db/schema/index.js';
-import { desc, eq, inArray, ne, sql } from 'drizzle-orm';
-import { rowsFromExecute } from '../../lib/pg-result.js';
+import { desc, eq, inArray, ne } from 'drizzle-orm';
 import { seasonWithPlayoffDefaults } from '../../lib/season-playoff-response.js';
-
-async function seasonsHavePlayoffColumns(): Promise<boolean> {
-  try {
-    const rows = await db.execute(sql`
-      select column_name
-      from information_schema.columns
-      where table_schema = 'public'
-        and table_name = 'seasons'
-        and column_name in ('has_playoffs', 'regular_season_games_per_team', 'playoff_settings')
-    `);
-    const list = rowsFromExecute<Record<string, unknown>>(rows);
-    return list.length >= 3;
-  } catch {
-    return false;
-  }
-}
+import { getSeasonsHavePlayoffColumnsCached } from '../../lib/seasons-playoff-columns-cache.js';
 
 export async function adminSeasonsRoutes(app: FastifyInstance) {
   // GET / - list all seasons
   app.get('/', async (request, reply) => {
     try {
-      const hasPoCols = await seasonsHavePlayoffColumns();
+      const hasPoCols = await getSeasonsHavePlayoffColumnsCached();
       const result = await db
         .select({
           id: seasons.id,
@@ -84,7 +68,7 @@ export async function adminSeasonsRoutes(app: FastifyInstance) {
         return reply.status(400).send({ message: 'Invalid season id' });
       }
 
-      const hasPoCols = await seasonsHavePlayoffColumns();
+      const hasPoCols = await getSeasonsHavePlayoffColumnsCached();
       const [season] = await db
         .select({
           id: seasons.id,
@@ -149,7 +133,7 @@ export async function adminSeasonsRoutes(app: FastifyInstance) {
         return reply.status(400).send({ message: 'year and name required' });
       }
 
-      const hasPoCols = await seasonsHavePlayoffColumns();
+      const hasPoCols = await getSeasonsHavePlayoffColumnsCached();
 
       const [season] = await db.transaction(async (tx) => {
         if (isActive) {
@@ -213,7 +197,7 @@ export async function adminSeasonsRoutes(app: FastifyInstance) {
         seasonKind, parentSeasonId,
       } = request.body ?? {};
 
-      const hasPoCols = await seasonsHavePlayoffColumns();
+      const hasPoCols = await getSeasonsHavePlayoffColumnsCached();
 
       const [season] = await db.transaction(async (tx) => {
         if (isActive === true) {
