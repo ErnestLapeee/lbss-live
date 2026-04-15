@@ -10,6 +10,9 @@ interface GameEvent { id: number; eventNumber: number; eventType: string; batter
 interface GameData { id: number; status: string; homeTeamId: number; awayTeamId: number; homeTeamName: string; awayTeamName: string; isFinalized: boolean }
 
 function formatScoringMiniPbpLine(evt: GameEvent): string {
+  if (String(evt.eventDetail || '').toLowerCase() === 'automatic_out_empty_slot') {
+    return 'Automatic out (empty lineup slot)';
+  }
   if (evt.eventType === 'adjust_score') {
     try {
       const d = JSON.parse(evt.eventDetail || '{}') as { homeDelta?: number; awayDelta?: number };
@@ -494,8 +497,6 @@ export function LiveScoringPage() {
 
   const finishHitLocation = () => { if (selectedEvent) checkRunners(selectedEvent); };
 
-  const [batterAdvanceDest, setBatterAdvanceDest] = useState<'first' | 'second' | 'third' | 'home'>('first');
-
   const checkRunners = (eventType: string) => {
     if (!gameState) return;
     const hasRunners = gameState.bases.first || gameState.bases.second || gameState.bases.third;
@@ -516,7 +517,7 @@ export function LiveScoringPage() {
     if (!hasRunners) {
       // Special case: ROE can include additional batter advance on the same error.
       if (ERROR_EVENTS.has(eventType)) {
-        setBatterAdvanceDest('first');
+        setRunnerQuestions([]);
         setStep('batter_advance');
         return;
       }
@@ -557,6 +558,9 @@ export function LiveScoringPage() {
       setRunnerSafeDest(null);
       if (betweenPitchEvent) {
         submitBetweenPitchPlay(betweenPitchEvent, updated);
+      } else if (selectedEvent && ERROR_EVENTS.has(selectedEvent)) {
+        setRunnerQuestions(updated);
+        setStep('batter_advance');
       } else {
         submitPlay(selectedEvent!, updated, fieldingPositions);
       }
@@ -863,7 +867,16 @@ export function LiveScoringPage() {
           }
         }
         if (!isOut) {
-          if (['single','bunt_single','error','fielders_choice','dropped_third_strike','wild_pitch_third_strike','sac_bunt_error','sac_fly_error','catcher_obstruction'].includes(eventType)) {
+          if (batterDestOverride && ERROR_EVENTS.has(eventType)) {
+            if (batterDestOverride === 'first') runnerFirstId = currentBatter.playerId;
+            else if (batterDestOverride === 'second') runnerSecondId = currentBatter.playerId;
+            else if (batterDestOverride === 'third') runnerThirdId = currentBatter.playerId;
+            else {
+              runnersScored.push(currentBatter.playerId);
+              runnerScoredReasons.push('advance_on_error');
+              runsScored++;
+            }
+          } else if (['single','bunt_single','error','fielders_choice','dropped_third_strike','wild_pitch_third_strike','sac_bunt_error','sac_fly_error','catcher_obstruction'].includes(eventType)) {
             if (!runnerFirstId) runnerFirstId = currentBatter.playerId;
             else if (!runnerSecondId) runnerSecondId = currentBatter.playerId;
             else runnerThirdId = currentBatter.playerId;
@@ -931,7 +944,14 @@ export function LiveScoringPage() {
         }
       }
       const runnerSuffix = runnerParts.length > 0 ? `. ${runnerParts.join(', ')}` : '';
-      const detail = `${currentBatter.firstName} ${currentBatter.lastName}: ${eventType.replace(/_/g, ' ')}${fieldingSequence ? ` (${isErrorPlay ? 'E' : ''}${fieldingSequence})` : ''}${runnerSuffix}`;
+      let batterAdvanceSuffix = '';
+      if (batterDestOverride && ERROR_EVENTS.has(eventType) && batterDestOverride !== 'first') {
+        const bn = `${currentBatter.firstName} ${currentBatter.lastName}`;
+        if (batterDestOverride === 'second') batterAdvanceSuffix = `. ${bn} advances to 2nd on the same error`;
+        else if (batterDestOverride === 'third') batterAdvanceSuffix = `. ${bn} advances to 3rd on the same error`;
+        else if (batterDestOverride === 'home') batterAdvanceSuffix = `. ${bn} scores on the same error`;
+      }
+      const detail = `${currentBatter.firstName} ${currentBatter.lastName}: ${eventType.replace(/_/g, ' ')}${fieldingSequence ? ` (${isErrorPlay ? 'E' : ''}${fieldingSequence})` : ''}${runnerSuffix}${batterAdvanceSuffix}`;
       const paSide = batterSideForCurrentPa();
       await apiPost(`/admin/scoring/${gameId}/event`, {
         eventType, batterId: currentBatter.playerId, pitcherId: currentPitcher?.playerId,
@@ -1672,45 +1692,54 @@ export function LiveScoringPage() {
               </div>
             )}
 
-            {/* BATTER ADVANCE (same error, bases empty) */}
+            {/* BATTER ADVANCE — where batter ends up on ROE (after fielding + runner resolution if any) */}
             {step === 'batter_advance' && selectedEvent && ERROR_EVENTS.has(selectedEvent) && currentBatter && (
               <div className="bg-[#111d30] rounded-xl border border-white/10 overflow-hidden">
                 <div className="px-4 py-3 border-b border-white/5 text-center">
-                  <p className="text-[10px] text-amber-400 font-bold uppercase mb-1 tracking-widest">Batter advance</p>
-                  <p className="text-xs text-white/60 uppercase font-bold tracking-wide">
-                    {currentBatter.firstName} {currentBatter.lastName} — on the same error
+                  <p className="text-[10px] text-amber-400 font-bold uppercase mb-1 tracking-widest">Batter on same error</p>
+                  <p className="text-xs text-white/80 font-bold tracking-wide">
+                    {currentBatter.firstName} {currentBatter.lastName}
                   </p>
+                  {runnerQuestions.length > 0 && (
+                    <p className="text-[10px] text-white/40 font-normal normal-case mt-1.5 leading-snug">
+                      Runners for this play are set — only the batter’s final base is left.
+                    </p>
+                  )}
                 </div>
-                <div className="p-3">
-                  <div className="grid grid-cols-2 gap-2">
-                    {(['first','second','third','home'] as const).map((d) => (
-                      <button
-                        key={d}
-                        onClick={() => setBatterAdvanceDest(d)}
-                        className={`py-3 rounded-lg text-xs font-bold uppercase border transition-colors ${
-                          batterAdvanceDest === d
-                            ? 'bg-amber-600/25 border-amber-400/40 text-white'
-                            : 'bg-white/5 border-white/10 text-white/70 hover:bg-white/10'
-                        }`}
-                      >
-                        {d === 'first' ? '1st (ROE)' : d === 'second' ? '2nd on error' : d === 'third' ? '3rd on error' : 'Scores on error'}
-                      </button>
-                    ))}
+                <div className="p-3 space-y-3">
+                  <button
+                    type="button"
+                    onClick={() => submitPlay(selectedEvent, runnerQuestions, fieldingPositions, 'first')}
+                    className="w-full py-3.5 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white text-sm font-bold uppercase tracking-wide shadow-sm border border-emerald-500/30 transition-colors"
+                  >
+                    Submit — batter to 1st (ROE)
+                  </button>
+                  <div>
+                    <p className="text-[10px] text-white/35 uppercase font-bold text-center mb-2 tracking-wider">Or extra bases on same error</p>
+                    <div className="grid grid-cols-3 gap-2">
+                      {([
+                        { d: 'second' as const, label: '2nd' },
+                        { d: 'third' as const, label: '3rd' },
+                        { d: 'home' as const, label: 'Scores' },
+                      ]).map(({ d, label }) => (
+                        <button
+                          key={d}
+                          type="button"
+                          onClick={() => submitPlay(selectedEvent, runnerQuestions, fieldingPositions, d)}
+                          className="py-2.5 rounded-lg text-xs font-bold uppercase border border-white/10 bg-white/5 text-white/85 hover:bg-amber-600/20 hover:border-amber-500/35 transition-colors"
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                  <div className="mt-3 flex gap-2">
-                    <button
-                      onClick={() => { cancelWizard(); }}
-                      className="flex-1 py-2.5 bg-white/5 hover:bg-white/10 text-white/60 text-xs font-bold rounded-lg uppercase transition-colors"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      onClick={() => submitPlay(selectedEvent, [], fieldingPositions, batterAdvanceDest)}
-                      className="flex-1 py-2.5 bg-amber-700 hover:bg-amber-600 text-white text-xs font-bold rounded-lg uppercase transition-colors"
-                    >
-                      Submit
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => { cancelWizard(); }}
+                    className="w-full py-2.5 bg-white/5 hover:bg-white/10 text-white/50 text-xs font-bold rounded-lg uppercase transition-colors"
+                  >
+                    Cancel
+                  </button>
                 </div>
               </div>
             )}
@@ -1740,6 +1769,9 @@ export function LiveScoringPage() {
                   setRunnerSafeDest(null);
                   if (betweenPitchEvent) {
                     submitBetweenPitchPlay(betweenPitchEvent, updated);
+                  } else if (selectedEvent && ERROR_EVENTS.has(selectedEvent)) {
+                    setRunnerQuestions(updated);
+                    setStep('batter_advance');
                   } else {
                     submitPlay(selectedEvent!, updated, fieldingPositions);
                   }
@@ -1822,6 +1854,11 @@ export function LiveScoringPage() {
                       What happened to the runner on {baseLabel} base,
                     </p>
                     <p className="text-base text-white font-bold mt-0.5">{q.playerName}?</p>
+                    {runnerQuestions.length > 1 && (
+                      <p className="text-[10px] text-white/35 font-mono mt-1 tabular-nums">
+                        Runner {currentRunnerIdx + 1} of {runnerQuestions.length}
+                      </p>
+                    )}
                     {minOrder > BASE_ORDER[q.base] && (
                       <p className="text-[10px] text-amber-400/70 mt-1">Must advance to at least {q.minDestination.toUpperCase()}</p>
                     )}
