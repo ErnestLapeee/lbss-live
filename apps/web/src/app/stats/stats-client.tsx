@@ -215,7 +215,7 @@ const BATTING_COLUMNS: Column[] = [
   { key: 'groundedIntoDoublePlays', label: 'GDP', align: 'right' },
   { key: 'reachedOnError', label: 'ROE', align: 'right' },
   { key: 'totalBases', label: 'TB', align: 'right' },
-  { key: 'buntSingles', label: 'B', align: 'right' },
+  { key: 'buntSingles', label: 'BU', align: 'right' },
   { key: 'pickedOff', label: 'PK', align: 'right' },
   { key: 'fieldersChoice', label: 'FC', align: 'right' },
   { key: 'catcherInterference', label: 'CI', align: 'right' },

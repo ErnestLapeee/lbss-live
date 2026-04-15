@@ -692,7 +692,7 @@ export function LiveGameClient({
                   <th className="py-2 pl-3 pr-1 text-left text-[10px] font-semibold uppercase tracking-wide">#</th>
                   <th className="min-w-[90px] py-2 pr-2 text-left text-[10px] font-semibold uppercase tracking-wide">Player</th>
                   <th className="w-7 px-0.5 py-2 text-center text-[10px] font-semibold uppercase tracking-wide">Pos</th>
-                  {['PA','AB','R','H','2B','3B','HR','RBI','BB','HBP','SO','Kc','Ks','SB','CS','SF','SH','B','GDP','FC','CI','AVG','OPS'].map((h) => (
+                  {['PA','AB','R','H','2B','3B','HR','RBI','BB','HBP','SO','Kc','Ks','SB','CS','SF','SH','BU','GDP','FC','CI','AVG','OPS'].map((h) => (
                     <th key={h} title={getStatAbbreviationMeaning(h) ?? undefined} className={`px-1 py-2 text-center text-[10px] font-semibold uppercase tracking-wide ${h === 'AVG' || h === 'OPS' ? 'w-9 text-slate-700' : 'w-8'}`}>
                       {h === 'SH' ? 'SAC' : h}
                     </th>

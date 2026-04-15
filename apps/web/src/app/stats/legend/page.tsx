@@ -29,7 +29,7 @@ const BATTING = [
   { abbr: 'RC', name: 'Runs Created', desc: '(H + BB) × TB / (AB + BB)' },
   { abbr: 'GPA', name: 'Gross Production Average', desc: '(1.8 × OBP + SLG) / 4' },
   { abbr: 'BABIP', name: 'Batting Avg. on Balls in Play', desc: '(H - HR) / (AB - SO - HR + SF)' },
-  { abbr: 'B', name: 'Bunt Singles', desc: 'Singles on bunt hits' },
+  { abbr: 'BU', name: 'Bunt Singles', desc: 'Singles on bunt hits' },
   { abbr: 'Kc', name: 'Strikeouts Looking', desc: 'Strikeouts called (looking)' },
   { abbr: 'Ks', name: 'Strikeouts Swinging', desc: 'Strikeouts swinging' },
   { abbr: 'PK', name: 'Picked Off', desc: 'Times picked off base' },

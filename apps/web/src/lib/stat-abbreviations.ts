@@ -74,7 +74,16 @@ const STAT_ABBREVIATIONS: Record<string, string> = {
   FC: "Fielder's Choice",
   CI: "Catcher's Interference",
   GTP: 'Grounded Into Triple Play',
-  B: 'Bunt Singles',
+  /** Pitching: total balls thrown (pitch count). Batting bunt singles use BU. */
+  B: 'Balls (pitch count)',
+  BU: 'Bunt Singles',
+  /** Pitching: total strikes thrown */
+  S: 'Strikes',
+  '%S': 'Strike percentage (strikes / pitches)',
+  GDP: 'Grounded Into Double Plays',
+  ROE: 'Reached On Error',
+  BF: 'Batters Faced',
+  NP: 'Pitches thrown',
   Dec: 'Pitcher Decision',
   PIT: 'Pitches Thrown',
   Opp: 'Opponent',
