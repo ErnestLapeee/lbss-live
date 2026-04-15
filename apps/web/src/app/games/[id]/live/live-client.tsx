@@ -44,7 +44,7 @@ const RUNNER_EVENT_TYPES = new Set([
   'runner_interference', 'appeal_play', 'tagged_out', 'force_out',
   'hit_by_ball', 'missed_base', 'left_base_early', 'left_base_path',
   'offensive_interference', 'passed_runner', 'hesitation',
-  'double_play', 'triple_play', 'illegal_pitch', 'end_half_inning',
+  'double_play', 'triple_play', 'illegal_pitch',
 ]);
 
 interface AtBat {
@@ -331,7 +331,15 @@ export function LiveGameClient({
         if (currentAB) {
           currentAB.betweenEvents.push(evt);
         } else {
-          group.atBats.push({ batterId: evt.batterId, batterName: evt.batterName || 'Unknown', result: evt, pitches: [], betweenEvents: [], inning: evt.inning, half: evt.half });
+          group.atBats.push({
+            batterId: evt.batterId,
+            batterName: evt.batterName || 'Unknown',
+            result: null,
+            pitches: [],
+            betweenEvents: [evt],
+            inning: evt.inning,
+            half: evt.half,
+          });
         }
       } else {
         if (!currentAB) {
