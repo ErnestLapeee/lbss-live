@@ -156,6 +156,17 @@ const NO_RBI_BATTER_EVENTS = new Set(['error', 'sac_bunt_error', 'sac_fly_error'
 const BASE_ORDER: Record<string, number> = { first: 1, second: 2, third: 3, home: 4 };
 const BASE_FROM_ORDER: Record<number, 'first' | 'second' | 'third' | 'home'> = { 1: 'first', 2: 'second', 3: 'third', 4: 'home' };
 
+/** Fielding positions from an earlier runner on this same batted-ball play (e.g. two runs on one throwing error). */
+function getPriorSamePlayErrorFielding(runners: RunnerQuestion[], currentIdx: number): number[] | null {
+  for (let i = currentIdx - 1; i >= 0; i--) {
+    const r = runners[i];
+    if (r.outcome === 'safe' && r.advanceErrorFielding && r.advanceErrorFielding.length > 0) {
+      return r.advanceErrorFielding;
+    }
+  }
+  return null;
+}
+
 function computeMinDestinations(
   bases: { first: number | null; second: number | null; third: number | null },
   eventType: string
@@ -585,9 +596,18 @@ function needsRunnerAdvanceErrorFieldingPrompt(
     setStep('runner');
   };
 
-  const answerRunner = (outcome: 'safe' | 'out', destination: string, advanceReason?: string) => {
+  const answerRunner = (outcome: 'safe' | 'out', destination: string, advanceReason?: string, advanceErrorFielding?: number[]) => {
     const updated = [...runnerQuestions];
-    updated[currentRunnerIdx] = { ...updated[currentRunnerIdx], outcome, destination: destination as any, advanceReason: advanceReason || updated[currentRunnerIdx].advanceReason };
+    const row: RunnerQuestion = {
+      ...updated[currentRunnerIdx],
+      outcome,
+      destination: destination as RunnerQuestion['destination'],
+      advanceReason: advanceReason || updated[currentRunnerIdx].advanceReason,
+    };
+    if (advanceErrorFielding && advanceErrorFielding.length > 0) {
+      row.advanceErrorFielding = [...advanceErrorFielding];
+    }
+    updated[currentRunnerIdx] = row;
     setRunnerQuestions(updated);
     setRunnerOutSafeTab('safe');
     // Skip to next UNANSWERED runner (pre-filled runners already have outcome)
@@ -2073,12 +2093,18 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                           const isBetweenPitch = !!betweenPitchEvent;
                           const dest = runnerSafeDest || q.minDestination;
                           const stayedAtBase = dest === q.base;
+                          const priorSamePlayError = getPriorSamePlayErrorFielding(runnerQuestions, currentRunnerIdx);
                           const options: { key: string; label: string; action: () => void }[] = [];
 
                           if (isBetweenPitch) {
                             // If the selected destination is the current base, prioritize HELD UP first.
                             if (stayedAtBase) {
                               options.push({ key: 'held', label: 'HELD UP', action: () => answerRunner('safe', q.base, 'held') });
+                            }
+                            if (priorSamePlayError && !stayedAtBase) {
+                              options.push({ key: 'same_error', label: 'SAME ERROR (same play)', action: () => {
+                                answerRunner('safe', dest, 'advance_on_error', priorSamePlayError);
+                              } });
                             }
                             options.push({ key: 'advance', label: 'ADVANCE', action: () => answerRunner('safe', dest, betweenPitchEvent!) });
                             options.push({ key: 'stolen_base', label: 'STOLEN BASE', action: () => answerRunner('safe', dest, 'stolen_base') });
@@ -2099,6 +2125,11 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                           } else {
                             if (stayedAtBase) {
                               options.push({ key: 'held', label: 'HELD UP', action: () => answerRunner('safe', q.base, 'held') });
+                            }
+                            if (priorSamePlayError && !stayedAtBase) {
+                              options.push({ key: 'same_error', label: 'SAME ERROR (same play)', action: () => {
+                                answerRunner('safe', dest, 'advance_on_error', priorSamePlayError);
+                              } });
                             }
                             options.push({ key: 'on_play', label: 'ADVANCED BY BATTER', action: () => answerRunner('safe', dest, 'on_play') });
                             if (!stayedAtBase) {
