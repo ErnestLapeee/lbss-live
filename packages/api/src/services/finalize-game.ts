@@ -13,6 +13,7 @@ import {
   teams,
 } from '../db/schema/index.js';
 import { eq, and, sql, desc } from 'drizzle-orm';
+import { aggregatePitchingStatsByPitcher, inningsFromOuts } from '@lbss/shared';
 
 /* ═══════════════════════════════════════════════════════════════
    Event-type classification helpers (MLB Rules 9.02 – 9.16)
@@ -57,10 +58,6 @@ const NON_PA_EVENTS = new Set([
 
 const GROUND_BALL_OUTS = new Set(['ground_out', 'bunt_out']);
 const FLY_BALL_OUTS = new Set(['fly_out', 'line_out', 'pop_out', 'infield_fly']);
-
-/** Advance reasons that make a run unearned (catcher/pitcher miscue, error, or defense indifference) */
-const UNEARNED_REASONS = new Set(['passed_ball', 'advance_on_error', 'error', 'defensive_indifference', 'obstruction']);
-const ERROR_EVENT_TYPES = new Set(['error', 'sac_bunt_error', 'sac_fly_error']);
 
 function isPlateAppearance(t: string): boolean {
   return !NON_PA_EVENTS.has(t);
@@ -250,159 +247,53 @@ export async function finalizeGame(gameId: number, userId?: number, options?: Fi
 
   /* ── Per-game PITCHING stats ── */
 
-  // Precompute, per inning half, when the inning would have ended in an error-free reconstruction.
-  // This is the key to "perfect" earned-run attribution: any runs scoring after the inning should
-  // have ended are unearned.
-  //
-  // We approximate the official scorer reconstruction with the data we have:
-  // - Treat batter-reaches-on-error events as if the batter were retired (adds 1 out).
-  // - Keep recorded runner outs (outsRecorded) as they happened.
-  // - Ignore pitch events for inning progression.
-  //
-  // This does NOT attempt to reconstruct alternate basepaths; it focuses on inning-extension,
-  // which is the biggest driver of earned vs unearned.
-  const inningCutoffEventNumber = new Map<string, number>(); // key = `${inning}:${half}`
-  {
-    const byHalfInning = new Map<string, any[]>();
-    for (const e of events) {
-      if (e.eventType === 'pitch') continue;
-      const key = `${e.inning}:${e.half}`;
-      const arr = byHalfInning.get(key) || [];
-      arr.push(e);
-      byHalfInning.set(key, arr);
-    }
-
-    for (const [key, evts] of byHalfInning) {
-      evts.sort((a, b) => (a.eventNumber ?? 0) - (b.eventNumber ?? 0));
-      let outsSim = 0;
-      let cutoff: number | null = null;
-      for (const e of evts) {
-        if (cutoff != null) break;
-        const outsRecorded = e.outsRecorded ?? 0;
-        const extraOut = ERROR_EVENT_TYPES.has(e.eventType) ? 1 : 0;
-        outsSim += outsRecorded + extraOut;
-        if (outsSim >= 3) cutoff = e.eventNumber ?? null;
-      }
-      if (cutoff != null) inningCutoffEventNumber.set(key, cutoff);
-    }
-  }
+  const pitcherAgg = aggregatePitchingStatsByPitcher(
+    events.map(e => ({
+      eventNumber: e.eventNumber,
+      eventType: e.eventType,
+      inning: e.inning,
+      half: e.half,
+      pitcherId: e.pitcherId,
+      runsScored: e.runsScored,
+      outsRecorded: e.outsRecorded,
+      runnerScoredReasons: e.runnerScoredReasons as string[] | null,
+      errorsOnPlay: e.errorsOnPlay,
+      eventDetail: e.eventDetail,
+      hitType: e.hitType,
+    })),
+  );
 
   const pitcherIds = new Set(events.filter(e => e.pitcherId).map(e => e.pitcherId!));
 
   for (const pitcherId of pitcherIds) {
-    const pitcherEvents = events.filter(e => e.pitcherId === pitcherId);
+    const a = pitcherAgg.get(pitcherId);
+    if (!a) continue;
     const teamId = playerTeamMap.get(pitcherId) || game.homeTeamId;
 
-    let outsRecorded = 0, hitsAllowed = 0, runsAllowed = 0, earnedRuns = 0;
-    let walksAllowed = 0, pStrikeouts = 0, homeRunsAllowed = 0;
-    let hitBatters = 0, wildPitches = 0, totalPitches = 0;
-    let pBalls = 0, pStrikes = 0;
-    let firstPitchStrikes = 0, firstPitchTotal = 0;
-    let currentPaFirstPitchStrike: boolean | null = null;
-    let battersFaced = 0, pBalks = 0, pIntentionalWalks = 0;
-    let pGroundOuts = 0, pFlyOuts = 0;
-    let pStrikeoutsLooking = 0, pStrikeoutsSwinging = 0;
+    const outsRecorded = a.outsRecorded;
+    const hitsAllowed = a.hitsAllowed;
+    const runsAllowed = a.runsAllowed;
+    const earnedRuns = a.earnedRuns;
+    const walksAllowed = a.walksAllowed;
+    const pStrikeouts = a.strikeouts;
+    const homeRunsAllowed = a.homeRunsAllowed;
+    const hitBatters = a.hitBatters;
+    const wildPitches = a.wildPitches;
+    const totalPitches = a.pitchesThrown;
+    const pBalls = a.balls;
+    const pStrikes = a.strikes;
+    const firstPitchStrikes = a.firstPitchStrikes;
+    const firstPitchTotal = a.firstPitchTotal;
+    const battersFaced = a.battersFaced;
+    const pBalks = a.balks;
+    const pIntentionalWalks = a.intentionalWalks;
+    const pGroundOuts = a.groundOuts;
+    const pFlyOuts = a.flyOuts;
+    const pStrikeoutsLooking = a.strikeoutsLooking;
+    const pStrikeoutsSwinging = a.strikeoutsSwinging;
 
-    for (const e of pitcherEvents) {
-      const t = e.eventType;
-
-      if (t === 'pitch') {
-        totalPitches++;
-        if (e.eventDetail === 'ball') pBalls++;
-        else pStrikes++;
-        if (currentPaFirstPitchStrike == null) {
-          currentPaFirstPitchStrike = e.eventDetail !== 'ball';
-        }
-        continue;
-      }
-
-      if (NON_PA_EVENTS.has(t)) {
-        if (t === 'balk') pBalks++;
-        if (t === 'wild_pitch') wildPitches++;
-        outsRecorded += e.outsRecorded ?? 0;
-        runsAllowed += e.runsScored ?? 0;
-        if (t !== 'passed_ball' && t !== 'advance_on_error') {
-          earnedRuns += e.runsScored ?? 0;
-        }
-        continue;
-      }
-
-      battersFaced++;
-      totalPitches++;
-      if (WALK_EVENTS.has(t) || t === 'hit_by_pitch' || t === 'catcher_obstruction' || t === 'catcher_interference') {
-        pBalls++;
-      } else {
-        pStrikes++;
-      }
-      firstPitchTotal++;
-      const inferredFirstPitchStrike = !(WALK_EVENTS.has(t) || t === 'hit_by_pitch' || t === 'catcher_obstruction' || t === 'catcher_interference');
-      if ((currentPaFirstPitchStrike ?? inferredFirstPitchStrike) === true) firstPitchStrikes++;
-      currentPaFirstPitchStrike = null;
-      outsRecorded += e.outsRecorded ?? 0;
-
-      const runsScoredOnPlay = e.runsScored ?? 0;
-      runsAllowed += runsScoredOnPlay;
-
-      // Earned run logic:
-      // 1) If the half-inning should have already ended in error-free reconstruction,
-      //    then any runs on this event are unearned.
-      // 2) Otherwise, use per-run reasons when available (passed_ball / wild_pitch / etc.).
-      // 3) Fallback for legacy events: errorsOnPlay-based approximation.
-      let inningExtended = false;
-      const hk = `${e.inning}:${e.half}`;
-      const cutoff = inningCutoffEventNumber.get(hk);
-      if (cutoff != null && (e.eventNumber ?? 0) > cutoff) inningExtended = true;
-
-      if (inningExtended || ERROR_EVENT_TYPES.has(t)) {
-        // If inning was extended by an error (or the event itself is an error-type PA),
-        // treat runs as unearned.
-        // (We still count runsAllowed above.)
-      } else {
-        const reasons = (e.runnerScoredReasons as string[]) || [];
-        let earnedFromPlay = 0;
-        let wpCountFromPlay = 0;
-
-        if (reasons.length > 0) {
-          for (let i = 0; i < runsScoredOnPlay; i++) {
-            const reason = reasons[i] || 'on_play';
-            if (UNEARNED_REASONS.has(reason)) continue;
-            earnedFromPlay++;
-            if (reason === 'wild_pitch') wpCountFromPlay++;
-          }
-        } else if (runsScoredOnPlay > 0) {
-          // Legacy: if no runnerScoredReasons, use errorsOnPlay-based logic
-          const errs = e.errorsOnPlay ?? 0;
-          earnedFromPlay = Math.max(0, runsScoredOnPlay - errs);
-        }
-
-        earnedRuns += earnedFromPlay;
-        wildPitches += wpCountFromPlay;
-      }
-
-      if (HIT_EVENTS.has(t)) hitsAllowed++;
-      if (WALK_EVENTS.has(t)) walksAllowed++;
-      if (t === 'intentional_walk') pIntentionalWalks++;
-      if (STRIKEOUT_EVENTS.has(t)) {
-        pStrikeouts++;
-        if (STRIKEOUT_LOOKING.has(t)) pStrikeoutsLooking++;
-        else if (STRIKEOUT_SWINGING.has(t)) pStrikeoutsSwinging++;
-        else pStrikeoutsSwinging++;
-      }
-      if (t === 'home_run' || t === 'inside_park_hr') homeRunsAllowed++;
-      if (t === 'hit_by_pitch') hitBatters++;
-
-      if (GROUND_BALL_OUTS.has(t)) pGroundOuts++;
-      if (FLY_BALL_OUTS.has(t)) pFlyOuts++;
-      if (t === 'fielders_choice') {
-        if (e.hitType === 'grounder') pGroundOuts++;
-        else pFlyOuts++;
-      }
-    }
-
-    const fullInnings = Math.floor(outsRecorded / 3);
-    const partialOuts = outsRecorded % 3;
-    const ip = fullInnings + partialOuts * 0.1;
-    const ipNum = fullInnings + partialOuts / 3;
+    const ip = inningsFromOuts(outsRecorded);
+    const ipNum = Math.floor(outsRecorded / 3) + (outsRecorded % 3) / 3;
 
     const isStarter = lineups.some(l => l.playerId === pitcherId && l.isStarter && l.position === 1);
     const isCompleteGame = outsRecorded >= 27;

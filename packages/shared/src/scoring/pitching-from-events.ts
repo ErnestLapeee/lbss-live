@@ -1,0 +1,252 @@
+/**
+ * Single source of truth for pitcher R/ER and related counts from raw game events.
+ * Mirrors packages/api/src/services/finalize-game.ts (per-pitcher loop + inning cutoffs).
+ */
+
+const HIT_EVENTS = new Set([
+  'single', 'bunt_single',
+  'double', 'ground_rule_double',
+  'triple',
+  'home_run', 'inside_park_hr',
+]);
+
+const STRIKEOUT_LOOKING = new Set(['strikeout_looking', 'caught_foul_tip', 'bunt_foul']);
+const STRIKEOUT_SWINGING = new Set(['strikeout_swinging', 'dropped_third_strike', 'dropped_third_strike_out', 'wild_pitch_third_strike']);
+const STRIKEOUT_EVENTS = new Set([
+  'strikeout', 'strikeout_swinging', 'strikeout_looking',
+  'caught_foul_tip', 'bunt_foul',
+  'dropped_third_strike', 'dropped_third_strike_out',
+  'wild_pitch_third_strike',
+]);
+
+const WALK_EVENTS = new Set(['walk', 'intentional_walk']);
+
+const NON_PA_EVENTS = new Set([
+  'pitch',
+  'stolen_base', 'caught_stealing', 'picked_off',
+  'balk', 'illegal_pitch', 'wild_pitch', 'passed_ball',
+  'end_half_inning', 'advance', 'defensive_indifference',
+  'runner_interference', 'appeal_play', 'tagged_out', 'force_out',
+  'hit_by_ball', 'missed_base', 'left_base_early', 'left_base_path',
+  'offensive_interference', 'passed_runner', 'hesitation',
+  'double_play', 'triple_play', 'advance_on_error',
+]);
+
+const GROUND_BALL_OUTS = new Set(['ground_out', 'bunt_out']);
+const FLY_BALL_OUTS = new Set(['fly_out', 'line_out', 'pop_out', 'infield_fly']);
+
+/** Per-run reasons that mark the run as unearned */
+const UNEARNED_REASONS = new Set(['passed_ball', 'advance_on_error', 'error', 'defensive_indifference', 'obstruction']);
+
+const ERROR_EVENT_TYPES = new Set(['error', 'sac_bunt_error', 'sac_fly_error']);
+
+export interface PitchingEventInput {
+  eventNumber: number;
+  eventType: string;
+  inning: number;
+  half: string;
+  pitcherId?: number | null;
+  runsScored?: number | null;
+  outsRecorded?: number | null;
+  runnerScoredReasons?: string[] | null;
+  errorsOnPlay?: number | null;
+  eventDetail?: string | null;
+  hitType?: string | null;
+}
+
+/** Aggregated pitching line for one pitcher (same basis as finalize-game player_game_pitching). */
+export interface PitchingAggregate {
+  outsRecorded: number;
+  hitsAllowed: number;
+  runsAllowed: number;
+  earnedRuns: number;
+  walksAllowed: number;
+  strikeouts: number;
+  homeRunsAllowed: number;
+  hitBatters: number;
+  wildPitches: number;
+  pitchesThrown: number;
+  balls: number;
+  strikes: number;
+  firstPitchStrikes: number;
+  firstPitchTotal: number;
+  battersFaced: number;
+  balks: number;
+  intentionalWalks: number;
+  groundOuts: number;
+  flyOuts: number;
+  strikeoutsLooking: number;
+  strikeoutsSwinging: number;
+}
+
+function buildInningCutoffMap(events: PitchingEventInput[]): Map<string, number> {
+  const inningCutoffEventNumber = new Map<string, number>();
+  const byHalfInning = new Map<string, PitchingEventInput[]>();
+  for (const e of events) {
+    if (e.eventType === 'pitch') continue;
+    const key = `${e.inning}:${e.half}`;
+    const arr = byHalfInning.get(key) || [];
+    arr.push(e);
+    byHalfInning.set(key, arr);
+  }
+
+  for (const [key, evts] of byHalfInning) {
+    evts.sort((a, b) => (a.eventNumber ?? 0) - (b.eventNumber ?? 0));
+    let outsSim = 0;
+    let cutoff: number | null = null;
+    for (const e of evts) {
+      if (cutoff != null) break;
+      const outsRecorded = e.outsRecorded ?? 0;
+      const extraOut = ERROR_EVENT_TYPES.has(e.eventType) ? 1 : 0;
+      outsSim += outsRecorded + extraOut;
+      if (outsSim >= 3) cutoff = e.eventNumber ?? null;
+    }
+    if (cutoff != null) inningCutoffEventNumber.set(key, cutoff);
+  }
+  return inningCutoffEventNumber;
+}
+
+function emptyAgg(): PitchingAggregate {
+  return {
+    outsRecorded: 0,
+    hitsAllowed: 0,
+    runsAllowed: 0,
+    earnedRuns: 0,
+    walksAllowed: 0,
+    strikeouts: 0,
+    homeRunsAllowed: 0,
+    hitBatters: 0,
+    wildPitches: 0,
+    pitchesThrown: 0,
+    balls: 0,
+    strikes: 0,
+    firstPitchStrikes: 0,
+    firstPitchTotal: 0,
+    battersFaced: 0,
+    balks: 0,
+    intentionalWalks: 0,
+    groundOuts: 0,
+    flyOuts: 0,
+    strikeoutsLooking: 0,
+    strikeoutsSwinging: 0,
+  };
+}
+
+/**
+ * Aggregate pitching stats per pitcher from chronological events (same rules as finalizeGame).
+ */
+export function aggregatePitchingStatsByPitcher(events: PitchingEventInput[]): Map<number, PitchingAggregate> {
+  const inningCutoffEventNumber = buildInningCutoffMap(events);
+  const pitcherIds = new Set(
+    events.filter(e => e.pitcherId != null && e.pitcherId !== 0).map(e => e.pitcherId as number),
+  );
+  const out = new Map<number, PitchingAggregate>();
+
+  for (const pitcherId of pitcherIds) {
+    const pitcherEvents = events.filter(e => e.pitcherId === pitcherId);
+    const a = emptyAgg();
+
+    let currentPaFirstPitchStrike: boolean | null = null;
+
+    for (const e of pitcherEvents) {
+      const t = e.eventType;
+
+      if (t === 'pitch') {
+        a.pitchesThrown++;
+        const detail = String(e.eventDetail || '').toLowerCase();
+        if (detail === 'ball') a.balls++;
+        else a.strikes++;
+        if (currentPaFirstPitchStrike == null) {
+          currentPaFirstPitchStrike = detail !== 'ball';
+        }
+        continue;
+      }
+
+      if (NON_PA_EVENTS.has(t)) {
+        if (t === 'balk') a.balks++;
+        if (t === 'wild_pitch') a.wildPitches++;
+        a.outsRecorded += e.outsRecorded ?? 0;
+        a.runsAllowed += e.runsScored ?? 0;
+        if (t !== 'passed_ball' && t !== 'advance_on_error') {
+          a.earnedRuns += e.runsScored ?? 0;
+        }
+        continue;
+      }
+
+      a.battersFaced++;
+      a.pitchesThrown++;
+      if (WALK_EVENTS.has(t) || t === 'hit_by_pitch' || t === 'catcher_obstruction' || t === 'catcher_interference') {
+        a.balls++;
+      } else {
+        a.strikes++;
+      }
+      a.firstPitchTotal++;
+      const inferredFirstPitchStrike = !(WALK_EVENTS.has(t) || t === 'hit_by_pitch' || t === 'catcher_obstruction' || t === 'catcher_interference');
+      if ((currentPaFirstPitchStrike ?? inferredFirstPitchStrike) === true) a.firstPitchStrikes++;
+      currentPaFirstPitchStrike = null;
+
+      a.outsRecorded += e.outsRecorded ?? 0;
+
+      const runsScoredOnPlay = e.runsScored ?? 0;
+      a.runsAllowed += runsScoredOnPlay;
+
+      let inningExtended = false;
+      const hk = `${e.inning}:${e.half}`;
+      const cutoff = inningCutoffEventNumber.get(hk);
+      if (cutoff != null && (e.eventNumber ?? 0) > cutoff) inningExtended = true;
+
+      if (inningExtended || ERROR_EVENT_TYPES.has(t)) {
+        // unearned — runs already in runsAllowed
+      } else {
+        const reasons = (e.runnerScoredReasons as string[]) || [];
+        let earnedFromPlay = 0;
+        let wpCountFromPlay = 0;
+
+        if (reasons.length > 0) {
+          for (let i = 0; i < runsScoredOnPlay; i++) {
+            const reason = reasons[i] || 'on_play';
+            if (UNEARNED_REASONS.has(reason)) continue;
+            earnedFromPlay++;
+            if (reason === 'wild_pitch') wpCountFromPlay++;
+          }
+        } else if (runsScoredOnPlay > 0) {
+          const errs = e.errorsOnPlay ?? 0;
+          earnedFromPlay = Math.max(0, runsScoredOnPlay - errs);
+        }
+
+        a.earnedRuns += earnedFromPlay;
+        a.wildPitches += wpCountFromPlay;
+      }
+
+      if (HIT_EVENTS.has(t)) a.hitsAllowed++;
+      if (WALK_EVENTS.has(t)) a.walksAllowed++;
+      if (t === 'intentional_walk') a.intentionalWalks++;
+      if (STRIKEOUT_EVENTS.has(t)) {
+        a.strikeouts++;
+        if (STRIKEOUT_LOOKING.has(t)) a.strikeoutsLooking++;
+        else if (STRIKEOUT_SWINGING.has(t)) a.strikeoutsSwinging++;
+        else a.strikeoutsSwinging++;
+      }
+      if (t === 'home_run' || t === 'inside_park_hr') a.homeRunsAllowed++;
+      if (t === 'hit_by_pitch') a.hitBatters++;
+
+      if (GROUND_BALL_OUTS.has(t)) a.groundOuts++;
+      if (FLY_BALL_OUTS.has(t)) a.flyOuts++;
+      if (t === 'fielders_choice') {
+        if (e.hitType === 'grounder') a.groundOuts++;
+        else a.flyOuts++;
+      }
+    }
+
+    out.set(pitcherId, a);
+  }
+
+  return out;
+}
+
+/** Baseball IP from outs (7.1 = 7⅓). */
+export function inningsFromOuts(outs: number): number {
+  const fullInnings = Math.floor(outs / 3);
+  const partialOuts = outs % 3;
+  return fullInnings + partialOuts * 0.1;
+}

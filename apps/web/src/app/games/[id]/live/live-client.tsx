@@ -6,6 +6,7 @@ import { useGameSocket } from '@/hooks/useGameSocket';
 import { formatPlayByPlay } from '@/lib/format-play';
 import { useApiBase } from '@/lib/api-context';
 import { getStatAbbreviationMeaning } from '@/lib/stat-abbreviations';
+import { aggregatePitchingStatsByPitcher, inningsFromOuts } from '@lbss/shared';
 
 const POS_LABELS: Record<number, string> = {
   1: 'P', 2: 'C', 3: '1B', 4: '2B', 5: '3B', 6: 'SS', 7: 'LF', 8: 'CF', 9: 'RF', 10: 'DH',
@@ -98,6 +99,9 @@ interface GameEvent {
   runnersScoredNames: string[];
   balls: number;
   strikes: number;
+  runnerScoredReasons?: string[] | null;
+  errorsOnPlay?: number | null;
+  hitType?: string | null;
 }
 
 interface LineupEntry {
@@ -437,51 +441,41 @@ export function LiveGameClient({
         return a.playerId - b.playerId;
       }), [lineups, game]);
 
-  // Build live pitching stats from events
+  // Build live pitching stats from events (same R/ER rules as finalizeGame — @lbss/shared)
   const livePitchingMap = useMemo(() => {
+    const agg = aggregatePitchingStatsByPitcher(
+      events.map(e => ({
+        eventNumber: e.eventNumber,
+        eventType: e.eventType,
+        inning: e.inning,
+        half: e.half,
+        pitcherId: e.pitcherId,
+        runsScored: e.runsScored,
+        outsRecorded: e.outsRecorded,
+        runnerScoredReasons: e.runnerScoredReasons ?? null,
+        errorsOnPlay: e.errorsOnPlay ?? null,
+        eventDetail: e.eventDetail,
+        hitType: e.hitType ?? null,
+      })),
+    );
     const map: Record<number, { ip: number; outs: number; h: number; r: number; er: number; bb: number; k: number; hr: number; np: number; balls: number; strikes: number; teamId: number }> = {};
-    const hitTypes = new Set(['single', 'bunt_single', 'double', 'triple', 'home_run', 'inside_park_hr', 'ground_rule_double']);
-    const walkTypes = new Set(['walk', 'intentional_walk']);
-    const kTypes = new Set(['strikeout', 'strikeout_swinging', 'strikeout_looking', 'caught_foul_tip', 'bunt_foul', 'dropped_third_strike_out', 'dropped_third_strike', 'wild_pitch_third_strike']);
-
-    for (const evt of events) {
-      if (!evt.pitcherId) continue;
-      if (!map[evt.pitcherId]) {
-        const pLineup = lineups.find(l => l.playerId === evt.pitcherId);
-        map[evt.pitcherId] = { ip: 0, outs: 0, h: 0, r: 0, er: 0, bb: 0, k: 0, hr: 0, np: 0, balls: 0, strikes: 0, teamId: pLineup?.teamId ?? 0 };
-      }
-      const p = map[evt.pitcherId];
-      if (evt.eventType === 'pitch') {
-        p.np++;
-        const d = (evt.eventDetail || '').toLowerCase();
-        if (d === 'ball') p.balls++;
-        else p.strikes++;
-        continue;
-      }
-      if (RUNNER_EVENT_TYPES.has(evt.eventType)) {
-        p.outs += evt.outsRecorded || 0;
-        p.r += evt.runsScored || 0;
-        continue;
-      }
-      p.np++; // result event = 1 more pitch
-      p.strikes++; // the final pitch of an at-bat is always a strike (K, contact) or ball (BB) - count accordingly
-      if (walkTypes.has(evt.eventType) || evt.eventType === 'hit_by_pitch' || evt.eventType === 'catcher_obstruction') { p.strikes--; p.balls++; }
-      p.outs += evt.outsRecorded || 0;
-      p.r += evt.runsScored || 0;
-      /* Live ER approximation: do not charge ER on obvious error/advance-on-error plays (true ER needs full game state). */
-      if (!['error', 'advance_on_error', 'sac_bunt_error', 'sac_fly_error'].includes(evt.eventType)) {
-        p.er += evt.runsScored || 0;
-      }
-      if (hitTypes.has(evt.eventType)) p.h++;
-      if (walkTypes.has(evt.eventType)) p.bb++;
-      if (kTypes.has(evt.eventType)) p.k++;
-      if (evt.eventType === 'home_run' || evt.eventType === 'inside_park_hr') p.hr++;
-    }
-    for (const pid of Object.keys(map)) {
-      const p = map[Number(pid)];
-      const fullInn = Math.floor(p.outs / 3);
-      const partial = p.outs % 3;
-      p.ip = fullInn + partial * 0.1;
+    for (const [pid, a] of agg) {
+      const pLineup = lineups.find(l => l.playerId === pid);
+      const outs = a.outsRecorded;
+      map[pid] = {
+        ip: inningsFromOuts(outs),
+        outs,
+        h: a.hitsAllowed,
+        r: a.runsAllowed,
+        er: a.earnedRuns,
+        bb: a.walksAllowed,
+        k: a.strikeouts,
+        hr: a.homeRunsAllowed,
+        np: a.pitchesThrown,
+        balls: a.balls,
+        strikes: a.strikes,
+        teamId: pLineup?.teamId ?? 0,
+      };
     }
     return map;
   }, [events, lineups]);
