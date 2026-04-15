@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
 import { useAdminSeason } from '@/context/AdminSeasonContext';
 
@@ -26,6 +26,18 @@ interface League {
   id: number;
   name: string;
   seasonId: number;
+}
+
+interface PlayoffListRow {
+  id: number;
+  name: string;
+}
+
+interface PlayoffSeriesListRow {
+  id: number;
+  roundNumber: number;
+  seriesIndex: number;
+  label: string | null;
 }
 
 const STATUS_OPTIONS = [
@@ -74,6 +86,7 @@ export function GamesPage() {
   const [bulkGameIds, setBulkGameIds] = useState('');
   const [bulkSeriesIdInput, setBulkSeriesIdInput] = useState('');
   const [bulkSaving, setBulkSaving] = useState(false);
+  const [seriesOptions, setSeriesOptions] = useState<{ id: number; label: string }[]>([]);
 
   const [form, setForm] = useState({
     leagueId: '',
@@ -86,6 +99,11 @@ export function GamesPage() {
   });
 
   const teamMap = Object.fromEntries(teams.map((t) => [t.id, t.name]));
+
+  const seriesLabelById = useMemo(
+    () => Object.fromEntries(seriesOptions.map((o) => [o.id, o.label])),
+    [seriesOptions],
+  );
 
   const leaguesForSeason = useMemo(
     () =>
@@ -133,6 +151,42 @@ export function GamesPage() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    if (!selectedSeasonId) {
+      setSeriesOptions([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const po = await apiGet<PlayoffListRow[]>(`/admin/playoffs?seasonId=${selectedSeasonId}`);
+        if (cancelled || !Array.isArray(po)) return;
+        const pairs = await Promise.all(
+          po.map(async (p) => {
+            const rows = await apiGet<PlayoffSeriesListRow[]>(`/admin/playoffs/${p.id}/series`);
+            return { p, rows: Array.isArray(rows) ? rows : [] };
+          }),
+        );
+        const opts: { id: number; label: string }[] = [];
+        for (const { p, rows } of pairs) {
+          for (const s of rows) {
+            opts.push({
+              id: s.id,
+              label: `${p.name} — R${s.roundNumber}.${s.seriesIndex}${s.label ? ` ${s.label}` : ''} (#${s.id})`,
+            });
+          }
+        }
+        opts.sort((a, b) => a.label.localeCompare(b.label));
+        if (!cancelled) setSeriesOptions(opts);
+      } catch {
+        if (!cancelled) setSeriesOptions([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedSeasonId]);
 
   const openCreate = () => {
     setEditing(null);
@@ -289,7 +343,12 @@ export function GamesPage() {
         <div>
           <h1 className="font-heading text-2xl font-bold">Games</h1>
           <p className="text-sm text-text-muted mt-1">
-            Schedule is filtered by the workspace season (top bar). Create leagues for that season first.
+            Schedule is filtered by the workspace season (top bar). Create leagues for that season first. For playoff
+            games, define series on{' '}
+            <Link to="/playoffs" className="text-accent hover:text-accent-light font-medium">
+              Playoffs
+            </Link>{' '}
+            then pick a series below.
           </p>
         </div>
         <button
@@ -357,6 +416,7 @@ export function GamesPage() {
               <th className="px-4 py-3 text-left font-semibold text-text-muted">Away Team</th>
               <th className="px-4 py-3 text-left font-semibold text-text-muted">Score</th>
               <th className="px-4 py-3 text-left font-semibold text-text-muted">Status</th>
+              <th className="px-4 py-3 text-left font-semibold text-text-muted">Playoff series</th>
               <th className="px-4 py-3 text-left font-semibold text-text-muted">Actions</th>
             </tr>
           </thead>
@@ -369,13 +429,13 @@ export function GamesPage() {
               </tr>
             ) : !selectedSeasonId ? (
               <tr>
-                <td className="px-4 py-8 text-center text-text-muted" colSpan={6}>
+                <td className="px-4 py-8 text-center text-text-muted" colSpan={7}>
                   Add a season, then pick it in the workspace menu above.
                 </td>
               </tr>
             ) : loading ? (
               <tr>
-                <td className="px-4 py-8 text-center text-text-muted" colSpan={6}>
+                <td className="px-4 py-8 text-center text-text-muted" colSpan={7}>
                   Loading...
                 </td>
               </tr>
@@ -406,6 +466,11 @@ export function GamesPage() {
                     >
                       {g.status}
                     </span>
+                  </td>
+                  <td className="px-4 py-3 max-w-[11rem] text-xs text-text-muted truncate" title={g.playoffSeriesId != null ? seriesLabelById[g.playoffSeriesId] ?? `#${g.playoffSeriesId}` : ''}>
+                    {g.playoffSeriesId != null
+                      ? seriesLabelById[g.playoffSeriesId] ?? `#${g.playoffSeriesId}`
+                      : '—'}
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2 flex-wrap">
@@ -540,17 +605,22 @@ export function GamesPage() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-text-muted mb-1">
-                  Playoff Series ID (optional)
+                  Playoff series (optional)
                 </label>
-                <input
-                  type="number"
+                <select
                   value={form.playoffSeriesId}
                   onChange={(e) => setForm((f) => ({ ...f, playoffSeriesId: e.target.value }))}
                   className={inputClass}
-                  placeholder="e.g. 12"
-                />
+                >
+                  <option value="">None (regular season)</option>
+                  {seriesOptions.map((o) => (
+                    <option key={o.id} value={String(o.id)}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
                 <p className="mt-1 text-xs text-text-faint">
-                  Leave blank for regular season games. If set, this game counts as playoffs.
+                  Create brackets and series on the <Link to="/playoffs" className="text-accent">Playoffs</Link> page.
                 </p>
               </div>
               <div className="flex justify-end gap-3 pt-2">

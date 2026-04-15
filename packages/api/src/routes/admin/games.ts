@@ -49,6 +49,7 @@ export async function adminGamesRoutes(app: FastifyInstance) {
         isFinalized: games.isFinalized,
         finalizedAt: games.finalizedAt,
         finalizedBy: games.finalizedBy,
+        playoffSeriesId: games.playoffSeriesId,
         createdAt: games.createdAt,
         updatedAt: games.updatedAt,
       };

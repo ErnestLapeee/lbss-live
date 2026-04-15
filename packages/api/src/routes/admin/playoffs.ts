@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { db } from '../../db/index.js';
 import { playoffs, playoffSeries, games, seasons } from '../../db/schema/index.js';
-import { desc, eq, inArray } from 'drizzle-orm';
+import { asc, desc, eq, inArray } from 'drizzle-orm';
 
 export async function adminPlayoffsRoutes(app: FastifyInstance) {
   // GET /?seasonId= - list playoffs rows (optionally filtered by season)
@@ -139,8 +139,11 @@ export async function adminPlayoffsRoutes(app: FastifyInstance) {
         higherTeamId?: number | null;
         lowerTeamId?: number | null;
       }>;
-      if (!body.roundNumber || body.seriesIndex == null) {
+      if (body.roundNumber == null || body.seriesIndex == null) {
         return reply.status(400).send({ message: 'roundNumber and seriesIndex required' });
+      }
+      if (body.roundNumber < 1) {
+        return reply.status(400).send({ message: 'roundNumber must be at least 1' });
       }
       const [row] = await db.insert(playoffSeries).values({
         playoffsId,
