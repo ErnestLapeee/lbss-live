@@ -161,6 +161,10 @@ export async function adminScoringRoutes(app: FastifyInstance) {
         playerId: gameLineups.playerId,
         battingOrder: gameLineups.battingOrder,
         position: gameLineups.position,
+        enteredInning: gameLineups.enteredInning,
+        enteredHalf: gameLineups.enteredHalf,
+        exitedInning: gameLineups.exitedInning,
+        exitedHalf: gameLineups.exitedHalf,
         isStarter: gameLineups.isStarter,
         isActive: gameLineups.isActive,
         firstName: players.firstName,
@@ -733,7 +737,11 @@ export async function adminScoringRoutes(app: FastifyInstance) {
         )).limit(1);
 
       if (outEntry) {
-        await db.update(gameLineups).set({ isActive: false }).where(eq(gameLineups.id, outEntry.id));
+        await db.update(gameLineups).set({
+          isActive: false,
+          exitedInning: inning,
+          exitedHalf: half,
+        }).where(eq(gameLineups.id, outEntry.id));
 
         // Add incoming player with same batting order
         await db.insert(gameLineups).values({

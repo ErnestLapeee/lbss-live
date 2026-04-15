@@ -28,6 +28,9 @@ export const gameLineups = pgTable(
     position: integer('position').notNull(), // 1=P,2=C,3=1B,4=2B,5=3B,6=SS,7=LF,8=CF,9=RF,10=DH
     enteredInning: integer('entered_inning').default(1),
     enteredHalf: varchar('entered_half', { length: 3 }).default('top'),
+    /** Set when this stint ends (player subbed out); used for fielding innings. */
+    exitedInning: integer('exited_inning'),
+    exitedHalf: varchar('exited_half', { length: 3 }),
     isStarter: boolean('is_starter').default(true),
     isActive: boolean('is_active').default(true),
   },

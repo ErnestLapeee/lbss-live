@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: |
+          pnpm --filter @lbss/shared exec tsc --noEmit
+          pnpm --filter @lbss/api exec tsc --noEmit
+          pnpm --filter @lbss/admin exec tsc --noEmit
+          pnpm --filter @lbss/web exec tsc --noEmit
+
+      - name: Build
+        run: |
+          pnpm --filter @lbss/shared build
+          pnpm --filter @lbss/api build
+          pnpm --filter @lbss/admin build
+          pnpm --filter @lbss/web build
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:3002

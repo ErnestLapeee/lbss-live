@@ -14,9 +14,11 @@ interface DashboardStats {
 }
 
 export function Dashboard() {
+  const { user } = useAuth();
   const [stats, setStats] = useState<DashboardStats>({ seasons: 0, teams: 0, players: 0, games: 0 });
   const [loading, setLoading] = useState(true);
   const [backupLoading, setBackupLoading] = useState(false);
+  const canBackup = isAdmin(user?.role);
 
   useEffect(() => {
     async function load() {
@@ -95,6 +97,7 @@ export function Dashboard() {
           Download a full JSON backup of all database tables. Railway also provides automatic point-in-time database recovery.
         </p>
         <button
+          type="button"
           onClick={handleBackup}
           disabled={backupLoading}
           className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-semibold rounded"

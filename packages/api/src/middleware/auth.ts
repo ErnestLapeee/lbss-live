@@ -4,6 +4,8 @@ import { sessions, users } from '../db/schema/index.js';
 import { eq, and, gt } from 'drizzle-orm';
 
 export async function requireAuth(request: FastifyRequest, reply: FastifyReply) {
+  if (request.method === 'OPTIONS') return;
+
   // Skip auth for login and logout
   const path = request.url;
   if (path.includes('/auth/login') || path.includes('/auth/logout')) {

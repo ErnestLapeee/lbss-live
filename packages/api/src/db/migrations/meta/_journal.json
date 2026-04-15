@@ -50,6 +50,13 @@
       "when": 1773700000000,
       "tag": "0006_playoffs",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1773800000000,
+      "tag": "0009_lineup_exit_inning",
+      "breakpoints": true
     }
   ]
 }

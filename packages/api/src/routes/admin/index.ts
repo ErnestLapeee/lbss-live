@@ -13,10 +13,9 @@ import { adminBackupRoutes } from './backup.js';
 import { adminPlayoffsRoutes } from './playoffs.js';
 
 export async function adminRoutes(app: FastifyInstance) {
-  // Auth routes don't need the auth hook
+  // Login/logout/me live under /auth without the global hook (registered before addHook).
   await app.register(authRoutes, { prefix: '/auth' });
 
-  // All other admin routes require auth
   app.addHook('onRequest', requireAuth);
 
   await app.register(adminSeasonsRoutes, { prefix: '/seasons' });

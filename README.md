@@ -43,6 +43,15 @@ lbss/
 └── docker-compose.yml
 ```
 
+## Scripts
+
+| Command | Description |
+|---------|-------------|
+| `pnpm typecheck` | TypeScript check all packages (no emit) |
+| `pnpm build` | Production build (requires [Turborepo](https://turbo.build) on `PATH`, or build each package with `pnpm --filter … build`) |
+
+GitHub Actions runs install, typecheck, and full build on push (see `.github/workflows/ci.yml`).
+
 ## Getting Started
 
 ### Prerequisites
@@ -132,8 +141,9 @@ pnpm dev
 | Games | GET, POST, PUT, DELETE `/games`, `/games/:id` | Game CRUD |
 | Articles | GET, POST, PUT, DELETE `/articles`, `/articles/:id` | Article CRUD |
 | Users | GET, POST, PUT, DELETE `/users`, `/users/:id` | User management |
+| Backup | GET `/backup/export` | Full JSON backup export |
 
-Admin routes (except auth) require a valid session cookie.
+Admin routes (except login/logout) require a valid **session cookie**—only give accounts to people you trust with federation data.
 
 ## Architecture Decisions
 

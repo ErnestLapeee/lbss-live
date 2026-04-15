@@ -8,6 +8,7 @@
     "dev": "turbo run dev",
     "build": "turbo run build",
     "lint": "turbo run lint",
+    "typecheck": "pnpm --filter @lbss/shared exec tsc --noEmit && pnpm --filter @lbss/api exec tsc --noEmit && pnpm --filter @lbss/admin exec tsc --noEmit && pnpm --filter @lbss/web exec tsc --noEmit",
     "db:generate": "pnpm --filter @lbss/api db:generate",
     "db:migrate": "pnpm --filter @lbss/api db:migrate",
     "db:seed": "pnpm --filter @lbss/api db:seed",

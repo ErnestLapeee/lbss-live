@@ -50,6 +50,7 @@ function computeBattingRates(t: {
 function computePitchingRates(t: {
   inningsPitched: number; earnedRuns: number; hitsAllowed: number; walksAllowed: number;
   strikeouts: number; battersFaced: number; atBats: number; homeRunsAllowed: number;
+  hitBatters?: number | null;
 }) {
   const ip = typeof t.inningsPitched === 'string' ? parseFloat(t.inningsPitched) : (t.inningsPitched ?? 0);
   const er = t.earnedRuns ?? 0;
@@ -59,7 +60,9 @@ function computePitchingRates(t: {
   const bf = t.battersFaced ?? 0;
   const ab = t.atBats ?? 0;
   const hr = t.homeRunsAllowed ?? 0;
+  const hb = t.hitBatters ?? 0;
   const gi = ip > 0 ? 9 : 0;
+  const babipDenom = bf - k - hr - bb - hb;
   return {
     era: ip > 0 ? ((er / ip) * 9).toFixed(2) : null,
     whip: ip > 0 ? ((bb + h) / ip).toFixed(2) : null,
@@ -69,7 +72,7 @@ function computePitchingRates(t: {
     bb9: ip > 0 ? ((bb / ip) * 9).toFixed(1) : null,
     h9: ip > 0 ? ((h / ip) * 9).toFixed(1) : null,
     fip: ip > 0 ? (3.1 + (13 * hr + 3 * bb - 2 * k) / ip).toFixed(2) : null,
-    babip: ab > 0 ? ((h - hr) / (ab - k - hr)).toFixed(3) : null,
+    babip: babipDenom > 0 ? ((h - hr) / babipDenom).toFixed(3) : (ab > 0 ? ((h - hr) / (ab - k - hr)).toFixed(3) : null),
   };
 }
 
@@ -837,6 +840,7 @@ export async function statsRoutes(app: FastifyInstance) {
           battersFaced: Number(r.batters_faced ?? 0),
           atBats: ab,
           homeRunsAllowed: Number(r.home_runs_allowed ?? 0),
+          hitBatters: Number(r.hit_batters ?? 0),
         });
         const seasonBalls = Number(r.balls ?? 0);
         const seasonStrikes = Number(r.strikes ?? 0);

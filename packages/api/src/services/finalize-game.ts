@@ -73,6 +73,110 @@ function isAtBat(t: string): boolean {
   return true;
 }
 
+function inningHalfOrder(inn: number | null | undefined, half: string | null | undefined): number {
+  const i = inn ?? 1;
+  const h = (half || 'top').toLowerCase() === 'bot' ? 1 : 0;
+  return i * 2 + h;
+}
+
+/**
+ * When exited_inning was not stored (pre-migration), infer sub-out time from the next player
+ * in the same batting-order slot on the same team.
+ */
+function inferExitFromReplacement<
+  T extends {
+    id: number;
+    teamId: number;
+    battingOrder: number;
+    enteredInning: number | null;
+    enteredHalf: string | null;
+  },
+>(row: T, all: T[]): { exitedInning: number; exitedHalf: string } | null {
+  const start = inningHalfOrder(row.enteredInning, row.enteredHalf);
+  let best: T | null = null;
+  let bestKey = Infinity;
+  for (const o of all) {
+    if (o.teamId !== row.teamId || o.battingOrder !== row.battingOrder || o.id === row.id) continue;
+    const k = inningHalfOrder(o.enteredInning, o.enteredHalf);
+    if (k > start && k < bestKey) {
+      bestKey = k;
+      best = o;
+    }
+  }
+  if (!best) return null;
+  return { exitedInning: best.enteredInning ?? 1, exitedHalf: best.enteredHalf || 'top' };
+}
+
+function maxInningInSet(s: Set<number>): number {
+  let m = 0;
+  for (const v of s) if (v > m) m = v;
+  return m;
+}
+
+/** Defensive half-innings in this game where inning index is in [first, last] inclusive. */
+function countHalvesInRange(inningsPresent: Set<number>, first: number, last: number): number {
+  let n = 0;
+  for (const inn of inningsPresent) {
+    if (inn >= first && inn <= last) n++;
+  }
+  return n;
+}
+
+/**
+ * Defensive innings for one lineup stint (sums to player game total across multiple stints).
+ * Uses half-innings present in the event log (any game length / extras). Exit fields stop credit after sub-out.
+ */
+function defensiveInningsForStint(
+  row: {
+    teamId: number;
+    position: number | null;
+    enteredInning: number | null;
+    enteredHalf: string | null;
+    isActive: boolean | null;
+    exitedInning: number | null;
+    exitedHalf: string | null;
+  },
+  homeTopInnings: Set<number>,
+  awayBottomInnings: Set<number>,
+  homeTeamId: number,
+  awayTeamId: number,
+): number {
+  if (row.position === 10) return 0;
+  const ei = row.enteredInning ?? 1;
+  const eh = (row.enteredHalf || 'top').toLowerCase();
+
+  if (row.teamId === homeTeamId) {
+    const firstTop = eh === 'bot' ? ei + 1 : ei;
+    let lastTop: number;
+    if (row.isActive) {
+      lastTop = maxInningInSet(homeTopInnings);
+    } else if (row.exitedInning != null) {
+      const exh = (row.exitedHalf || 'top').toLowerCase();
+      lastTop = exh === 'bot' ? row.exitedInning : row.exitedInning - 1;
+    } else {
+      lastTop = maxInningInSet(homeTopInnings);
+    }
+    if (lastTop < firstTop) return 0;
+    return countHalvesInRange(homeTopInnings, firstTop, lastTop);
+  }
+
+  if (row.teamId === awayTeamId) {
+    const firstBottom = ei;
+    let lastBottom: number;
+    if (row.isActive) {
+      lastBottom = maxInningInSet(awayBottomInnings);
+    } else if (row.exitedInning != null) {
+      lastBottom = row.exitedInning - 1;
+    } else {
+      lastBottom = maxInningInSet(awayBottomInnings);
+    }
+    if (lastBottom < firstBottom) return 0;
+    return countHalvesInRange(awayBottomInnings, firstBottom, lastBottom);
+  }
+
+  return 0;
+}
+
 /* ═══════════════════════════════════════════════════════════════
    Main finalize function
    ═══════════════════════════════════════════════════════════════ */
@@ -94,7 +198,11 @@ export async function finalizeGame(gameId: number, userId?: number, options?: Fi
 
   const playerTeamMap = new Map<number, number>();
   for (const entry of lineups) {
+    if (!entry.isActive) continue;
     playerTeamMap.set(entry.playerId, entry.teamId);
+  }
+  for (const entry of lineups) {
+    if (!playerTeamMap.has(entry.playerId)) playerTeamMap.set(entry.playerId, entry.teamId);
   }
 
   /* ── Per-game BATTING stats ── */
@@ -132,12 +240,35 @@ export async function finalizeGame(gameId: number, userId?: number, options?: Fi
     }
   }
 
-  // Include all players who either had plate appearances OR runner events (SB, CS, etc.)
-  const batterIds = new Set(events.filter(e => e.batterId).map(e => e.batterId!));
+  // All players who had a PA (batterId), runner-only events (inferred actor), bases, or scored
+  const batterIds = new Set<number>();
+  for (const e of events) {
+    if (e.batterId) batterIds.add(e.batterId);
+    if (e.id != null) {
+      const actor = runnerActorByEventId.get(e.id);
+      if (actor) batterIds.add(actor);
+    }
+    for (const sc of (e.runnersScored as number[]) || []) batterIds.add(sc);
+    for (const r of [e.runnerFirstId, e.runnerSecondId, e.runnerThirdId]) {
+      if (r != null) batterIds.add(r);
+    }
+  }
+
+  const offensiveTeamForHalf = (half: string | null | undefined) =>
+    half === 'top' ? game.awayTeamId : game.homeTeamId;
 
   for (const batterId of batterIds) {
     const playerEvents = events.filter(e => e.batterId === batterId && isPlateAppearance(e.eventType));
-    const teamId = playerTeamMap.get(batterId) || game.homeTeamId;
+    let teamId = playerTeamMap.get(batterId);
+    if (teamId == null) {
+      const ev = events.find(e =>
+        e.batterId === batterId ||
+        e.runnerFirstId === batterId || e.runnerSecondId === batterId || e.runnerThirdId === batterId ||
+        ((e.runnersScored as number[]) || []).includes(batterId) ||
+        (e.id != null && runnerActorByEventId.get(e.id) === batterId)
+      );
+      teamId = ev ? offensiveTeamForHalf(ev.half) : game.homeTeamId;
+    }
 
     let pa = 0, ab = 0, hits = 0, singles = 0, doubles = 0, triples = 0, homeRuns = 0;
     let rbi = 0, walks = 0, strikeouts = 0, hitByPitch = 0;
@@ -147,6 +278,7 @@ export async function finalizeGame(gameId: number, userId?: number, options?: Fi
     let intentionalWalks = 0, reachedOnError = 0;
     let buntSingles = 0, strikeoutsLooking = 0, strikeoutsSwinging = 0;
     let fieldersChoice = 0, catcherInterference = 0, groundedIntoTriplePlay = 0;
+    const gidpGitpEventNums = new Set<number>();
 
     for (const e of playerEvents) {
       const t = e.eventType;
@@ -190,10 +322,22 @@ export async function finalizeGame(gameId: number, userId?: number, options?: Fi
       }
 
       const outs = e.outsRecorded ?? 0;
-      if ((t === 'ground_out' || t === 'fielders_choice') && outs >= 2) {
+      if (outs >= 3 && (GROUND_BALL_OUTS.has(t) || t === 'fielders_choice')) {
+        groundedIntoTriplePlay++;
+        if (e.eventNumber != null) gidpGitpEventNums.add(e.eventNumber);
+      } else if (outs === 2 && (GROUND_BALL_OUTS.has(t) || t === 'fielders_choice')) {
         groundedIntoDoublePlays++;
-        if (outs >= 3) groundedIntoTriplePlay++;
+        if (e.eventNumber != null) gidpGitpEventNums.add(e.eventNumber);
       }
+    }
+
+    // double_play / triple_play are not plate appearances but still credit the batter
+    for (const e of events) {
+      if (e.batterId !== batterId) continue;
+      if (e.eventType !== 'double_play' && e.eventType !== 'triple_play') continue;
+      if (e.eventNumber != null && gidpGitpEventNums.has(e.eventNumber)) continue;
+      if (e.eventType === 'triple_play') groundedIntoTriplePlay++;
+      else groundedIntoDoublePlays++;
     }
 
     let pickedOff = 0;
@@ -367,8 +511,8 @@ export async function finalizeGame(gameId: number, userId?: number, options?: Fi
   const fielderPickoffs = new Map<number, number>();
 
   // Find catchers (position 2) for each team
-  const homeCatcher = lineups.find(l => l.teamId === game.homeTeamId && l.position === 2);
-  const awayCatcher = lineups.find(l => l.teamId === game.awayTeamId && l.position === 2);
+  const homeCatcher = lineups.find(l => l.teamId === game.homeTeamId && l.position === 2 && l.isActive);
+  const awayCatcher = lineups.find(l => l.teamId === game.awayTeamId && l.position === 2 && l.isActive);
 
   // Build position-to-player map for each team (for fieldingSequence fallback)
   const homePosToPid = new Map<number, number>();
@@ -414,17 +558,15 @@ export async function finalizeGame(gameId: number, userId?: number, options?: Fi
 
     const t = e.eventType;
 
-    // Double plays: credit all fielders involved
-    if (t === 'double_play' || (e.outsRecorded ?? 0) >= 2) {
-      for (const pid of [...po, ...ast]) {
-        fielderDP.set(pid, (fielderDP.get(pid) || 0) + 1);
-      }
-    }
-
-    // Triple plays
-    if (t === 'triple_play' || (e.outsRecorded ?? 0) >= 3) {
+    // Double / triple plays: avoid crediting DP on any 2-out play (e.g. fly out + tag)
+    const outsOnPlay = e.outsRecorded ?? 0;
+    if (t === 'triple_play' || (outsOnPlay >= 3 && (GROUND_BALL_OUTS.has(t) || t === 'fielders_choice'))) {
       for (const pid of [...po, ...ast]) {
         fielderTP.set(pid, (fielderTP.get(pid) || 0) + 1);
+      }
+    } else if (t === 'double_play' || (outsOnPlay === 2 && (GROUND_BALL_OUTS.has(t) || t === 'fielders_choice'))) {
+      for (const pid of [...po, ...ast]) {
+        fielderDP.set(pid, (fielderDP.get(pid) || 0) + 1);
       }
     }
 
@@ -455,8 +597,14 @@ export async function finalizeGame(gameId: number, userId?: number, options?: Fi
   // Compute defensive innings per team from events
   // Home team fields during "top" halves, away team fields during "bot" halves
   const halfInnings = new Set<string>();
+  const homeTopInnings = new Set<number>();
+  const awayBottomInnings = new Set<number>();
   for (const e of events) {
-    if (e.inning && e.half) halfInnings.add(`${e.inning}-${e.half}`);
+    if (e.inning && e.half) {
+      halfInnings.add(`${e.inning}-${e.half}`);
+      if (e.half === 'top') homeTopInnings.add(e.inning);
+      else awayBottomInnings.add(e.inning);
+    }
   }
   let homeDefensiveInnings = 0;
   let awayDefensiveInnings = 0;
@@ -484,15 +632,52 @@ export async function finalizeGame(gameId: number, userId?: number, options?: Fi
     const catcherStolenBases = fielderCSB.get(pid) || 0;
     const catcherCaughtStealing = fielderCCS.get(pid) || 0;
     const pickoffs = fielderPickoffs.get(pid) || 0;
-    const lineupEntry = lineups.find(l => l.playerId === pid);
-    const innings = teamId === game.homeTeamId ? homeDefensiveInnings : awayDefensiveInnings;
+    const lineupEntry =
+      lineups.find(l => l.playerId === pid && l.isActive) ?? lineups.find(l => l.playerId === pid);
+    const hasFieldingActivity =
+      putouts + assists + errCount + doublePlays + triplePlays + passedBalls + catcherStolenBases + catcherCaughtStealing + pickoffs > 0;
+
+    const stintRows = lineups.filter(l => l.playerId === pid);
+    let inningsVal: number;
+    if (stintRows.length > 0) {
+      inningsVal = stintRows.reduce((sum, row) => {
+        const inferred =
+          !row.isActive && row.exitedInning == null
+            ? inferExitFromReplacement(row, lineups)
+            : null;
+        const exitedInning = row.exitedInning ?? inferred?.exitedInning ?? null;
+        const exitedHalf = row.exitedHalf ?? inferred?.exitedHalf ?? null;
+        return (
+          sum +
+          defensiveInningsForStint(
+            {
+              teamId: row.teamId,
+              position: row.position,
+              enteredInning: row.enteredInning,
+              enteredHalf: row.enteredHalf,
+              isActive: row.isActive,
+              exitedInning,
+              exitedHalf,
+            },
+            homeTopInnings,
+            awayBottomInnings,
+            game.homeTeamId,
+            game.awayTeamId,
+          )
+        );
+      }, 0);
+    } else if (hasFieldingActivity) {
+      inningsVal = teamId === game.homeTeamId ? homeDefensiveInnings : awayDefensiveInnings;
+    } else {
+      inningsVal = 0;
+    }
 
     await db
       .insert(playerGameFielding)
       .values({
         gameId, playerId: pid, teamId,
         position: lineupEntry?.position ?? null,
-        innings: String(innings),
+        innings: String(inningsVal),
         putouts, assists, errors: errCount,
         doublePlays, triplePlays, passedBalls,
         catcherStolenBases, catcherCaughtStealing, pickoffs,
@@ -500,7 +685,9 @@ export async function finalizeGame(gameId: number, userId?: number, options?: Fi
       .onConflictDoUpdate({
         target: [playerGameFielding.gameId, playerGameFielding.playerId],
         set: {
-          innings: String(innings),
+          teamId,
+          position: lineupEntry?.position ?? null,
+          innings: String(inningsVal),
           putouts, assists, errors: errCount,
           doublePlays, triplePlays, passedBalls,
           catcherStolenBases, catcherCaughtStealing, pickoffs,
@@ -901,11 +1088,11 @@ export async function recomputeSeasonPitching(seasonId: number) {
       -- H/9
       CASE WHEN total_outs > 0
         THEN ROUND(hits_allowed::numeric * 27 / total_outs, 1) ELSE 0 END,
-      -- BABIP = (H - HR) / (BF - K - HR - BB)
-      CASE WHEN (batters_faced - strikeouts - home_runs_allowed - walks_allowed) > 0
+      -- BABIP = (H - HR) / (BF - K - HR - BB - HBP)
+      CASE WHEN (batters_faced - strikeouts - home_runs_allowed - walks_allowed - hit_batters) > 0
         THEN ROUND(
           (hits_allowed - home_runs_allowed)::numeric /
-          (batters_faced - strikeouts - home_runs_allowed - walks_allowed), 3)
+          (batters_faced - strikeouts - home_runs_allowed - walks_allowed - hit_batters), 3)
         ELSE NULL END,
       NOW()
     FROM pitcher_agg
