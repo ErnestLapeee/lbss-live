@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { apiFetch } from '@/lib/api';
 import { notFound } from 'next/navigation';
+import { TeamMark } from '@/components/ui/team-mark';
 import { PlayerProfileClient } from './player-profile-client';
 
 type Props = { params: Promise<{ slug: string }> };
@@ -44,26 +45,56 @@ export default async function PlayerProfilePage({ params }: Props) {
     player.weightKg && `${player.weightKg} kg`,
   ].filter(Boolean);
 
+  const headTeam = battingStats[0] as { teamName?: string; teamLogoUrl?: string | null; seasonYear?: number } | undefined;
+
   return (
     <div>
       {/* Player header */}
-      <div className="bg-white border-b border-[#ccc]">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6">
-          <Link href="/players" className="text-xs text-[#666] hover:text-[#111] mb-4 inline-block">
+      <div className="bg-surface border-b border-border">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
+          <Link href="/players" className="text-xs text-text-muted hover:text-text transition-colors mb-5 inline-block">
             &larr; All Players
           </Link>
-          <h1 className="font-heading text-2xl font-bold text-[#111] tracking-tight">
-            {player.firstName} {player.lastName}
-          </h1>
-          {infoPills.length > 0 && (
-            <div className="flex flex-wrap gap-2 mt-3">
-              {infoPills.map((pill: string, i: number) => (
-                <span key={i} className="inline-flex px-2.5 py-0.5 rounded border border-[#ccc] bg-[#f5f5f5] text-xs text-[#444]">
-                  {pill}
-                </span>
-              ))}
+          <div className="flex flex-col sm:flex-row sm:items-start gap-6">
+            {player.photoUrl ? (
+              <img
+                src={player.photoUrl}
+                alt=""
+                className="h-28 w-28 rounded-2xl object-cover border border-border bg-surface-alt shrink-0 shadow-sm"
+              />
+            ) : (
+              <div className="h-28 w-28 rounded-2xl border border-border bg-surface-alt shrink-0 flex items-center justify-center font-heading text-3xl font-bold text-text-faint">
+                {String(player.firstName?.[0] ?? '?')}
+                {String(player.lastName?.[0] ?? '')}
+              </div>
+            )}
+            <div className="flex-1 min-w-0">
+              <h1 className="font-heading text-3xl font-bold text-text tracking-tight">
+                {player.firstName} {player.lastName}
+              </h1>
+              {infoPills.length > 0 && (
+                <div className="flex flex-wrap gap-2 mt-3">
+                  {infoPills.map((pill: string, i: number) => (
+                    <span key={i} className="inline-flex px-2.5 py-0.5 rounded-md border border-border bg-surface-raised text-xs text-text-muted">
+                      {pill}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
-          )}
+            {headTeam?.teamName && (
+              <div className="flex flex-col items-start sm:items-end gap-2 shrink-0 pt-1">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-text-faint">Team</span>
+                <TeamMark variant="card" name={headTeam.teamName} logoUrl={headTeam.teamLogoUrl} />
+                <span className="text-xs text-text-muted text-left sm:text-right max-w-[200px] leading-snug">
+                  {headTeam.teamName}
+                  {headTeam.seasonYear != null && (
+                    <span className="block text-[10px] text-text-faint mt-0.5">{headTeam.seasonYear}</span>
+                  )}
+                </span>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 

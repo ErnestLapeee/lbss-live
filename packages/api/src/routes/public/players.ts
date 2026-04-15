@@ -166,6 +166,7 @@ export async function playersRoutes(app: FastifyInstance) {
           babip: playerSeasonBatting.babip,
           lastComputedAt: playerSeasonBatting.lastComputedAt,
           teamName: teams.name,
+          teamLogoUrl: teams.logoUrl,
           seasonYear: seasons.year,
         })
         .from(playerSeasonBatting)
@@ -221,6 +222,7 @@ export async function playersRoutes(app: FastifyInstance) {
           babip: sql<string | null>`CASE WHEN (SUM(${playerGameBatting.atBats}) - SUM(${playerGameBatting.strikeouts}) - SUM(${playerGameBatting.homeRuns}) + SUM(${playerGameBatting.sacrificeFlies})) > 0 THEN ROUND((SUM(${playerGameBatting.hits}) - SUM(${playerGameBatting.homeRuns}))::numeric / (SUM(${playerGameBatting.atBats}) - SUM(${playerGameBatting.strikeouts}) - SUM(${playerGameBatting.homeRuns}) + SUM(${playerGameBatting.sacrificeFlies})), 3)::text ELSE NULL END`.as('babip'),
           lastComputedAt: sql<null>`NULL`.as('last_computed_at'),
           teamName: teams.name,
+          teamLogoUrl: teams.logoUrl,
           seasonYear: seasons.year,
         })
           .from(playerGameBatting)
@@ -233,7 +235,7 @@ export async function playersRoutes(app: FastifyInstance) {
             eq(games.isFinalized, true),
             sql`${games.playoffSeriesId} IS NOT NULL`,
           ))
-          .groupBy(seasons.id, seasons.year, teams.id, teams.name, playerGameBatting.playerId, playerGameBatting.teamId);
+          .groupBy(seasons.id, seasons.year, teams.id, teams.name, teams.logoUrl, playerGameBatting.playerId, playerGameBatting.teamId);
       }
 
       const merged = [...stats, ...playoffRows].sort((a: any, b: any) => {
@@ -294,6 +296,7 @@ export async function playersRoutes(app: FastifyInstance) {
           h9: playerSeasonPitching.h9,
           babip: playerSeasonPitching.babip,
           teamName: teams.name,
+          teamLogoUrl: teams.logoUrl,
           seasonYear: seasons.year,
         })
         .from(playerSeasonPitching)
@@ -583,6 +586,7 @@ export async function playersRoutes(app: FastifyInstance) {
       const battingLog = await db.execute(sql`
         SELECT pgb.*, g.scheduled_at as date, g.home_score, g.away_score,
           ht.name as home_team, at.name as away_team,
+          ht.logo_url as home_team_logo, at.logo_url as away_team_logo,
           g.home_team_id, g.away_team_id
         FROM player_game_batting pgb
         JOIN games g ON pgb.game_id = g.id
@@ -596,6 +600,7 @@ export async function playersRoutes(app: FastifyInstance) {
       const pitchingLog = await db.execute(sql`
         SELECT pgp.*, g.scheduled_at as date, g.home_score, g.away_score,
           ht.name as home_team, at.name as away_team,
+          ht.logo_url as home_team_logo, at.logo_url as away_team_logo,
           g.home_team_id, g.away_team_id
         FROM player_game_pitching pgp
         JOIN games g ON pgp.game_id = g.id

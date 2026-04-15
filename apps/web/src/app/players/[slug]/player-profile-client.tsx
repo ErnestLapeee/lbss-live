@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { SprayChart } from '@/components/stats/spray-chart';
+import { TeamMark } from '@/components/ui/team-mark';
 import { getStatAbbreviationMeaning } from '@/lib/stat-abbreviations';
 
 
@@ -109,6 +110,9 @@ const sumPitchingRows = (rows: any[]) => {
     'walksAllowed',
     'strikeouts',
     'homeRunsAllowed',
+    'hitBatters',
+    'wildPitches',
+    'battersFaced',
   ];
   for (const r of rows) {
     for (const k of keysToSum) acc[k] = (acc[k] || 0) + (Number(r[k] ?? 0) || 0);
@@ -118,13 +122,77 @@ const sumPitchingRows = (rows: any[]) => {
   const er = acc.earnedRuns || 0;
   const h = acc.hitsAllowed || 0;
   const bb = acc.walksAllowed || 0;
+  const k = acc.strikeouts || 0;
+  const hr = acc.homeRunsAllowed || 0;
+  const hb = acc.hitBatters || 0;
+  const bf = acc.battersFaced || 0;
+  const babipDenom = bf - k - hr - bb - hb;
   return {
     ...acc,
     inningsPitched: outsToIp(outs),
     era: ip > 0 ? ((er / ip) * 9).toFixed(2) : null,
     whip: ip > 0 ? ((bb + h) / ip).toFixed(2) : null,
+    fip: ip > 0 ? (3.1 + (13 * hr + 3 * bb - 2 * k) / ip).toFixed(2) : null,
+    k9: ip > 0 ? ((k / ip) * 9).toFixed(1) : null,
+    bb9: ip > 0 ? ((bb / ip) * 9).toFixed(1) : null,
+    babip: babipDenom > 0 ? ((h - hr) / babipDenom).toFixed(3) : null,
   };
 };
+
+const gv = (g: Record<string, unknown>, snake: string, camel: string): unknown => {
+  const a = g[snake];
+  const b = g[camel];
+  if (a != null && a !== '') return a;
+  if (b != null && b !== '') return b;
+  return undefined;
+};
+
+/** Per-game batting slash line from a batting log row (snake_case or camelCase). */
+function gameBattingSlashLine(g: Record<string, unknown>) {
+  const ab = Number(gv(g, 'at_bats', 'atBats') ?? 0);
+  const h = Number(gv(g, 'hits', 'hits') ?? 0);
+  const bb = Number(gv(g, 'walks', 'walks') ?? 0);
+  const hbp = Number(gv(g, 'hit_by_pitch', 'hitByPitch') ?? 0);
+  const sf = Number(gv(g, 'sacrifice_flies', 'sacrificeFlies') ?? 0);
+  const d2 = Number(gv(g, 'doubles', 'doubles') ?? 0);
+  const d3 = Number(gv(g, 'triples', 'triples') ?? 0);
+  const hr = Number(gv(g, 'home_runs', 'homeRuns') ?? 0);
+  let tb = Number(gv(g, 'total_bases', 'totalBases') ?? NaN);
+  if (!Number.isFinite(tb) || tb < 0) {
+    const singles = Math.max(0, h - d2 - d3 - hr);
+    tb = singles + 2 * d2 + 3 * d3 + 4 * hr;
+  }
+  const obDenom = ab + bb + hbp + sf;
+  const obp = obDenom > 0 ? (h + bb + hbp) / obDenom : null;
+  const slg = ab > 0 ? tb / ab : null;
+  const avg = ab > 0 ? h / ab : null;
+  const ops = obp != null && slg != null ? obp + slg : null;
+  return { avg, obp, slg, ops, tb };
+}
+
+/** Per-game pitching rate stats (matches platform FIP constant 3.1). */
+function gamePitchingRates(g: Record<string, unknown>) {
+  const ipOuts = ipToOuts(gv(g, 'innings_pitched', 'inningsPitched'));
+  const ip = ipOuts / 3;
+  if (ip <= 0) {
+    return { era: '—', whip: '—', fip: '—', k9: '—', bb9: '—', babip: '—' };
+  }
+  const h = Number(gv(g, 'hits_allowed', 'hitsAllowed') ?? 0);
+  const er = Number(gv(g, 'earned_runs', 'earnedRuns') ?? 0);
+  const bb = Number(gv(g, 'walks_allowed', 'walksAllowed') ?? 0);
+  const k = Number(gv(g, 'strikeouts', 'strikeouts') ?? 0);
+  const hr = Number(gv(g, 'home_runs_allowed', 'homeRunsAllowed') ?? 0);
+  const hb = Number(gv(g, 'hit_batters', 'hitBatters') ?? 0);
+  const bf = Number(gv(g, 'batters_faced', 'battersFaced') ?? 0);
+  const era = ((er / ip) * 9).toFixed(2);
+  const whip = ((bb + h) / ip).toFixed(2);
+  const fip = (3.1 + (13 * hr + 3 * bb - 2 * k) / ip).toFixed(2);
+  const k9 = ((k / ip) * 9).toFixed(1);
+  const bb9 = ((bb / ip) * 9).toFixed(1);
+  const babipDenom = bf - k - hr - bb - hb;
+  const babip = babipDenom > 0 ? ((h - hr) / babipDenom).toFixed(3) : '—';
+  return { era, whip, fip, k9, bb9, babip };
+}
 
 const sumFieldingRows = (rows: any[]) => {
   if (!rows.length) return null;
@@ -249,7 +317,12 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
                       <td className="px-2 py-2 font-semibold text-xs">
                         {s.seasonYear != null ? `${s.seasonYear}${s.seasonLabel ? ` ${s.seasonLabel}` : ''}` : 'All time'}
                       </td>
-                      <td className="px-2 py-2 text-xs text-text-muted">{s.teamName ?? '—'}</td>
+                      <td className="px-2 py-2 text-xs text-text-muted">
+                        <div className="flex items-center gap-2 min-w-0 max-w-[200px]">
+                          <TeamMark variant="tableSm" name={s.teamName ?? '—'} logoUrl={s.teamLogoUrl} />
+                          <span className="truncate">{s.teamName ?? '—'}</span>
+                        </div>
+                      </td>
                       <td className="px-2 py-2 text-right font-mono text-xs">{n(s.games)}</td>
                       <td className="px-2 py-2 text-right font-mono text-xs">{n(s.plateAppearances)}</td>
                       <td className="px-2 py-2 text-right font-mono text-xs">{n(s.atBats)}</td>
@@ -354,7 +427,12 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
                       <td className="px-2 py-2 font-semibold text-xs">
                         {s.seasonYear != null ? `${s.seasonYear}${s.seasonLabel ? ` ${s.seasonLabel}` : ''}` : 'All time'}
                       </td>
-                      <td className="px-2 py-2 text-xs text-text-muted">{s.teamName ?? '—'}</td>
+                      <td className="px-2 py-2 text-xs text-text-muted">
+                        <div className="flex items-center gap-2 min-w-0 max-w-[200px]">
+                          <TeamMark variant="tableSm" name={s.teamName ?? '—'} logoUrl={s.teamLogoUrl} />
+                          <span className="truncate">{s.teamName ?? '—'}</span>
+                        </div>
+                      </td>
                       <td className="px-2 py-2 text-right font-mono text-xs">{n(s.games)}</td>
                       <td className="px-2 py-2 text-right font-mono text-xs">{n(s.gamesStarted)}</td>
                       <td className="px-2 py-2 text-right font-mono text-xs">{n(s.wins)}</td>
@@ -394,14 +472,16 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
                         <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.walksAllowed)}</td>
                         <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.strikeouts)}</td>
                         <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.homeRunsAllowed)}</td>
+                        <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.hitBatters)}</td>
+                        <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.wildPitches)}</td>
                         <td className="px-2 py-2 text-right font-mono text-xs font-bold">{fmtEra(total.era)}</td>
                         <td className="px-2 py-2 text-right font-mono text-xs font-bold">{fmtEra(total.whip)}</td>
                         <td className="px-2 py-2 text-right font-mono text-xs font-bold">{fmtEra(total.fip)}</td>
                         <td className="px-2 py-2 text-right font-mono text-xs font-bold">
-                          {total.k9 != null ? Number(total.k9).toFixed(1) : '—'}
+                          {total.k9 != null ? String(total.k9) : '—'}
                         </td>
                         <td className="px-2 py-2 text-right font-mono text-xs font-bold">
-                          {total.bb9 != null ? Number(total.bb9).toFixed(1) : '—'}
+                          {total.bb9 != null ? String(total.bb9) : '—'}
                         </td>
                         <td className="px-2 py-2 text-right font-mono text-xs font-bold">{fmtRate(total.babip)}</td>
                       </tr>
@@ -552,35 +632,59 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
                     Batting Game Log
                   </h3>
                   <div className="rounded-xl border border-border bg-surface overflow-x-auto">
-                    <table className="w-full text-sm">
+                    <table className="w-full text-sm min-w-[1100px]">
                       <thead>
                         <tr className="border-b border-border bg-surface-alt">
-                          {['Date', 'Opp', 'AB', 'R', 'H', '2B', '3B', 'HR', 'RBI', 'BB', 'SO', 'SB'].map(col => (
-                            <th key={col} className={`px-2 py-2 text-[10px] font-bold uppercase tracking-wider text-text-faint whitespace-nowrap ${col === 'Date' || col === 'Opp' ? 'text-left' : 'text-right'}`}>
+                          {[
+                            'Date', 'Opp', 'PA', 'AB', 'R', 'H', '2B', '3B', 'HR', 'RBI', 'BB', 'SO', 'SB', 'CS', 'HBP', 'SF', 'TB',
+                            'AVG', 'OBP', 'SLG', 'OPS',
+                          ].map(col => (
+                            <th
+                              key={col}
+                              title={getStatAbbreviationMeaning(col) ?? undefined}
+                              className={`px-2 py-2 text-[10px] font-bold uppercase tracking-wider text-text-faint whitespace-nowrap ${col === 'Date' || col === 'Opp' ? 'text-left' : 'text-right'}`}
+                            >
                               {col}
                             </th>
                           ))}
                         </tr>
                       </thead>
                       <tbody>
-                        {gameLog.batting.map((g: any, i: number) => {
-                          const isHome = g.team_id === g.home_team_id;
-                          const oppName = isHome ? g.away_team : g.home_team;
-                          const dateStr = g.date ? new Date(g.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—';
+                        {gameLog.batting.map((row: any, i: number) => {
+                          const g = row as Record<string, unknown>;
+                          const isHome = Number(gv(g, 'team_id', 'teamId')) === Number(gv(g, 'home_team_id', 'homeTeamId'));
+                          const oppName = String(isHome ? gv(g, 'away_team', 'awayTeam') : gv(g, 'home_team', 'homeTeam') ?? '');
+                          const oppLogo = (isHome ? gv(g, 'away_team_logo', 'awayTeamLogo') : gv(g, 'home_team_logo', 'homeTeamLogo')) as string | null | undefined;
+                          const dateStr = g.date ? new Date(String(g.date)).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—';
+                          const slash = gameBattingSlashLine(g);
                           return (
                             <tr key={i} className="border-b border-border last:border-0 hover:bg-surface-alt/50 transition-colors">
-                              <td className="px-2 py-1.5 text-xs">{dateStr}</td>
-                              <td className="px-2 py-1.5 text-xs text-text-muted">{isHome ? 'vs' : '@'} {oppName}</td>
-                              <td className="px-2 py-1.5 text-right font-mono text-xs">{n(g.at_bats)}</td>
-                              <td className="px-2 py-1.5 text-right font-mono text-xs">{n(g.runs)}</td>
-                              <td className="px-2 py-1.5 text-right font-mono text-xs">{n(g.hits)}</td>
-                              <td className="px-2 py-1.5 text-right font-mono text-xs">{n(g.doubles)}</td>
-                              <td className="px-2 py-1.5 text-right font-mono text-xs">{n(g.triples)}</td>
-                              <td className="px-2 py-1.5 text-right font-mono text-xs">{n(g.home_runs)}</td>
-                              <td className="px-2 py-1.5 text-right font-mono text-xs">{n(g.rbi)}</td>
-                              <td className="px-2 py-1.5 text-right font-mono text-xs">{n(g.walks)}</td>
-                              <td className="px-2 py-1.5 text-right font-mono text-xs">{n(g.strikeouts)}</td>
-                              <td className="px-2 py-1.5 text-right font-mono text-xs">{n(g.stolen_bases)}</td>
+                              <td className="px-2 py-1.5 text-xs whitespace-nowrap">{dateStr}</td>
+                              <td className="px-2 py-1.5 text-xs text-text-muted min-w-[160px]">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <TeamMark variant="tableSm" name={oppName || 'Opp'} logoUrl={oppLogo} />
+                                  <span className="truncate">{isHome ? 'vs' : '@'} {oppName}</span>
+                                </div>
+                              </td>
+                              <td className="px-2 py-1.5 text-right font-mono text-xs">{n(gv(g, 'plate_appearances', 'plateAppearances'))}</td>
+                              <td className="px-2 py-1.5 text-right font-mono text-xs">{n(gv(g, 'at_bats', 'atBats'))}</td>
+                              <td className="px-2 py-1.5 text-right font-mono text-xs">{n(gv(g, 'runs', 'runs'))}</td>
+                              <td className="px-2 py-1.5 text-right font-mono text-xs">{n(gv(g, 'hits', 'hits'))}</td>
+                              <td className="px-2 py-1.5 text-right font-mono text-xs">{n(gv(g, 'doubles', 'doubles'))}</td>
+                              <td className="px-2 py-1.5 text-right font-mono text-xs">{n(gv(g, 'triples', 'triples'))}</td>
+                              <td className="px-2 py-1.5 text-right font-mono text-xs">{n(gv(g, 'home_runs', 'homeRuns'))}</td>
+                              <td className="px-2 py-1.5 text-right font-mono text-xs">{n(gv(g, 'rbi', 'rbi'))}</td>
+                              <td className="px-2 py-1.5 text-right font-mono text-xs">{n(gv(g, 'walks', 'walks'))}</td>
+                              <td className="px-2 py-1.5 text-right font-mono text-xs">{n(gv(g, 'strikeouts', 'strikeouts'))}</td>
+                              <td className="px-2 py-1.5 text-right font-mono text-xs">{n(gv(g, 'stolen_bases', 'stolenBases'))}</td>
+                              <td className="px-2 py-1.5 text-right font-mono text-xs">{n(gv(g, 'caught_stealing', 'caughtStealing'))}</td>
+                              <td className="px-2 py-1.5 text-right font-mono text-xs">{n(gv(g, 'hit_by_pitch', 'hitByPitch'))}</td>
+                              <td className="px-2 py-1.5 text-right font-mono text-xs">{n(gv(g, 'sacrifice_flies', 'sacrificeFlies'))}</td>
+                              <td className="px-2 py-1.5 text-right font-mono text-xs">{slash.tb}</td>
+                              <td className="px-2 py-1.5 text-right font-mono text-xs">{slash.avg != null ? fmtRate(slash.avg) : '—'}</td>
+                              <td className="px-2 py-1.5 text-right font-mono text-xs">{slash.obp != null ? fmtRate(slash.obp) : '—'}</td>
+                              <td className="px-2 py-1.5 text-right font-mono text-xs">{slash.slg != null ? fmtRate(slash.slg) : '—'}</td>
+                              <td className="px-2 py-1.5 text-right font-mono text-xs font-semibold">{slash.ops != null ? fmtRate(slash.ops) : '—'}</td>
                             </tr>
                           );
                         })}
@@ -598,35 +702,60 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
                     Pitching Game Log
                   </h3>
                   <div className="rounded-xl border border-border bg-surface overflow-x-auto">
-                    <table className="w-full text-sm">
+                    <table className="w-full text-sm min-w-[1000px]">
                       <thead>
                         <tr className="border-b border-border bg-surface-alt">
-                          {['Date', 'Opp', 'Dec', 'IP', 'H', 'R', 'ER', 'BB', 'SO', 'HR', 'HBP', 'PIT'].map(col => (
-                            <th key={col} className={`px-2 py-2 text-[10px] font-bold uppercase tracking-wider text-text-faint whitespace-nowrap ${col === 'Date' || col === 'Opp' ? 'text-left' : 'text-right'}`}>
+                          {[
+                            'Date', 'Opp', 'Dec', 'IP', 'H', 'R', 'ER', 'BB', 'SO', 'HR', 'HBP', 'WP', 'PIT',
+                            'ERA', 'WHIP', 'FIP', 'K/9', 'BB/9', 'BABIP',
+                          ].map(col => (
+                            <th
+                              key={col}
+                              title={getStatAbbreviationMeaning(col) ?? undefined}
+                              className={`px-2 py-2 text-[10px] font-bold uppercase tracking-wider text-text-faint whitespace-nowrap ${col === 'Date' || col === 'Opp' ? 'text-left' : 'text-right'}`}
+                            >
                               {col}
                             </th>
                           ))}
                         </tr>
                       </thead>
                       <tbody>
-                        {gameLog.pitching.map((g: any, i: number) => {
-                          const isHome = g.team_id === g.home_team_id;
-                          const oppName = isHome ? g.away_team : g.home_team;
-                          const dateStr = g.date ? new Date(g.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—';
+                        {gameLog.pitching.map((row: any, i: number) => {
+                          const g = row as Record<string, unknown>;
+                          const isHome = Number(gv(g, 'team_id', 'teamId')) === Number(gv(g, 'home_team_id', 'homeTeamId'));
+                          const oppName = String(isHome ? gv(g, 'away_team', 'awayTeam') : gv(g, 'home_team', 'homeTeam') ?? '');
+                          const oppLogo = (isHome ? gv(g, 'away_team_logo', 'awayTeamLogo') : gv(g, 'home_team_logo', 'homeTeamLogo')) as string | null | undefined;
+                          const dateStr = g.date ? new Date(String(g.date)).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—';
+                          const pr = gamePitchingRates(g);
+                          const pit = gv(g, 'pitches_thrown', 'pitchesThrown');
                           return (
                             <tr key={i} className="border-b border-border last:border-0 hover:bg-surface-alt/50 transition-colors">
-                              <td className="px-2 py-1.5 text-xs">{dateStr}</td>
-                              <td className="px-2 py-1.5 text-xs text-text-muted">{isHome ? 'vs' : '@'} {oppName}</td>
-                              <td className="px-2 py-1.5 text-right font-mono text-xs font-bold">{g.decision || '—'}</td>
-                              <td className="px-2 py-1.5 text-right font-mono text-xs">{g.innings_pitched ?? '—'}</td>
-                              <td className="px-2 py-1.5 text-right font-mono text-xs">{n(g.hits_allowed)}</td>
-                              <td className="px-2 py-1.5 text-right font-mono text-xs">{n(g.runs_allowed)}</td>
-                              <td className="px-2 py-1.5 text-right font-mono text-xs">{n(g.earned_runs)}</td>
-                              <td className="px-2 py-1.5 text-right font-mono text-xs">{n(g.walks_allowed)}</td>
-                              <td className="px-2 py-1.5 text-right font-mono text-xs">{n(g.strikeouts)}</td>
-                              <td className="px-2 py-1.5 text-right font-mono text-xs">{n(g.home_runs_allowed)}</td>
-                              <td className="px-2 py-1.5 text-right font-mono text-xs">{n(g.hit_batters)}</td>
-                              <td className="px-2 py-1.5 text-right font-mono text-xs">{g.pitches_thrown ?? '—'}</td>
+                              <td className="px-2 py-1.5 text-xs whitespace-nowrap">{dateStr}</td>
+                              <td className="px-2 py-1.5 text-xs text-text-muted min-w-[160px]">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <TeamMark variant="tableSm" name={oppName || 'Opp'} logoUrl={oppLogo} />
+                                  <span className="truncate">{isHome ? 'vs' : '@'} {oppName}</span>
+                                </div>
+                              </td>
+                              <td className="px-2 py-1.5 text-right font-mono text-xs font-bold">
+                                {(gv(g, 'decision', 'decision') as string | null | undefined) || '—'}
+                              </td>
+                              <td className="px-2 py-1.5 text-right font-mono text-xs">{String(gv(g, 'innings_pitched', 'inningsPitched') ?? '—')}</td>
+                              <td className="px-2 py-1.5 text-right font-mono text-xs">{n(gv(g, 'hits_allowed', 'hitsAllowed'))}</td>
+                              <td className="px-2 py-1.5 text-right font-mono text-xs">{n(gv(g, 'runs_allowed', 'runsAllowed'))}</td>
+                              <td className="px-2 py-1.5 text-right font-mono text-xs">{n(gv(g, 'earned_runs', 'earnedRuns'))}</td>
+                              <td className="px-2 py-1.5 text-right font-mono text-xs">{n(gv(g, 'walks_allowed', 'walksAllowed'))}</td>
+                              <td className="px-2 py-1.5 text-right font-mono text-xs">{n(gv(g, 'strikeouts', 'strikeouts'))}</td>
+                              <td className="px-2 py-1.5 text-right font-mono text-xs">{n(gv(g, 'home_runs_allowed', 'homeRunsAllowed'))}</td>
+                              <td className="px-2 py-1.5 text-right font-mono text-xs">{n(gv(g, 'hit_batters', 'hitBatters'))}</td>
+                              <td className="px-2 py-1.5 text-right font-mono text-xs">{n(gv(g, 'wild_pitches', 'wildPitches'))}</td>
+                              <td className="px-2 py-1.5 text-right font-mono text-xs">{pit != null && pit !== '' ? String(pit) : '—'}</td>
+                              <td className="px-2 py-1.5 text-right font-mono text-xs">{pr.era}</td>
+                              <td className="px-2 py-1.5 text-right font-mono text-xs">{pr.whip}</td>
+                              <td className="px-2 py-1.5 text-right font-mono text-xs">{pr.fip}</td>
+                              <td className="px-2 py-1.5 text-right font-mono text-xs">{pr.k9}</td>
+                              <td className="px-2 py-1.5 text-right font-mono text-xs">{pr.bb9}</td>
+                              <td className="px-2 py-1.5 text-right font-mono text-xs">{pr.babip}</td>
                             </tr>
                           );
                         })}
