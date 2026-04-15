@@ -1412,8 +1412,7 @@ export function LiveScoringPage() {
             {/* EMPTY SLOT — automatic out or skip */}
             {step === 'pitch' && isEmptySlot && (
               <div className="bg-[#111d30] rounded-xl border border-white/10 overflow-hidden p-4 text-center">
-                <p className="text-xs text-white/40 uppercase font-bold tracking-wide mb-1">Batting slot #{battingOrderSlot} is empty</p>
-                <p className="text-white/20 text-[10px] mb-4">No player assigned to this position in the lineup</p>
+                <p className="text-xs text-white/40 uppercase font-bold tracking-wide mb-4">Batting slot #{battingOrderSlot} is empty</p>
                 <div className="flex gap-2">
                   <button onClick={async () => {
                     setSubmitting(true);
@@ -1597,9 +1596,9 @@ export function LiveScoringPage() {
             {step === 'fielding' && (
               <div className="bg-[#111d30] rounded-lg border border-white/10 p-3 text-center">
                 {selectedEvent && ERROR_EVENTS.has(selectedEvent) ? (
-                  <p className="text-[10px] text-red-400/70 uppercase font-bold mb-2">Who committed the error?</p>
+                  <p className="text-[10px] text-red-400/70 uppercase font-bold mb-2">Error on</p>
                 ) : (
-                  <p className="text-[10px] text-white/40 uppercase font-bold mb-2">Tap positions on the field above</p>
+                  <p className="text-[10px] text-white/40 uppercase font-bold mb-2">Fielding</p>
                 )}
                 <div className="text-xl font-bold font-mono text-white mb-2">{fieldingPositions.length > 0 ? fieldingPositions.join('-') : '—'}</div>
                 <div className="flex gap-2 justify-center">
@@ -1612,7 +1611,6 @@ export function LiveScoringPage() {
             {/* HIT LOCATION step */}
             {step === 'hit_location' && (
               <div className="bg-[#111d30] rounded-xl border border-white/10 p-3">
-                <p className="text-[10px] text-white/40 uppercase font-bold text-center mb-2">Tap where the ball was hit</p>
                 <div className="flex justify-center mb-2">
                   <svg viewBox="0 0 300 200" className="w-full max-w-sm cursor-crosshair"
                     onClick={(e) => {
@@ -1700,11 +1698,6 @@ export function LiveScoringPage() {
                   <p className="text-xs text-white/80 font-bold tracking-wide">
                     {currentBatter.firstName} {currentBatter.lastName}
                   </p>
-                  {runnerQuestions.length > 0 && (
-                    <p className="text-[10px] text-white/40 font-normal normal-case mt-1.5 leading-snug">
-                      Runners for this play are set — only the batter’s final base is left.
-                    </p>
-                  )}
                 </div>
                 <div className="p-3 space-y-3">
                   <button
@@ -1715,7 +1708,6 @@ export function LiveScoringPage() {
                     Submit — batter to 1st (ROE)
                   </button>
                   <div>
-                    <p className="text-[10px] text-white/35 uppercase font-bold text-center mb-2 tracking-wider">Or extra bases on same error</p>
                     <div className="grid grid-cols-3 gap-2">
                       {([
                         { d: 'second' as const, label: '2nd' },
@@ -1802,8 +1794,8 @@ export function LiveScoringPage() {
                   <div className="bg-[#111d30] rounded-xl border border-white/10 overflow-hidden">
                     <div className="px-4 py-3 border-b border-white/5 text-center">
                       <p className="text-[10px] text-red-400 font-bold uppercase mb-1 tracking-widest">{runnerOutPendingType.replace(/_/g, ' ')}</p>
-                      <p className="text-xs text-white/50 uppercase font-bold tracking-wide">
-                        {q.playerName} — Fielding sequence
+                      <p className="text-xs text-white/80 font-bold tracking-wide">
+                        {q.playerName}
                       </p>
                       {fld.length > 0 && (
                         <p className="text-sm text-white font-bold mt-2 tracking-wider">{fld.join(' – ')}</p>
@@ -1854,14 +1846,6 @@ export function LiveScoringPage() {
                       What happened to the runner on {baseLabel} base,
                     </p>
                     <p className="text-base text-white font-bold mt-0.5">{q.playerName}?</p>
-                    {runnerQuestions.length > 1 && (
-                      <p className="text-[10px] text-white/35 font-mono mt-1 tabular-nums">
-                        Runner {currentRunnerIdx + 1} of {runnerQuestions.length}
-                      </p>
-                    )}
-                    {minOrder > BASE_ORDER[q.base] && (
-                      <p className="text-[10px] text-amber-400/70 mt-1">Must advance to at least {q.minDestination.toUpperCase()}</p>
-                    )}
                   </div>
 
                   {/* Out / Safe / Quick tabs */}
@@ -1888,7 +1872,6 @@ export function LiveScoringPage() {
                     ))}
                   </div>
 
-                  {/* Base selector row - click to SELECT destination, not submit */}
                   <div className="flex border-b border-white/10">
                     {(['first','second','third','home'] as const).map(dest => {
                       const isAvailable = BASE_ORDER[dest] >= minOrder;
@@ -2078,10 +2061,7 @@ export function LiveScoringPage() {
                     <div className="bg-[#111d30] rounded-xl border border-white/10 overflow-hidden">
                       <div className="px-4 py-3 border-b border-white/5 text-center">
                         <p className="text-xs text-white/50 uppercase font-bold tracking-wide">
-                          {outLabel} — Who was involved?
-                        </p>
-                        <p className="text-[10px] text-white/30 mt-1">
-                          Tap positions in order (assists first, putout last)
+                          {outLabel}
                         </p>
                         {fld.length > 0 && (
                           <p className="text-sm text-white font-bold mt-2 tracking-wider">{fld.join(' – ')}</p>
@@ -2165,11 +2145,8 @@ export function LiveScoringPage() {
                 return (
                   <div className="bg-[#111d30] rounded-xl border border-white/10 overflow-hidden">
                     <div className="px-4 py-3 border-b border-white/5 text-center">
-                      <p className="text-xs text-red-400/70 uppercase font-bold tracking-wide">
-                        ERROR — Who committed it?
-                      </p>
-                      <p className="text-[10px] text-white/30 mt-1">
-                        Tap the fielder who made the error
+                        <p className="text-xs text-red-400/70 uppercase font-bold tracking-wide">
+                        ERROR
                       </p>
                       {fld.length > 0 && (
                         <p className="text-sm text-white font-bold mt-2 tracking-wider">E{fld.join('')}</p>
@@ -2262,9 +2239,6 @@ export function LiveScoringPage() {
                       );
                     })}
                   </div>
-                  <p className="text-[9px] text-white/30 text-center mt-2">
-                    {fieldingLineup.find(l => l.position === subPosition) ? 'Players will swap positions' : 'Player will move to selected position'}
-                  </p>
                   <button onClick={() => setStep('sub_defense')} className="w-full mt-2 py-2 text-white/40 text-[10px] font-bold uppercase hover:text-white/60">← BACK</button>
                 </div>
               );
@@ -2273,7 +2247,6 @@ export function LiveScoringPage() {
             {/* PICK PLAYER FOR POSITION CHANGE (from Misc) */}
             {step === 'swap_position_pick' && (
               <div className="bg-[#111d30] rounded-lg border border-white/10 p-3 max-h-72 overflow-y-auto">
-                <p className="text-[10px] text-white/40 uppercase font-bold text-center mb-2">Select player to move</p>
                 <div className="space-y-1">
                   {fieldingLineup.map(entry => (
                     <button key={entry.playerId} onClick={() => { setSubPosition(entry.position); setStep('swap_position'); }}
@@ -2333,10 +2306,7 @@ export function LiveScoringPage() {
             {/* ADJUST SCORE */}
             {step === 'adjust_score' && (
               <div className="bg-[#111d30] rounded-lg border border-white/10 p-4">
-                <p className="text-xs text-white/40 uppercase font-bold text-center mb-2">Adjust Score</p>
-                <p className="text-[10px] text-white/35 text-center mb-4 leading-relaxed">
-                  Saves a correction in the event log so totals stay in sync with plays. Use when the board and the book disagree.
-                </p>
+                <p className="text-xs text-white/40 uppercase font-bold text-center mb-4">Adjust Score</p>
                 <div className="flex items-center gap-6 justify-center mb-4">
                   <div className="text-center">
                     <p className="text-[10px] text-white/40 uppercase mb-1">{game.awayTeamName}</p>
@@ -2741,7 +2711,6 @@ function EventTimelinePanel({ gameId, events, homeLineup, awayLineup, onClose, o
                       {/* Reason per scorer (order matches runnersScored) */}
                       {(editForm.runnersScored || []).length > 0 && (
                         <div className="mt-2 space-y-1">
-                          <div className="text-white/40 text-[10px] font-bold">Scoring reasons (in order)</div>
                           {(editForm.runnersScored || []).map((pid: number, idx: number) => (
                             <div key={`${pid}:${idx}`} className="flex items-center gap-2 text-[10px]">
                               <div className="w-24 text-white/50 truncate">{playerName(pid)}</div>
@@ -2760,9 +2729,6 @@ function EventTimelinePanel({ gameId, events, homeLineup, awayLineup, onClose, o
                               </select>
                             </div>
                           ))}
-                          <div className="text-[9px] text-white/25">
-                            Tip: for a <span className="text-white/40">WILD PITCH</span> scoring play, set reason to <span className="text-white/40">Wild pitch</span>.
-                          </div>
                         </div>
                       )}
 
