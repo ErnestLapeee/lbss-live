@@ -3,40 +3,30 @@ import { db } from '../../db/index.js';
 import { seasons, leagues } from '../../db/schema/index.js';
 import { eq, desc } from 'drizzle-orm';
 import { seasonWithPlayoffDefaults } from '../../lib/season-playoff-response.js';
-import { getSeasonsHavePlayoffColumnsCached } from '../../lib/seasons-playoff-columns-cache.js';
+import { getSeasonsColumnFlagsCached } from '../../lib/seasons-playoff-columns-cache.js';
+import { seasonsRowSelectShape } from '../../lib/seasons-drizzle-select.js';
 
 export async function seasonsRoutes(app: FastifyInstance) {
   // GET / - list all seasons ordered by year desc
   app.get('/', async (request, reply) => {
     try {
-      const hasPoCols = await getSeasonsHavePlayoffColumnsCached();
+      const flags = await getSeasonsColumnFlagsCached();
+      const hasPoCols = flags.hasPlayoffOptionals;
       const result = await db
-        .select({
-          id: seasons.id,
-          year: seasons.year,
-          name: seasons.name,
-          startDate: seasons.startDate,
-          endDate: seasons.endDate,
-          isActive: seasons.isActive,
-          seasonKind: seasons.seasonKind,
-          parentSeasonId: seasons.parentSeasonId,
-          ...(hasPoCols
-            ? {
-              hasPlayoffs: seasons.hasPlayoffs,
-              regularSeasonGamesPerTeam: seasons.regularSeasonGamesPerTeam,
-              playoffSettings: seasons.playoffSettings,
-            }
-            : {}),
-          createdAt: seasons.createdAt,
-        })
+        .select(seasonsRowSelectShape(flags))
         .from(seasons)
         .orderBy(desc(seasons.year));
       return reply.send(
-        result.map((s) => ({
-          ...seasonWithPlayoffDefaults(hasPoCols, s as Record<string, unknown>),
-          seasonKind: s.seasonKind ?? 'regular',
-          parentSeasonId: s.parentSeasonId ?? null,
-        })),
+        result.map((s) => {
+          const row = s as Record<string, unknown>;
+          return {
+            ...seasonWithPlayoffDefaults(hasPoCols, row),
+            seasonKind: flags.hasSeasonKindOptionals ? String(row.seasonKind ?? 'regular') : 'regular',
+            parentSeasonId: flags.hasSeasonKindOptionals
+              ? ((row.parentSeasonId as number | null | undefined) ?? null)
+              : null,
+          };
+        }),
       );
     } catch (err) {
       request.log.error(err);
@@ -52,26 +42,10 @@ export async function seasonsRoutes(app: FastifyInstance) {
         return reply.status(400).send({ message: 'Invalid season id' });
       }
 
-      const hasPoCols = await getSeasonsHavePlayoffColumnsCached();
+      const flags = await getSeasonsColumnFlagsCached();
+      const hasPoCols = flags.hasPlayoffOptionals;
       const [season] = await db
-        .select({
-          id: seasons.id,
-          year: seasons.year,
-          name: seasons.name,
-          startDate: seasons.startDate,
-          endDate: seasons.endDate,
-          isActive: seasons.isActive,
-          seasonKind: seasons.seasonKind,
-          parentSeasonId: seasons.parentSeasonId,
-          ...(hasPoCols
-            ? {
-                hasPlayoffs: seasons.hasPlayoffs,
-                regularSeasonGamesPerTeam: seasons.regularSeasonGamesPerTeam,
-                playoffSettings: seasons.playoffSettings,
-              }
-            : {}),
-          createdAt: seasons.createdAt,
-        })
+        .select(seasonsRowSelectShape(flags))
         .from(seasons)
         .where(eq(seasons.id, id))
         .limit(1);
@@ -93,10 +67,13 @@ export async function seasonsRoutes(app: FastifyInstance) {
         .from(leagues)
         .where(eq(leagues.seasonId, season.id));
 
+      const row = season as Record<string, unknown>;
       return reply.send({
-        ...seasonWithPlayoffDefaults(hasPoCols, season as Record<string, unknown>),
-        seasonKind: season.seasonKind ?? 'regular',
-        parentSeasonId: season.parentSeasonId ?? null,
+        ...seasonWithPlayoffDefaults(hasPoCols, row),
+        seasonKind: flags.hasSeasonKindOptionals ? String(row.seasonKind ?? 'regular') : 'regular',
+        parentSeasonId: flags.hasSeasonKindOptionals
+          ? ((row.parentSeasonId as number | null | undefined) ?? null)
+          : null,
         leagues: seasonLeagues,
       });
     } catch (err) {
@@ -113,30 +90,15 @@ export async function seasonsRoutes(app: FastifyInstance) {
         return reply.status(400).send({ message: 'Invalid year' });
       }
 
-      const hasPoCols = await getSeasonsHavePlayoffColumnsCached();
-      const [season] = await db
-        .select({
-          id: seasons.id,
-          year: seasons.year,
-          name: seasons.name,
-          startDate: seasons.startDate,
-          endDate: seasons.endDate,
-          isActive: seasons.isActive,
-          seasonKind: seasons.seasonKind,
-          parentSeasonId: seasons.parentSeasonId,
-          ...(hasPoCols
-            ? {
-              hasPlayoffs: seasons.hasPlayoffs,
-              regularSeasonGamesPerTeam: seasons.regularSeasonGamesPerTeam,
-              playoffSettings: seasons.playoffSettings,
-            }
-            : {}),
-          createdAt: seasons.createdAt,
-        })
+      const flags = await getSeasonsColumnFlagsCached();
+      const hasPoCols = flags.hasPlayoffOptionals;
+      const byYear = db
+        .select(seasonsRowSelectShape(flags))
         .from(seasons)
-        .where(eq(seasons.year, year))
-        .orderBy(desc(seasons.seasonKind))
-        .limit(1);
+        .where(eq(seasons.year, year));
+      const [season] = flags.hasSeasonKindOptionals
+        ? await byYear.orderBy(desc(seasons.seasonKind)).limit(1)
+        : await byYear.limit(1);
 
       if (!season) {
         return reply.status(404).send({ message: 'Season not found' });
@@ -156,10 +118,13 @@ export async function seasonsRoutes(app: FastifyInstance) {
         .from(leagues)
         .where(eq(leagues.seasonId, season.id));
 
+      const row = season as Record<string, unknown>;
       return reply.send({
-        ...seasonWithPlayoffDefaults(hasPoCols, season as Record<string, unknown>),
-        seasonKind: season.seasonKind ?? 'regular',
-        parentSeasonId: season.parentSeasonId ?? null,
+        ...seasonWithPlayoffDefaults(hasPoCols, row),
+        seasonKind: flags.hasSeasonKindOptionals ? String(row.seasonKind ?? 'regular') : 'regular',
+        parentSeasonId: flags.hasSeasonKindOptionals
+          ? ((row.parentSeasonId as number | null | undefined) ?? null)
+          : null,
         leagues: seasonLeagues,
       });
     } catch (err) {
