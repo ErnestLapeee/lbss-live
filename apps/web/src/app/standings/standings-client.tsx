@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { PageHeader } from '@/components/ui/page-header';
 import { PlayoffSeriesCard } from '@/components/playoffs/playoff-series-card';
@@ -224,64 +224,15 @@ export function StandingsClient() {
   };
 
   const currentSeason = selectedSeasonId != null ? seasons.find((s) => s.id === selectedSeasonId) : null;
+  const isPlayoffSeason = currentSeason?.seasonKind === 'playoff';
   const hasStandings = standings.some((s) => s.rows.length > 0);
-  const hasPlayoffs = !!playoffs && (
+  const hasPlayoffBracketData = !!playoffs && (
     !!playoffs.playoffs ||
     (playoffs.leagues ?? []).some((lg) => (lg.bracket?.rounds ?? []).length > 0)
   );
   const playoffsByLeagueId = new Map((playoffs?.leagues ?? []).map((lg) => [lg.leagueId, lg] as const));
-
-  const provisionalConfig = useMemo(() => {
-    const seeds = Math.max(2, Number(currentSeason?.playoffSettings?.seeds ?? 4));
-    const bestOf = Math.max(1, Number(currentSeason?.playoffSettings?.bestOf ?? 1));
-    return { seeds, bestOf };
-  }, [currentSeason?.playoffSettings]);
-
-  function buildProvisionalRound1(rows: StandingsRow[]) {
-    const norm = rows.map((r) => ({
-      teamName: r.teamName,
-      wins: r.wins ?? 0,
-      losses: r.losses ?? 0,
-      ties: r.ties ?? 0,
-      gamesPlayed: r.gamesPlayed ?? 0,
-      winPct: r.winPct != null ? Number(r.winPct) : (r.gamesPlayed ? (r.wins / r.gamesPlayed) : 0),
-      gamesBehind: r.gamesBehind != null ? Number(r.gamesBehind) : 0,
-      runsScored: r.runsScored ?? 0,
-      runsAllowed: r.runsAllowed ?? 0,
-    }));
-    const sorted = [...norm].sort((a, b) => {
-      if (b.winPct !== a.winPct) return b.winPct - a.winPct;
-      if (a.gamesBehind !== b.gamesBehind) return a.gamesBehind - b.gamesBehind;
-      const aDiff = a.runsScored - a.runsAllowed;
-      const bDiff = b.runsScored - b.runsAllowed;
-      if (bDiff !== aDiff) return bDiff - aDiff;
-      return String(a.teamName).localeCompare(String(b.teamName));
-    });
-    const seeds = sorted.slice(0, provisionalConfig.seeds);
-    const pairs: Array<{ hi: any; lo: any; idx: number }> = [];
-    for (let i = 0; i < Math.floor(seeds.length / 2); i++) {
-      pairs.push({ hi: seeds[i], lo: seeds[seeds.length - 1 - i], idx: i + 1 });
-    }
-    return {
-      rounds: pairs.length === 0 ? [] : [{
-        roundNumber: 1,
-        name: 'Round 1',
-        series: pairs.map((p) => ({
-          id: null,
-          label: `Series ${p.idx}`,
-          bestOf: provisionalConfig.bestOf,
-          higherSeed: sorted.indexOf(p.hi) + 1,
-          lowerSeed: sorted.indexOf(p.lo) + 1,
-          higherTeamId: p.hi.teamId ?? null,
-          lowerTeamId: p.lo.teamId ?? null,
-          higherTeamName: p.hi.teamName,
-          lowerTeamName: p.lo.teamName,
-          wins: { higher: 0, lower: 0 },
-          winnerTeamId: null,
-        })),
-      }],
-    };
-  }
+  /** Playoff tab only for a dedicated playoff season (not inferred from regular-season standings). */
+  const showPlayoffTabs = isPlayoffSeason;
 
   return (
     <div>
@@ -317,7 +268,7 @@ export function StandingsClient() {
           )}
         </div>
 
-        {hasPlayoffs && (
+        {showPlayoffTabs && (
           <div className="mb-6 flex gap-2">
             <button
               type="button"
@@ -350,7 +301,7 @@ export function StandingsClient() {
               <div className="rounded-xl border border-border bg-surface-alt p-12 text-center">
                 <p className="text-text-muted">Loading playoff picture…</p>
               </div>
-            ) : !hasPlayoffs ? (
+            ) : !hasPlayoffBracketData ? (
               <div className="rounded-xl border border-dashed border-border bg-surface-alt p-12 text-center">
                 <p className="text-lg font-medium text-text-muted">No playoffs configured for this season</p>
               </div>
@@ -468,10 +419,10 @@ export function StandingsClient() {
                   </table>
                 </div>
 
-                {/* Playoff picture (current seeding) */}
-                {(currentSeason?.hasPlayoffs || hasPlayoffs) && (() => {
+                {/* Playoff picture — only real bracket data (no full-league provisional seeding). */}
+                {(() => {
                   const lg = playoffsByLeagueId.get(league.leagueId);
-                  const bracket = (lg?.bracket?.rounds?.length ? lg.bracket : buildProvisionalRound1(league.rows));
+                  const bracket = lg?.bracket?.rounds?.length ? lg.bracket : null;
                   const rounds = bracket?.rounds ?? [];
                   if (rounds.length === 0) return null;
 
@@ -491,9 +442,7 @@ export function StandingsClient() {
                           <div className="text-[11px] font-bold uppercase tracking-wider text-text-faint">
                             Playoff picture
                           </div>
-                          <div className="text-[11px] text-text-faint truncate">
-                            Provisional seeding from standings
-                          </div>
+                          <div className="text-[11px] text-text-faint truncate">Configured bracket</div>
                         </div>
                       </div>
                       <div className="p-4">

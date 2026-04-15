@@ -20,6 +20,7 @@ import { desc, eq, inArray, ne } from 'drizzle-orm';
 import { seasonWithPlayoffDefaults } from '../../lib/season-playoff-response.js';
 import { getSeasonsColumnFlagsCached } from '../../lib/seasons-playoff-columns-cache.js';
 import { seasonsRowSelectShape } from '../../lib/seasons-drizzle-select.js';
+import { playoffColumnsForSeasonKind, type SeasonKind } from '../../lib/season-kind-playoffs.js';
 
 export async function adminSeasonsRoutes(app: FastifyInstance) {
   // GET / - list all seasons
@@ -112,6 +113,7 @@ export async function adminSeasonsRoutes(app: FastifyInstance) {
 
       const flags = await getSeasonsColumnFlagsCached();
       const hasPoCols = flags.hasPlayoffOptionals;
+      const kind: SeasonKind = seasonKind === 'playoff' ? 'playoff' : 'regular';
 
       const [season] = await db.transaction(async (tx) => {
         if (isActive) {
@@ -127,17 +129,11 @@ export async function adminSeasonsRoutes(app: FastifyInstance) {
             isActive: isActive ?? false,
             ...(flags.hasSeasonKindOptionals
               ? {
-                  seasonKind: seasonKind === 'playoff' ? 'playoff' : 'regular',
-                  parentSeasonId: parentSeasonId ?? null,
+                  seasonKind: kind === 'playoff' ? 'playoff' : 'regular',
+                  parentSeasonId: kind === 'playoff' ? (parentSeasonId ?? null) : null,
                 }
               : {}),
-            ...(hasPoCols
-              ? {
-                hasPlayoffs: hasPlayoffs ?? false,
-                regularSeasonGamesPerTeam: regularSeasonGamesPerTeam ?? null,
-                playoffSettings: playoffSettings ?? {},
-              }
-              : {}),
+            ...(hasPoCols ? playoffColumnsForSeasonKind(kind, true, { hasPlayoffs, regularSeasonGamesPerTeam, playoffSettings }) : {}),
           })
           .returning();
         return [row];
@@ -187,6 +183,21 @@ export async function adminSeasonsRoutes(app: FastifyInstance) {
       const flags = await getSeasonsColumnFlagsCached();
       const hasPoCols = flags.hasPlayoffOptionals;
 
+      const [existingRow] = await db
+        .select({ seasonKind: seasons.seasonKind })
+        .from(seasons)
+        .where(eq(seasons.id, id))
+        .limit(1);
+      if (!existingRow) {
+        return reply.status(404).send({ message: 'Season not found' });
+      }
+      const prevKind: SeasonKind =
+        String((existingRow as { seasonKind?: string }).seasonKind ?? 'regular') === 'playoff'
+          ? 'playoff'
+          : 'regular';
+      const nextKind: SeasonKind =
+        seasonKind !== undefined ? (seasonKind === 'playoff' ? 'playoff' : 'regular') : prevKind;
+
       const [season] = await db.transaction(async (tx) => {
         if (isActive === true) {
           await tx.update(seasons).set({ isActive: false }).where(ne(seasons.id, id));
@@ -202,16 +213,19 @@ export async function adminSeasonsRoutes(app: FastifyInstance) {
             ...(flags.hasSeasonKindOptionals
               ? {
                   ...(seasonKind !== undefined && {
-                    seasonKind: seasonKind === 'playoff' ? 'playoff' : 'regular',
+                    seasonKind: nextKind === 'playoff' ? 'playoff' : 'regular',
+                    ...(nextKind === 'regular' ? { parentSeasonId: null } : {}),
                   }),
-                  ...(parentSeasonId !== undefined && { parentSeasonId }),
+                  ...(nextKind === 'playoff' && parentSeasonId !== undefined && { parentSeasonId }),
                 }
               : {}),
-            ...(hasPoCols ? {
-              ...(hasPlayoffs !== undefined && { hasPlayoffs }),
-              ...(regularSeasonGamesPerTeam !== undefined && { regularSeasonGamesPerTeam }),
-              ...(playoffSettings !== undefined && { playoffSettings }),
-            } : {}),
+            ...(hasPoCols
+              ? playoffColumnsForSeasonKind(nextKind, true, {
+                  hasPlayoffs,
+                  regularSeasonGamesPerTeam,
+                  playoffSettings,
+                })
+              : {}),
           })
           .where(eq(seasons.id, id))
           .returning();

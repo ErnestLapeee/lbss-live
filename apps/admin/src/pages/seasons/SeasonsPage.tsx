@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
 import { useAdminSeason } from '@/context/AdminSeasonContext';
 
+type SeasonKind = 'regular' | 'playoff';
+
 export function SeasonsPage() {
   const { reloadSeasons } = useAdminSeason();
   const [items, setItems] = useState<any[]>([]);
@@ -15,7 +17,9 @@ export function SeasonsPage() {
     startDate: '',
     endDate: '',
     isActive: false,
-    hasPlayoffs: false,
+    seasonKind: 'regular' as SeasonKind,
+    parentSeasonId: '',
+    hasPlayoffs: true,
     regularSeasonGamesPerTeam: '',
     playoffSeeds: '4',
     playoffBestOf: '1',
@@ -47,7 +51,9 @@ export function SeasonsPage() {
       startDate: '',
       endDate: '',
       isActive: false,
-      hasPlayoffs: false,
+      seasonKind: 'regular',
+      parentSeasonId: '',
+      hasPlayoffs: true,
       regularSeasonGamesPerTeam: '',
       playoffSeeds: '4',
       playoffBestOf: '1',
@@ -57,13 +63,16 @@ export function SeasonsPage() {
 
   const openEdit = (item: any) => {
     setEditing(item);
+    const sk: SeasonKind = item.seasonKind === 'playoff' ? 'playoff' : 'regular';
     setForm({
       year: String(item.year ?? ''),
       name: item.name ?? '',
       startDate: item.startDate ?? '',
       endDate: item.endDate ?? '',
       isActive: item.isActive ?? false,
-      hasPlayoffs: item.hasPlayoffs ?? false,
+      seasonKind: sk,
+      parentSeasonId: item.parentSeasonId != null ? String(item.parentSeasonId) : '',
+      hasPlayoffs: item.hasPlayoffs ?? true,
       regularSeasonGamesPerTeam: item.regularSeasonGamesPerTeam != null ? String(item.regularSeasonGamesPerTeam) : '',
       playoffSeeds: String(item.playoffSettings?.seeds ?? 4),
       playoffBestOf: String(item.playoffSettings?.bestOf ?? 1),
@@ -75,19 +84,30 @@ export function SeasonsPage() {
     e.preventDefault();
     setSaving(true);
     try {
-      const payload = {
+      const base = {
         year: parseInt(form.year, 10),
         name: form.name,
         startDate: form.startDate || null,
         endDate: form.endDate || null,
         isActive: form.isActive,
-        hasPlayoffs: form.hasPlayoffs,
-        regularSeasonGamesPerTeam: form.regularSeasonGamesPerTeam.trim() ? parseInt(form.regularSeasonGamesPerTeam, 10) : null,
-        playoffSettings: {
-          seeds: form.playoffSeeds.trim() ? parseInt(form.playoffSeeds, 10) : 4,
-          bestOf: form.playoffBestOf.trim() ? parseInt(form.playoffBestOf, 10) : 1,
-        },
+        seasonKind: form.seasonKind,
       };
+      const payload =
+        form.seasonKind === 'playoff'
+          ? {
+              ...base,
+              parentSeasonId: form.parentSeasonId.trim() ? parseInt(form.parentSeasonId, 10) : null,
+              hasPlayoffs: form.hasPlayoffs,
+              regularSeasonGamesPerTeam: form.regularSeasonGamesPerTeam.trim()
+                ? parseInt(form.regularSeasonGamesPerTeam, 10)
+                : null,
+              playoffSettings: {
+                seeds: form.playoffSeeds.trim() ? parseInt(form.playoffSeeds, 10) : 4,
+                bestOf: form.playoffBestOf.trim() ? parseInt(form.playoffBestOf, 10) : 1,
+              },
+            }
+          : base;
+
       if (editing) {
         await apiPut(`/admin/seasons/${editing.id}`, payload);
       } else {
@@ -95,6 +115,7 @@ export function SeasonsPage() {
       }
       setShowForm(false);
       await load();
+      await reloadSeasons();
     } catch (err: any) {
       alert(err.message || 'Failed to save');
     } finally {
@@ -113,6 +134,11 @@ export function SeasonsPage() {
     }
   };
 
+  const regularSeasonOptions = items.filter((s) => {
+    if (editing && s.id === editing.id) return false;
+    return (s.seasonKind ?? 'regular') === 'regular';
+  });
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
@@ -124,6 +150,12 @@ export function SeasonsPage() {
           + Create New
         </button>
       </div>
+
+      <p className="text-sm text-text-muted mb-4 max-w-2xl">
+        Regular season is for the full league schedule. Playoffs are a <strong>separate season</strong> (add a second
+        row with type &quot;Playoff&quot;) so only teams that advance can have games and stats—no automatic playoff
+        bracket from the full league standings.
+      </p>
 
       {error && (
         <div className="mb-4 px-4 py-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-600 text-sm">
@@ -137,6 +169,7 @@ export function SeasonsPage() {
             <tr className="border-b border-border bg-surface-alt">
               <th className="px-4 py-3 text-left font-semibold text-text-muted">Year</th>
               <th className="px-4 py-3 text-left font-semibold text-text-muted">Name</th>
+              <th className="px-4 py-3 text-left font-semibold text-text-muted">Type</th>
               <th className="px-4 py-3 text-left font-semibold text-text-muted">Start Date</th>
               <th className="px-4 py-3 text-left font-semibold text-text-muted">End Date</th>
               <th className="px-4 py-3 text-left font-semibold text-text-muted">Active</th>
@@ -146,13 +179,13 @@ export function SeasonsPage() {
           <tbody>
             {loading ? (
               <tr>
-                <td className="px-4 py-8 text-center text-text-muted" colSpan={6}>
+                <td className="px-4 py-8 text-center text-text-muted" colSpan={7}>
                   Loading...
                 </td>
               </tr>
             ) : items.length === 0 ? (
               <tr>
-                <td className="px-4 py-8 text-center text-text-muted" colSpan={6}>
+                <td className="px-4 py-8 text-center text-text-muted" colSpan={7}>
                   No data yet. Create your first entry.
                 </td>
               </tr>
@@ -161,6 +194,9 @@ export function SeasonsPage() {
                 <tr key={item.id} className="border-b border-border last:border-0 hover:bg-surface-alt/50">
                   <td className="px-4 py-3">{item.year}</td>
                   <td className="px-4 py-3">{item.name}</td>
+                  <td className="px-4 py-3 text-text-muted">
+                    {item.seasonKind === 'playoff' ? 'Playoff' : 'Regular'}
+                  </td>
                   <td className="px-4 py-3">{item.startDate ?? '—'}</td>
                   <td className="px-4 py-3">{item.endDate ?? '—'}</td>
                   <td className="px-4 py-3">
@@ -197,11 +233,26 @@ export function SeasonsPage() {
 
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-surface rounded-xl border border-border shadow-2xl w-full max-w-lg mx-4 p-6">
+          <div className="bg-surface rounded-xl border border-border shadow-2xl w-full max-w-lg mx-4 p-6 max-h-[90vh] overflow-y-auto">
             <h2 className="font-heading text-xl font-bold mb-4">
               {editing ? 'Edit Season' : 'Create Season'}
             </h2>
             <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-1.5">Season type</label>
+                <select
+                  value={form.seasonKind}
+                  onChange={(e) => setForm({ ...form, seasonKind: e.target.value as SeasonKind })}
+                  className="w-full px-3 py-2 border border-border rounded-lg bg-surface-alt text-sm focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent"
+                >
+                  <option value="regular">Regular season (full league)</option>
+                  <option value="playoff">Playoff — separate campaign (add manually)</option>
+                </select>
+                <p className="mt-1 text-xs text-text-faint">
+                  Playoffs are not created automatically from the league table. Teams that do not participate are simply
+                  not in this season&apos;s leagues.
+                </p>
+              </div>
               <div>
                 <label className="block text-sm font-medium mb-1.5">Year</label>
                 <input
@@ -222,6 +273,24 @@ export function SeasonsPage() {
                   required
                 />
               </div>
+              {form.seasonKind === 'playoff' && (
+                <div>
+                  <label className="block text-sm font-medium mb-1.5">Continues (optional)</label>
+                  <select
+                    value={form.parentSeasonId}
+                    onChange={(e) => setForm({ ...form, parentSeasonId: e.target.value })}
+                    className="w-full px-3 py-2 border border-border rounded-lg bg-surface-alt text-sm focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent"
+                  >
+                    <option value="">— None —</option>
+                    {regularSeasonOptions.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.year} ({s.name})
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-xs text-text-faint">Link to the regular season this playoff follows, if useful.</p>
+                </div>
+              )}
               <div>
                 <label className="block text-sm font-medium mb-1.5">Start Date</label>
                 <input
@@ -255,56 +324,60 @@ export function SeasonsPage() {
               <p className="text-xs text-text-muted -mt-1 ml-6">
                 Only one season can be active at a time. Saving will clear &quot;active&quot; on all other seasons.
               </p>
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="hasPlayoffs"
-                  checked={form.hasPlayoffs}
-                  onChange={(e) => setForm({ ...form, hasPlayoffs: e.target.checked })}
-                  className="w-4 h-4 rounded border-border text-accent focus:ring-accent"
-                />
-                <label htmlFor="hasPlayoffs" className="text-sm font-medium">
-                  Has Playoffs
-                </label>
-              </div>
 
-              {form.hasPlayoffs && (
-                <div className="rounded-lg border border-border bg-surface-alt p-4 space-y-3">
-                  <div>
-                    <label className="block text-sm font-medium mb-1.5">Regular season games per team</label>
+              {form.seasonKind === 'playoff' && (
+                <>
+                  <div className="flex items-center gap-2">
                     <input
-                      type="number"
-                      value={form.regularSeasonGamesPerTeam}
-                      onChange={(e) => setForm({ ...form, regularSeasonGamesPerTeam: e.target.value })}
-                      className="w-full px-3 py-2 border border-border rounded-lg bg-surface text-sm focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent"
-                      placeholder="e.g. 18"
+                      type="checkbox"
+                      id="hasPlayoffs"
+                      checked={form.hasPlayoffs}
+                      onChange={(e) => setForm({ ...form, hasPlayoffs: e.target.checked })}
+                      className="w-4 h-4 rounded border-border text-accent focus:ring-accent"
                     />
+                    <label htmlFor="hasPlayoffs" className="text-sm font-medium">
+                      Show bracket / playoff picture on site
+                    </label>
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="rounded-lg border border-border bg-surface-alt p-4 space-y-3">
                     <div>
-                      <label className="block text-sm font-medium mb-1.5">Playoff seeds</label>
+                      <label className="block text-sm font-medium mb-1.5">Regular season games per team (optional)</label>
                       <input
                         type="number"
-                        value={form.playoffSeeds}
-                        onChange={(e) => setForm({ ...form, playoffSeeds: e.target.value })}
+                        value={form.regularSeasonGamesPerTeam}
+                        onChange={(e) => setForm({ ...form, regularSeasonGamesPerTeam: e.target.value })}
                         className="w-full px-3 py-2 border border-border rounded-lg bg-surface text-sm focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent"
+                        placeholder="e.g. 18"
                       />
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium mb-1.5">Default best-of</label>
-                      <input
-                        type="number"
-                        value={form.playoffBestOf}
-                        onChange={(e) => setForm({ ...form, playoffBestOf: e.target.value })}
-                        className="w-full px-3 py-2 border border-border rounded-lg bg-surface text-sm focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent"
-                      />
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-sm font-medium mb-1.5">Default seeds</label>
+                        <input
+                          type="number"
+                          value={form.playoffSeeds}
+                          onChange={(e) => setForm({ ...form, playoffSeeds: e.target.value })}
+                          className="w-full px-3 py-2 border border-border rounded-lg bg-surface text-sm focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-1.5">Default best-of</label>
+                        <input
+                          type="number"
+                          value={form.playoffBestOf}
+                          onChange={(e) => setForm({ ...form, playoffBestOf: e.target.value })}
+                          className="w-full px-3 py-2 border border-border rounded-lg bg-surface text-sm focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent"
+                        />
+                      </div>
                     </div>
+                    <p className="text-xs text-text-faint">
+                      Series matchups are configured in the admin Playoffs flow; bracket attaches to this playoff
+                      season.
+                    </p>
                   </div>
-                  <p className="text-xs text-text-faint">
-                    Bracket matchups can still be set manually later; these settings drive the auto playoff picture.
-                  </p>
-                </div>
+                </>
               )}
+
               <div className="flex justify-end gap-3 pt-2">
                 <button
                   type="button"
