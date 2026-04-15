@@ -801,17 +801,67 @@ export function LiveGameClient({
   };
 
   const BaseDiamond = ({ first, second, third }: { first: boolean; second: boolean; third: boolean }) => (
-    <svg viewBox="0 0 50 50" className="w-9 h-9 shrink-0" aria-label="Base occupancy">
+    <svg viewBox="0 0 50 50" className="w-10 h-10 shrink-0 drop-shadow-sm" aria-label="Runners on base">
       <rect x="19" y="2" width="12" height="12" rx="1.5" transform="rotate(45 25 8)"
-        fill={second ? 'rgba(16, 185, 129, 0.35)' : 'rgba(0,0,0,0.05)'} stroke="rgba(0,0,0,0.18)" strokeWidth="1" />
+        fill={second ? '#10b981' : '#f1f5f9'} stroke={second ? '#059669' : '#cbd5e1'} strokeWidth="1.25" />
       <rect x="35" y="18" width="12" height="12" rx="1.5" transform="rotate(45 41 24)"
-        fill={first ? 'rgba(16, 185, 129, 0.35)' : 'rgba(0,0,0,0.05)'} stroke="rgba(0,0,0,0.18)" strokeWidth="1" />
+        fill={first ? '#10b981' : '#f1f5f9'} stroke={first ? '#059669' : '#cbd5e1'} strokeWidth="1.25" />
       <rect x="3" y="18" width="12" height="12" rx="1.5" transform="rotate(45 9 24)"
-        fill={third ? 'rgba(16, 185, 129, 0.35)' : 'rgba(0,0,0,0.05)'} stroke="rgba(0,0,0,0.18)" strokeWidth="1" />
+        fill={third ? '#10b981' : '#f1f5f9'} stroke={third ? '#059669' : '#cbd5e1'} strokeWidth="1.25" />
     </svg>
   );
 
-  const pitchSequenceInline = (symbols: ('B' | 'S' | 'F' | 'X' | 'P')[]) => symbols.join(' ');
+  const OutsIndicator = ({ outs }: { outs: number }) => {
+    const o = Math.max(0, Math.min(3, outs));
+    return (
+      <div
+        className="flex items-center justify-end gap-1"
+        aria-label={`${o} out${o === 1 ? '' : 's'} after this play`}
+        title="Outs in inning (after this play)"
+      >
+        {[0, 1, 2].map(i => (
+          <span
+            key={i}
+            className={`h-2 w-2 rounded-full border-2 transition-colors ${
+              i < o
+                ? 'border-red-600 bg-red-600 shadow-[0_0_0_1px_rgba(220,38,38,0.25)]'
+                : 'border-slate-300 bg-white'
+            }`}
+          />
+        ))}
+      </div>
+    );
+  };
+
+  const pitchSymbolTone = (s: 'B' | 'S' | 'F' | 'X' | 'P'): string => {
+    switch (s) {
+      case 'B':
+        return 'text-emerald-600';
+      case 'S':
+        return 'text-red-600';
+      case 'F':
+        return 'text-amber-600';
+      case 'X':
+        return 'text-slate-800';
+      case 'P':
+        return 'text-slate-500';
+    }
+  };
+
+  const PitchLetterStrip = ({ symbols, max = 24 }: { symbols: ('B' | 'S' | 'F' | 'X' | 'P')[]; max?: number }) => {
+    const truncated = symbols.length > max;
+    const slice = truncated ? symbols.slice(0, max) : symbols;
+    return (
+      <span className="font-mono text-[11px] font-semibold tracking-[0.2em] inline-flex flex-wrap items-center gap-x-1 gap-y-0.5">
+        {slice.map((s, i) => (
+          <span key={i} className={pitchSymbolTone(s)}>
+            {s}
+          </span>
+        ))}
+        {truncated && <span className="text-gray-400 font-normal tracking-normal">…</span>}
+      </span>
+    );
+  };
 
   const pitchLabel = (evt?: GameEvent | null) => {
     const detail = String(evt?.eventDetail || '').toLowerCase();
@@ -1037,59 +1087,65 @@ export function LiveGameClient({
 
       <div className="max-w-6xl mx-auto px-4 py-4 space-y-4">
         {/* Scoreboard */}
-        <div
-          className="bg-[#111827] rounded-xl border border-[#1f2937] p-4"
-          style={{ backgroundColor: '#111827', color: '#e5e7eb' }}
-        >
-          <div className="flex items-center justify-between max-w-xl mx-auto">
-            {/* Away */}
-            <div className="flex items-center gap-3">
-              <div>
-                <div className="text-[10px] text-[#6b7280] uppercase tracking-wider">Away</div>
-                <div className="text-base font-bold text-white">{game.awayTeamName}</div>
+        <div className="relative overflow-hidden rounded-2xl border border-slate-700/70 bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 shadow-lg ring-1 ring-white/5">
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_80%_50%_at_50%_-20%,rgba(255,255,255,0.08),transparent)]" />
+          <div className="relative px-4 py-5 sm:px-6">
+            <div className="mx-auto grid max-w-3xl grid-cols-[1fr_auto_1fr] items-center gap-2 sm:gap-4">
+              {/* Away */}
+              <div className="flex min-w-0 items-center justify-end gap-2 sm:gap-3">
+                <div className="min-w-0 text-right">
+                  <div className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">Away</div>
+                  <div className="truncate text-sm font-bold leading-tight text-white sm:text-base">{game.awayTeamName}</div>
+                </div>
+                <div className="shrink-0 text-3xl font-bold tabular-nums text-white sm:text-4xl">{displayScore.away}</div>
               </div>
-              <div className="text-4xl font-bold font-mono text-white">{displayScore.away}</div>
-            </div>
 
-            {/* Inning + Bases + Outs */}
-            <div className="flex flex-col items-center gap-2">
-              {status === 'live' ? (
-                <div className="text-xl font-bold text-white">{displayHalf === 'top' ? '▲' : '▼'} {displayInning}</div>
-              ) : (
-                <div className="text-sm font-bold text-[#6b7280] uppercase">{status}</div>
-              )}
-              {status === 'live' && (
-                <>
-                  <svg viewBox="0 0 50 50" className="w-10 h-10">
-                    <rect x="19" y="2" width="12" height="12" rx="1.5" transform="rotate(45 25 8)"
-                      fill={displayBases.second ? '#22c55e' : 'rgba(0,0,0,0.06)'} stroke="rgba(0,0,0,0.2)" strokeWidth="1" />
-                    <rect x="35" y="18" width="12" height="12" rx="1.5" transform="rotate(45 41 24)"
-                      fill={displayBases.first ? '#22c55e' : 'rgba(0,0,0,0.06)'} stroke="rgba(0,0,0,0.2)" strokeWidth="1" />
-                    <rect x="3" y="18" width="12" height="12" rx="1.5" transform="rotate(45 9 24)"
-                      fill={displayBases.third ? '#22c55e' : 'rgba(0,0,0,0.06)'} stroke="rgba(0,0,0,0.2)" strokeWidth="1" />
-                  </svg>
-                  <div className="flex gap-1">
-                    {[0, 1, 2].map(i => (
-                      <div key={i} className={`w-3 h-3 rounded-full border ${i < displayOuts ? 'bg-amber-500 border-amber-400' : 'border-[#9ca3af]'}`} />
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
+              {/* Inning / status + live widgets */}
+              <div className="flex flex-col items-center gap-2 px-1">
+                {status === 'live' ? (
+                  <>
+                    <div className="text-xl font-bold tabular-nums text-emerald-400">
+                      {displayHalf === 'top' ? '▲' : '▼'} {displayInning}
+                    </div>
+                    <svg viewBox="0 0 50 50" className="h-10 w-10" aria-hidden>
+                      <rect x="19" y="2" width="12" height="12" rx="1.5" transform="rotate(45 25 8)"
+                        fill={displayBases.second ? '#10b981' : '#1e293b'} stroke="#64748b" strokeWidth="1" />
+                      <rect x="35" y="18" width="12" height="12" rx="1.5" transform="rotate(45 41 24)"
+                        fill={displayBases.first ? '#10b981' : '#1e293b'} stroke="#64748b" strokeWidth="1" />
+                      <rect x="3" y="18" width="12" height="12" rx="1.5" transform="rotate(45 9 24)"
+                        fill={displayBases.third ? '#10b981' : '#1e293b'} stroke="#64748b" strokeWidth="1" />
+                    </svg>
+                    <div className="flex gap-1.5" aria-label={`${displayOuts} out${displayOuts === 1 ? '' : 's'}`}>
+                      {[0, 1, 2].map(i => (
+                        <div
+                          key={i}
+                          className={`h-2.5 w-2.5 rounded-full border-2 ${
+                            i < displayOuts ? 'border-amber-400 bg-amber-400' : 'border-slate-500 bg-slate-800'
+                          }`}
+                        />
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <span className="inline-flex items-center rounded-full bg-white/10 px-4 py-1.5 text-[11px] font-bold uppercase tracking-[0.2em] text-slate-100 ring-1 ring-white/15">
+                    {status}
+                  </span>
+                )}
+              </div>
 
-            {/* Home */}
-            <div className="flex items-center gap-3">
-              <div className="text-4xl font-bold font-mono text-white">{displayScore.home}</div>
-              <div className="text-right">
-                <div className="text-[10px] text-[#6b7280] uppercase tracking-wider">Home</div>
-                <div className="text-base font-bold text-white">{game.homeTeamName}</div>
+              {/* Home */}
+              <div className="flex min-w-0 items-center justify-start gap-2 sm:gap-3">
+                <div className="shrink-0 text-3xl font-bold tabular-nums text-white sm:text-4xl">{displayScore.home}</div>
+                <div className="min-w-0 text-left">
+                  <div className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">Home</div>
+                  <div className="truncate text-sm font-bold leading-tight text-white sm:text-base">{game.homeTeamName}</div>
+                </div>
               </div>
             </div>
-          </div>
 
           {/* Line score */}
-          <div className="mt-4 overflow-x-auto">
-            <table className="w-full min-w-[min(100%,28rem)] text-[11px] font-mono max-w-2xl mx-auto">
+          <div className="relative mt-5 overflow-x-auto rounded-xl border border-white/10 bg-black/35 p-3 backdrop-blur-[1px]">
+            <table className="mx-auto w-full min-w-[min(100%,28rem)] max-w-2xl text-[11px] font-mono">
               <thead>
                 <tr className="text-gray-400">
                   <th className="text-left px-2 py-1 align-bottom font-sans font-semibold text-[10px] uppercase tracking-wide">Team</th>
@@ -1138,6 +1194,7 @@ export function LiveGameClient({
                 </tr>
               </tbody>
             </table>
+          </div>
           </div>
         </div>
 
@@ -1240,9 +1297,6 @@ export function LiveGameClient({
                               pitchSymbols.push(resultSymbol);
                             }
                             const pitchBreakdown = derivePitchBreakdown(ab);
-                            const pitchSummary = pitchSymbols.length > 8
-                              ? `${pitchSequenceInline(pitchSymbols.slice(0, 8))} ...`
-                              : pitchSequenceInline(pitchSymbols);
                             const cardKey = `${group.key}-${abIdx}-${ab.result?.id ?? 'runner'}`;
                             const showPitchDetails = playMode === 'expanded' || Boolean(openPitchCards[cardKey]);
                             const contextLine = `${group.half === 'top' ? game.awayTeamName : game.homeTeamName} batting • ${group.half === 'top' ? game.homeTeamName : game.awayTeamName} pitching`;
@@ -1264,13 +1318,14 @@ export function LiveGameClient({
                                       {formatted?.subtitle ? `${formatted.subtitle} • ${contextLine}` : contextLine}
                                     </div>
                                   </div>
-                                  <div className="shrink-0 pt-0.5">
+                                  <div className="flex flex-col items-end gap-1.5 shrink-0 pt-0.5">
                                     <BaseDiamond first={bases.first} second={bases.second} third={bases.third} />
+                                    <OutsIndicator outs={outsAfter} />
                                   </div>
                                 </div>
                                 <div className="mt-2.5 text-[10px] text-gray-700 flex flex-wrap items-center gap-x-3 gap-y-1">
-                                  {pitchSummary && (
-                                    <span className="font-mono tracking-wide">Pitches: {pitchSummary}</span>
+                                  {pitchSymbols.length > 0 && (
+                                    <PitchLetterStrip symbols={pitchSymbols} max={8} />
                                   )}
                                   {playMode === 'expanded' && formatted?.chips?.map((chip, ci) => (
                                     <span key={ci}>{chip}</span>
@@ -1292,7 +1347,7 @@ export function LiveGameClient({
                                     )}
                                     {showPitchDetails && (
                                       <div className="mt-1.5 pl-2 border-l border-gray-200 space-y-1.5">
-                                        <div className="text-[10px] uppercase tracking-[0.1em] text-gray-500">Pitch sequence</div>
+                                        <div className="text-[10px] uppercase tracking-[0.1em] text-gray-500">At-bat detail</div>
                                         {pitchBreakdown.rows.map((row, ri) => (
                                           <div key={`${cardKey}-pitch-${ri}`} className="text-[11px] text-gray-800">
                                             <span className="text-gray-600">Pitch {row.pitchNo}</span>
