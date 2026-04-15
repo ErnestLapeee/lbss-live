@@ -468,7 +468,10 @@ export function LiveGameClient({
       if (walkTypes.has(evt.eventType) || evt.eventType === 'hit_by_pitch' || evt.eventType === 'catcher_obstruction') { p.strikes--; p.balls++; }
       p.outs += evt.outsRecorded || 0;
       p.r += evt.runsScored || 0;
-      p.er += evt.runsScored || 0;
+      /* Live ER approximation: do not charge ER on obvious error/advance-on-error plays (true ER needs full game state). */
+      if (!['error', 'advance_on_error', 'sac_bunt_error', 'sac_fly_error'].includes(evt.eventType)) {
+        p.er += evt.runsScored || 0;
+      }
       if (hitTypes.has(evt.eventType)) p.h++;
       if (walkTypes.has(evt.eventType)) p.bb++;
       if (kTypes.has(evt.eventType)) p.k++;
@@ -972,7 +975,7 @@ export function LiveGameClient({
       } else {
         const last = pitchEventsSorted[n - 1];
         const d = String(last.eventDetail || '').toLowerCase();
-        if (d === 'foul') {
+        if (d === 'foul' || d === 'ball') {
           appendRow(n + 1, title);
         } else {
           replaceLastRow(title);
@@ -1364,9 +1367,28 @@ export function LiveGameClient({
                             const runnerSummary = compactRunnerSummary(ab);
                             const pitchSymbols: ('B' | 'S' | 'F' | 'X' | 'P')[] = ab.pitches.map(pitchSymbol);
                             if (result) {
-                              const resultSymbol: 'B' | 'S' | 'F' | 'X' | 'P' =
-                                ['walk', 'intentional_walk', 'hit_by_pitch', 'catcher_obstruction'].includes(result.eventType) ? 'B' : 'X';
-                              pitchSymbols.push(resultSymbol);
+                              const walkLikeResult = ['walk', 'intentional_walk', 'hit_by_pitch', 'catcher_obstruction'].includes(result.eventType);
+                              const nP = ab.pitches.length;
+                              const lastPitch = nP > 0 ? ab.pitches[nP - 1] : null;
+                              const lastDetail = String(lastPitch?.eventDetail || '').toLowerCase();
+                              const allBalls = nP > 0 && ab.pitches.every(p => String(p.eventDetail || '').toLowerCase() === 'ball');
+                              if (walkLikeResult) {
+                                if (nP === 0) {
+                                  pitchSymbols.push('B');
+                                } else if (nP === 3 && allBalls) {
+                                  pitchSymbols.push('B');
+                                } else if (lastDetail === 'ball') {
+                                  /* Walk merged into last ball row in detail; strip already ends with B */
+                                } else {
+                                  pitchSymbols.push('B');
+                                }
+                              } else {
+                                if (nP === 0) {
+                                  pitchSymbols.push('X');
+                                } else if (lastDetail !== 'in_play') {
+                                  pitchSymbols.push('X');
+                                }
+                              }
                             }
                             const pitchBreakdown = derivePitchBreakdown(ab);
                             const cardKey = `${group.key}-${abIdx}-${ab.result?.id ?? 'runner'}`;
@@ -1379,8 +1401,8 @@ export function LiveGameClient({
                                   <div className="min-w-0 flex-1">
                                     <div className="flex items-center gap-2 mb-1.5">
                                       <span className={`text-[9px] font-medium uppercase tracking-[0.12em] ${tone.cls}`}>{tone.tag}</span>
-                                      {pitchSymbols.length > 0 && (
-                                        <span className="text-[9px] text-gray-600">{pitchSymbols.length} pitch{pitchSymbols.length === 1 ? '' : 'es'}</span>
+                                      {ab.pitches.length > 0 && (
+                                        <span className="text-[9px] text-gray-600">{ab.pitches.length} pitch{ab.pitches.length === 1 ? '' : 'es'}</span>
                                       )}
                                     </div>
                                     <div className="text-[14px] leading-snug text-gray-950 font-semibold">
