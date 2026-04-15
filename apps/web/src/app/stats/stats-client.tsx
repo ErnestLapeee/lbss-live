@@ -893,7 +893,7 @@ export function StatsClient({
               <HorizontalScrollArea>
                 <table className="w-full text-sm whitespace-nowrap">
                   <thead>
-                    <tr className="border-b border-border bg-surface-alt">
+                    <tr className="sticky top-0 z-20 border-b border-border bg-surface-alt shadow-[0_1px_0_0_rgba(0,0,0,0.06)]">
                       <th className="px-3 py-2.5 text-center text-[10px] font-bold uppercase tracking-wider text-text-faint w-10">
                         #
                       </th>
@@ -907,7 +907,7 @@ export function StatsClient({
                           className={`px-3 py-2.5 text-[10px] font-bold uppercase tracking-wider cursor-pointer select-none transition-colors hover:text-accent ${
                             col.align === 'left' ? 'text-left' : 'text-right'
                           } ${sortKey === col.key ? 'text-accent' : 'text-text-faint'} ${
-                            col.sticky ? 'sticky left-0 bg-surface-alt z-10' : ''
+                            col.sticky ? 'sticky left-0 top-0 z-30 bg-surface-alt shadow-[1px_0_0_0_rgba(0,0,0,0.04)]' : ''
                           }`}
                           onClick={() => handleSort(col.key)}
                         >
@@ -978,7 +978,7 @@ export function StatsClient({
                               key={col.key}
                               className={`px-3 py-2 ${
                                 col.align === 'left' ? 'text-left' : 'text-right'
-                              } ${col.sticky ? 'sticky left-0 bg-surface z-10' : ''}`}
+                              } ${col.sticky ? 'sticky left-0 z-10 bg-surface' : ''}`}
                             >
                               {cellValue}
                             </td>
