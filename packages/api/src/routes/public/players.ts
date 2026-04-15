@@ -65,6 +65,24 @@ async function gamesHavePlayoffSeriesId(): Promise<boolean> {
   }
 }
 
+/** Migration 0010 — when not applied, platoon SQL must not reference ge.batter_side. */
+async function gameEventsHasBatterSideColumn(): Promise<boolean> {
+  try {
+    const rows = await db.execute(sql`
+      select 1
+      from information_schema.columns
+      where table_schema = 'public'
+        and table_name = 'game_events'
+        and column_name = 'batter_side'
+      limit 1
+    `);
+    const list = Array.isArray((rows as any).rows) ? (rows as any).rows : (rows as any);
+    return Array.isArray(list) && list.length > 0;
+  } catch {
+    return false;
+  }
+}
+
 export async function playersRoutes(app: FastifyInstance) {
   // GET / - list all active players (with pagination: page, limit)
   app.get<{
@@ -686,7 +704,10 @@ export async function playersRoutes(app: FastifyInstance) {
           ${seasonFilter != null ? sql`AND l.season_id = ${seasonFilter}` : sql``}
       `);
 
-      const pitchingEv = await db.execute(sql`
+      const hasBatterSideCol = await gameEventsHasBatterSideColumn();
+      const pitchingEv = await db.execute(
+        hasBatterSideCol
+          ? sql`
         SELECT ge.event_type, ge.rbi, ge.outs_recorded, ge.hit_type, ge.event_number,
           COALESCE(
             NULLIF(TRIM(ge.batter_side::text), ''),
@@ -703,7 +724,20 @@ export async function playersRoutes(app: FastifyInstance) {
           AND ge.is_deleted = false
           AND g.is_finalized = true
           ${seasonFilter != null ? sql`AND l.season_id = ${seasonFilter}` : sql``}
-      `);
+      `
+          : sql`
+        SELECT ge.event_type, ge.rbi, ge.outs_recorded, ge.hit_type, ge.event_number,
+          b.bats AS batter_bats
+        FROM game_events ge
+        JOIN games g ON ge.game_id = g.id
+        JOIN leagues l ON g.league_id = l.id
+        LEFT JOIN players b ON ge.batter_id = b.id
+        WHERE ge.pitcher_id = ${player.id}
+          AND ge.is_deleted = false
+          AND g.is_finalized = true
+          ${seasonFilter != null ? sql`AND l.season_id = ${seasonFilter}` : sql``}
+      `,
+      );
 
       const bRows = (battingEv as { rows?: unknown[] }).rows ?? battingEv;
       const pRows = (pitchingEv as { rows?: unknown[] }).rows ?? pitchingEv;
