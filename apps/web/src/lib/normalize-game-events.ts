@@ -1,10 +1,24 @@
 /**
+ * Public `/games/:id/events` should return a JSON array; some gateways wrap it.
+ * Returns null if the body is not a recognizable event list (caller should not overwrite state).
+ */
+export function parseEventsFromFetchResponse(data: unknown): unknown[] | null {
+  if (Array.isArray(data)) return data;
+  if (data && typeof data === 'object') {
+    const o = data as Record<string, unknown>;
+    if (Array.isArray(o.events)) return o.events;
+    if (Array.isArray(o.data)) return o.data;
+  }
+  return null;
+}
+
+/**
  * Coerce API / JSON rows into the shape the live game UI expects.
  * Supports camelCase (Drizzle) and snake_case (some gateways or raw SQL).
  */
 export function normalizeGameEvents(raw: unknown): any[] {
-  if (!Array.isArray(raw)) return [];
-  return raw.map((row) => normalizeGameEventRow(row as Record<string, unknown>));
+  const list = parseEventsFromFetchResponse(raw) ?? (Array.isArray(raw) ? raw : []);
+  return list.map((row) => normalizeGameEventRow(row as Record<string, unknown>));
 }
 
 function pick<T>(r: Record<string, unknown>, camel: string, snake: string): T | undefined {

@@ -1,13 +1,13 @@
 'use client';
 
-import { useEffect, useState, useMemo, useRef } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
 import { useGameSocket } from '@/hooks/useGameSocket';
 import { formatPlayByPlay } from '@/lib/format-play';
 import { useApiBase } from '@/lib/api-context';
 import { getStatAbbreviationMeaning } from '@/lib/stat-abbreviations';
 import { aggregatePitchingStatsByPitcher, inningsFromOuts } from '@lbss/shared';
-import { normalizeGameEvents } from '@/lib/normalize-game-events';
+import { normalizeGameEvents, parseEventsFromFetchResponse } from '@/lib/normalize-game-events';
 
 /** Fetch a JSON array from the public proxy; returns null on non-OK or parse errors so callers do not replace state with []. */
 async function fetchPublicJsonArray(url: string): Promise<any[] | null> {
@@ -16,6 +16,18 @@ async function fetchPublicJsonArray(url: string): Promise<any[] | null> {
     if (!r.ok) return null;
     const data = await r.json();
     return Array.isArray(data) ? data : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Game events: accept array or `{ events: [...] }`; null on malformed HTTP response. */
+async function fetchPublicGameEvents(gameId: number): Promise<any[] | null> {
+  try {
+    const r = await fetch(`/api/proxy/public/games/${gameId}/events`, { cache: 'no-store' });
+    if (!r.ok) return null;
+    const data = await r.json();
+    return parseEventsFromFetchResponse(data);
   } catch {
     return null;
   }
@@ -262,25 +274,23 @@ export function LiveGameClient({
   const [openPitchCards, setOpenPitchCards] = useState<Record<string, boolean>>({});
   const { connected, gameState, lastEvent, isFinal, viewerCount } = useGameSocket(gameId, apiBase);
 
-  /** SSR can yield [] on failure; same-origin client fetch often succeeds. Run once when props had no events. */
-  const emptyEventsBootstrapDone = useRef(false);
+  /** Always refetch events in the browser — fixes SSR when the server cannot reach the API (common on Vercel). */
   useEffect(() => {
-    emptyEventsBootstrapDone.current = false;
-  }, [gameId]);
-
-  useEffect(() => {
-    if (initialEvents.length > 0 || !game || emptyEventsBootstrapDone.current) return;
-    emptyEventsBootstrapDone.current = true;
-    fetchPublicJsonArray(`/api/proxy/public/games/${gameId}/events`).then((evts) => {
-      if (evts !== null) setEvents(normalizeGameEvents(evts) as GameEvent[]);
+    let cancelled = false;
+    fetchPublicGameEvents(gameId).then((evts) => {
+      if (cancelled || evts === null) return;
+      setEvents(normalizeGameEvents(evts) as GameEvent[]);
     });
-  }, [gameId, game, initialEvents.length]);
+    return () => {
+      cancelled = true;
+    };
+  }, [gameId]);
 
   /** While WebSocket is connected we disable polling; refresh once on connect so PBP isn't stuck empty until the next live pitch. */
   useEffect(() => {
     if (!connected) return;
     Promise.all([
-      fetchPublicJsonArray(`/api/proxy/public/games/${gameId}/events`),
+      fetchPublicGameEvents(gameId),
       fetchPublicJsonArray(`/api/proxy/public/games/${gameId}/boxscore`),
       fetchPublicJsonArray(`/api/proxy/public/games/${gameId}/pitching-boxscore`),
     ]).then(([evts, box, pbox]) => {
@@ -294,7 +304,7 @@ export function LiveGameClient({
   useEffect(() => {
     if (!lastEvent) return;
     Promise.all([
-      fetchPublicJsonArray(`/api/proxy/public/games/${gameId}/events`),
+      fetchPublicGameEvents(gameId),
       fetchPublicJsonArray(`/api/proxy/public/games/${gameId}/boxscore`),
       fetchPublicJsonArray(`/api/proxy/public/games/${gameId}/pitching-boxscore`),
     ]).then(([evts, box, pbox]) => {
@@ -315,7 +325,7 @@ export function LiveGameClient({
           fetch(`/api/proxy/public/games/${gameId}`)
             .then(async r => (r.ok ? r.json() : null))
             .catch(() => null),
-          fetchPublicJsonArray(`/api/proxy/public/games/${gameId}/events`),
+          fetchPublicGameEvents(gameId),
           fetchPublicJsonArray(`/api/proxy/public/games/${gameId}/boxscore`),
           fetchPublicJsonArray(`/api/proxy/public/games/${gameId}/pitching-boxscore`),
         ]);

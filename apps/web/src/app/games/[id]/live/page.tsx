@@ -24,7 +24,7 @@ export default async function LiveGamePage({ params }: { params: Promise<{ id: s
       apiFetch(`/api/public/games/${gameId}/season-context`, opts).catch(() => ({ batting: [], pitching: [] })),
     ]);
 
-  const eventsList = normalizeGameEvents(Array.isArray(initialEvents) ? initialEvents : []);
+  const eventsList = normalizeGameEvents(initialEvents ?? []);
 
   return (
     <LiveGameClient
