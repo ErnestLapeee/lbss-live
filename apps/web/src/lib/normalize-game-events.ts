@@ -1,15 +1,46 @@
 /**
- * Public `/games/:id/events` should return a JSON array; some gateways wrap it.
+ * Public `/games/:id/events` should return a JSON array; gateways may wrap it
+ * (`events`, `data`, `gameEvents`, nested objects, etc.).
  * Returns null if the body is not a recognizable event list (caller should not overwrite state).
  */
-export function parseEventsFromFetchResponse(data: unknown): unknown[] | null {
+export function tryExtractEventArray(data: unknown): unknown[] | null {
   if (Array.isArray(data)) return data;
-  if (data && typeof data === 'object') {
-    const o = data as Record<string, unknown>;
-    if (Array.isArray(o.events)) return o.events;
-    if (Array.isArray(o.data)) return o.data;
+  if (!data || typeof data !== 'object') return null;
+
+  const o = data as Record<string, unknown>;
+  for (const key of ['events', 'data', 'gameEvents', 'items', 'result', 'rows', 'records', 'payload']) {
+    const v = o[key];
+    if (Array.isArray(v)) return v;
   }
+
+  for (const v of Object.values(o)) {
+    if (Array.isArray(v) && v.length > 0 && looksLikeGameEventRow(v[0])) {
+      return v;
+    }
+    if (v && typeof v === 'object' && !Array.isArray(v)) {
+      const inner = tryExtractEventArray(v);
+      if (inner !== null) return inner;
+    }
+  }
+
   return null;
+}
+
+/** @deprecated Use tryExtractEventArray — kept for any external imports */
+export function parseEventsFromFetchResponse(data: unknown): unknown[] | null {
+  return tryExtractEventArray(data);
+}
+
+function looksLikeGameEventRow(o: unknown): boolean {
+  if (!o || typeof o !== 'object') return false;
+  const r = o as Record<string, unknown>;
+  const hasNum =
+    typeof r.eventNumber === 'number'
+    || typeof r.event_number === 'number'
+    || (typeof r.eventNumber === 'string' && r.eventNumber !== '')
+    || (typeof r.event_number === 'string' && r.event_number !== '');
+  const hasType = typeof r.eventType === 'string' || typeof r.event_type === 'string';
+  return hasNum || hasType;
 }
 
 /**
@@ -17,7 +48,7 @@ export function parseEventsFromFetchResponse(data: unknown): unknown[] | null {
  * Supports camelCase (Drizzle) and snake_case (some gateways or raw SQL).
  */
 export function normalizeGameEvents(raw: unknown): any[] {
-  const list = parseEventsFromFetchResponse(raw) ?? (Array.isArray(raw) ? raw : []);
+  const list = tryExtractEventArray(raw) ?? [];
   return list.map((row) => normalizeGameEventRow(row as Record<string, unknown>));
 }
 
@@ -29,9 +60,16 @@ function pick<T>(r: Record<string, unknown>, camel: string, snake: string): T | 
   return undefined;
 }
 
+function normalizeHalf(raw: string): string {
+  const s = raw.trim().toLowerCase();
+  if (s === 'bottom') return 'bot';
+  return s;
+}
+
 function normalizeGameEventRow(r: Record<string, unknown>): Record<string, unknown> {
-  const eventType = (pick<string>(r, 'eventType', 'event_type') ?? '') as string;
-  const half = (pick<string>(r, 'half', 'half') ?? '') as string;
+  const rawType = (pick<string>(r, 'eventType', 'event_type') ?? '') as string;
+  const eventType = rawType.trim().toLowerCase();
+  const half = normalizeHalf((pick<string>(r, 'half', 'half') ?? '') as string);
   return {
     ...r,
     id: Number(pick(r, 'id', 'id') ?? 0),

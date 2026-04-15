@@ -17,7 +17,16 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       headers: { 'Content-Type': 'application/json' },
       cache: 'no-store',
     });
-    const data = await res.json();
+    const text = await res.text();
+    if (!text) {
+      return NextResponse.json({ message: 'Empty response from upstream API' }, { status: 502 });
+    }
+    let data: unknown;
+    try {
+      data = JSON.parse(text) as unknown;
+    } catch {
+      return NextResponse.json({ message: 'Invalid JSON from upstream API' }, { status: 502 });
+    }
     return NextResponse.json(data, { status: res.status });
   } catch {
     return NextResponse.json({ message: 'API unreachable' }, { status: 502 });

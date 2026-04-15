@@ -7,7 +7,7 @@ import { formatPlayByPlay } from '@/lib/format-play';
 import { useApiBase } from '@/lib/api-context';
 import { getStatAbbreviationMeaning } from '@/lib/stat-abbreviations';
 import { aggregatePitchingStatsByPitcher, inningsFromOuts } from '@lbss/shared';
-import { normalizeGameEvents, parseEventsFromFetchResponse } from '@/lib/normalize-game-events';
+import { normalizeGameEvents, tryExtractEventArray } from '@/lib/normalize-game-events';
 
 /** Fetch a JSON array from the public proxy; returns null on non-OK or parse errors so callers do not replace state with []. */
 async function fetchPublicJsonArray(url: string): Promise<any[] | null> {
@@ -27,7 +27,7 @@ async function fetchPublicGameEvents(gameId: number): Promise<any[] | null> {
     const r = await fetch(`/api/proxy/public/games/${gameId}/events`, { cache: 'no-store' });
     if (!r.ok) return null;
     const data = await r.json();
-    return parseEventsFromFetchResponse(data);
+    return tryExtractEventArray(data);
   } catch {
     return null;
   }
