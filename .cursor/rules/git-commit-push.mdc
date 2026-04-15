@@ -1,0 +1,16 @@
+---
+description: After code changes, commit and push to main without being asked
+alwaysApply: true
+---
+
+# Git: commit and push
+
+When you finish a task that modifies project files (code, config, assets meant to be tracked):
+
+1. Run `git status` and stage **only intentional changes** (exclude local artifacts like `*.tsbuildinfo`, `.env`, editor junk).
+2. Commit with a **clear, complete-sentence** message describing what changed and why.
+3. Push to **`origin main`** (or the branch the user is on) so deploys (e.g. Railway) can run.
+
+Do this **automatically** at the end of the task—do not wait for the user to say “push” unless they explicitly want to skip version control.
+
+If there is nothing to commit, say so briefly instead of making an empty commit unless the user asked for a no-op deploy trigger.
