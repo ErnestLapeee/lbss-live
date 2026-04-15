@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import { useGameSocket } from '@/hooks/useGameSocket';
 import { formatPlayByPlay } from '@/lib/format-play';
@@ -218,9 +218,6 @@ interface PitchingBoxScore {
   flyOuts?: number;
   wildPitches?: number;
   gameScore?: number | null;
-  qualityStarts?: number;
-  shutouts?: number;
-  completeGames?: number;
   strikeoutsLooking?: number;
   strikeoutsSwinging?: number;
 }
@@ -264,6 +261,30 @@ export function LiveGameClient({
   const [openPitchCards, setOpenPitchCards] = useState<Record<string, boolean>>({});
   const { connected, gameState, lastEvent, isFinal, viewerCount } = useGameSocket(gameId, apiBase);
 
+  /** SSR can yield [] on failure; same-origin client fetch often succeeds. Run once when props had no events. */
+  const emptyEventsBootstrapDone = useRef(false);
+  useEffect(() => {
+    if (initialEvents.length > 0 || !game || emptyEventsBootstrapDone.current) return;
+    emptyEventsBootstrapDone.current = true;
+    fetchPublicJsonArray(`/api/proxy/public/games/${gameId}/events`).then((evts) => {
+      if (evts !== null) setEvents(evts);
+    });
+  }, [gameId, game, initialEvents.length]);
+
+  /** While WebSocket is connected we disable polling; refresh once on connect so PBP isn't stuck empty until the next live pitch. */
+  useEffect(() => {
+    if (!connected) return;
+    Promise.all([
+      fetchPublicJsonArray(`/api/proxy/public/games/${gameId}/events`),
+      fetchPublicJsonArray(`/api/proxy/public/games/${gameId}/boxscore`),
+      fetchPublicJsonArray(`/api/proxy/public/games/${gameId}/pitching-boxscore`),
+    ]).then(([evts, box, pbox]) => {
+      if (evts !== null) setEvents(evts);
+      if (box !== null) setBattingBox(box);
+      if (pbox !== null) setPitchingBox(pbox);
+    });
+  }, [connected, gameId]);
+
   // Re-fetch when new event arrives via WebSocket
   useEffect(() => {
     if (!lastEvent) return;
@@ -278,10 +299,11 @@ export function LiveGameClient({
     });
   }, [lastEvent, gameId]);
 
-  // Polling fallback: refresh every 8s for live games when WebSocket isn't connected
+  // Polling: live games when disconnected, OR still no events while connected (recover stuck empty PBP)
   useEffect(() => {
     const isLive = game?.status === 'live' && !isFinal;
-    if (!isLive || connected) return;
+    if (!isLive) return;
+    if (connected && events.length > 0) return;
     const interval = setInterval(async () => {
       try {
         const [gData, evts, box, pbox] = await Promise.all([
@@ -299,7 +321,7 @@ export function LiveGameClient({
       } catch {}
     }, 8000);
     return () => clearInterval(interval);
-  }, [game?.status, isFinal, connected, gameId]);
+  }, [game?.status, isFinal, connected, gameId, events.length]);
 
   const displayScore = {
     home: gameState?.homeScore ?? game?.homeScore ?? 0,
