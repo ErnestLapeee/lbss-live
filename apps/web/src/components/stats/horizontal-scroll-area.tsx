@@ -9,28 +9,12 @@ function isInteractiveTarget(el: EventTarget | null): boolean {
   return Boolean(el.closest('a, button, input, select, textarea, [role="button"], label'));
 }
 
-/** LTR scroll offset: 0 = start of content (left in LTR). Works with RTL scroll containers. */
-function getScrollLeftNormalized(el: HTMLElement): number {
-  const max = Math.max(0, el.scrollWidth - el.clientWidth);
-  if (getComputedStyle(el).direction === 'rtl') {
-    return max - el.scrollLeft;
-  }
-  return el.scrollLeft;
-}
-
-function setScrollLeftNormalized(el: HTMLElement, value: number): void {
-  const max = Math.max(0, el.scrollWidth - el.clientWidth);
-  const clamped = Math.max(0, Math.min(value, max));
-  if (getComputedStyle(el).direction === 'rtl') {
-    el.scrollLeft = max - clamped;
-  } else {
-    el.scrollLeft = clamped;
-  }
-}
-
 /**
- * Scrollable table viewport: vertical scrollbar on the left (RTL wrapper trick),
- * horizontal at bottom. Click-drag pans both axes; skips interactive elements.
+ * Scrollable table viewport: vertical scrollbar on the left (RTL wrapper),
+ * horizontal at bottom. Click-drag pans both axes.
+ *
+ * Uses incremental `scrollBy()` so panning works with `dir="rtl"` (assigning
+ * `scrollLeft` directly is unreliable across browsers for RTL).
  */
 export function HorizontalScrollArea({ children, className = '' }: { children: ReactNode; className?: string }) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -45,28 +29,40 @@ export function HorizontalScrollArea({ children, className = '' }: { children: R
 
       const startX = e.clientX;
       const startY = e.clientY;
-      const startScrollLeft = getScrollLeftNormalized(el);
-      const startScrollTop = el.scrollTop;
+      const pointerId = e.pointerId;
+      let lastX = e.clientX;
+      let lastY = e.clientY;
       let active = false;
 
       const onMove = (ev: PointerEvent) => {
-        const dx = ev.clientX - startX;
-        const dy = ev.clientY - startY;
+        const dx = ev.clientX - lastX;
+        const dy = ev.clientY - lastY;
+        lastX = ev.clientX;
+        lastY = ev.clientY;
+
         if (!active) {
-          if (Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) return;
+          if (Math.hypot(ev.clientX - startX, ev.clientY - startY) < DRAG_THRESHOLD_PX) return;
           active = true;
+          try {
+            el.setPointerCapture(pointerId);
+          } catch {
+            /* ignore */
+          }
           el.style.cursor = 'grabbing';
           el.style.userSelect = 'none';
           document.body.style.userSelect = 'none';
         }
         ev.preventDefault();
-
-        const maxY = Math.max(0, el.scrollHeight - el.clientHeight);
-        setScrollLeftNormalized(el, startScrollLeft - dx);
-        el.scrollTop = Math.max(0, Math.min(startScrollTop - dy, maxY));
+        // Incremental scroll; works with dir=rtl (unlike assigning scrollLeft)
+        el.scrollBy({ left: -dx, top: -dy });
       };
 
       const onUp = () => {
+        try {
+          el.releasePointerCapture(pointerId);
+        } catch {
+          /* ignore */
+        }
         document.removeEventListener('pointermove', onMove);
         document.removeEventListener('pointerup', onUp);
         document.removeEventListener('pointercancel', onUp);
