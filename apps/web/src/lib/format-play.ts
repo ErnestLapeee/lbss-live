@@ -189,6 +189,7 @@ export function formatPlayByPlay(
   if (play.eventType === 'substitution') {
     let detail: {
       kind?: string;
+      subKind?: string;
       outName?: string;
       inName?: string;
       position?: number;
@@ -212,6 +213,8 @@ export function formatPlayByPlay(
       const inN = lastName(detail.inName);
       if (detail.position === 1) {
         title = `Pitching change: ${inN} replaces ${outN}${role}`;
+      } else if (detail.subKind === 'offensive') {
+        title = `Offensive substitution: ${inN} replaces ${outN}${role}`;
       } else {
         title = `Substitution: ${inN} replaces ${outN}${role}`;
       }

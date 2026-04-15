@@ -174,6 +174,110 @@ function computeGameState(events: any[]): GameState {
 }
 
 export async function adminScoringRoutes(app: FastifyInstance) {
+  async function applyPlayerSubstitutionLineup(
+    gameId: number,
+    params: {
+      outPlayerId: number;
+      inPlayerId: number;
+      teamId: number;
+      position: number;
+      inning: number;
+      half: string;
+    },
+  ): Promise<{ ok: true } | { ok: false; message: string }> {
+    const { outPlayerId, inPlayerId, teamId, position, inning, half } = params;
+    const [outEntry] = await db
+      .select()
+      .from(gameLineups)
+      .where(
+        and(
+          eq(gameLineups.gameId, gameId),
+          eq(gameLineups.playerId, outPlayerId),
+          eq(gameLineups.isActive, true),
+        ),
+      )
+      .limit(1);
+
+    if (!outEntry) {
+      return { ok: false, message: 'Outgoing player is not active in lineup' };
+    }
+
+    await db
+      .update(gameLineups)
+      .set({
+        isActive: false,
+        exitedInning: inning,
+        exitedHalf: half,
+      })
+      .where(eq(gameLineups.id, outEntry.id));
+
+    await db.insert(gameLineups).values({
+      gameId,
+      teamId,
+      playerId: inPlayerId,
+      battingOrder: outEntry.battingOrder,
+      position,
+      enteredInning: inning,
+      enteredHalf: half,
+      isStarter: false,
+      isActive: true,
+    });
+
+    return { ok: true };
+  }
+
+  /** Undo DB lineup changes for a `player_change` substitution (soft-deleted event must still be readable from `eventDetail`). */
+  async function revertPlayerChangeSubstitution(gameId: number, eventDetail: string | null) {
+    let detail: { kind?: string; outPlayerId?: number; inPlayerId?: number } = {};
+    try {
+      detail = JSON.parse(eventDetail || '{}');
+    } catch {
+      return;
+    }
+    if (detail.kind !== 'player_change' || !detail.outPlayerId || !detail.inPlayerId) return;
+
+    const [inRow] = await db
+      .select({ id: gameLineups.id })
+      .from(gameLineups)
+      .where(
+        and(
+          eq(gameLineups.gameId, gameId),
+          eq(gameLineups.playerId, detail.inPlayerId),
+          eq(gameLineups.isActive, true),
+        ),
+      )
+      .orderBy(desc(gameLineups.id))
+      .limit(1);
+
+    if (inRow) {
+      await db.delete(gameLineups).where(eq(gameLineups.id, inRow.id));
+    }
+
+    const [outRow] = await db
+      .select({ id: gameLineups.id })
+      .from(gameLineups)
+      .where(
+        and(
+          eq(gameLineups.gameId, gameId),
+          eq(gameLineups.playerId, detail.outPlayerId),
+          eq(gameLineups.isActive, false),
+        ),
+      )
+      .orderBy(desc(gameLineups.id))
+      .limit(1);
+
+    if (outRow) {
+      await db
+        .update(gameLineups)
+        .set({
+          isActive: true,
+          exitedInning: null,
+          exitedHalf: null,
+        })
+        .where(eq(gameLineups.id, outRow.id));
+    }
+  }
+
   async function getGameCore(gameId: number) {
     const res = await db.execute(sql`
       SELECT
@@ -657,6 +761,10 @@ export async function adminScoringRoutes(app: FastifyInstance) {
         .set({ isDeleted: true })
         .where(eq(gameEvents.id, lastEvent.id));
 
+      if (lastEvent.eventType === 'substitution' && lastEvent.eventDetail) {
+        await revertPlayerChangeSubstitution(gameId, lastEvent.eventDetail);
+      }
+
       // Recompute state
       const allEvents = await db.select().from(gameEvents)
         .where(and(eq(gameEvents.gameId, gameId), eq(gameEvents.isDeleted, false)))
@@ -698,6 +806,38 @@ export async function adminScoringRoutes(app: FastifyInstance) {
         .limit(1);
 
       if (!lastDeleted) return reply.status(400).send({ message: 'No events to redo' });
+
+      if (lastDeleted.eventType === 'substitution' && lastDeleted.eventDetail) {
+        let detail: {
+          kind?: string;
+          outPlayerId?: number;
+          inPlayerId?: number;
+          teamId?: number;
+          position?: number;
+        } = {};
+        try {
+          detail = JSON.parse(lastDeleted.eventDetail);
+        } catch { /* ignore */ }
+        if (
+          detail.kind === 'player_change' &&
+          detail.outPlayerId != null &&
+          detail.inPlayerId != null &&
+          detail.teamId != null &&
+          detail.position != null
+        ) {
+          const r = await applyPlayerSubstitutionLineup(gameId, {
+            outPlayerId: detail.outPlayerId,
+            inPlayerId: detail.inPlayerId,
+            teamId: detail.teamId,
+            position: detail.position,
+            inning: lastDeleted.inning ?? 1,
+            half: String(lastDeleted.half ?? 'top'),
+          });
+          if (!r.ok) {
+            return reply.status(400).send({ message: r.message || 'Cannot redo substitution' });
+          }
+        }
+      }
 
       await db.update(gameEvents)
         .set({ isDeleted: false })
@@ -906,41 +1046,28 @@ export async function adminScoringRoutes(app: FastifyInstance) {
       position: number;
       inning: number;
       half: string;
+      /** Distinguishes pinch-hit / pinch-run style subs from defensive replacements in play-by-play. */
+      subKind?: 'offensive' | 'defensive';
     };
   }>('/:gameId/substitute', async (request, reply) => {
     try {
       const gameId = parseInt(request.params.gameId, 10);
       const { outPlayerId, inPlayerId, teamId, position, inning, half } = request.body;
+      const subKind =
+        request.body.subKind === 'offensive' || request.body.subKind === 'defensive'
+          ? request.body.subKind
+          : 'defensive';
 
-      // Deactivate outgoing player
-      const [outEntry] = await db.select().from(gameLineups)
-        .where(and(
-          eq(gameLineups.gameId, gameId),
-          eq(gameLineups.playerId, outPlayerId),
-          eq(gameLineups.isActive, true)
-        )).limit(1);
-
-      if (outEntry) {
-        await db.update(gameLineups).set({
-          isActive: false,
-          exitedInning: inning,
-          exitedHalf: half,
-        }).where(eq(gameLineups.id, outEntry.id));
-
-        // Add incoming player with same batting order
-        await db.insert(gameLineups).values({
-          gameId,
-          teamId,
-          playerId: inPlayerId,
-          battingOrder: outEntry.battingOrder,
-          position,
-          enteredInning: inning,
-          enteredHalf: half,
-          isStarter: false,
-          isActive: true,
-        });
-      } else {
-        return reply.status(400).send({ message: 'Outgoing player is not active in lineup' });
+      const applied = await applyPlayerSubstitutionLineup(gameId, {
+        outPlayerId,
+        inPlayerId,
+        teamId,
+        position,
+        inning,
+        half,
+      });
+      if (!applied.ok) {
+        return reply.status(400).send({ message: applied.message });
       }
 
       const user = (request as any).user;
@@ -970,6 +1097,7 @@ export async function adminScoringRoutes(app: FastifyInstance) {
 
       const detail = JSON.stringify({
         kind: 'player_change',
+        subKind,
         position,
         teamId,
         outPlayerId,

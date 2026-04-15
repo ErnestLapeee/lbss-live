@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
 
@@ -28,6 +28,7 @@ function formatScoringMiniPbpLine(evt: GameEvent): string {
     try {
       const d = JSON.parse(evt.eventDetail || '{}') as {
         kind?: string;
+        subKind?: string;
         outName?: string;
         inName?: string;
         position?: number;
@@ -45,8 +46,11 @@ function formatScoringMiniPbpLine(evt: GameEvent): string {
       }
       if (d.kind === 'player_change' || d.outName != null || d.inName != null) {
         const pos = d.position === 1 ? 'P' : (d.position != null ? (POS_LABELS[d.position] ?? `#${d.position}`) : '');
-        const prefix = d.position === 1 ? 'Pitching change' : 'Substitution';
         const role = pos ? ` (${pos})` : '';
+        let prefix: string;
+        if (d.position === 1) prefix = 'Pitching change';
+        else if (d.subKind === 'offensive') prefix = 'Offensive substitution';
+        else prefix = 'Substitution';
         return `${prefix}: ${d.inName ?? '?'} for ${d.outName ?? '?'}${role}`;
       }
     } catch { /* fall through */ }
@@ -430,7 +434,6 @@ export function LiveScoringPage() {
     setter(list => list.map(p => p.playerId === pid ? { ...p, position: pos } : p));
   };
 
-  const [setupLineupLoading, setSetupLineupLoading] = useState(false);
   const [setupDragFrom, setSetupDragFrom] = useState<number | null>(null);
 
   const moveSetup = (side: 'home' | 'away', fromIdx: number, toIdx: number) => {
@@ -449,47 +452,35 @@ export function LiveScoringPage() {
     const teamId = side === 'home' ? game.homeTeamId : game.awayTeamId;
     const roster = side === 'home' ? homeRoster : awayRoster;
     const data: any = await apiGet(`/admin/scoring/${gameId}/most-common-lineup/${teamId}`);
-    const raw = data.lineup as Array<{ playerId: number; position: number }> | null | undefined;
+    const raw = data.lineup as Array<{ playerId: number; position: number; battingOrder?: number }> | null | undefined;
     if (!raw?.length) return 'empty';
     const rosterIds = new Set(roster.map((p) => p.playerId));
-    const filtered = raw.filter((l) => rosterIds.has(l.playerId));
-    if (filtered.length === 0) return 'roster';
-    const lined = filtered.map((l) => ({ playerId: l.playerId, position: l.position }));
+    const sorted = [...raw]
+      .filter((l) => rosterIds.has(l.playerId))
+      .sort((a, b) => (a.battingOrder ?? 0) - (b.battingOrder ?? 0))
+      .slice(0, 9);
+    if (sorted.length === 0) return 'roster';
+    const lined = sorted.map((l) => ({ playerId: l.playerId, position: l.position }));
     if (side === 'home') setSetupHome(lined);
     else setSetupAway(lined);
     return 'ok';
   }, [game, gameId, homeRoster, awayRoster]);
 
-  const applySeasonLineup = async (side: 'home' | 'away') => {
-    setSetupLineupLoading(true);
-    try {
-      const r = await fetchAndApplySeasonLineup(side);
-      if (r === 'empty') alert('No full starter lineups in this season yet — set manually.');
-      if (r === 'roster') alert('None of those players are on this game’s roster.');
-    } catch (e: any) {
-      alert(e?.message || 'Failed to load suggested lineup');
-    } finally {
-      setSetupLineupLoading(false);
-    }
-  };
+  const setupAutoFilledRef = useRef(false);
+  useEffect(() => {
+    setupAutoFilledRef.current = false;
+  }, [gameId]);
 
-  const applySeasonLineupBoth = async () => {
-    if (!game) return;
-    setSetupLineupLoading(true);
-    try {
-      const ra = await fetchAndApplySeasonLineup('away');
-      const rh = await fetchAndApplySeasonLineup('home');
-      if (ra !== 'ok' && rh !== 'ok') {
-        if (ra === 'empty' && rh === 'empty') alert('No full starter lineups in this season yet.');
-        else if (ra === 'roster' && rh === 'roster') alert('None of those players are on the rosters.');
-        else alert('Could not fill one or both lineups from season data.');
-      }
-    } catch (e: any) {
-      alert(e?.message || 'Failed to load lineups');
-    } finally {
-      setSetupLineupLoading(false);
-    }
-  };
+  useEffect(() => {
+    if (phase !== 'setup' || !game) return;
+    if (homeRoster.length === 0 || awayRoster.length === 0) return;
+    if (setupAutoFilledRef.current) return;
+    setupAutoFilledRef.current = true;
+    void (async () => {
+      await fetchAndApplySeasonLineup('away');
+      await fetchAndApplySeasonLineup('home');
+    })();
+  }, [phase, game, gameId, homeRoster.length, awayRoster.length, fetchAndApplySeasonLineup]);
 
   // Sync local count from server state
   useEffect(() => {
@@ -914,6 +905,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
         outPlayerId: outPlayer.playerId, inPlayerId: newPlayerId,
         teamId: outPlayer.teamId, position: subPosition,
         inning: gameState?.inning ?? 1, half: gameState?.half ?? 'top',
+        subKind: 'defensive',
       });
       setSubPosition(null); setStep('pitch');
       await loadState(); await loadRosters();
@@ -948,6 +940,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
         outPlayerId: outPlayer.playerId, inPlayerId: newPlayerId,
         teamId: outPlayer.teamId, position: outPlayer.position,
         inning: gameState?.inning ?? 1, half: gameState?.half ?? 'top',
+        subKind: 'offensive',
       });
       setSubBattingSlot(null); setStep('pitch');
       await loadState(); await loadRosters();
@@ -1317,24 +1310,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                 {side === 'away' ? game.awayTeamName : game.homeTeamName} ({(side === 'home' ? setupHome : setupAway).length}/9)
               </button>
             ))}
-            <button
-              type="button"
-              disabled={setupLineupLoading}
-              onClick={() => void applySeasonLineup(setupTeam)}
-              className="px-3 py-2 rounded-lg text-xs font-bold uppercase bg-amber-700/80 hover:bg-amber-600 disabled:opacity-40 text-white border border-amber-500/40"
-            >
-              {setupLineupLoading ? 'Loading…' : 'This team: most common (season)'}
-            </button>
-            <button
-              type="button"
-              disabled={setupLineupLoading}
-              onClick={() => void applySeasonLineupBoth()}
-              className="px-3 py-2 rounded-lg text-xs font-bold uppercase bg-white/10 hover:bg-white/15 disabled:opacity-40 text-white/90 border border-white/10"
-            >
-              Both teams
-            </button>
           </div>
-          <p className="text-[11px] text-white/35 mb-4">Fills batting order + positions from the most-used 9-man starter group in this league season (other games). Drag rows to reorder.</p>
           <div className="grid grid-cols-2 gap-6">
             <div>
               <h3 className="text-sm font-bold text-white/50 uppercase mb-3">Available</h3>
