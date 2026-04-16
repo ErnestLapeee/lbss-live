@@ -42,12 +42,6 @@ h1, h2, h3, h4, h5, h6 {
   font-family: var(--font-heading);
 }
 
-/* Playoff bracket — keep flat; parent card supplies border/surface */
-.playoff-bracket-wrap {
-  border-radius: 0;
-  background: transparent;
-}
-
 /* ── Live pulse animation — soft opacity breathing, no glow ── */
 @keyframes live-pulse {
   0%, 100% { opacity: 1; }

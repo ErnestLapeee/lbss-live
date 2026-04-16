@@ -12,11 +12,9 @@ export type PlayoffBracketRound = {
 
 type PlayoffBracketProps = {
   rounds: PlayoffBracketRound[];
-  /** Shown under team names when provided (e.g. regular-season line). */
   recordText?: (teamName: string) => string;
 };
 
-/** Safe record line — skip placeholder / empty names. */
 function safeRecord(recordText: ((name: string) => string) | undefined, name: string) {
   if (!recordText) return undefined;
   const t = String(name ?? '').trim();
@@ -24,27 +22,36 @@ function safeRecord(recordText: ((name: string) => string) | undefined, name: st
   return recordText(t);
 }
 
-/** SVG connector between rounds — heights stretch with the row (items-stretch). */
+/** Second line under ROUND N — omit if the API name is only “Round 1”, etc. */
+function roundSubtitle(name: string): string | null {
+  const stripped = name.replace(/^\s*round\s*\d+\s*/i, '').trim();
+  if (stripped) return stripped;
+  if (/^round\s*\d+\s*$/i.test(String(name).trim())) return null;
+  return String(name).trim() || null;
+}
+
+/** Desktop: horizontal bracket paths with glow */
 function BracketJoiner({ fromCount, toCount }: { fromCount: number; toCount: number }) {
+  const glow = 'drop-shadow-[0_0_8px_rgba(56,189,248,0.45)]';
   if (fromCount === 1 && toCount === 1) {
     return (
-      <div className="flex w-9 shrink-0 items-center justify-center md:w-12" aria-hidden>
+      <div className="hidden w-10 shrink-0 items-center justify-center md:flex md:w-14 lg:w-16" aria-hidden>
         <svg
-          viewBox="0 0 48 32"
-          className="h-8 w-full max-w-[3rem] text-accent/55 md:max-w-[3.25rem]"
+          viewBox="0 0 64 40"
+          className={`h-10 w-full max-w-[4rem] text-[#38bdf8] ${glow}`}
           preserveAspectRatio="xMidYMid meet"
         >
           <path
-            d="M2 16 H38"
+            d="M4 20 H44"
             stroke="currentColor"
-            strokeWidth="2"
+            strokeWidth="2.5"
             fill="none"
             strokeLinecap="round"
           />
           <path
-            d="M34 11 L44 16 L34 21"
+            d="M40 13 L54 20 L40 27"
             stroke="currentColor"
-            strokeWidth="2"
+            strokeWidth="2.5"
             fill="none"
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -56,16 +63,16 @@ function BracketJoiner({ fromCount, toCount }: { fromCount: number; toCount: num
 
   if (fromCount === 2 && toCount === 1) {
     return (
-      <div className="flex w-9 shrink-0 items-stretch py-3 md:w-12" aria-hidden>
+      <div className="hidden w-10 shrink-0 items-stretch py-4 md:flex md:w-14 lg:w-16" aria-hidden>
         <svg
-          viewBox="0 0 48 200"
-          className="h-full min-h-[9rem] w-full text-accent/55"
+          viewBox="0 0 64 220"
+          className={`h-full min-h-[10rem] w-full text-[#38bdf8] ${glow}`}
           preserveAspectRatio="none"
         >
           <path
-            d="M0 50 H20 V100 H48 M0 150 H20 V100"
+            d="M4 55 H28 V110 H60 M4 165 H28 V110"
             stroke="currentColor"
-            strokeWidth="2"
+            strokeWidth="2.5"
             fill="none"
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -77,16 +84,16 @@ function BracketJoiner({ fromCount, toCount }: { fromCount: number; toCount: num
 
   if (fromCount === 4 && toCount === 2) {
     return (
-      <div className="flex w-9 shrink-0 items-stretch py-2 md:w-12" aria-hidden>
+      <div className="hidden w-10 shrink-0 items-stretch py-2 md:flex md:w-14" aria-hidden>
         <svg
-          viewBox="0 0 48 360"
-          className="h-full min-h-[16rem] w-full text-sky-600 opacity-80"
+          viewBox="0 0 64 360"
+          className={`h-full min-h-[16rem] w-full text-[#38bdf8] ${glow}`}
           preserveAspectRatio="none"
         >
           <path
-            d="M0 48 H20 V96 H48 M0 144 H20 V96 M0 216 H20 V264 H48 M0 312 H20 V264"
+            d="M4 52 H28 V104 H60 M4 156 H28 V104 M4 208 H28 V260 H60 M4 312 H28 V260"
             stroke="currentColor"
-            strokeWidth="2"
+            strokeWidth="2.5"
             fill="none"
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -97,11 +104,26 @@ function BracketJoiner({ fromCount, toCount }: { fromCount: number; toCount: num
   }
 
   return (
-    <div
-      className="flex w-7 shrink-0 items-center justify-center text-text-faint md:w-9"
-      aria-hidden
-    >
-      <span className="select-none text-lg font-light">→</span>
+    <div className="hidden w-8 shrink-0 items-center justify-center text-[#38bdf8]/80 md:flex md:w-10" aria-hidden>
+      <span className={`select-none text-2xl font-light ${glow}`}>→</span>
+    </div>
+  );
+}
+
+/** Mobile: vertical connector between rounds */
+function MobileVerticalConnector() {
+  return (
+    <div className="flex h-16 w-full shrink-0 flex-col items-center justify-center md:hidden" aria-hidden>
+      <svg viewBox="0 0 48 120" className="h-16 w-12 text-[#38bdf8] drop-shadow-[0_0_10px_rgba(56,189,248,0.5)]">
+        <path
+          d="M24 8 V88 M16 80 L24 96 L32 80"
+          stroke="currentColor"
+          strokeWidth="2.5"
+          fill="none"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
     </div>
   );
 }
@@ -113,36 +135,36 @@ function RoundColumn({
   round: PlayoffBracketRound;
   recordText?: (teamName: string) => string;
 }) {
+  const sub = roundSubtitle(round.name);
+
   return (
-    <div className="flex w-[min(100%,19rem)] shrink-0 flex-col justify-center gap-4 sm:w-[21rem] md:gap-5">
+    <div className="flex w-full min-w-0 max-w-[22rem] shrink-0 flex-col justify-center gap-4 sm:max-w-[24rem]">
       <div className="flex flex-col items-center gap-1 text-center">
-        <span className="text-[11px] font-bold uppercase tracking-wider text-text-faint">
+        <span className="text-[10px] font-black uppercase tracking-[0.35em] text-sky-300/90">
           Round {round.roundNumber}
         </span>
-        <p className="max-w-[16rem] text-sm font-semibold leading-snug text-text-muted">
-          {round.name.replace(/^\s*round\s*\d+\s*/i, '').trim() || round.name}
-        </p>
+        {sub ? (
+          <p className="max-w-[18rem] text-balance text-sm font-semibold leading-snug text-slate-300/95">
+            {sub}
+          </p>
+        ) : null}
+        <div className="h-px w-8 bg-gradient-to-r from-transparent via-amber-400/50 to-transparent" aria-hidden />
       </div>
-      <div className="flex flex-col gap-5 md:gap-6">
+      <div className="flex flex-col gap-6 md:gap-7">
         {round.series.map((s) => (
-          <div
-            key={s.id ?? `${round.roundNumber}-${s.label}-${s.higherTeamName}`}
-            className="overflow-hidden rounded-lg border border-border border-l-[3px] border-l-accent bg-surface shadow-sm"
-          >
-            <div className="px-1 py-1">
-              <PlayoffSeriesCard
-                embedded
-                series={s}
-                recordText={
-                  recordText
-                    ? (n) => {
-                        const line = safeRecord(recordText, n);
-                        return line ?? '';
-                      }
-                    : undefined
-                }
-              />
-            </div>
+          <div key={s.id ?? `${round.roundNumber}-${s.label}-${s.higherTeamName}`} className="min-w-0">
+            <PlayoffSeriesCard
+              embedded
+              series={s}
+              recordText={
+                recordText
+                  ? (n) => {
+                      const line = safeRecord(recordText, n);
+                      return line ?? '';
+                    }
+                  : undefined
+              }
+            />
           </div>
         ))}
       </div>
@@ -150,25 +172,27 @@ function RoundColumn({
   );
 }
 
-/**
- * Horizontal elimination-style bracket: rounds as columns, SVG joins for common shapes (1→1, 2→1, 4→2).
- */
 export function PlayoffBracket({ rounds, recordText }: PlayoffBracketProps) {
   const list = rounds?.filter((r) => (r.series?.length ?? 0) > 0) ?? [];
   if (list.length === 0) return null;
 
   return (
-    <div className="playoff-bracket-wrap relative">
-      <div className="overflow-x-auto overflow-y-visible pb-1 [-webkit-overflow-scrolling:touch]">
-        <div className="flex min-w-min flex-row items-stretch justify-center gap-0 px-2 py-3 md:px-4 md:py-5">
+    <div className="playoff-bracket-wrap relative overflow-hidden rounded-2xl border border-sky-500/25 bg-gradient-to-b from-[#0a1628] via-[#0c1829] to-[#070b12] p-4 shadow-[0_0_0_1px_rgba(255,255,255,0.04),0_8px_40px_rgba(0,0,0,0.5),0_0_80px_rgba(14,165,233,0.08)] sm:p-6 md:p-8">
+      <div
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_100%_80%_at_50%_-30%,rgba(56,189,248,0.14),transparent_55%)]"
+        aria-hidden
+      />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_60%_40%_at_100%_80%,rgba(251,191,36,0.06),transparent_50%)]" aria-hidden />
+      <div className="relative overflow-x-auto overflow-y-visible pb-1 [-webkit-overflow-scrolling:touch]">
+        <div className="flex min-w-0 flex-col items-stretch justify-center gap-0 md:min-w-min md:flex-row md:items-stretch md:justify-center md:gap-0 md:px-1">
           {list.map((round, ri) => (
             <Fragment key={round.roundNumber}>
               <RoundColumn round={round} recordText={recordText} />
               {ri < list.length - 1 ? (
-                <BracketJoiner
-                  fromCount={round.series.length}
-                  toCount={list[ri + 1]!.series.length}
-                />
+                <>
+                  <BracketJoiner fromCount={round.series.length} toCount={list[ri + 1]!.series.length} />
+                  <MobileVerticalConnector />
+                </>
               ) : null}
             </Fragment>
           ))}
