@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { db } from '../../db/index.js';
 import { playoffs, playoffSeries, games, seasons, teams } from '../../db/schema/index.js';
-import { asc, desc, eq, inArray } from 'drizzle-orm';
+import { asc, eq, inArray, sql } from 'drizzle-orm';
 import { getSeasonsColumnFlagsCached } from '../../lib/seasons-playoff-columns-cache.js';
 import { seasonsRowSelectShape } from '../../lib/seasons-drizzle-select.js';
 
@@ -31,6 +31,56 @@ const playoffSeriesCore = {
   winnerTeamId: playoffSeries.winnerTeamId,
 };
 
+function pgErrorCode(err: unknown): string | undefined {
+  let e: unknown = err;
+  const seen = new Set<unknown>();
+  for (let i = 0; i < 12 && e && typeof e === 'object'; i++) {
+    if (seen.has(e)) break;
+    seen.add(e);
+    const code = (e as { code?: string }).code;
+    if (typeof code === 'string' && /^[0-9A-Z]{5}$/.test(code)) return code;
+    e = (e as { cause?: unknown }).cause;
+  }
+  return undefined;
+}
+
+function mapPlayoffConfig(v: unknown): unknown {
+  if (v == null) return {};
+  if (typeof v === 'string') {
+    try {
+      return JSON.parse(v) as unknown;
+    } catch {
+      return {};
+    }
+  }
+  return v;
+}
+
+/** List rows via raw SQL — avoids Drizzle/schema drift when the `playoffs` table exists but metadata differs. */
+async function listPlayoffsRows(seasonId: number | null) {
+  const result =
+    seasonId != null
+      ? await db.execute(sql`
+          SELECT id, season_id, name, is_active, config
+          FROM playoffs
+          WHERE season_id = ${seasonId}
+          ORDER BY id DESC
+        `)
+      : await db.execute(sql`
+          SELECT id, season_id, name, is_active, config
+          FROM playoffs
+          ORDER BY id DESC
+        `);
+  const rows = Array.from(result as Iterable<Record<string, unknown>>);
+  return rows.map((r) => ({
+    id: Number(r.id),
+    seasonId: Number(r.season_id),
+    name: String(r.name ?? ''),
+    isActive: Boolean(r.is_active),
+    config: mapPlayoffConfig(r.config),
+  }));
+}
+
 export async function adminPlayoffsRoutes(app: FastifyInstance) {
   // GET /?seasonId= - list playoffs rows (optionally filtered by season)
   app.get<{ Querystring: { seasonId?: string } }>('/', async (request, reply) => {
@@ -41,13 +91,15 @@ export async function adminPlayoffsRoutes(app: FastifyInstance) {
       if (raw != null && String(raw).trim() !== '' && (seasonId == null || !Number.isFinite(seasonId))) {
         return reply.status(400).send({ message: 'Invalid seasonId' });
       }
-      const rows = seasonId != null
-        ? await db.select(playoffsCore).from(playoffs).where(eq(playoffs.seasonId, seasonId)).orderBy(desc(playoffs.id))
-        : await db.select(playoffsCore).from(playoffs).orderBy(desc(playoffs.id));
+      const rows = await listPlayoffsRows(seasonId);
       return reply.send(rows);
     } catch (err) {
       request.log.error(err);
-      return reply.status(500).send({ message: 'Failed to fetch playoffs' });
+      const code = pgErrorCode(err);
+      return reply.status(500).send({
+        message: 'Failed to fetch playoffs',
+        ...(code ? { code } : {}),
+      });
     }
   });
 
