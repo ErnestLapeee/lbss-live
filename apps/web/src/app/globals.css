@@ -42,6 +42,15 @@ h1, h2, h3, h4, h5, h6 {
   font-family: var(--font-heading);
 }
 
+/* Playoff bracket — soft arena wash (standings / playoffs view) */
+.playoff-bracket-wrap {
+  border-radius: 1rem;
+  background:
+    radial-gradient(ellipse 90% 60% at 50% -30%, rgb(186 230 253 / 0.35), transparent 55%),
+    radial-gradient(ellipse 70% 50% at 100% 50%, rgb(224 231 255 / 0.2), transparent 50%),
+    linear-gradient(180deg, rgb(248 250 252) 0%, rgb(255 255 255) 45%, rgb(248 250 252) 100%);
+}
+
 /* ── Live pulse animation — soft opacity breathing, no glow ── */
 @keyframes live-pulse {
   0%, 100% { opacity: 1; }

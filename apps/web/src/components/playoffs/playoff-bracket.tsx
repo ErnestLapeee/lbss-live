@@ -114,24 +114,34 @@ function RoundColumn({
   recordText?: (teamName: string) => string;
 }) {
   return (
-    <div className="flex w-[min(100%,18rem)] shrink-0 flex-col justify-center gap-3 sm:w-[20rem] md:gap-4">
-      <div className="text-center">
-        <span className="inline-flex items-center justify-center rounded-lg border border-sky-800/30 bg-gradient-to-br from-sky-900 via-sky-950 to-slate-900 px-3.5 py-2 font-heading text-[10px] font-bold uppercase tracking-[0.22em] text-sky-50 shadow-md shadow-slate-900/20">
-          {round.name}
+    <div className="flex w-[min(100%,19rem)] shrink-0 flex-col justify-center gap-4 sm:w-[21rem] md:gap-5">
+      <div className="flex flex-col items-center text-center">
+        <span className="text-[10px] font-bold uppercase tracking-[0.35em] text-slate-500">
+          Round {round.roundNumber}
         </span>
+        <div
+          className="mt-2 flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-sky-500 via-sky-700 to-indigo-900 text-xl font-black tabular-nums text-white shadow-[0_4px_14px_rgba(14,116,144,0.45)] ring-[3px] ring-white"
+          aria-hidden
+        >
+          {round.roundNumber}
+        </div>
+        <p className="mt-2 max-w-[16rem] text-[11px] font-semibold uppercase leading-tight tracking-wide text-slate-600">
+          {round.name.replace(/^\s*round\s*\d+\s*/i, '').trim() || round.name}
+        </p>
       </div>
-      <div className="flex flex-col gap-4 md:gap-5">
+      <div className="flex flex-col gap-5 md:gap-6">
         {round.series.map((s) => (
           <div
             key={s.id ?? `${round.roundNumber}-${s.label}-${s.higherTeamName}`}
-            className="group relative overflow-hidden rounded-xl border border-slate-200/95 bg-white shadow-[0_4px_24px_rgba(15,23,42,0.08)] transition-[box-shadow,transform] duration-200 group-hover:-translate-y-px group-hover:shadow-[0_10px_32px_rgba(14,116,144,0.14)]"
+            className="group relative overflow-hidden rounded-2xl border border-slate-200/90 bg-white/95 shadow-[0_8px_30px_-6px_rgba(15,23,42,0.12),0_0_0_1px_rgba(255,255,255,0.8)_inset] backdrop-blur-sm transition-[box-shadow,transform] duration-300 group-hover:-translate-y-0.5 group-hover:shadow-[0_16px_40px_-8px_rgba(14,116,144,0.2)]"
           >
             <div
-              className="absolute inset-y-0 left-0 w-[3px] bg-gradient-to-b from-sky-600 via-sky-700 to-indigo-900"
+              className="absolute inset-y-0 left-0 w-1 bg-gradient-to-b from-amber-400 via-sky-600 to-indigo-950"
               aria-hidden
             />
-            <div className="pl-[5px] pr-0.5 py-2 [&>div]:border-0 [&>div]:bg-transparent [&>div]:p-0 [&>div]:shadow-none [&>div]:ring-0">
+            <div className="pl-2 pr-1 py-1">
               <PlayoffSeriesCard
+                embedded
                 series={s}
                 recordText={
                   recordText
@@ -160,10 +170,10 @@ export function PlayoffBracket({ rounds, recordText }: PlayoffBracketProps) {
   return (
     <div className="playoff-bracket-wrap relative">
       <div
-        className="pointer-events-none absolute inset-0 -z-10 opacity-[0.14]"
+        className="pointer-events-none absolute inset-0 -z-10 opacity-[0.12] mix-blend-multiply"
         style={{
-          backgroundImage: `radial-gradient(circle at 1px 1px, var(--color-border) 1px, transparent 0)`,
-          backgroundSize: '22px 22px',
+          backgroundImage: `radial-gradient(circle at 1px 1px, rgb(148 163 184 / 0.45) 1px, transparent 0)`,
+          backgroundSize: '20px 20px',
         }}
         aria-hidden
       />

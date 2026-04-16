@@ -54,7 +54,7 @@ function teamLine(seedNum: string, name: string) {
       {showTbd ? (
         <span className="italic text-slate-400">TBD</span>
       ) : (
-        <span className="truncate font-semibold text-slate-900">{raw}</span>
+        <span className="truncate text-[13px] font-bold tracking-tight text-slate-900">{raw}</span>
       )}
     </span>
   );
@@ -63,10 +63,13 @@ function teamLine(seedNum: string, name: string) {
 export function PlayoffSeriesCard({
   series,
   recordText,
+  embedded = false,
 }: {
   series: PlayoffSeriesForCard;
   /** Extra line under each team (e.g. regular-season record from standings). */
   recordText?: (teamName: string) => string;
+  /** When true, strip outer card chrome (used inside playoff bracket shells). */
+  embedded?: boolean;
 }) {
   const seriesId = series.id;
   const canLoadGames = seriesId != null && seriesId > 0;
@@ -106,27 +109,37 @@ export function PlayoffSeriesCard({
   const higherSeed = series.higherSeed != null ? String(series.higherSeed) : '';
   const lowerSeed = series.lowerSeed != null ? String(series.lowerSeed) : '';
 
+  const shell = embedded
+    ? 'rounded-none border-0 bg-transparent p-0 shadow-none ring-0'
+    : 'rounded-xl border border-slate-200/90 bg-white p-0 shadow-sm shadow-slate-300/25';
+
   return (
     <div
-      className={`rounded-xl border border-slate-200/90 bg-white p-0 shadow-sm shadow-slate-300/25 ${
-        canLoadGames ? 'ring-1 ring-transparent hover:ring-sky-300/40 transition-shadow' : ''
+      className={`${shell} ${
+        !embedded && canLoadGames ? 'ring-1 ring-transparent hover:ring-sky-300/40 transition-shadow' : ''
       }`}
     >
-      <div className="flex items-start justify-between gap-3 border-b border-slate-200 bg-gradient-to-r from-slate-50 to-white px-3 pb-2.5 pt-2">
-        <h3 className="min-w-0 flex-1 text-left text-[13px] font-semibold leading-snug text-slate-900">
+      <div
+        className={`flex items-start justify-between gap-3 border-b px-3 pb-2.5 pt-2.5 ${
+          embedded
+            ? 'border-slate-100/90 bg-gradient-to-r from-slate-50/90 to-transparent'
+            : 'border-slate-200 bg-gradient-to-r from-slate-50 to-white'
+        }`}
+      >
+        <h3 className="min-w-0 flex-1 text-left text-[13px] font-bold leading-snug tracking-tight text-slate-900">
           {series.label}
         </h3>
         <span
-          className="shrink-0 rounded-md border border-sky-300/70 bg-sky-100 px-2 py-1 text-center font-mono text-[11px] font-bold tabular-nums text-sky-950"
+          className="shrink-0 rounded-lg border border-amber-200/90 bg-gradient-to-b from-amber-50 to-amber-100/90 px-2.5 py-1 text-center font-mono text-[11px] font-bold tabular-nums text-amber-950 shadow-sm"
           title={`Best-of-${series.bestOf} series`}
         >
           Bo{series.bestOf}
         </span>
       </div>
 
-      <div className="divide-y divide-slate-100">
-        <div className="flex items-center justify-between gap-3 bg-white px-3 py-2.5">
-          <div className="min-w-0 flex-1 text-[12px] leading-tight">
+      <div className="relative">
+        <div className="flex items-center justify-between gap-3 bg-white px-3 py-3">
+          <div className="min-w-0 flex-1 leading-tight">
             {teamLine(higherSeed, series.higherTeamName)}
             {recordText && recordText(series.higherTeamName) ? (
               <div className="mt-1 truncate pl-7 text-[10px] text-slate-500">
@@ -134,12 +147,23 @@ export function PlayoffSeriesCard({
               </div>
             ) : null}
           </div>
-          <span className="rounded-md border border-slate-200/80 bg-slate-100 px-2.5 py-1 font-mono text-sm font-bold tabular-nums text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]">
+          <span className="min-w-[2rem] rounded-lg border border-slate-200/90 bg-gradient-to-b from-white to-slate-100 px-2 py-1.5 text-center font-mono text-base font-black tabular-nums text-slate-900 shadow-inner">
             {series.wins?.higher ?? 0}
           </span>
         </div>
-        <div className="flex items-center justify-between gap-3 bg-slate-50/70 px-3 py-2.5">
-          <div className="min-w-0 flex-1 text-[12px] leading-tight">
+
+        <div
+          className="relative flex items-center justify-center py-1"
+          aria-hidden
+        >
+          <div className="absolute inset-x-8 top-1/2 h-px bg-gradient-to-r from-transparent via-slate-300 to-transparent" />
+          <span className="relative bg-white px-3 font-heading text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
+            vs
+          </span>
+        </div>
+
+        <div className="flex items-center justify-between gap-3 bg-slate-50/90 px-3 py-3">
+          <div className="min-w-0 flex-1 leading-tight">
             {teamLine(lowerSeed, series.lowerTeamName)}
             {recordText && recordText(series.lowerTeamName) ? (
               <div className="mt-1 truncate pl-7 text-[10px] text-slate-500">
@@ -147,7 +171,7 @@ export function PlayoffSeriesCard({
               </div>
             ) : null}
           </div>
-          <span className="rounded-md border border-slate-200/80 bg-slate-100 px-2.5 py-1 font-mono text-sm font-bold tabular-nums text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]">
+          <span className="min-w-[2rem] rounded-lg border border-slate-200/90 bg-gradient-to-b from-white to-slate-100 px-2 py-1.5 text-center font-mono text-base font-black tabular-nums text-slate-900 shadow-inner">
             {series.wins?.lower ?? 0}
           </span>
         </div>
@@ -158,7 +182,9 @@ export function PlayoffSeriesCard({
           <button
             type="button"
             onClick={() => void toggleGames()}
-            className="mt-0 w-full rounded-b-[11px] border-t border-slate-200 bg-sky-50/90 py-2.5 text-[11px] font-semibold text-sky-900 transition-colors hover:bg-sky-100"
+            className={`mt-0 w-full border-t border-slate-200 bg-gradient-to-r from-sky-600 to-indigo-900 py-2.5 text-[11px] font-bold uppercase tracking-wide text-white shadow-inner transition-opacity hover:opacity-95 ${
+              embedded ? 'rounded-b-xl' : 'rounded-b-[11px]'
+            }`}
           >
             {open ? 'Hide games' : 'Games & box scores'}
           </button>
