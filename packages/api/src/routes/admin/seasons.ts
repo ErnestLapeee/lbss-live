@@ -13,6 +13,7 @@ import {
   playerSeasonFielding,
   playerSeasonPitching,
   playerSeasons,
+  playoffs,
   seasons,
   standings,
 } from '../../db/schema/index.js';
@@ -21,6 +22,7 @@ import { seasonWithPlayoffDefaults } from '../../lib/season-playoff-response.js'
 import { getSeasonsColumnFlagsCached } from '../../lib/seasons-playoff-columns-cache.js';
 import { seasonsRowSelectShape } from '../../lib/seasons-drizzle-select.js';
 import { playoffColumnsForSeasonKind, type SeasonKind } from '../../lib/season-kind-playoffs.js';
+import { slugify } from '../../utils/slugify.js';
 
 function normalizeYear(v: unknown): number | null {
   if (v == null) return null;
@@ -206,6 +208,28 @@ export async function adminSeasonsRoutes(app: FastifyInstance) {
           })
           // Omit columns missing in older DBs — bare `.returning()` asks Postgres for every Drizzle column and can 500.
           .returning(seasonsRowSelectShape(flags));
+
+        if (kind === 'playoff' && row) {
+          const sid = (row as { id: number }).id;
+          const leagueName = nameTrim.length > 100 ? nameTrim.slice(0, 100) : nameTrim;
+          let slug = slugify(`playoffs-${sid}`);
+          if (slug.length > 100) slug = slug.slice(0, 100);
+          await tx.insert(leagues).values({
+            seasonId: sid,
+            name: leagueName,
+            slug,
+            sport: 'baseball',
+            level: 'senior',
+          });
+          const playoffName = nameTrim.length > 120 ? nameTrim.slice(0, 120) : nameTrim;
+          await tx.insert(playoffs).values({
+            seasonId: sid,
+            name: playoffName,
+            isActive: true,
+            config: {},
+          });
+        }
+
         return [row];
       });
 

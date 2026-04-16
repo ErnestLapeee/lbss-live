@@ -1,7 +1,19 @@
 import type { FastifyInstance } from 'fastify';
 import { db } from '../../db/index.js';
-import { playoffs, playoffSeries, games, seasons } from '../../db/schema/index.js';
+import { playoffs, playoffSeries, games, seasons, teams } from '../../db/schema/index.js';
 import { asc, desc, eq, inArray } from 'drizzle-orm';
+import { getSeasonsColumnFlagsCached } from '../../lib/seasons-playoff-columns-cache.js';
+import { seasonsRowSelectShape } from '../../lib/seasons-drizzle-select.js';
+
+const playoffsSelect = {
+  id: playoffs.id,
+  seasonId: playoffs.seasonId,
+  name: playoffs.name,
+  isActive: playoffs.isActive,
+  config: playoffs.config,
+  createdAt: playoffs.createdAt,
+  updatedAt: playoffs.updatedAt,
+};
 
 export async function adminPlayoffsRoutes(app: FastifyInstance) {
   // GET /?seasonId= - list playoffs rows (optionally filtered by season)
@@ -9,8 +21,8 @@ export async function adminPlayoffsRoutes(app: FastifyInstance) {
     try {
       const seasonId = request.query?.seasonId ? parseInt(request.query.seasonId, 10) : null;
       const rows = seasonId
-        ? await db.select().from(playoffs).where(eq(playoffs.seasonId, seasonId)).orderBy(desc(playoffs.id))
-        : await db.select().from(playoffs).orderBy(desc(playoffs.id));
+        ? await db.select(playoffsSelect).from(playoffs).where(eq(playoffs.seasonId, seasonId)).orderBy(desc(playoffs.id))
+        : await db.select(playoffsSelect).from(playoffs).orderBy(desc(playoffs.id));
       return reply.send(rows);
     } catch (err) {
       request.log.error(err);
@@ -29,10 +41,17 @@ export async function adminPlayoffsRoutes(app: FastifyInstance) {
       }>;
       if (!seasonId || !name) return reply.status(400).send({ message: 'seasonId and name required' });
 
-      const [season] = await db.select().from(seasons).where(eq(seasons.id, seasonId)).limit(1);
+      const flags = await getSeasonsColumnFlagsCached();
+      const [season] = await db
+        .select(seasonsRowSelectShape(flags))
+        .from(seasons)
+        .where(eq(seasons.id, seasonId))
+        .limit(1);
       if (!season) return reply.status(404).send({ message: 'Season not found' });
 
-      const sk = String((season as { seasonKind?: string }).seasonKind ?? 'regular');
+      const sk = flags.hasSeasonKindOptionals
+        ? String((season as Record<string, unknown>).seasonKind ?? 'regular')
+        : 'regular';
       if (sk !== 'playoff') {
         return reply.status(400).send({
           message:
@@ -45,7 +64,7 @@ export async function adminPlayoffsRoutes(app: FastifyInstance) {
         name,
         isActive: isActive ?? true,
         config: config ?? {},
-      }).returning();
+      }).returning(playoffsSelect);
 
       // Ensure season is marked as having playoffs.
       await db.update(seasons).set({ hasPlayoffs: true }).where(eq(seasons.id, seasonId));
@@ -68,7 +87,7 @@ export async function adminPlayoffsRoutes(app: FastifyInstance) {
         ...(isActive !== undefined && { isActive }),
         ...(config !== undefined && { config }),
         updatedAt: new Date(),
-      }).where(eq(playoffs.id, id)).returning();
+      }).where(eq(playoffs.id, id)).returning(playoffsSelect);
       if (!row) return reply.status(404).send({ message: 'Playoffs not found' });
       return reply.send(row);
     } catch (err) {
@@ -105,13 +124,100 @@ export async function adminPlayoffsRoutes(app: FastifyInstance) {
     try {
       const id = parseInt(request.params.id, 10);
       if (isNaN(id)) return reply.status(400).send({ message: 'Invalid playoffs id' });
-      const rows = await db.select().from(playoffSeries)
+      const rows = await db
+        .select()
+        .from(playoffSeries)
         .where(eq(playoffSeries.playoffsId, id))
-        .orderBy(playoffSeries.roundNumber, playoffSeries.seriesIndex);
+        .orderBy(asc(playoffSeries.roundNumber), asc(playoffSeries.seriesIndex));
       return reply.send(rows);
     } catch (err) {
       request.log.error(err);
       return reply.status(500).send({ message: 'Failed to fetch series' });
+    }
+  });
+
+  // POST /:id/generate-bracket-from-order — round 1 pairings from seed order (1 vs N, 2 vs N-1, …); even count only
+  app.post<{
+    Params: { id: string };
+    Body: { teamIdsOrdered?: number[]; replaceExisting?: boolean };
+  }>('/:id/generate-bracket-from-order', async (request, reply) => {
+    try {
+      const playoffsId = parseInt(request.params.id, 10);
+      if (isNaN(playoffsId)) return reply.status(400).send({ message: 'Invalid playoffs id' });
+
+      const [po] = await db.select(playoffsSelect).from(playoffs).where(eq(playoffs.id, playoffsId)).limit(1);
+      if (!po) return reply.status(404).send({ message: 'Playoffs not found' });
+
+      const raw = (request.body as { teamIdsOrdered?: unknown; replaceExisting?: unknown }) ?? {};
+      const ordered = Array.isArray(raw.teamIdsOrdered)
+        ? raw.teamIdsOrdered.map((x) => Number(x)).filter((n) => Number.isFinite(n) && n > 0)
+        : [];
+      const unique = [...new Set(ordered)];
+      if (unique.length !== ordered.length) {
+        return reply.status(400).send({ message: 'Duplicate team ids in list' });
+      }
+      if (ordered.length < 2) {
+        return reply.status(400).send({ message: 'At least two teams required' });
+      }
+      if (ordered.length % 2 !== 0) {
+        return reply.status(400).send({ message: 'Use an even number of teams for this generator (pairings).' });
+      }
+
+      const found = await db.select({ id: teams.id }).from(teams).where(inArray(teams.id, unique));
+      if (found.length !== unique.length) {
+        return reply.status(400).send({ message: 'One or more team ids are invalid' });
+      }
+
+      const replace = raw.replaceExisting === true;
+
+      const n = ordered.length;
+      await db.transaction(async (tx) => {
+        if (replace) {
+          const seriesIds = await tx
+            .select({ id: playoffSeries.id })
+            .from(playoffSeries)
+            .where(eq(playoffSeries.playoffsId, playoffsId));
+          if (seriesIds.length > 0) {
+            const ids = seriesIds.map((s) => s.id);
+            await tx.update(games).set({ playoffSeriesId: null }).where(inArray(games.playoffSeriesId, ids));
+            await tx.delete(playoffSeries).where(eq(playoffSeries.playoffsId, playoffsId));
+          }
+        } else {
+          const existingRows = await tx
+            .select({ id: playoffSeries.id })
+            .from(playoffSeries)
+            .where(eq(playoffSeries.playoffsId, playoffsId));
+          if (existingRows.length > 0) {
+            throw new Error('SERIES_EXIST');
+          }
+        }
+
+        for (let i = 0; i < n / 2; i++) {
+          const hi = ordered[i]!;
+          const lo = ordered[n - 1 - i]!;
+          await tx.insert(playoffSeries).values({
+            playoffsId,
+            roundNumber: 1,
+            seriesIndex: i + 1,
+            label: `Game ${i + 1}`,
+            bestOf: 1,
+            higherSeed: i + 1,
+            lowerSeed: n - i,
+            higherTeamId: hi,
+            lowerTeamId: lo,
+          });
+        }
+      });
+
+      return reply.send({ message: `Created ${n / 2} series (round 1).` });
+    } catch (err: unknown) {
+      if (err instanceof Error && err.message === 'SERIES_EXIST') {
+        return reply.status(409).send({
+          message: 'This bracket already has series. Pass replaceExisting: true to replace (clears linked games).',
+        });
+      }
+      request.log.error(err);
+      return reply.status(500).send({ message: 'Failed to generate bracket' });
     }
   });
 

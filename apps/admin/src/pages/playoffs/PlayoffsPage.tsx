@@ -30,6 +30,11 @@ interface TeamRow {
   name: string;
 }
 
+interface LeagueTeamRow {
+  teamId: number;
+  name: string;
+}
+
 const emptySeriesForm = {
   roundNumber: '1',
   seriesIndex: '1',
@@ -64,7 +69,18 @@ export function PlayoffsPage() {
 
   const [seedingTemplate, setSeedingTemplate] = useState(false);
 
+  const [leagueTeams, setLeagueTeams] = useState<LeagueTeamRow[]>([]);
+  const [leagueTeamsLoading, setLeagueTeamsLoading] = useState(false);
+  const [bracketOrder, setBracketOrder] = useState<number[]>([]);
+  const [generatingBracket, setGeneratingBracket] = useState(false);
+  const [replaceBracket, setReplaceBracket] = useState(false);
+
   const teamMap = useMemo(() => Object.fromEntries(teams.map((t) => [t.id, t.name])), [teams]);
+  const leagueTeamName = useMemo(() => {
+    const m: Record<number, string> = { ...teamMap };
+    for (const lt of leagueTeams) m[lt.teamId] = lt.name;
+    return m;
+  }, [teamMap, leagueTeams]);
 
   const loadPlayoffs = useCallback(async () => {
     if (!selectedSeasonId) {
@@ -99,6 +115,29 @@ export function PlayoffsPage() {
     }
   }, []);
 
+  const loadLeagueTeams = useCallback(async () => {
+    if (!selectedSeasonId) {
+      setLeagueTeams([]);
+      return;
+    }
+    setLeagueTeamsLoading(true);
+    try {
+      const allLeagues = await apiGet<Array<{ id: number; seasonId: number }>>('/admin/leagues');
+      const mine = Array.isArray(allLeagues) ? allLeagues.filter((l) => l.seasonId === selectedSeasonId) : [];
+      const lg = mine[0];
+      if (!lg) {
+        setLeagueTeams([]);
+        return;
+      }
+      const rows = await apiGet<LeagueTeamRow[]>(`/admin/leagues/${lg.id}/teams`);
+      setLeagueTeams(Array.isArray(rows) ? rows : []);
+    } catch {
+      setLeagueTeams([]);
+    } finally {
+      setLeagueTeamsLoading(false);
+    }
+  }, [selectedSeasonId]);
+
   const loadSeries = useCallback(async (playoffId: number) => {
     setSeriesLoading(true);
     try {
@@ -115,6 +154,18 @@ export function PlayoffsPage() {
   useEffect(() => {
     loadTeams();
   }, [loadTeams]);
+
+  useEffect(() => {
+    setBracketOrder([]);
+  }, [selectedSeasonId]);
+
+  useEffect(() => {
+    if (!selectedSeasonId || !isPlayoffSeason) {
+      setLeagueTeams([]);
+      return;
+    }
+    void loadLeagueTeams();
+  }, [selectedSeasonId, isPlayoffSeason, loadLeagueTeams]);
 
   useEffect(() => {
     loadPlayoffs();
@@ -255,6 +306,49 @@ export function PlayoffsPage() {
     }
   };
 
+  const addTeamToBracketOrder = (teamId: number) => {
+    setBracketOrder((prev) => (prev.includes(teamId) ? prev : [...prev, teamId]));
+  };
+
+  const moveBracketOrder = (index: number, dir: -1 | 1) => {
+    setBracketOrder((prev) => {
+      const next = [...prev];
+      const j = index + dir;
+      if (j < 0 || j >= next.length) return prev;
+      [next[index], next[j]] = [next[j]!, next[index]!];
+      return next;
+    });
+  };
+
+  const removeFromBracketOrder = (index: number) => {
+    setBracketOrder((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleGenerateFromOrder = async () => {
+    if (!selectedPlayoffId) return;
+    if (bracketOrder.length < 2) {
+      setError('Add at least two teams in seed order.');
+      return;
+    }
+    if (bracketOrder.length % 2 !== 0) {
+      setError('Use an even number of teams (pairings: 1 vs N, 2 vs N−1, …).');
+      return;
+    }
+    setGeneratingBracket(true);
+    setError(null);
+    try {
+      await apiPost(`/admin/playoffs/${selectedPlayoffId}/generate-bracket-from-order`, {
+        teamIdsOrdered: bracketOrder,
+        replaceExisting: replaceBracket,
+      });
+      await loadSeries(selectedPlayoffId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to generate bracket');
+    } finally {
+      setGeneratingBracket(false);
+    }
+  };
+
   const handleFourTeamTemplate = async () => {
     if (!selectedPlayoffId || series.length > 0) {
       setError('Pick an empty bracket or clear series first.');
@@ -300,8 +394,8 @@ export function PlayoffsPage() {
         <div>
           <h1 className="font-heading text-2xl font-bold">Playoff brackets</h1>
           <p className="text-sm text-text-muted mt-1 max-w-2xl">
-            Brackets belong to a <strong>Playoff</strong> workspace season. Add series (rounds/matchups), assign teams,
-            then on{' '}
+            Brackets belong to a <strong>Playoff</strong> season. New playoff seasons get a default league and active
+            bracket automatically. Add series (or generate round 1 from a team order), then on{' '}
             <Link to="/games" className="text-accent hover:text-accent-light font-medium">
               Games
             </Link>{' '}
@@ -324,7 +418,7 @@ export function PlayoffsPage() {
           <Link to="/seasons" className="underline font-medium">
             Seasons
           </Link>{' '}
-          (type &quot;Playoff&quot;), add a league for it, then return here.
+          (type &quot;Playoff&quot;) — a league and default bracket are created for you — then return here.
         </div>
       ) : (
         <>
@@ -397,6 +491,103 @@ export function PlayoffsPage() {
                   {seedingTemplate ? 'Adding…' : 'Quick: 4-team single elim'}
                 </button>
               </div>
+
+              {selectedPlayoffId != null && (
+                <div className="rounded-xl border border-border bg-surface-alt/40 p-4 space-y-3">
+                  <div>
+                    <h3 className="text-sm font-semibold text-text">Round 1 from seed order</h3>
+                    <p className="text-xs text-text-muted mt-1 max-w-2xl">
+                      Order teams top = strongest seed. Pairings are 1 vs N, 2 vs N−1, … Requires an even count. Uses
+                      teams registered in this season&apos;s league (
+                      <Link to="/leagues" className="text-accent hover:text-accent-light font-medium">
+                        Leagues
+                      </Link>
+                      ).
+                    </p>
+                  </div>
+                  {leagueTeamsLoading ? (
+                    <p className="text-xs text-text-muted">Loading league teams…</p>
+                  ) : leagueTeams.length === 0 ? (
+                    <p className="text-xs text-amber-700 dark:text-amber-300">
+                      No league or no teams in the league for this season. Add teams to the league first.
+                    </p>
+                  ) : (
+                    <>
+                      <div className="flex flex-wrap items-end gap-2">
+                        <div className="min-w-[12rem]">
+                          <label className="block text-xs font-medium text-text-muted mb-1">Add to order</label>
+                          <select
+                            className={inputClass}
+                            defaultValue=""
+                            onChange={(e) => {
+                              const v = e.target.value ? parseInt(e.target.value, 10) : NaN;
+                              e.target.value = '';
+                              if (Number.isFinite(v)) addTeamToBracketOrder(v);
+                            }}
+                          >
+                            <option value="">Choose team…</option>
+                            {leagueTeams
+                              .filter((t) => !bracketOrder.includes(t.teamId))
+                              .map((t) => (
+                                <option key={t.teamId} value={t.teamId}>
+                                  {t.name}
+                                </option>
+                              ))}
+                          </select>
+                        </div>
+                        <label className="flex items-center gap-2 text-sm cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={replaceBracket}
+                            onChange={(e) => setReplaceBracket(e.target.checked)}
+                          />
+                          Replace existing round-1 series (unlinks games from those series)
+                        </label>
+                      </div>
+                      {bracketOrder.length > 0 && (
+                        <ol className="list-decimal pl-5 space-y-1 text-sm">
+                          {bracketOrder.map((tid, i) => (
+                            <li key={`${tid}-${i}`} className="flex flex-wrap items-center gap-2">
+                              <span className="flex-1 min-w-[8rem]">{leagueTeamName[tid] ?? `#${tid}`}</span>
+                              <button
+                                type="button"
+                                disabled={i === 0}
+                                onClick={() => moveBracketOrder(i, -1)}
+                                className="px-2 py-0.5 text-xs border border-border rounded disabled:opacity-40"
+                              >
+                                Up
+                              </button>
+                              <button
+                                type="button"
+                                disabled={i === bracketOrder.length - 1}
+                                onClick={() => moveBracketOrder(i, 1)}
+                                className="px-2 py-0.5 text-xs border border-border rounded disabled:opacity-40"
+                              >
+                                Down
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => removeFromBracketOrder(i)}
+                                className="text-xs text-red-500 hover:text-red-400 font-medium"
+                              >
+                                Remove
+                              </button>
+                            </li>
+                          ))}
+                        </ol>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => void handleGenerateFromOrder()}
+                        disabled={generatingBracket || bracketOrder.length < 2 || bracketOrder.length % 2 !== 0}
+                        className="px-4 py-2 bg-accent hover:bg-accent-light disabled:opacity-50 text-white text-sm font-semibold rounded-lg"
+                      >
+                        {generatingBracket ? 'Generating…' : 'Generate round 1 pairings'}
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
 
               <div className="bg-surface rounded-xl border border-border overflow-hidden">
                 <table className="w-full text-sm">

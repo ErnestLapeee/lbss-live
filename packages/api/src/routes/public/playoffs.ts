@@ -7,6 +7,28 @@ import { seasonWithPlayoffDefaults } from '../../lib/season-playoff-response.js'
 import { getSeasonsColumnFlagsCached } from '../../lib/seasons-playoff-columns-cache.js';
 import { seasonsRowSelectShape } from '../../lib/seasons-drizzle-select.js';
 
+/** Avoid bare `select()` on playoffs/playoff_series — older DBs can omit optional columns. */
+const publicPlayoffsRow = {
+  id: playoffs.id,
+  seasonId: playoffs.seasonId,
+  name: playoffs.name,
+  isActive: playoffs.isActive,
+  config: playoffs.config,
+};
+const publicPlayoffSeriesRow = {
+  id: playoffSeries.id,
+  playoffsId: playoffSeries.playoffsId,
+  roundNumber: playoffSeries.roundNumber,
+  seriesIndex: playoffSeries.seriesIndex,
+  label: playoffSeries.label,
+  bestOf: playoffSeries.bestOf,
+  higherSeed: playoffSeries.higherSeed,
+  lowerSeed: playoffSeries.lowerSeed,
+  higherTeamId: playoffSeries.higherTeamId,
+  lowerTeamId: playoffSeries.lowerTeamId,
+  winnerTeamId: playoffSeries.winnerTeamId,
+};
+
 const seriesGamesHome = alias(teams, 'series_games_home');
 const seriesGamesAway = alias(teams, 'series_games_away');
 
@@ -192,7 +214,9 @@ export async function playoffsRoutes(app: FastifyInstance) {
         : 'regular';
       const isDedicatedPlayoffSeason = seasonKindStr === 'playoff';
 
-      const [poRow] = await db.select().from(playoffs)
+      const [poRow] = await db
+        .select(publicPlayoffsRow)
+        .from(playoffs)
         .where(and(eq(playoffs.seasonId, seasonId), eq(playoffs.isActive, true)))
         .orderBy(desc(playoffs.id))
         .limit(1);
@@ -259,7 +283,7 @@ export async function playoffsRoutes(app: FastifyInstance) {
 
         // Load any manually configured series (rounds)
         const seriesRows = await db
-          .select()
+          .select(publicPlayoffSeriesRow)
           .from(playoffSeries)
           .where(po.id ? eq(playoffSeries.playoffsId, po.id) : sql`false`)
           .orderBy(asc(playoffSeries.roundNumber), asc(playoffSeries.seriesIndex));
