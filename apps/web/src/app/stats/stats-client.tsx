@@ -230,29 +230,8 @@ const BATTING_COLUMNS: Column[] = [
   { key: 'iso', label: 'ISO', align: 'right' },
   { key: 'bbPct', label: 'BB%', align: 'right' },
   { key: 'kPct', label: 'K%', align: 'right' },
-];
-
-const BATTING_ADVANCED_COLUMNS: Column[] = [
-  { key: 'name', label: 'Player', align: 'left', sticky: true },
-  { key: 'teamName', label: 'Team', align: 'left' },
-  { key: 'games', label: 'G', align: 'right' },
-  { key: 'plateAppearances', label: 'PA', align: 'right' },
-  { key: 'atBats', label: 'AB', align: 'right' },
-  { key: 'runs', label: 'R', align: 'right' },
-  { key: 'hits', label: 'H', align: 'right' },
-  { key: 'doubles', label: '2B', align: 'right' },
-  { key: 'triples', label: '3B', align: 'right' },
-  { key: 'homeRuns', label: 'HR', align: 'right' },
-  { key: 'rbi', label: 'RBI', align: 'right' },
-  { key: 'walks', label: 'BB', align: 'right' },
-  { key: 'strikeouts', label: 'SO', align: 'right' },
-  { key: 'battingAvg', label: 'AVG', align: 'right', highlight: true },
-  { key: 'onBasePct', label: 'OBP', align: 'right' },
-  { key: 'sluggingPct', label: 'SLG', align: 'right' },
-  { key: 'ops', label: 'OPS', align: 'right', highlight: true },
   { key: 'runsCreated', label: 'RC', align: 'right' },
   { key: 'gpa', label: 'GPA', align: 'right' },
-  { key: 'babip', label: 'BABIP', align: 'right' },
 ];
 
 const BATTING_CONTACT_COLUMNS: Column[] = [
@@ -417,7 +396,7 @@ export function StatsClient({
   );
   const [fieldingPosition, setFieldingPosition] = useState<string>('all');
   const [fieldingCategory, setFieldingCategory] = useState<'all' | 'infield' | 'outfield'>('all');
-  const [battingCategory, setBattingCategory] = useState<'basic' | 'advanced' | 'hittype'>('basic');
+  const [battingCategory, setBattingCategory] = useState<'basic' | 'hittype'>('basic');
   const [pitchingCategory, setPitchingCategory] = useState<'basic' | 'hittype'>('basic');
   const [battingContactStats, setBattingContactStats] = useState<BattingContactStat[]>([]);
   const [pitchingContactStats, setPitchingContactStats] = useState<PitchingContactStat[]>([]);
@@ -592,7 +571,7 @@ export function StatsClient({
   const sortedPitchingContact = useMemo(() => sortData(pitchingContactStats, sortKey, sortDir), [pitchingContactStats, sortKey, sortDir]);
 
   const currentColumns = tab === 'batting'
-    ? (battingCategory === 'advanced' ? BATTING_ADVANCED_COLUMNS : battingCategory === 'hittype' ? BATTING_CONTACT_COLUMNS : BATTING_COLUMNS)
+    ? (battingCategory === 'hittype' ? BATTING_CONTACT_COLUMNS : BATTING_COLUMNS)
     : tab === 'pitching'
       ? (pitchingCategory === 'hittype' ? PITCHING_CONTACT_COLUMNS : PITCHING_COLUMNS)
       : FIELDING_COLUMNS;
@@ -704,12 +683,11 @@ export function StatsClient({
               <label className="text-sm font-medium text-text-muted">View:</label>
               <select
                 value={battingCategory}
-                onChange={(e) => setBattingCategory(e.target.value as 'basic' | 'advanced' | 'hittype')}
+                onChange={(e) => setBattingCategory(e.target.value as 'basic' | 'hittype')}
                 className="rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-accent/50"
-                title="Basic = full counting stats; Advanced = rate stats (AVG, OBP, SLG, OPS, RC, GPA, BABIP)"
+                title="Basic = full stats including rates; Hit type &amp; power = batted-ball breakdown (BIP, GB/LD/PU/FB by contact quality)."
               >
                 <option value="basic">Basic (full stats)</option>
-                <option value="advanced">Advanced (rates &amp; RC, GPA, BABIP)</option>
                 <option value="hittype">Hit type &amp; power</option>
               </select>
             </div>
@@ -721,6 +699,7 @@ export function StatsClient({
                 value={pitchingCategory}
                 onChange={(e) => setPitchingCategory(e.target.value as 'basic' | 'hittype')}
                 className="rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-accent/50"
+                title="Basic = full pitching line; Hit type &amp; power = batted balls allowed (BIP, GB/LD/PU/FB by contact quality)."
               >
                 <option value="basic">Basic</option>
                 <option value="hittype">Hit type &amp; power</option>
@@ -910,7 +889,10 @@ export function StatsClient({
                 <table className="min-w-full w-max text-[13px] leading-snug whitespace-nowrap border-separate border-spacing-0">
                   <thead>
                     <tr className="sticky top-0 z-20 border-b border-border bg-[#e6e9ee] shadow-[inset_0_-1px_0_0_rgba(0,0,0,0.06)]">
-                      <th className="px-2.5 py-2.5 text-center text-[10px] font-bold uppercase tracking-wider text-text-muted w-10">
+                      <th
+                        title="Rank"
+                        className="px-2.5 py-2.5 text-center text-[10px] font-bold uppercase tracking-wider text-text-muted w-10"
+                      >
                         #
                       </th>
                       {displayColumns.map(col => (
