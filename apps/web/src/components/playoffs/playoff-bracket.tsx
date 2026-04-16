@@ -31,7 +31,7 @@ function BracketJoiner({ fromCount, toCount }: { fromCount: number; toCount: num
       <div className="flex w-9 shrink-0 items-center justify-center md:w-12" aria-hidden>
         <svg
           viewBox="0 0 48 32"
-          className="h-8 w-full max-w-[3rem] text-sky-600 opacity-80 md:max-w-[3.25rem]"
+          className="h-8 w-full max-w-[3rem] text-accent/55 md:max-w-[3.25rem]"
           preserveAspectRatio="xMidYMid meet"
         >
           <path
@@ -59,7 +59,7 @@ function BracketJoiner({ fromCount, toCount }: { fromCount: number; toCount: num
       <div className="flex w-9 shrink-0 items-stretch py-3 md:w-12" aria-hidden>
         <svg
           viewBox="0 0 48 200"
-          className="h-full min-h-[9rem] w-full text-sky-600 opacity-80"
+          className="h-full min-h-[9rem] w-full text-accent/55"
           preserveAspectRatio="none"
         >
           <path
@@ -98,7 +98,7 @@ function BracketJoiner({ fromCount, toCount }: { fromCount: number; toCount: num
 
   return (
     <div
-      className="flex w-7 shrink-0 items-center justify-center text-sky-500/70 md:w-9"
+      className="flex w-7 shrink-0 items-center justify-center text-text-faint md:w-9"
       aria-hidden
     >
       <span className="select-none text-lg font-light">→</span>
@@ -115,17 +115,11 @@ function RoundColumn({
 }) {
   return (
     <div className="flex w-[min(100%,19rem)] shrink-0 flex-col justify-center gap-4 sm:w-[21rem] md:gap-5">
-      <div className="flex flex-col items-center text-center">
-        <span className="text-[10px] font-bold uppercase tracking-[0.35em] text-slate-500">
+      <div className="flex flex-col items-center gap-1 text-center">
+        <span className="text-[11px] font-bold uppercase tracking-wider text-text-faint">
           Round {round.roundNumber}
         </span>
-        <div
-          className="mt-2 flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-sky-500 via-sky-700 to-indigo-900 text-xl font-black tabular-nums text-white shadow-[0_4px_14px_rgba(14,116,144,0.45)] ring-[3px] ring-white"
-          aria-hidden
-        >
-          {round.roundNumber}
-        </div>
-        <p className="mt-2 max-w-[16rem] text-[11px] font-semibold uppercase leading-tight tracking-wide text-slate-600">
+        <p className="max-w-[16rem] text-sm font-semibold leading-snug text-text-muted">
           {round.name.replace(/^\s*round\s*\d+\s*/i, '').trim() || round.name}
         </p>
       </div>
@@ -133,13 +127,9 @@ function RoundColumn({
         {round.series.map((s) => (
           <div
             key={s.id ?? `${round.roundNumber}-${s.label}-${s.higherTeamName}`}
-            className="group relative overflow-hidden rounded-2xl border border-slate-200/90 bg-white/95 shadow-[0_8px_30px_-6px_rgba(15,23,42,0.12),0_0_0_1px_rgba(255,255,255,0.8)_inset] backdrop-blur-sm transition-[box-shadow,transform] duration-300 group-hover:-translate-y-0.5 group-hover:shadow-[0_16px_40px_-8px_rgba(14,116,144,0.2)]"
+            className="overflow-hidden rounded-lg border border-border border-l-[3px] border-l-accent bg-surface shadow-sm"
           >
-            <div
-              className="absolute inset-y-0 left-0 w-1 bg-gradient-to-b from-amber-400 via-sky-600 to-indigo-950"
-              aria-hidden
-            />
-            <div className="pl-2 pr-1 py-1">
+            <div className="px-1 py-1">
               <PlayoffSeriesCard
                 embedded
                 series={s}
@@ -169,14 +159,6 @@ export function PlayoffBracket({ rounds, recordText }: PlayoffBracketProps) {
 
   return (
     <div className="playoff-bracket-wrap relative">
-      <div
-        className="pointer-events-none absolute inset-0 -z-10 opacity-[0.12] mix-blend-multiply"
-        style={{
-          backgroundImage: `radial-gradient(circle at 1px 1px, rgb(148 163 184 / 0.45) 1px, transparent 0)`,
-          backgroundSize: '20px 20px',
-        }}
-        aria-hidden
-      />
       <div className="overflow-x-auto overflow-y-visible pb-1 [-webkit-overflow-scrolling:touch]">
         <div className="flex min-w-min flex-row items-stretch justify-center gap-0 px-2 py-3 md:px-4 md:py-5">
           {list.map((round, ri) => (

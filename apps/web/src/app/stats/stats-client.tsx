@@ -615,9 +615,9 @@ export function StatsClient({
   return (
     <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
       {/* Controls row */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8">
-        {/* Tabs */}
-        <div className="flex rounded-lg border border-border overflow-hidden bg-surface-alt">
+      <div className="flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center justify-between gap-4 mb-8">
+        {/* Tabs — shrink-0 so all three labels stay visible (overflow-hidden would clip Fielding). */}
+        <div className="flex shrink-0 rounded-lg border border-border overflow-hidden bg-surface-alt">
           <button
             onClick={() => setTab('batting')}
             className={`px-5 py-2 text-sm font-semibold transition-colors ${
@@ -651,7 +651,7 @@ export function StatsClient({
         </div>
 
         {/* Season + category + Legend */}
-        <div className="flex flex-wrap items-center gap-4">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-4 sm:justify-end">
           <div className="flex items-center gap-3">
             <label className="text-sm font-medium text-text-muted">Season:</label>
             <select
@@ -695,7 +695,7 @@ export function StatsClient({
                 className="rounded border-border"
               />
               <span title="By default, all-time totals exclude dedicated playoff seasons (season kind = playoff).">
-                Include playoff seasons in all-time
+                Include playoffs
               </span>
             </label>
           )}

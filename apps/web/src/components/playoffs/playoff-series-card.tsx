@@ -48,13 +48,13 @@ function teamLine(seedNum: string, name: string) {
   const showTbd = !raw || raw === '—' || raw === 'TBD';
   return (
     <span className="flex min-w-0 items-baseline gap-2">
-      <span className="w-5 shrink-0 text-center font-mono text-[10px] font-bold tabular-nums text-sky-800">
+      <span className="w-5 shrink-0 text-center font-mono text-[10px] font-bold tabular-nums text-text-faint">
         {seedNum || '\u00a0'}
       </span>
       {showTbd ? (
-        <span className="italic text-slate-400">TBD</span>
+        <span className="italic text-text-faint">TBD</span>
       ) : (
-        <span className="truncate text-[13px] font-bold tracking-tight text-slate-900">{raw}</span>
+        <span className="truncate text-[13px] font-semibold tracking-tight text-text">{raw}</span>
       )}
     </span>
   );
@@ -111,26 +111,24 @@ export function PlayoffSeriesCard({
 
   const shell = embedded
     ? 'rounded-none border-0 bg-transparent p-0 shadow-none ring-0'
-    : 'rounded-xl border border-slate-200/90 bg-white p-0 shadow-sm shadow-slate-300/25';
+    : 'rounded-xl border border-border bg-surface p-0 shadow-sm';
 
   return (
     <div
       className={`${shell} ${
-        !embedded && canLoadGames ? 'ring-1 ring-transparent hover:ring-sky-300/40 transition-shadow' : ''
+        !embedded && canLoadGames ? 'hover:border-accent/25 transition-colors' : ''
       }`}
     >
       <div
-        className={`flex items-start justify-between gap-3 border-b px-3 pb-2.5 pt-2.5 ${
-          embedded
-            ? 'border-slate-100/90 bg-gradient-to-r from-slate-50/90 to-transparent'
-            : 'border-slate-200 bg-gradient-to-r from-slate-50 to-white'
+        className={`flex items-start justify-between gap-3 border-b border-border px-3 pb-2.5 pt-2.5 ${
+          embedded ? 'bg-surface-alt text-text' : 'bg-surface-alt'
         }`}
       >
-        <h3 className="min-w-0 flex-1 text-left text-[13px] font-bold leading-snug tracking-tight text-slate-900">
+        <h3 className="min-w-0 flex-1 text-left text-[13px] font-semibold leading-snug tracking-tight text-text">
           {series.label}
         </h3>
         <span
-          className="shrink-0 rounded-lg border border-amber-200/90 bg-gradient-to-b from-amber-50 to-amber-100/90 px-2.5 py-1 text-center font-mono text-[11px] font-bold tabular-nums text-amber-950 shadow-sm"
+          className="shrink-0 rounded border border-border bg-surface px-2 py-0.5 text-center font-mono text-[11px] font-semibold tabular-nums text-text-muted"
           title={`Best-of-${series.bestOf} series`}
         >
           Bo{series.bestOf}
@@ -138,7 +136,7 @@ export function PlayoffSeriesCard({
       </div>
 
       <div className="relative">
-        <div className="flex items-center justify-between gap-3 bg-white px-3 py-3">
+        <div className="flex items-center justify-between gap-3 bg-surface px-3 py-3">
           <div className="min-w-0 flex-1 leading-tight">
             {teamLine(higherSeed, series.higherTeamName)}
             {recordText && recordText(series.higherTeamName) ? (
@@ -147,7 +145,7 @@ export function PlayoffSeriesCard({
               </div>
             ) : null}
           </div>
-          <span className="min-w-[2rem] rounded-lg border border-slate-200/90 bg-gradient-to-b from-white to-slate-100 px-2 py-1.5 text-center font-mono text-base font-black tabular-nums text-slate-900 shadow-inner">
+          <span className="min-w-[2rem] rounded border border-border bg-surface-alt px-2 py-1 text-center font-mono text-sm font-semibold tabular-nums text-text">
             {series.wins?.higher ?? 0}
           </span>
         </div>
@@ -156,13 +154,13 @@ export function PlayoffSeriesCard({
           className="relative flex items-center justify-center py-1"
           aria-hidden
         >
-          <div className="absolute inset-x-8 top-1/2 h-px bg-gradient-to-r from-transparent via-slate-300 to-transparent" />
-          <span className="relative bg-white px-3 font-heading text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
+          <div className="absolute inset-x-8 top-1/2 h-px bg-border" />
+          <span className="relative bg-surface px-2 font-mono text-[10px] font-medium uppercase tracking-wide text-text-faint">
             vs
           </span>
         </div>
 
-        <div className="flex items-center justify-between gap-3 bg-slate-50/90 px-3 py-3">
+        <div className="flex items-center justify-between gap-3 border-t border-border bg-surface px-3 py-3">
           <div className="min-w-0 flex-1 leading-tight">
             {teamLine(lowerSeed, series.lowerTeamName)}
             {recordText && recordText(series.lowerTeamName) ? (
@@ -171,7 +169,7 @@ export function PlayoffSeriesCard({
               </div>
             ) : null}
           </div>
-          <span className="min-w-[2rem] rounded-lg border border-slate-200/90 bg-gradient-to-b from-white to-slate-100 px-2 py-1.5 text-center font-mono text-base font-black tabular-nums text-slate-900 shadow-inner">
+          <span className="min-w-[2rem] rounded border border-border bg-surface-alt px-2 py-1 text-center font-mono text-sm font-semibold tabular-nums text-text">
             {series.wins?.lower ?? 0}
           </span>
         </div>
@@ -182,14 +180,14 @@ export function PlayoffSeriesCard({
           <button
             type="button"
             onClick={() => void toggleGames()}
-            className={`mt-0 w-full border-t border-slate-200 bg-gradient-to-r from-sky-600 to-indigo-900 py-2.5 text-[11px] font-bold uppercase tracking-wide text-white shadow-inner transition-opacity hover:opacity-95 ${
-              embedded ? 'rounded-b-xl' : 'rounded-b-[11px]'
+            className={`mt-0 w-full border-t border-border bg-accent py-2.5 text-[11px] font-semibold uppercase tracking-wide text-white transition-colors hover:bg-accent-light ${
+              embedded ? 'rounded-b-lg' : 'rounded-b-[11px]'
             }`}
           >
             {open ? 'Hide games' : 'Games & box scores'}
           </button>
           {open && (
-            <div className="mt-3 space-y-2 border-t border-slate-200 bg-slate-50/30 px-1 pb-1 pt-3">
+            <div className="mt-3 space-y-2 border-t border-border bg-surface-alt/50 px-1 pb-1 pt-3">
               {loading && <p className="text-[11px] text-text-faint">Loading…</p>}
               {error && <p className="text-[11px] text-red-400">{error}</p>}
               {!loading && games && games.length === 0 && (
@@ -203,7 +201,7 @@ export function PlayoffSeriesCard({
                     <Link
                       key={g.id}
                       href={`/games/${g.id}/live`}
-                      className="flex flex-col gap-1 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-[11px] shadow-sm transition-colors hover:border-sky-400/60 hover:bg-sky-50/50"
+                      className="flex flex-col gap-1 rounded-lg border border-border bg-surface px-3 py-2.5 text-[11px] shadow-sm transition-colors hover:border-accent/30 hover:bg-surface-alt"
                     >
                       <div className="text-text-faint text-[10px] uppercase tracking-wide">
                         <span>{st}</span>
