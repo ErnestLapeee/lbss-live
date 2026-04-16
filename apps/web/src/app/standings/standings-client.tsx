@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { PageHeader } from '@/components/ui/page-header';
-import { PlayoffSeriesCard } from '@/components/playoffs/playoff-series-card';
+import { PlayoffBracket } from '@/components/playoffs/playoff-bracket';
 
 type Season = {
   id: number;
@@ -325,34 +325,33 @@ export function StandingsClient() {
                 <h2 className="text-sm font-bold uppercase tracking-wider text-text-faint">
                   {playoffs?.playoffs?.name ?? 'Playoffs'}
                 </h2>
-                {(playoffs?.leagues ?? []).map((lg) => (
-                  <div key={lg.leagueId} className="rounded-xl border border-border bg-surface overflow-hidden">
-                    <div className="px-4 py-3 border-b border-border bg-surface-alt">
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="font-heading text-sm font-bold">{lg.leagueName}</div>
-                        <div className="text-[11px] text-text-faint truncate">
-                          Current seeding from standings
+                {(playoffs?.leagues ?? []).map((lg) => {
+                  const recordFromSeeds = (teamName: string) => {
+                    const s = lg.seeds.find((x) => String(x.teamName ?? '').trim() === String(teamName ?? '').trim());
+                    if (!s) return '';
+                    const t = s.ties ?? 0;
+                    const gb =
+                      typeof s.gamesBehind === 'number' && Number.isFinite(s.gamesBehind)
+                        ? s.gamesBehind.toFixed(1)
+                        : '—';
+                    return `${s.wins}-${s.losses}${t ? `-${t}` : ''} • GB ${gb}`;
+                  };
+                  return (
+                    <div key={lg.leagueId} className="rounded-xl border border-border bg-surface overflow-hidden">
+                      <div className="px-4 py-3 border-b border-border bg-surface-alt">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="font-heading text-sm font-bold">{lg.leagueName}</div>
+                          <div className="text-[11px] text-text-faint truncate">
+                            Seeding from regular-season standings
+                          </div>
                         </div>
                       </div>
-                    </div>
-                    <div className="p-4 overflow-x-auto">
-                      <div className="flex gap-4 min-w-[720px]">
-                        {(lg.bracket?.rounds ?? []).map((r) => (
-                          <div key={r.roundNumber} className="w-64 shrink-0">
-                            <div className="text-[11px] font-bold uppercase tracking-wider text-text-faint mb-2">
-                              {r.name}
-                            </div>
-                            <div className="space-y-2">
-                              {r.series.map((s) => (
-                                <PlayoffSeriesCard key={s.id ?? `${r.roundNumber}-${s.label}`} series={s} />
-                              ))}
-                            </div>
-                          </div>
-                        ))}
+                      <div className="p-4 md:p-6">
+                        <PlayoffBracket rounds={lg.bracket?.rounds ?? []} recordText={recordFromSeeds} />
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </>
             )}
           </div>
@@ -460,23 +459,8 @@ export function StandingsClient() {
                           <div className="text-[11px] text-text-faint truncate">Configured bracket</div>
                         </div>
                       </div>
-                      <div className="p-4">
-                        {rounds.map((r) => (
-                          <div key={r.roundNumber} className="mb-4 last:mb-0">
-                            <div className="text-[11px] font-bold uppercase tracking-wider text-text-faint mb-2">
-                              {r.name}
-                            </div>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                              {r.series.map((s) => (
-                                <PlayoffSeriesCard
-                                  key={s.id ?? `${r.roundNumber}-${s.label}`}
-                                  series={s}
-                                  recordText={recordText}
-                                />
-                              ))}
-                            </div>
-                          </div>
-                        ))}
+                      <div className="p-4 md:p-5">
+                        <PlayoffBracket rounds={rounds} recordText={recordText} />
                       </div>
                     </div>
                   );

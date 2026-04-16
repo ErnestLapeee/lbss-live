@@ -104,11 +104,11 @@ export function PlayoffSeriesCard({
           </span>
           <span className="font-mono text-text-faint shrink-0">{series.wins?.higher ?? 0}</span>
         </div>
-        {recordText && (
+        {recordText && recordText(series.higherTeamName) ? (
           <div className="text-[10px] text-text-faint truncate -mt-0.5 mb-1">
             {recordText(series.higherTeamName)}
           </div>
-        )}
+        ) : null}
 
         <div className="flex items-center justify-between gap-2">
           <span className="truncate">
@@ -117,11 +117,11 @@ export function PlayoffSeriesCard({
           </span>
           <span className="font-mono text-text-faint shrink-0">{series.wins?.lower ?? 0}</span>
         </div>
-        {recordText && (
+        {recordText && recordText(series.lowerTeamName) ? (
           <div className="text-[10px] text-text-faint truncate -mt-0.5">
             {recordText(series.lowerTeamName)}
           </div>
-        )}
+        ) : null}
       </div>
 
       {canLoadGames && (
