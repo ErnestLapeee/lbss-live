@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useId, useState } from 'react';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
 import { TeamMark } from '@/components/ui/team-mark';
@@ -87,8 +87,7 @@ function TeamRowLight({
   return (
     <div
       className={cn(
-        'group/row flex items-center gap-3 rounded-lg border border-transparent px-1 py-2 transition-colors',
-        'hover:border-border hover:bg-surface-alt/80',
+        'group/row flex items-center gap-3 rounded-lg px-1 py-2',
       )}
     >
       {tbd ? (
@@ -157,6 +156,7 @@ export function PlayoffSeriesCard({
   const [loading, setLoading] = useState(false);
   const [games, setGames] = useState<SeriesGameRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const gamesPanelId = useId();
 
   const toggleGames = useCallback(async () => {
     if (!canLoadGames) return;
@@ -197,177 +197,236 @@ export function PlayoffSeriesCard({
     ? 'rounded-none border-0 bg-transparent p-0 shadow-none ring-0'
     : 'rounded-xl border border-border bg-surface p-0 shadow-sm';
 
+  const seriesGamesPanel = open && canLoadGames && (
+    <div
+      id={gamesPanelId}
+      role="region"
+      aria-label="Games in this series"
+      className="border-t border-border bg-surface-alt/40 px-3 py-3"
+    >
+      {loading && <p className="text-center text-[11px] text-text-faint">Loading…</p>}
+      {error && <p className="text-center text-[11px] text-red-600">{error}</p>}
+      {!loading && games && games.length === 0 && (
+        <p className="text-center text-[11px] text-text-faint">No games linked to this series yet.</p>
+      )}
+      {!loading &&
+        games &&
+        games.map((g) => {
+          const { away, home, a, h, st } = formatGameLine(g);
+          return (
+            <Link
+              key={g.id}
+              href={`/games/${g.id}/live`}
+              className="mb-2 flex last:mb-0 flex-col gap-1 rounded-lg border border-border bg-surface px-3 py-2.5 text-[11px] transition hover:border-accent/30 hover:bg-surface-alt"
+            >
+              <div className="text-[10px] font-semibold uppercase tracking-wide text-text-faint">{st}</div>
+              <div className="flex justify-between gap-2 font-medium text-text">
+                <span className="min-w-0 truncate">
+                  {away} {a}
+                </span>
+                <span className="text-text-faint">@</span>
+                <span className="min-w-0 truncate text-right">
+                  {home} {h}
+                </span>
+              </div>
+            </Link>
+          );
+        })}
+    </div>
+  );
+
   if (embedded) {
     return (
-      <div className="group/matchup rounded-xl border border-border bg-surface p-4 shadow-sm transition-[box-shadow,transform] duration-200 hover:shadow-md">
-        <div className="mb-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] font-semibold uppercase tracking-wide text-text-faint">
-          <span className="inline-flex items-center gap-1 text-text-muted">
-            <svg className="h-3.5 w-3.5 shrink-0 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-              <circle cx="12" cy="12" r="9" />
-              <path d="M7 4c1.5 4 3 8 5 8s3.5-4 5-8" />
-            </svg>
-            {titleShort}
-          </span>
-          <span className="text-border">•</span>
-          <span className="inline-flex items-center gap-1 font-mono text-text-muted">
-            <svg className="h-3 w-3 text-accent/80" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-              <circle cx="12" cy="12" r="10" />
-              <path d="M12 6v6l4 2" />
-            </svg>
-            Bo{bo}
-          </span>
-        </div>
-
-        <div className="space-y-1 border-t border-border/60 pt-3">
-          <TeamRowLight
-            seedNum={higherSeed}
-            name={series.higherTeamName}
-            shortName={series.higherTeamShortName}
-            logoUrl={series.higherTeamLogoUrl}
-            wins={wH}
-            recordLine={
-              recordText && !isTbdName(series.higherTeamName) ? recordText(series.higherTeamName) || undefined : undefined
-            }
-          />
-          <div className="relative py-1" aria-hidden>
-            <div className="absolute inset-x-12 top-1/2 h-px bg-border" />
-            <span className="relative mx-auto block w-max bg-surface px-2 text-center font-mono text-[10px] font-medium uppercase tracking-wider text-text-faint">
-              vs
-            </span>
-          </div>
-          <TeamRowLight
-            seedNum={lowerSeed}
-            name={series.lowerTeamName}
-            shortName={series.lowerTeamShortName}
-            logoUrl={series.lowerTeamLogoUrl}
-            wins={wL}
-            recordLine={
-              recordText && !isTbdName(series.lowerTeamName) ? recordText(series.lowerTeamName) || undefined : undefined
-            }
-          />
-        </div>
-
-        {canLoadGames && (
+      <div className="overflow-hidden rounded-xl border border-border bg-surface shadow-sm transition-shadow duration-200 hover:shadow-md">
+        {canLoadGames ? (
           <>
             <button
               type="button"
               onClick={() => void toggleGames()}
-              className="group/btn mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-accent py-2.5 text-[11px] font-bold uppercase tracking-wide text-white shadow-sm transition hover:bg-accent-light active:scale-[0.99]"
+              aria-expanded={open}
+              aria-controls={gamesPanelId}
+              title={open ? 'Click to hide games' : 'Click to show games and box scores'}
+              className="group/card w-full cursor-pointer px-4 pb-4 pt-4 text-left outline-none transition-colors hover:bg-surface-alt/40 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/35"
             >
-              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              {open ? 'Hide games' : 'Games & box scores'}
-              <svg className="h-4 w-4 opacity-80 transition group-hover/btn:translate-x-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
-            </button>
-            {open && (
-              <div className="mt-4 space-y-2 border-t border-border pt-4">
-                {loading && <p className="text-center text-[11px] text-text-faint">Loading…</p>}
-                {error && <p className="text-center text-[11px] text-red-600">{error}</p>}
-                {!loading && games && games.length === 0 && (
-                  <p className="text-center text-[11px] text-text-faint">No games linked to this series yet.</p>
-                )}
-                {!loading &&
-                  games &&
-                  games.map((g) => {
-                    const { away, home, a, h, st } = formatGameLine(g);
-                    return (
-                      <Link
-                        key={g.id}
-                        href={`/games/${g.id}/live`}
-                        className="flex flex-col gap-1 rounded-lg border border-border bg-surface-alt px-3 py-2.5 text-[11px] transition hover:border-accent/30 hover:bg-surface"
-                      >
-                        <div className="text-[10px] font-semibold uppercase tracking-wide text-text-faint">{st}</div>
-                        <div className="flex justify-between gap-2 font-medium text-text">
-                          <span className="min-w-0 truncate">
-                            {away} {a}
-                          </span>
-                          <span className="text-text-faint">@</span>
-                          <span className="min-w-0 truncate text-right">
-                            {home} {h}
-                          </span>
-                        </div>
-                      </Link>
-                    );
-                  })}
+              <span className="sr-only">
+                {open ? 'Collapse games list' : 'Expand games and box scores for this series'}
+              </span>
+              <div className="mb-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] font-semibold uppercase tracking-wide text-text-faint">
+                <span className="inline-flex items-center gap-1 text-text-muted">
+                  <svg className="h-3.5 w-3.5 shrink-0 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                    <circle cx="12" cy="12" r="9" />
+                    <path d="M7 4c1.5 4 3 8 5 8s3.5-4 5-8" />
+                  </svg>
+                  {titleShort}
+                </span>
+                <span className="text-border">•</span>
+                <span className="inline-flex items-center gap-1 font-mono text-text-muted">
+                  <svg className="h-3 w-3 text-accent/80" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                    <circle cx="12" cy="12" r="10" />
+                    <path d="M12 6v6l4 2" />
+                  </svg>
+                  Bo{bo}
+                </span>
               </div>
-            )}
-          </>
-        )}
 
-        {!canLoadGames && (
-          <p className="mt-3 text-center text-[10px] text-text-faint">
-            Link games to a playoff series in admin to open the schedule here.
-          </p>
+              <div className="space-y-1 border-t border-border/60 pt-3">
+                <TeamRowLight
+                  seedNum={higherSeed}
+                  name={series.higherTeamName}
+                  shortName={series.higherTeamShortName}
+                  logoUrl={series.higherTeamLogoUrl}
+                  wins={wH}
+                  recordLine={
+                    recordText && !isTbdName(series.higherTeamName) ? recordText(series.higherTeamName) || undefined : undefined
+                  }
+                />
+                <div className="relative py-1" aria-hidden>
+                  <div className="absolute inset-x-12 top-1/2 h-px bg-border" />
+                  <span className="relative mx-auto block w-max bg-surface px-2 text-center font-mono text-[10px] font-medium uppercase tracking-wider text-text-faint">
+                    vs
+                  </span>
+                </div>
+                <TeamRowLight
+                  seedNum={lowerSeed}
+                  name={series.lowerTeamName}
+                  shortName={series.lowerTeamShortName}
+                  logoUrl={series.lowerTeamLogoUrl}
+                  wins={wL}
+                  recordLine={
+                    recordText && !isTbdName(series.lowerTeamName) ? recordText(series.lowerTeamName) || undefined : undefined
+                  }
+                />
+              </div>
+
+            </button>
+            {seriesGamesPanel}
+          </>
+        ) : (
+          <div className="p-4">
+            <div className="mb-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] font-semibold uppercase tracking-wide text-text-faint">
+              <span className="inline-flex items-center gap-1 text-text-muted">
+                <svg className="h-3.5 w-3.5 shrink-0 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                  <circle cx="12" cy="12" r="9" />
+                  <path d="M7 4c1.5 4 3 8 5 8s3.5-4 5-8" />
+                </svg>
+                {titleShort}
+              </span>
+              <span className="text-border">•</span>
+              <span className="inline-flex items-center gap-1 font-mono text-text-muted">
+                <svg className="h-3 w-3 text-accent/80" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                  <circle cx="12" cy="12" r="10" />
+                  <path d="M12 6v6l4 2" />
+                </svg>
+                Bo{bo}
+              </span>
+            </div>
+            <div className="space-y-1 border-t border-border/60 pt-3">
+              <TeamRowLight
+                seedNum={higherSeed}
+                name={series.higherTeamName}
+                shortName={series.higherTeamShortName}
+                logoUrl={series.higherTeamLogoUrl}
+                wins={wH}
+                recordLine={
+                  recordText && !isTbdName(series.higherTeamName) ? recordText(series.higherTeamName) || undefined : undefined
+                }
+              />
+              <div className="relative py-1" aria-hidden>
+                <div className="absolute inset-x-12 top-1/2 h-px bg-border" />
+                <span className="relative mx-auto block w-max bg-surface px-2 text-center font-mono text-[10px] font-medium uppercase tracking-wider text-text-faint">
+                  vs
+                </span>
+              </div>
+              <TeamRowLight
+                seedNum={lowerSeed}
+                name={series.lowerTeamName}
+                shortName={series.lowerTeamShortName}
+                logoUrl={series.lowerTeamLogoUrl}
+                wins={wL}
+                recordLine={
+                  recordText && !isTbdName(series.lowerTeamName) ? recordText(series.lowerTeamName) || undefined : undefined
+                }
+              />
+            </div>
+            <p className="mt-3 text-center text-[10px] text-text-faint">
+              Link games to a playoff series in admin to open the schedule here.
+            </p>
+          </div>
         )}
       </div>
     );
   }
 
   return (
-    <div className={cn(shell, !embedded && canLoadGames ? 'hover:border-accent/25 transition-colors' : '')}>
-      <div className="flex items-start justify-between gap-3 border-b border-border bg-surface-alt px-3 pb-2.5 pt-2.5">
-        <h3 className="min-w-0 flex-1 text-left text-[13px] font-semibold leading-snug tracking-tight text-text">{series.label}</h3>
-        <span
-          className="shrink-0 rounded border border-border bg-surface px-2 py-0.5 text-center font-mono text-[11px] font-semibold tabular-nums text-text-muted"
-          title={`Best-of-${series.bestOf} series`}
-        >
-          Bo{series.bestOf}
-        </span>
-      </div>
-      <div className="relative">
-        <div className="flex items-center justify-between gap-3 bg-surface px-3 py-3">
-          <div className="min-w-0 flex-1 text-[13px] font-semibold text-text">{series.higherTeamName}</div>
-          <span className="min-w-[2rem] rounded border border-border bg-surface-alt px-2 py-1 text-center font-mono text-sm font-semibold tabular-nums">
-            {wH}
-          </span>
-        </div>
-        <div className="border-t border-border bg-surface px-3 py-3">
-          <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0 flex-1 text-[13px] font-semibold text-text">{series.lowerTeamName}</div>
-            <span className="min-w-[2rem] rounded border border-border bg-surface-alt px-2 py-1 text-center font-mono text-sm font-semibold tabular-nums">
-              {wL}
-            </span>
-          </div>
-        </div>
-      </div>
-      {canLoadGames && (
+    <div className={cn(shell, 'overflow-hidden', !embedded && canLoadGames ? 'hover:border-accent/25 transition-colors' : '')}>
+      {canLoadGames ? (
         <>
           <button
             type="button"
             onClick={() => void toggleGames()}
-            className="mt-0 w-full border-t border-border bg-accent py-2.5 text-[11px] font-semibold uppercase tracking-wide text-white transition-colors hover:bg-accent-light"
+            aria-expanded={open}
+            aria-controls={gamesPanelId}
+            title={open ? 'Click to hide games' : 'Click to show games and box scores'}
+            className="w-full cursor-pointer text-left outline-none transition-colors hover:bg-surface-alt/40 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/35"
           >
-            {open ? 'Hide games' : 'Games & box scores'}
-          </button>
-          {open && (
-            <div className="space-y-2 border-t border-border px-2 py-3">
-              {loading && <p className="text-[11px] text-text-faint">Loading…</p>}
-              {error && <p className="text-[11px] text-red-600">{error}</p>}
-              {!loading &&
-                games &&
-                games.map((g) => {
-                  const { away, home, a, h, st } = formatGameLine(g);
-                  return (
-                    <Link
-                      key={g.id}
-                      href={`/games/${g.id}/live`}
-                      className="flex flex-col gap-1 rounded-lg border border-border bg-surface-alt px-3 py-2 text-[11px] hover:border-accent/30"
-                    >
-                      <div className="text-[10px] text-text-faint">{st}</div>
-                      <div className="flex justify-between gap-2">
-                        <span className="truncate">{away} {a}</span>
-                        <span className="text-text-faint">@</span>
-                        <span className="truncate text-right">{home} {h}</span>
-                      </div>
-                    </Link>
-                  );
-                })}
+            <span className="sr-only">
+              {open ? 'Collapse games list' : 'Expand games and box scores for this series'}
+            </span>
+            <div className="flex items-start justify-between gap-3 border-b border-border bg-surface-alt px-3 pb-2.5 pt-2.5">
+              <h3 className="min-w-0 flex-1 text-left text-[13px] font-semibold leading-snug tracking-tight text-text">{series.label}</h3>
+              <span
+                className="shrink-0 rounded border border-border bg-surface px-2 py-0.5 text-center font-mono text-[11px] font-semibold tabular-nums text-text-muted"
+                title={`Best-of-${series.bestOf} series`}
+              >
+                Bo{series.bestOf}
+              </span>
             </div>
-          )}
+            <div className="relative">
+              <div className="flex items-center justify-between gap-3 bg-surface px-3 py-3">
+                <div className="min-w-0 flex-1 text-[13px] font-semibold text-text">{series.higherTeamName}</div>
+                <span className="min-w-[2rem] rounded border border-border bg-surface-alt px-2 py-1 text-center font-mono text-sm font-semibold tabular-nums">
+                  {wH}
+                </span>
+              </div>
+              <div className="border-t border-border bg-surface px-3 py-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0 flex-1 text-[13px] font-semibold text-text">{series.lowerTeamName}</div>
+                  <span className="min-w-[2rem] rounded border border-border bg-surface-alt px-2 py-1 text-center font-mono text-sm font-semibold tabular-nums">
+                    {wL}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </button>
+          {seriesGamesPanel}
+        </>
+      ) : (
+        <>
+          <div className="flex items-start justify-between gap-3 border-b border-border bg-surface-alt px-3 pb-2.5 pt-2.5">
+            <h3 className="min-w-0 flex-1 text-left text-[13px] font-semibold leading-snug tracking-tight text-text">{series.label}</h3>
+            <span
+              className="shrink-0 rounded border border-border bg-surface px-2 py-0.5 text-center font-mono text-[11px] font-semibold tabular-nums text-text-muted"
+              title={`Best-of-${series.bestOf} series`}
+            >
+              Bo{series.bestOf}
+            </span>
+          </div>
+          <div className="relative">
+            <div className="flex items-center justify-between gap-3 bg-surface px-3 py-3">
+              <div className="min-w-0 flex-1 text-[13px] font-semibold text-text">{series.higherTeamName}</div>
+              <span className="min-w-[2rem] rounded border border-border bg-surface-alt px-2 py-1 text-center font-mono text-sm font-semibold tabular-nums">
+                {wH}
+              </span>
+            </div>
+            <div className="border-t border-border bg-surface px-3 py-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0 flex-1 text-[13px] font-semibold text-text">{series.lowerTeamName}</div>
+                <span className="min-w-[2rem] rounded border border-border bg-surface-alt px-2 py-1 text-center font-mono text-sm font-semibold tabular-nums">
+                  {wL}
+                </span>
+              </div>
+            </div>
+          </div>
         </>
       )}
     </div>
