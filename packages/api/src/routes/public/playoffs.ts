@@ -126,6 +126,55 @@ function buildDefaultBracket(seeds: SeedRow[], bestOfDefault = 1): { rounds: Bra
   const n = seeds.length;
   if (n < 2) return { rounds: [] };
 
+  // 3 teams: KBO-style — #2 vs #3, then winner vs #1 (preview shows #1 vs TBD).
+  if (n === 3) {
+    const s1 = seeds[0]!;
+    const s2 = seeds[1]!;
+    const s3 = seeds[2]!;
+    return {
+      rounds: [
+        {
+          roundNumber: 1,
+          name: 'Semifinal',
+          series: [
+            {
+              id: null,
+              label: '#2 vs #3',
+              bestOf: bestOfDefault,
+              higherSeed: 2,
+              lowerSeed: 3,
+              higherTeamId: s2.teamId,
+              lowerTeamId: s3.teamId,
+              higherTeamName: s2.teamName,
+              lowerTeamName: s3.teamName,
+              wins: { higher: 0, lower: 0 },
+              winnerTeamId: null,
+            },
+          ],
+        },
+        {
+          roundNumber: 2,
+          name: 'Final',
+          series: [
+            {
+              id: null,
+              label: '#1 vs winner',
+              bestOf: bestOfDefault,
+              higherSeed: 1,
+              lowerSeed: null,
+              higherTeamId: s1.teamId,
+              lowerTeamId: null,
+              higherTeamName: s1.teamName,
+              lowerTeamName: 'TBD',
+              wins: { higher: 0, lower: 0 },
+              winnerTeamId: null,
+            },
+          ],
+        },
+      ],
+    };
+  }
+
   // Round 1 pairings: 1 vs N, 2 vs N-1, ...
   const round1Pairs: Array<{ higher: SeedRow; lower: SeedRow; idx: number }> = [];
   for (let i = 0; i < Math.floor(n / 2); i++) {

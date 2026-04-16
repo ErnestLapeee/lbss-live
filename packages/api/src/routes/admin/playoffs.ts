@@ -208,7 +208,8 @@ export async function adminPlayoffsRoutes(app: FastifyInstance) {
     }
   });
 
-  // POST /:id/generate-bracket-from-order — round 1 pairings from seed order (1 vs N, 2 vs N-1, …); even count only
+  // POST /:id/generate-bracket-from-order — seed order: index 0 = #1 seed (best). Even n: round-1 pairings 1 vs N, …
+  // n === 3: KBO-style ladder — round 1: #2 vs #3; round 2: #1 vs winner (opponent TBD until semifinal ends).
   app.post<{
     Params: { id: string };
     Body: { teamIdsOrdered?: number[]; replaceExisting?: boolean };
@@ -231,8 +232,11 @@ export async function adminPlayoffsRoutes(app: FastifyInstance) {
       if (ordered.length < 2) {
         return reply.status(400).send({ message: 'At least two teams required' });
       }
-      if (ordered.length % 2 !== 0) {
-        return reply.status(400).send({ message: 'Use an even number of teams for this generator (pairings).' });
+      const n = ordered.length;
+      if (n !== 3 && n % 2 !== 0) {
+        return reply.status(400).send({
+          message: 'Use exactly 3 teams (KBO ladder: #2 vs #3, then vs #1) or an even count for standard pairings.',
+        });
       }
 
       const found = await db.select({ id: teams.id }).from(teams).where(inArray(teams.id, unique));
@@ -242,7 +246,6 @@ export async function adminPlayoffsRoutes(app: FastifyInstance) {
 
       const replace = raw.replaceExisting === true;
 
-      const n = ordered.length;
       await db.transaction(async (tx) => {
         if (replace) {
           const seriesIds = await tx
@@ -264,24 +267,56 @@ export async function adminPlayoffsRoutes(app: FastifyInstance) {
           }
         }
 
-        for (let i = 0; i < n / 2; i++) {
-          const hi = ordered[i]!;
-          const lo = ordered[n - 1 - i]!;
+        if (n === 3) {
+          const first = ordered[0]!;
+          const second = ordered[1]!;
+          const third = ordered[2]!;
           await tx.insert(playoffSeries).values({
             playoffsId,
             roundNumber: 1,
-            seriesIndex: i + 1,
-            label: `Game ${i + 1}`,
+            seriesIndex: 1,
+            label: 'Semifinal (#2 vs #3)',
             bestOf: 1,
-            higherSeed: i + 1,
-            lowerSeed: n - i,
-            higherTeamId: hi,
-            lowerTeamId: lo,
+            higherSeed: 2,
+            lowerSeed: 3,
+            higherTeamId: second,
+            lowerTeamId: third,
           });
+          await tx.insert(playoffSeries).values({
+            playoffsId,
+            roundNumber: 2,
+            seriesIndex: 1,
+            label: 'Final (#1 vs semifinal winner)',
+            bestOf: 1,
+            higherSeed: 1,
+            lowerSeed: null,
+            higherTeamId: first,
+            lowerTeamId: null,
+          });
+        } else {
+          for (let i = 0; i < n / 2; i++) {
+            const hi = ordered[i]!;
+            const lo = ordered[n - 1 - i]!;
+            await tx.insert(playoffSeries).values({
+              playoffsId,
+              roundNumber: 1,
+              seriesIndex: i + 1,
+              label: `Game ${i + 1}`,
+              bestOf: 1,
+              higherSeed: i + 1,
+              lowerSeed: n - i,
+              higherTeamId: hi,
+              lowerTeamId: lo,
+            });
+          }
         }
       });
 
-      return reply.send({ message: `Created ${n / 2} series (round 1).` });
+      const msg =
+        n === 3
+          ? 'Created 2 series: semifinal (#2 vs #3) and final (#1 vs winner). Assign the finalist to the final series when known.'
+          : `Created ${n / 2} series (round 1).`;
+      return reply.send({ message: msg });
     } catch (err: unknown) {
       if (err instanceof Error && err.message === 'SERIES_EXIST') {
         return reply.status(409).send({

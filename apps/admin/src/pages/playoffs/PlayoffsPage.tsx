@@ -330,8 +330,9 @@ export function PlayoffsPage() {
       setError('Add at least two teams in seed order.');
       return;
     }
-    if (bracketOrder.length % 2 !== 0) {
-      setError('Use an even number of teams (pairings: 1 vs N, 2 vs N−1, …).');
+    const n = bracketOrder.length;
+    if (n !== 3 && n % 2 !== 0) {
+      setError('Use exactly 3 teams (KBO ladder: #2 vs #3, then vs #1) or an even count for standard pairings.');
       return;
     }
     setGeneratingBracket(true);
@@ -495,10 +496,11 @@ export function PlayoffsPage() {
               {selectedPlayoffId != null && (
                 <div className="rounded-xl border border-border bg-surface-alt/40 p-4 space-y-3">
                   <div>
-                    <h3 className="text-sm font-semibold text-text">Round 1 from seed order</h3>
+                    <h3 className="text-sm font-semibold text-text">Bracket from seed order</h3>
                     <p className="text-xs text-text-muted mt-1 max-w-2xl">
-                      Order teams top = strongest seed. Pairings are 1 vs N, 2 vs N−1, … Requires an even count. Uses
-                      teams registered in this season&apos;s league (
+                      Top = #1 seed. <strong>3 teams:</strong> semifinal #2 vs #3, then final #1 vs winner (KBO-style).
+                      <strong> Even count:</strong> round 1 pairings 1 vs N, 2 vs N−1, … Uses teams in this season&apos;s
+                      league (
                       <Link to="/leagues" className="text-accent hover:text-accent-light font-medium">
                         Leagues
                       </Link>
@@ -541,7 +543,7 @@ export function PlayoffsPage() {
                             checked={replaceBracket}
                             onChange={(e) => setReplaceBracket(e.target.checked)}
                           />
-                          Replace existing round-1 series (unlinks games from those series)
+                          Replace existing series (unlinks games from those series)
                         </label>
                       </div>
                       {bracketOrder.length > 0 && (
@@ -579,10 +581,14 @@ export function PlayoffsPage() {
                       <button
                         type="button"
                         onClick={() => void handleGenerateFromOrder()}
-                        disabled={generatingBracket || bracketOrder.length < 2 || bracketOrder.length % 2 !== 0}
+                        disabled={
+                          generatingBracket ||
+                          bracketOrder.length < 2 ||
+                          (bracketOrder.length !== 3 && bracketOrder.length % 2 !== 0)
+                        }
                         className="px-4 py-2 bg-accent hover:bg-accent-light disabled:opacity-50 text-white text-sm font-semibold rounded-lg"
                       >
-                        {generatingBracket ? 'Generating…' : 'Generate round 1 pairings'}
+                        {generatingBracket ? 'Generating…' : 'Generate bracket'}
                       </button>
                     </>
                   )}
