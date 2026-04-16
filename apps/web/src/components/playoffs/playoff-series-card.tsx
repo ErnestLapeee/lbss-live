@@ -48,13 +48,13 @@ function teamLine(seedNum: string, name: string) {
   const showTbd = !raw || raw === '—' || raw === 'TBD';
   return (
     <span className="flex min-w-0 items-baseline gap-2">
-      <span className="w-5 shrink-0 text-center font-mono text-[10px] font-bold tabular-nums text-accent">
+      <span className="w-5 shrink-0 text-center font-mono text-[10px] font-bold tabular-nums text-sky-800">
         {seedNum || '\u00a0'}
       </span>
       {showTbd ? (
-        <span className="italic text-text-faint">TBD</span>
+        <span className="italic text-slate-400">TBD</span>
       ) : (
-        <span className="truncate font-semibold text-text">{raw}</span>
+        <span className="truncate font-semibold text-slate-900">{raw}</span>
       )}
     </span>
   );
@@ -108,46 +108,46 @@ export function PlayoffSeriesCard({
 
   return (
     <div
-      className={`rounded-xl bg-[color:var(--color-surface-alt)] p-0 ${
-        canLoadGames ? 'ring-1 ring-transparent hover:ring-accent/25 transition-shadow' : ''
+      className={`rounded-xl border border-slate-200/90 bg-white p-0 shadow-sm shadow-slate-300/25 ${
+        canLoadGames ? 'ring-1 ring-transparent hover:ring-sky-300/40 transition-shadow' : ''
       }`}
     >
-      <div className="flex items-start justify-between gap-3 border-b border-border/70 px-3 pb-2.5 pt-1">
-        <h3 className="min-w-0 flex-1 text-left text-[13px] font-semibold leading-snug text-text">
+      <div className="flex items-start justify-between gap-3 border-b border-slate-200 bg-gradient-to-r from-slate-50 to-white px-3 pb-2.5 pt-2">
+        <h3 className="min-w-0 flex-1 text-left text-[13px] font-semibold leading-snug text-slate-900">
           {series.label}
         </h3>
         <span
-          className="shrink-0 rounded-md border border-accent/35 bg-accent/10 px-2 py-1 text-center font-mono text-[11px] font-bold tabular-nums text-accent"
+          className="shrink-0 rounded-md border border-sky-300/70 bg-sky-100 px-2 py-1 text-center font-mono text-[11px] font-bold tabular-nums text-sky-950"
           title={`Best-of-${series.bestOf} series`}
         >
           Bo{series.bestOf}
         </span>
       </div>
 
-      <div className="divide-y divide-border/60">
-        <div className="flex items-center justify-between gap-3 px-3 py-2.5">
+      <div className="divide-y divide-slate-100">
+        <div className="flex items-center justify-between gap-3 bg-white px-3 py-2.5">
           <div className="min-w-0 flex-1 text-[12px] leading-tight">
             {teamLine(higherSeed, series.higherTeamName)}
             {recordText && recordText(series.higherTeamName) ? (
-              <div className="mt-1 truncate pl-7 text-[10px] text-text-faint">
+              <div className="mt-1 truncate pl-7 text-[10px] text-slate-500">
                 {recordText(series.higherTeamName)}
               </div>
             ) : null}
           </div>
-          <span className="rounded-md bg-[color:var(--color-surface-inset)] px-2.5 py-1 font-mono text-sm font-bold tabular-nums text-text shadow-[inset_0_1px_0_rgba(255,255,255,0.5)]">
+          <span className="rounded-md border border-slate-200/80 bg-slate-100 px-2.5 py-1 font-mono text-sm font-bold tabular-nums text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]">
             {series.wins?.higher ?? 0}
           </span>
         </div>
-        <div className="flex items-center justify-between gap-3 px-3 py-2.5">
+        <div className="flex items-center justify-between gap-3 bg-slate-50/70 px-3 py-2.5">
           <div className="min-w-0 flex-1 text-[12px] leading-tight">
             {teamLine(lowerSeed, series.lowerTeamName)}
             {recordText && recordText(series.lowerTeamName) ? (
-              <div className="mt-1 truncate pl-7 text-[10px] text-text-faint">
+              <div className="mt-1 truncate pl-7 text-[10px] text-slate-500">
                 {recordText(series.lowerTeamName)}
               </div>
             ) : null}
           </div>
-          <span className="rounded-md bg-[color:var(--color-surface-inset)] px-2.5 py-1 font-mono text-sm font-bold tabular-nums text-text shadow-[inset_0_1px_0_rgba(255,255,255,0.5)]">
+          <span className="rounded-md border border-slate-200/80 bg-slate-100 px-2.5 py-1 font-mono text-sm font-bold tabular-nums text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]">
             {series.wins?.lower ?? 0}
           </span>
         </div>
@@ -158,12 +158,12 @@ export function PlayoffSeriesCard({
           <button
             type="button"
             onClick={() => void toggleGames()}
-            className="mt-0 w-full rounded-b-xl border-t border-border/70 bg-surface py-2.5 text-[11px] font-semibold text-accent transition-colors hover:bg-accent/[0.06]"
+            className="mt-0 w-full rounded-b-[11px] border-t border-slate-200 bg-sky-50/90 py-2.5 text-[11px] font-semibold text-sky-900 transition-colors hover:bg-sky-100"
           >
             {open ? 'Hide games' : 'Games & box scores'}
           </button>
           {open && (
-            <div className="mt-3 space-y-2 border-t border-border pt-3">
+            <div className="mt-3 space-y-2 border-t border-slate-200 bg-slate-50/30 px-1 pb-1 pt-3">
               {loading && <p className="text-[11px] text-text-faint">Loading…</p>}
               {error && <p className="text-[11px] text-red-400">{error}</p>}
               {!loading && games && games.length === 0 && (
@@ -177,7 +177,7 @@ export function PlayoffSeriesCard({
                     <Link
                       key={g.id}
                       href={`/games/${g.id}/live`}
-                      className="flex flex-col gap-1 rounded-lg border border-border/70 bg-[color:var(--color-surface)] px-3 py-2.5 text-[11px] shadow-sm transition-colors hover:border-accent/45 hover:bg-[color:var(--color-surface-alt)]/80"
+                      className="flex flex-col gap-1 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-[11px] shadow-sm transition-colors hover:border-sky-400/60 hover:bg-sky-50/50"
                     >
                       <div className="text-text-faint text-[10px] uppercase tracking-wide">
                         <span>{st}</span>

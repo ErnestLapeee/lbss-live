@@ -31,7 +31,7 @@ function BracketJoiner({ fromCount, toCount }: { fromCount: number; toCount: num
       <div className="flex w-9 shrink-0 items-center justify-center md:w-12" aria-hidden>
         <svg
           viewBox="0 0 48 32"
-          className="h-8 w-full max-w-[3rem] text-[color:var(--color-accent)] opacity-[0.58] md:max-w-[3.25rem]"
+          className="h-8 w-full max-w-[3rem] text-sky-600 opacity-80 md:max-w-[3.25rem]"
           preserveAspectRatio="xMidYMid meet"
         >
           <path
@@ -59,7 +59,7 @@ function BracketJoiner({ fromCount, toCount }: { fromCount: number; toCount: num
       <div className="flex w-9 shrink-0 items-stretch py-3 md:w-12" aria-hidden>
         <svg
           viewBox="0 0 48 200"
-          className="h-full min-h-[9rem] w-full text-[color:var(--color-accent)] opacity-[0.58]"
+          className="h-full min-h-[9rem] w-full text-sky-600 opacity-80"
           preserveAspectRatio="none"
         >
           <path
@@ -80,7 +80,7 @@ function BracketJoiner({ fromCount, toCount }: { fromCount: number; toCount: num
       <div className="flex w-9 shrink-0 items-stretch py-2 md:w-12" aria-hidden>
         <svg
           viewBox="0 0 48 360"
-          className="h-full min-h-[16rem] w-full text-[color:var(--color-accent)] opacity-[0.58]"
+          className="h-full min-h-[16rem] w-full text-sky-600 opacity-80"
           preserveAspectRatio="none"
         >
           <path
@@ -98,7 +98,7 @@ function BracketJoiner({ fromCount, toCount }: { fromCount: number; toCount: num
 
   return (
     <div
-      className="flex w-7 shrink-0 items-center justify-center text-[color:var(--color-accent)] opacity-35 md:w-9"
+      className="flex w-7 shrink-0 items-center justify-center text-sky-500/70 md:w-9"
       aria-hidden
     >
       <span className="select-none text-lg font-light">→</span>
@@ -116,7 +116,7 @@ function RoundColumn({
   return (
     <div className="flex w-[min(100%,18rem)] shrink-0 flex-col justify-center gap-3 sm:w-[20rem] md:gap-4">
       <div className="text-center">
-        <span className="inline-flex items-center justify-center rounded-lg border border-[color:var(--color-accent)]/20 bg-gradient-to-br from-[color:var(--color-accent)]/[0.07] to-transparent px-3.5 py-2 font-heading text-[10px] font-bold uppercase tracking-[0.22em] text-[color:var(--color-accent)] shadow-[0_1px_0_rgba(255,255,255,0.8)_inset]">
+        <span className="inline-flex items-center justify-center rounded-lg border border-sky-800/30 bg-gradient-to-br from-sky-900 via-sky-950 to-slate-900 px-3.5 py-2 font-heading text-[10px] font-bold uppercase tracking-[0.22em] text-sky-50 shadow-md shadow-slate-900/20">
           {round.name}
         </span>
       </div>
@@ -124,10 +124,10 @@ function RoundColumn({
         {round.series.map((s) => (
           <div
             key={s.id ?? `${round.roundNumber}-${s.label}-${s.higherTeamName}`}
-            className="group relative overflow-hidden rounded-xl border border-[color:var(--color-border)]/90 bg-[color:var(--color-surface)] shadow-[0_4px_20px_rgba(0,0,0,0.07),0_0_0_1px_rgba(0,0,0,0.03)_inset] transition-[box-shadow,transform] duration-200 group-hover:-translate-y-px group-hover:shadow-[0_8px_28px_rgba(19,108,178,0.12)]"
+            className="group relative overflow-hidden rounded-xl border border-slate-200/95 bg-white shadow-[0_4px_24px_rgba(15,23,42,0.08)] transition-[box-shadow,transform] duration-200 group-hover:-translate-y-px group-hover:shadow-[0_10px_32px_rgba(14,116,144,0.14)]"
           >
             <div
-              className="absolute inset-y-0 left-0 w-[3px] bg-gradient-to-b from-[color:var(--color-accent)] via-[color:var(--color-accent)]/85 to-[color:var(--color-accent)]/60"
+              className="absolute inset-y-0 left-0 w-[3px] bg-gradient-to-b from-sky-600 via-sky-700 to-indigo-900"
               aria-hidden
             />
             <div className="pl-[5px] pr-0.5 py-2 [&>div]:border-0 [&>div]:bg-transparent [&>div]:p-0 [&>div]:shadow-none [&>div]:ring-0">

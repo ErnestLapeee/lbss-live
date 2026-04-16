@@ -341,6 +341,23 @@ export async function playoffsRoutes(app: FastifyInstance) {
         const teamNameById = new Map<number, string>();
         for (const s of seedsAll) teamNameById.set(s.teamId, s.teamName);
 
+        // Playoff leagues often have no standings rows yet; series still store team IDs — fill names from `teams`.
+        if (seriesRows.length > 0 && po.id) {
+          const idsFromSeries = new Set<number>();
+          for (const sr of seriesRows) {
+            if (sr.higherTeamId) idsFromSeries.add(sr.higherTeamId);
+            if (sr.lowerTeamId) idsFromSeries.add(sr.lowerTeamId);
+          }
+          const missing = [...idsFromSeries].filter((id) => !teamNameById.has(id));
+          if (missing.length > 0) {
+            const nameRows = await db
+              .select({ id: teams.id, name: teams.name })
+              .from(teams)
+              .where(inArray(teams.id, missing));
+            for (const r of nameRows) teamNameById.set(r.id, r.name);
+          }
+        }
+
         const bracket = seriesRows.length === 0
           ? buildDefaultBracket(seeds, playoffConfigOptionalNumber(po.config, 'bestOf') || 1)
           : (() => {
@@ -357,8 +374,12 @@ export async function playoffsRoutes(app: FastifyInstance) {
                 lowerSeed: s.lowerSeed ?? null,
                 higherTeamId: hiTeamId,
                 lowerTeamId: loTeamId,
-                higherTeamName: hiTeamId ? (teamNameById.get(hiTeamId) ?? '—') : 'TBD',
-                lowerTeamName: loTeamId ? (teamNameById.get(loTeamId) ?? '—') : 'TBD',
+                higherTeamName: hiTeamId
+                  ? (teamNameById.get(hiTeamId)?.trim() || `Team #${hiTeamId}`)
+                  : 'TBD',
+                lowerTeamName: loTeamId
+                  ? (teamNameById.get(loTeamId)?.trim() || `Team #${loTeamId}`)
+                  : 'TBD',
                 wins: { higher: 0, lower: 0 },
                 winnerTeamId: s.winnerTeamId ?? null,
               });

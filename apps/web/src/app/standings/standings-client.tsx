@@ -310,7 +310,7 @@ export function StandingsClient() {
                           {lg.leagueName}
                         </h2>
                       ) : null}
-                      <div className="rounded-2xl border border-border/80 bg-gradient-to-b from-[color:var(--color-surface)] via-[color:var(--color-surface-alt)]/40 to-[color:var(--color-surface-alt)]/80 p-4 shadow-[0_2px_24px_rgba(0,0,0,0.06)] ring-1 ring-black/[0.03] md:p-8">
+                      <div className="rounded-2xl border border-slate-200/90 bg-gradient-to-b from-slate-100 via-slate-50 to-white p-4 shadow-[0_4px_32px_rgba(15,23,42,0.07)] ring-1 ring-slate-900/[0.04] md:p-8">
                         {leagueCount > 1 ? (
                           <p className="mb-4 text-[11px] leading-relaxed text-text-faint">
                             Seeding matches each league&apos;s regular-season standings.
