@@ -31,7 +31,7 @@ function BracketJoiner({ fromCount, toCount }: { fromCount: number; toCount: num
       <div className="flex w-9 shrink-0 items-center justify-center md:w-12" aria-hidden>
         <svg
           viewBox="0 0 48 32"
-          className="h-8 w-full max-w-[3rem] text-[color:var(--color-accent)] opacity-50 md:max-w-[3.25rem]"
+          className="h-8 w-full max-w-[3rem] text-[color:var(--color-accent)] opacity-[0.58] md:max-w-[3.25rem]"
           preserveAspectRatio="xMidYMid meet"
         >
           <path
@@ -59,7 +59,7 @@ function BracketJoiner({ fromCount, toCount }: { fromCount: number; toCount: num
       <div className="flex w-9 shrink-0 items-stretch py-3 md:w-12" aria-hidden>
         <svg
           viewBox="0 0 48 200"
-          className="h-full min-h-[9rem] w-full text-[color:var(--color-accent)] opacity-50"
+          className="h-full min-h-[9rem] w-full text-[color:var(--color-accent)] opacity-[0.58]"
           preserveAspectRatio="none"
         >
           <path
@@ -80,7 +80,7 @@ function BracketJoiner({ fromCount, toCount }: { fromCount: number; toCount: num
       <div className="flex w-9 shrink-0 items-stretch py-2 md:w-12" aria-hidden>
         <svg
           viewBox="0 0 48 360"
-          className="h-full min-h-[16rem] w-full text-[color:var(--color-accent)] opacity-50"
+          className="h-full min-h-[16rem] w-full text-[color:var(--color-accent)] opacity-[0.58]"
           preserveAspectRatio="none"
         >
           <path
@@ -114,9 +114,9 @@ function RoundColumn({
   recordText?: (teamName: string) => string;
 }) {
   return (
-    <div className="flex w-[min(100%,17.5rem)] shrink-0 flex-col justify-center gap-5 sm:w-[18.5rem] md:gap-6">
-      <div className="text-center">
-        <span className="inline-block rounded-full border border-[color:var(--color-border)] bg-[color:var(--color-surface-alt)] px-3 py-1 font-heading text-[10px] font-bold uppercase tracking-[0.18em] text-[color:var(--color-text-muted)]">
+    <div className="flex w-[min(100%,17.5rem)] shrink-0 flex-col justify-center gap-4 sm:w-[19rem] md:gap-5">
+      <div className="text-center md:text-left">
+        <span className="inline-block rounded-md border border-[color:var(--color-accent)]/25 bg-[color:var(--color-surface-alt)] px-3 py-1.5 font-heading text-[10px] font-bold uppercase tracking-[0.2em] text-[color:var(--color-accent)] opacity-95">
           {round.name}
         </span>
       </div>
@@ -124,10 +124,10 @@ function RoundColumn({
         {round.series.map((s) => (
           <div
             key={s.id ?? `${round.roundNumber}-${s.label}-${s.higherTeamName}`}
-            className="group relative rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] shadow-[0_1px_0_rgba(0,0,0,0.04),0_4px_14px_rgba(0,0,0,0.06)] transition-shadow group-hover:shadow-[0_4px_20px_rgba(19,108,178,0.12)]"
+            className="group relative overflow-hidden rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] shadow-[0_2px_8px_rgba(0,0,0,0.06)] transition-shadow group-hover:shadow-[0_6px_24px_rgba(19,108,178,0.14)]"
           >
             <div
-              className="absolute inset-y-2 left-0 w-1 rounded-full bg-[color:var(--color-accent)] opacity-80"
+              className="absolute inset-y-0 left-0 w-1 bg-gradient-to-b from-[color:var(--color-accent)] to-[color:var(--color-accent)]/70"
               aria-hidden
             />
             <div className="px-3 py-2.5 [&>div]:border-0 [&>div]:bg-transparent [&>div]:p-0 [&>div]:shadow-none [&>div]:ring-0">
@@ -160,15 +160,15 @@ export function PlayoffBracket({ rounds, recordText }: PlayoffBracketProps) {
   return (
     <div className="playoff-bracket-wrap relative">
       <div
-        className="pointer-events-none absolute inset-0 -z-10 opacity-[0.35]"
+        className="pointer-events-none absolute inset-0 -z-10 opacity-[0.22]"
         style={{
           backgroundImage: `radial-gradient(circle at 1px 1px, var(--color-border) 1px, transparent 0)`,
-          backgroundSize: '20px 20px',
+          backgroundSize: '24px 24px',
         }}
         aria-hidden
       />
       <div className="overflow-x-auto overflow-y-visible pb-1 [-webkit-overflow-scrolling:touch]">
-        <div className="flex min-w-min flex-row items-stretch gap-0 px-1 py-2 md:px-2">
+        <div className="flex min-w-min flex-row items-stretch justify-center gap-0 px-1 py-1 md:justify-start md:px-2 md:py-2">
           {list.map((round, ri) => (
             <Fragment key={round.roundNumber}>
               <RoundColumn round={round} recordText={recordText} />

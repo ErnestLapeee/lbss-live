@@ -65,8 +65,6 @@ export function StandingsClient() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  /** Tab state is driven by `?view=playoffs` so URL and UI stay in sync (back/forward, deep links). */
-  const view = searchParams?.get('view') === 'playoffs' ? 'playoffs' : 'standings';
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [selectedSeasonId, setSelectedSeasonId] = useState<number | null>(null);
   const [standings, setStandings] = useState<LeagueStandings[]>([]);
@@ -118,6 +116,11 @@ export function StandingsClient() {
   const loadStandings = useCallback(
     async (seasonId: number | null) => {
       if (seasonId == null || seasons.length === 0) {
+        setStandings([]);
+        return;
+      }
+      const kind = seasons.find((s) => s.id === seasonId)?.seasonKind;
+      if (kind === 'playoff') {
         setStandings([]);
         return;
       }
@@ -218,21 +221,6 @@ export function StandingsClient() {
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
   };
 
-  const goToStandingsTab = () => {
-    const params = new URLSearchParams(searchParams?.toString() ?? '');
-    if (selectedSeasonId != null) params.set('season', String(selectedSeasonId));
-    params.delete('view');
-    const qs = params.toString();
-    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
-  };
-
-  const goToPlayoffsTab = () => {
-    const params = new URLSearchParams(searchParams?.toString() ?? '');
-    if (selectedSeasonId != null) params.set('season', String(selectedSeasonId));
-    params.set('view', 'playoffs');
-    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
-  };
-
   const currentSeason = selectedSeasonId != null ? seasons.find((s) => s.id === selectedSeasonId) : null;
   const isPlayoffSeason = currentSeason?.seasonKind === 'playoff';
   const hasStandings = standings.some((s) => s.rows.length > 0);
@@ -241,12 +229,27 @@ export function StandingsClient() {
     (playoffs.leagues ?? []).some((lg) => (lg.bracket?.rounds ?? []).length > 0)
   );
   const playoffsByLeagueId = new Map((playoffs?.leagues ?? []).map((lg) => [lg.leagueId, lg] as const));
-  /** Playoff tab only for a dedicated playoff season (not inferred from regular-season standings). */
-  const showPlayoffTabs = isPlayoffSeason;
+  const leagueCount = (playoffs?.leagues ?? []).length;
+
+  /** Playoff-type seasons: bracket only — drop stale `?view=` from URL. */
+  useEffect(() => {
+    if (selectedSeasonId == null) return;
+    const season = seasons.find((s) => s.id === selectedSeasonId);
+    if (season?.seasonKind !== 'playoff') return;
+    const params = new URLSearchParams(searchParams?.toString() ?? '');
+    if (!params.get('view')) return;
+    params.delete('view');
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  }, [selectedSeasonId, seasons, pathname, router, searchParams]);
+
+  const pageTitle = isPlayoffSeason
+    ? (currentSeason?.name?.trim() || 'Playoffs')
+    : 'Standings';
 
   return (
     <div>
-      <PageHeader title="Standings" description="League standings by season" />
+      <PageHeader title={pageTitle} description={isPlayoffSeason ? 'Postseason bracket' : 'League standings by season'} />
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
         {/* Always-visible season selector */}
         <div className="mb-6 flex flex-wrap items-center gap-4">
@@ -266,46 +269,13 @@ export function StandingsClient() {
                 <option key={s.id} value={s.id}>
                   {s.year != null ? `${s.year} – ` : ''}
                   {s.name ?? ''}
-                  {s.seasonKind === 'playoff' ? ' (Playoffs)' : ''}
                 </option>
               ))}
             </select>
           )}
-          {currentSeason && (
-            <span className="text-text-faint text-sm">
-              {currentSeason.name ?? currentSeason.year ?? selectedSeasonId}
-            </span>
-          )}
         </div>
 
-        {showPlayoffTabs && (
-          <div className="mb-6 flex gap-2">
-            <button
-              type="button"
-              onClick={goToStandingsTab}
-              className={`px-4 py-2 text-xs font-bold uppercase rounded-lg border transition-colors ${
-                view === 'standings'
-                  ? 'bg-surface border-border text-text'
-                  : 'bg-surface-alt border-border text-text-muted hover:text-text'
-              }`}
-            >
-              Standings
-            </button>
-            <button
-              type="button"
-              onClick={goToPlayoffsTab}
-              className={`px-4 py-2 text-xs font-bold uppercase rounded-lg border transition-colors ${
-                view === 'playoffs'
-                  ? 'bg-surface border-border text-text'
-                  : 'bg-surface-alt border-border text-text-muted hover:text-text'
-              }`}
-            >
-              Playoffs
-            </button>
-          </div>
-        )}
-
-        {view === 'playoffs' ? (
+        {isPlayoffSeason ? (
           <div className="space-y-6">
             {playoffsFetchError && (
               <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-700 dark:text-red-200">
@@ -314,7 +284,7 @@ export function StandingsClient() {
             )}
             {loadingPlayoffs ? (
               <div className="rounded-xl border border-border bg-surface-alt p-12 text-center">
-                <p className="text-text-muted">Loading playoff picture…</p>
+                <p className="text-text-muted">Loading bracket…</p>
               </div>
             ) : !hasPlayoffBracketData ? (
               <div className="rounded-xl border border-dashed border-border bg-surface-alt p-12 text-center">
@@ -322,9 +292,6 @@ export function StandingsClient() {
               </div>
             ) : (
               <>
-                <h2 className="text-sm font-bold uppercase tracking-wider text-text-faint">
-                  {playoffs?.playoffs?.name ?? 'Playoffs'}
-                </h2>
                 {(playoffs?.leagues ?? []).map((lg) => {
                   const recordFromSeeds = (teamName: string) => {
                     const s = lg.seeds.find((x) => String(x.teamName ?? '').trim() === String(teamName ?? '').trim());
@@ -337,19 +304,19 @@ export function StandingsClient() {
                     return `${s.wins}-${s.losses}${t ? `-${t}` : ''} • GB ${gb}`;
                   };
                   return (
-                    <div key={lg.leagueId} className="rounded-xl border border-border bg-surface overflow-hidden">
-                      <div className="px-4 py-3 border-b border-border bg-surface-alt">
-                        <div className="flex items-center justify-between gap-3">
-                          <div className="font-heading text-sm font-bold">{lg.leagueName}</div>
-                          <div className="text-[11px] text-text-faint truncate">
-                            Seeding from regular-season standings
-                          </div>
-                        </div>
-                      </div>
-                      <div className="p-4 md:p-6">
+                    <section key={lg.leagueId} className="space-y-3">
+                      {leagueCount > 1 ? (
+                        <h2 className="font-heading text-sm font-semibold text-text-muted">{lg.leagueName}</h2>
+                      ) : null}
+                      <div className="rounded-2xl border border-border/90 bg-gradient-to-b from-surface via-surface to-surface-alt/70 p-4 shadow-[0_1px_0_rgba(0,0,0,0.06)] md:p-7">
+                        {leagueCount > 1 ? (
+                          <p className="mb-4 text-[11px] leading-relaxed text-text-faint">
+                            Seeding matches each league&apos;s regular-season standings.
+                          </p>
+                        ) : null}
                         <PlayoffBracket rounds={lg.bracket?.rounds ?? []} recordText={recordFromSeeds} />
                       </div>
-                    </div>
+                    </section>
                   );
                 })}
               </>
