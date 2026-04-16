@@ -74,6 +74,7 @@ export function StandingsClient() {
   const [loadingStandings, setLoadingStandings] = useState(false);
   const [playoffs, setPlayoffs] = useState<PlayoffsData | null>(null);
   const [loadingPlayoffs, setLoadingPlayoffs] = useState(false);
+  const [playoffsFetchError, setPlayoffsFetchError] = useState<string | null>(null);
 
   // Load seasons once (client-side so dropdown always appears)
   useEffect(() => {
@@ -162,8 +163,16 @@ export function StandingsClient() {
     }
     let cancelled = false;
     setLoadingPlayoffs(true);
+    setPlayoffsFetchError(null);
     fetch(proxy(`/api/public/playoffs/season/${selectedSeasonId}`))
-      .then((r) => (r.ok ? r.json() : null))
+      .then(async (r) => {
+        if (!r.ok) {
+          const j = await r.json().catch(() => ({}));
+          const msg = typeof j === 'object' && j && 'message' in j ? String((j as { message?: string }).message) : r.statusText;
+          throw new Error(msg || `HTTP ${r.status}`);
+        }
+        return r.json();
+      })
       .then((data: PlayoffsData | null) => {
         if (cancelled) return;
         const d = data && typeof data === 'object' ? data : null;
@@ -175,9 +184,10 @@ export function StandingsClient() {
           router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
         }
       })
-      .catch(() => {
+      .catch((err: unknown) => {
         if (!cancelled) {
           setPlayoffs(null);
+          setPlayoffsFetchError(err instanceof Error ? err.message : 'Could not load playoffs');
           const params = new URLSearchParams(searchParams?.toString() ?? '');
           params.delete('view');
           const qs = params.toString();
@@ -297,6 +307,11 @@ export function StandingsClient() {
 
         {view === 'playoffs' ? (
           <div className="space-y-6">
+            {playoffsFetchError && (
+              <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-700 dark:text-red-200">
+                {playoffsFetchError}
+              </div>
+            )}
             {loadingPlayoffs ? (
               <div className="rounded-xl border border-border bg-surface-alt p-12 text-center">
                 <p className="text-text-muted">Loading playoff picture…</p>

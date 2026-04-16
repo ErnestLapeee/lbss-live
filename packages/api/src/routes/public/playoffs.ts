@@ -3,6 +3,9 @@ import { alias } from 'drizzle-orm/pg-core';
 import { db } from '../../db/index.js';
 import { games, leagues, playoffs, playoffSeries, seasons, standings, teams } from '../../db/schema/index.js';
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
+import { seasonWithPlayoffDefaults } from '../../lib/season-playoff-response.js';
+import { getSeasonsColumnFlagsCached } from '../../lib/seasons-playoff-columns-cache.js';
+import { seasonsRowSelectShape } from '../../lib/seasons-drizzle-select.js';
 
 const seriesGamesHome = alias(teams, 'series_games_home');
 const seriesGamesAway = alias(teams, 'series_games_away');
@@ -167,8 +170,27 @@ export async function playoffsRoutes(app: FastifyInstance) {
       const seasonId = parseInt(request.params.seasonId, 10);
       if (isNaN(seasonId)) return reply.status(400).send({ message: 'Invalid season id' });
 
-      const [season] = await db.select().from(seasons).where(eq(seasons.id, seasonId)).limit(1);
-      if (!season) return reply.status(404).send({ message: 'Season not found' });
+      const flags = await getSeasonsColumnFlagsCached();
+      const [seasonRow] = await db
+        .select(seasonsRowSelectShape(flags))
+        .from(seasons)
+        .where(eq(seasons.id, seasonId))
+        .limit(1);
+      if (!seasonRow) return reply.status(404).send({ message: 'Season not found' });
+
+      const normalized = seasonWithPlayoffDefaults(flags.hasPlayoffOptionals, seasonRow as Record<string, unknown>);
+      const seasonYear = (normalized.year as number | undefined) ?? seasonId;
+      const seasonName = String((normalized.name as string | undefined) ?? '');
+      const hasPlayoffsFlag = Boolean(normalized.hasPlayoffs);
+      const playoffSettingsVal =
+        normalized.playoffSettings != null && typeof normalized.playoffSettings === 'object'
+          ? normalized.playoffSettings
+          : {};
+
+      const seasonKindStr = flags.hasSeasonKindOptionals
+        ? String((seasonRow as Record<string, unknown>).seasonKind ?? 'regular')
+        : 'regular';
+      const isDedicatedPlayoffSeason = seasonKindStr === 'playoff';
 
       const [poRow] = await db.select().from(playoffs)
         .where(and(eq(playoffs.seasonId, seasonId), eq(playoffs.isActive, true)))
@@ -191,12 +213,12 @@ export async function playoffsRoutes(app: FastifyInstance) {
           isActive: poRow.isActive ?? true,
           config: poRow.config,
         }
-        : season.hasPlayoffs
+        : hasPlayoffsFlag || isDedicatedPlayoffSeason
           ? {
             id: null,
-            name: `${season.name ?? String(season.year ?? 'Season')} Playoffs`,
+            name: `${seasonName || String(seasonYear)} Playoffs`,
             isActive: true,
-            config: season.playoffSettings ?? {},
+            config: playoffSettingsVal,
           }
           : null;
 
@@ -236,9 +258,11 @@ export async function playoffsRoutes(app: FastifyInstance) {
         const seeds = seedsAll.slice(0, desiredSeeds);
 
         // Load any manually configured series (rounds)
-        const seriesRows = await db.select().from(playoffSeries)
+        const seriesRows = await db
+          .select()
+          .from(playoffSeries)
           .where(po.id ? eq(playoffSeries.playoffsId, po.id) : sql`false`)
-          .orderBy(playoffSeries.roundNumber, playoffSeries.seriesIndex);
+          .orderBy(asc(playoffSeries.roundNumber), asc(playoffSeries.seriesIndex));
 
         // If manual series exist, resolve teams from seeds when missing.
         const teamNameById = new Map<number, string>();
