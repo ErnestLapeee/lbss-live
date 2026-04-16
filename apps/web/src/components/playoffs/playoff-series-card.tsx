@@ -53,6 +53,17 @@ function isTbdName(name: string): boolean {
   return !t || t === '—' || t === 'TBD';
 }
 
+/** Empty/TBD slot waiting on a prior round (e.g. final vs semifinal winner). */
+function tbdSlotLabel(series: PlayoffSeriesForCard, slot: 'higher' | 'lower'): string | undefined {
+  if (slot === 'lower' && isTbdName(series.lowerTeamName) && series.lowerTeamId == null) {
+    return 'Winner Semifinal';
+  }
+  if (slot === 'higher' && isTbdName(series.higherTeamName) && series.higherTeamId == null) {
+    return 'Winner Semifinal';
+  }
+  return undefined;
+}
+
 function shortSeriesTitle(label: string): string {
   const m = label.match(/^(.+?)\s*\(/);
   return (m ? m[1] : label).trim() || label;
@@ -73,6 +84,7 @@ function TeamRowLight({
   logoUrl,
   wins,
   recordLine,
+  tbdLabel,
 }: {
   seedNum: string;
   name: string;
@@ -80,9 +92,11 @@ function TeamRowLight({
   logoUrl?: string | null;
   wins: number;
   recordLine?: string;
+  /** When the slot is TBD (e.g. final opponent = semifinal winner), show this instead of "TBD". */
+  tbdLabel?: string;
 }) {
   const tbd = isTbdName(name);
-  const display = tbd ? 'TBD' : String(name).trim();
+  const display = tbd ? (tbdLabel ?? 'TBD') : String(name).trim();
 
   return (
     <div
@@ -119,8 +133,17 @@ function TeamRowLight({
           ) : null}
           {tbd ? (
             <div className="min-w-0">
-              <span className="block font-heading text-[15px] font-bold italic tracking-tight text-text-muted">TBD</span>
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-text-faint">To be determined</span>
+              <span
+                className={cn(
+                  'block font-heading text-[15px] font-bold tracking-tight',
+                  tbdLabel ? 'text-text-muted' : 'italic text-text-muted',
+                )}
+              >
+                {tbdLabel ?? 'TBD'}
+              </span>
+              {!tbdLabel ? (
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-text-faint">To be determined</span>
+              ) : null}
             </div>
           ) : (
             <span className="truncate font-heading text-[15px] font-bold tracking-tight text-text">{display}</span>
@@ -276,6 +299,7 @@ export function PlayoffSeriesCard({
                   shortName={series.higherTeamShortName}
                   logoUrl={series.higherTeamLogoUrl}
                   wins={wH}
+                  tbdLabel={tbdSlotLabel(series, 'higher')}
                   recordLine={
                     recordText && !isTbdName(series.higherTeamName) ? recordText(series.higherTeamName) || undefined : undefined
                   }
@@ -292,6 +316,7 @@ export function PlayoffSeriesCard({
                   shortName={series.lowerTeamShortName}
                   logoUrl={series.lowerTeamLogoUrl}
                   wins={wL}
+                  tbdLabel={tbdSlotLabel(series, 'lower')}
                   recordLine={
                     recordText && !isTbdName(series.lowerTeamName) ? recordText(series.lowerTeamName) || undefined : undefined
                   }
@@ -327,6 +352,7 @@ export function PlayoffSeriesCard({
                 shortName={series.higherTeamShortName}
                 logoUrl={series.higherTeamLogoUrl}
                 wins={wH}
+                tbdLabel={tbdSlotLabel(series, 'higher')}
                 recordLine={
                   recordText && !isTbdName(series.higherTeamName) ? recordText(series.higherTeamName) || undefined : undefined
                 }
@@ -343,6 +369,7 @@ export function PlayoffSeriesCard({
                 shortName={series.lowerTeamShortName}
                 logoUrl={series.lowerTeamLogoUrl}
                 wins={wL}
+                tbdLabel={tbdSlotLabel(series, 'lower')}
                 recordLine={
                   recordText && !isTbdName(series.lowerTeamName) ? recordText(series.lowerTeamName) || undefined : undefined
                 }
