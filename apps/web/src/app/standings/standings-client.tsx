@@ -304,11 +304,13 @@ export function StandingsClient() {
                     return `${s.wins}-${s.losses}${t ? `-${t}` : ''} • GB ${gb}`;
                   };
                   return (
-                    <section key={lg.leagueId} className="space-y-3">
+                    <section key={lg.leagueId} className="mx-auto w-full max-w-5xl space-y-3">
                       {leagueCount > 1 ? (
-                        <h2 className="font-heading text-sm font-semibold text-text-muted">{lg.leagueName}</h2>
+                        <h2 className="text-center font-heading text-sm font-semibold text-text-muted md:text-left">
+                          {lg.leagueName}
+                        </h2>
                       ) : null}
-                      <div className="rounded-2xl border border-border/90 bg-gradient-to-b from-surface via-surface to-surface-alt/70 p-4 shadow-[0_1px_0_rgba(0,0,0,0.06)] md:p-7">
+                      <div className="rounded-2xl border border-border/80 bg-gradient-to-b from-[color:var(--color-surface)] via-[color:var(--color-surface-alt)]/40 to-[color:var(--color-surface-alt)]/80 p-4 shadow-[0_2px_24px_rgba(0,0,0,0.06)] ring-1 ring-black/[0.03] md:p-8">
                         {leagueCount > 1 ? (
                           <p className="mb-4 text-[11px] leading-relaxed text-text-faint">
                             Seeding matches each league&apos;s regular-season standings.

@@ -42,6 +42,24 @@ function formatGameLine(g: SeriesGameRow) {
   return { away, home, a, h, st };
 }
 
+/** Pretty label for empty / placeholder team cells in the bracket. */
+function teamLine(seedNum: string, name: string) {
+  const raw = String(name ?? '').trim();
+  const showTbd = !raw || raw === '—' || raw === 'TBD';
+  return (
+    <span className="flex min-w-0 items-baseline gap-2">
+      <span className="w-5 shrink-0 text-center font-mono text-[10px] font-bold tabular-nums text-accent">
+        {seedNum || '\u00a0'}
+      </span>
+      {showTbd ? (
+        <span className="italic text-text-faint">TBD</span>
+      ) : (
+        <span className="truncate font-semibold text-text">{raw}</span>
+      )}
+    </span>
+  );
+}
+
 export function PlayoffSeriesCard({
   series,
   recordText,
@@ -85,43 +103,54 @@ export function PlayoffSeriesCard({
     }
   }, [canLoadGames, games, open, seriesId]);
 
+  const higherSeed = series.higherSeed != null ? String(series.higherSeed) : '';
+  const lowerSeed = series.lowerSeed != null ? String(series.lowerSeed) : '';
+
   return (
     <div
-      className={`border border-border rounded-lg bg-surface-alt p-3 ${
-        canLoadGames ? 'ring-1 ring-transparent hover:ring-accent/30 transition-shadow' : ''
+      className={`rounded-xl bg-[color:var(--color-surface-alt)] p-0 ${
+        canLoadGames ? 'ring-1 ring-transparent hover:ring-accent/25 transition-shadow' : ''
       }`}
     >
-      <div className="text-[10px] text-text-faint font-semibold mb-2 flex justify-between items-start gap-2">
-        <span className="truncate">{series.label}</span>
-        <span className="shrink-0 font-mono">Bo{series.bestOf}</span>
+      <div className="flex items-start justify-between gap-3 border-b border-border/70 px-3 pb-2.5 pt-1">
+        <h3 className="min-w-0 flex-1 text-left text-[13px] font-semibold leading-snug text-text">
+          {series.label}
+        </h3>
+        <span
+          className="shrink-0 rounded-md border border-accent/35 bg-accent/10 px-2 py-1 text-center font-mono text-[11px] font-bold tabular-nums text-accent"
+          title={`Best-of-${series.bestOf} series`}
+        >
+          Bo{series.bestOf}
+        </span>
       </div>
 
-      <div className="text-[11px] font-medium space-y-1">
-        <div className="flex items-center justify-between gap-2">
-          <span className="truncate">
-            {series.higherSeed ? `${series.higherSeed}. ` : ''}
-            {series.higherTeamName}
-          </span>
-          <span className="font-mono text-text-faint shrink-0">{series.wins?.higher ?? 0}</span>
-        </div>
-        {recordText && recordText(series.higherTeamName) ? (
-          <div className="text-[10px] text-text-faint truncate -mt-0.5 mb-1">
-            {recordText(series.higherTeamName)}
+      <div className="divide-y divide-border/60">
+        <div className="flex items-center justify-between gap-3 px-3 py-2.5">
+          <div className="min-w-0 flex-1 text-[12px] leading-tight">
+            {teamLine(higherSeed, series.higherTeamName)}
+            {recordText && recordText(series.higherTeamName) ? (
+              <div className="mt-1 truncate pl-7 text-[10px] text-text-faint">
+                {recordText(series.higherTeamName)}
+              </div>
+            ) : null}
           </div>
-        ) : null}
-
-        <div className="flex items-center justify-between gap-2">
-          <span className="truncate">
-            {series.lowerSeed ? `${series.lowerSeed}. ` : ''}
-            {series.lowerTeamName}
+          <span className="rounded-md bg-[color:var(--color-surface-inset)] px-2.5 py-1 font-mono text-sm font-bold tabular-nums text-text shadow-[inset_0_1px_0_rgba(255,255,255,0.5)]">
+            {series.wins?.higher ?? 0}
           </span>
-          <span className="font-mono text-text-faint shrink-0">{series.wins?.lower ?? 0}</span>
         </div>
-        {recordText && recordText(series.lowerTeamName) ? (
-          <div className="text-[10px] text-text-faint truncate -mt-0.5">
-            {recordText(series.lowerTeamName)}
+        <div className="flex items-center justify-between gap-3 px-3 py-2.5">
+          <div className="min-w-0 flex-1 text-[12px] leading-tight">
+            {teamLine(lowerSeed, series.lowerTeamName)}
+            {recordText && recordText(series.lowerTeamName) ? (
+              <div className="mt-1 truncate pl-7 text-[10px] text-text-faint">
+                {recordText(series.lowerTeamName)}
+              </div>
+            ) : null}
           </div>
-        ) : null}
+          <span className="rounded-md bg-[color:var(--color-surface-inset)] px-2.5 py-1 font-mono text-sm font-bold tabular-nums text-text shadow-[inset_0_1px_0_rgba(255,255,255,0.5)]">
+            {series.wins?.lower ?? 0}
+          </span>
+        </div>
       </div>
 
       {canLoadGames && (
@@ -129,7 +158,7 @@ export function PlayoffSeriesCard({
           <button
             type="button"
             onClick={() => void toggleGames()}
-            className="mt-3 w-full rounded-md border border-border bg-surface py-1.5 text-[11px] font-semibold text-accent hover:bg-surface-alt/80 transition-colors"
+            className="mt-0 w-full rounded-b-xl border-t border-border/70 bg-surface py-2.5 text-[11px] font-semibold text-accent transition-colors hover:bg-accent/[0.06]"
           >
             {open ? 'Hide games' : 'Games & box scores'}
           </button>
@@ -148,7 +177,7 @@ export function PlayoffSeriesCard({
                     <Link
                       key={g.id}
                       href={`/games/${g.id}/live`}
-                      className="flex flex-col gap-0.5 rounded-md border border-border/80 bg-surface px-2 py-2 text-[11px] hover:border-accent/50 hover:bg-surface-alt/50 transition-colors"
+                      className="flex flex-col gap-1 rounded-lg border border-border/70 bg-[color:var(--color-surface)] px-3 py-2.5 text-[11px] shadow-sm transition-colors hover:border-accent/45 hover:bg-[color:var(--color-surface-alt)]/80"
                     >
                       <div className="text-text-faint text-[10px] uppercase tracking-wide">
                         <span>{st}</span>
