@@ -150,9 +150,8 @@ export function PlayoffSeriesCard({
                       href={`/games/${g.id}/live`}
                       className="flex flex-col gap-0.5 rounded-md border border-border/80 bg-surface px-2 py-2 text-[11px] hover:border-accent/50 hover:bg-surface-alt/50 transition-colors"
                     >
-                      <div className="flex justify-between text-text-faint text-[10px] uppercase tracking-wide">
+                      <div className="text-text-faint text-[10px] uppercase tracking-wide">
                         <span>{st}</span>
-                        <span>Game #{g.id}</span>
                       </div>
                       <div className="flex justify-between gap-2 font-medium">
                         <span className="truncate min-w-0">
