@@ -36,6 +36,8 @@ type SeedRow = {
   seed: number;
   teamId: number;
   teamName: string;
+  shortName: string | null;
+  logoUrl: string | null;
   wins: number;
   losses: number;
   ties: number;
@@ -50,6 +52,8 @@ type SeedRow = {
 type StandingSeedSource = {
   teamId: number;
   teamName: string;
+  shortName: string | null;
+  logoUrl: string | null;
   wins: unknown;
   losses: unknown;
   ties: unknown;
@@ -70,6 +74,10 @@ type BracketSeriesOut = {
   lowerTeamId: number | null;
   higherTeamName: string;
   lowerTeamName: string;
+  higherTeamShortName?: string | null;
+  lowerTeamShortName?: string | null;
+  higherTeamLogoUrl?: string | null;
+  lowerTeamLogoUrl?: string | null;
   wins: { higher: number; lower: number };
   winnerTeamId: number | null;
 };
@@ -79,6 +87,8 @@ type BracketRoundOut = {
   name: string;
   series: BracketSeriesOut[];
 };
+
+type TeamMeta = { name: string; shortName: string | null; logoUrl: string | null };
 
 function toNum(v: unknown): number {
   const n = typeof v === 'number' ? v : v == null ? NaN : Number(v);
@@ -111,6 +121,8 @@ function sortSeeds(rows: StandingSeedSource[]): SeedRow[] {
     seed: i + 1,
     teamId: r.teamId,
     teamName: r.teamName,
+    shortName: r.shortName ?? null,
+    logoUrl: r.logoUrl ?? null,
     wins: toNum(r.wins),
     losses: toNum(r.losses),
     ties: toNum(r.ties),
@@ -147,6 +159,10 @@ function buildDefaultBracket(seeds: SeedRow[], bestOfDefault = 1): { rounds: Bra
               lowerTeamId: s3.teamId,
               higherTeamName: s2.teamName,
               lowerTeamName: s3.teamName,
+              higherTeamShortName: s2.shortName,
+              lowerTeamShortName: s3.shortName,
+              higherTeamLogoUrl: s2.logoUrl,
+              lowerTeamLogoUrl: s3.logoUrl,
               wins: { higher: 0, lower: 0 },
               winnerTeamId: null,
             },
@@ -166,6 +182,10 @@ function buildDefaultBracket(seeds: SeedRow[], bestOfDefault = 1): { rounds: Bra
               lowerTeamId: null,
               higherTeamName: s1.teamName,
               lowerTeamName: 'TBD',
+              higherTeamShortName: s1.shortName,
+              lowerTeamShortName: null,
+              higherTeamLogoUrl: s1.logoUrl,
+              lowerTeamLogoUrl: null,
               wins: { higher: 0, lower: 0 },
               winnerTeamId: null,
             },
@@ -196,6 +216,10 @@ function buildDefaultBracket(seeds: SeedRow[], bestOfDefault = 1): { rounds: Bra
           lowerTeamId: p.lower.teamId,
           higherTeamName: p.higher.teamName,
           lowerTeamName: p.lower.teamName,
+          higherTeamShortName: p.higher.shortName,
+          lowerTeamShortName: p.lower.shortName,
+          higherTeamLogoUrl: p.higher.logoUrl,
+          lowerTeamLogoUrl: p.lower.logoUrl,
           wins: { higher: 0, lower: 0 },
           winnerTeamId: null,
         })),
@@ -313,6 +337,8 @@ export async function playoffsRoutes(app: FastifyInstance) {
         const st = await db.select({
           teamId: standings.teamId,
           teamName: teams.name,
+          shortName: teams.shortName,
+          logoUrl: teams.logoUrl,
           wins: standings.wins,
           losses: standings.losses,
           ties: standings.ties,
@@ -337,24 +363,26 @@ export async function playoffsRoutes(app: FastifyInstance) {
           .where(po.id ? eq(playoffSeries.playoffsId, po.id) : sql`false`)
           .orderBy(asc(playoffSeries.roundNumber), asc(playoffSeries.seriesIndex));
 
-        // If manual series exist, resolve teams from seeds when missing.
-        const teamNameById = new Map<number, string>();
-        for (const s of seedsAll) teamNameById.set(s.teamId, s.teamName);
+        const teamMetaById = new Map<number, TeamMeta>();
+        for (const s of seedsAll) {
+          teamMetaById.set(s.teamId, { name: s.teamName, shortName: s.shortName, logoUrl: s.logoUrl });
+        }
 
-        // Playoff leagues often have no standings rows yet; series still store team IDs — fill names from `teams`.
         if (seriesRows.length > 0 && po.id) {
           const idsFromSeries = new Set<number>();
           for (const sr of seriesRows) {
             if (sr.higherTeamId) idsFromSeries.add(sr.higherTeamId);
             if (sr.lowerTeamId) idsFromSeries.add(sr.lowerTeamId);
           }
-          const missing = [...idsFromSeries].filter((id) => !teamNameById.has(id));
+          const missing = [...idsFromSeries].filter((id) => !teamMetaById.has(id));
           if (missing.length > 0) {
             const nameRows = await db
-              .select({ id: teams.id, name: teams.name })
+              .select({ id: teams.id, name: teams.name, shortName: teams.shortName, logoUrl: teams.logoUrl })
               .from(teams)
               .where(inArray(teams.id, missing));
-            for (const r of nameRows) teamNameById.set(r.id, r.name);
+            for (const r of nameRows) {
+              teamMetaById.set(r.id, { name: r.name, shortName: r.shortName, logoUrl: r.logoUrl });
+            }
           }
         }
 
@@ -366,6 +394,8 @@ export async function playoffsRoutes(app: FastifyInstance) {
               if (!byRound.has(s.roundNumber)) byRound.set(s.roundNumber, []);
               const hiTeamId = s.higherTeamId ?? (s.higherSeed ? seedsAll.find(x => x.seed === s.higherSeed)?.teamId : null) ?? null;
               const loTeamId = s.lowerTeamId ?? (s.lowerSeed ? seedsAll.find(x => x.seed === s.lowerSeed)?.teamId : null) ?? null;
+              const hiMeta = hiTeamId ? teamMetaById.get(hiTeamId) : undefined;
+              const loMeta = loTeamId ? teamMetaById.get(loTeamId) : undefined;
               byRound.get(s.roundNumber)!.push({
                 id: s.id,
                 label: s.label ?? `Series ${s.seriesIndex}`,
@@ -375,11 +405,15 @@ export async function playoffsRoutes(app: FastifyInstance) {
                 higherTeamId: hiTeamId,
                 lowerTeamId: loTeamId,
                 higherTeamName: hiTeamId
-                  ? (teamNameById.get(hiTeamId)?.trim() || `Team #${hiTeamId}`)
+                  ? (hiMeta?.name.trim() || `Team #${hiTeamId}`)
                   : 'TBD',
                 lowerTeamName: loTeamId
-                  ? (teamNameById.get(loTeamId)?.trim() || `Team #${loTeamId}`)
+                  ? (loMeta?.name.trim() || `Team #${loTeamId}`)
                   : 'TBD',
+                higherTeamShortName: hiMeta?.shortName ?? null,
+                lowerTeamShortName: loMeta?.shortName ?? null,
+                higherTeamLogoUrl: hiMeta?.logoUrl ?? null,
+                lowerTeamLogoUrl: loMeta?.logoUrl ?? null,
                 wins: { higher: 0, lower: 0 },
                 winnerTeamId: s.winnerTeamId ?? null,
               });

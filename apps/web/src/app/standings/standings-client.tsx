@@ -34,7 +34,18 @@ type PlayoffsData = {
   leagues: Array<{
     leagueId: number;
     leagueName: string;
-    seeds: Array<{ seed: number; teamId: number; teamName: string; wins: number; losses: number; ties: number; winPct: number; gamesBehind: number }>;
+    seeds: Array<{
+      seed: number;
+      teamId: number;
+      teamName: string;
+      shortName?: string | null;
+      logoUrl?: string | null;
+      wins: number;
+      losses: number;
+      ties: number;
+      winPct: number;
+      gamesBehind: number;
+    }>;
     bracket: {
       rounds: Array<{
         roundNumber: number;
@@ -49,6 +60,10 @@ type PlayoffsData = {
           lowerTeamId?: number | null;
           higherTeamName: string;
           lowerTeamName: string;
+          higherTeamShortName?: string | null;
+          lowerTeamShortName?: string | null;
+          higherTeamLogoUrl?: string | null;
+          lowerTeamLogoUrl?: string | null;
           wins: { higher: number; lower: number };
           winnerTeamId: number | null;
         }>;
@@ -251,8 +266,10 @@ export function StandingsClient() {
     <div>
       <PageHeader title={pageTitle} description={isPlayoffSeason ? 'Postseason bracket' : 'League standings by season'} />
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
-        {/* Always-visible season selector */}
-        <div className="mb-6 flex flex-wrap items-center gap-4">
+        {/* Always-visible season selector — light card on playoff view to match schedule/stats */}
+        <div
+          className={`mb-6 flex flex-wrap items-center gap-4 ${isPlayoffSeason ? 'rounded-xl border border-border bg-surface-alt p-4' : ''}`}
+        >
           <span className="text-sm font-medium text-text-muted">Season (year):</span>
           {loading ? (
             <span className="text-text-faint text-sm">Loading seasons…</span>

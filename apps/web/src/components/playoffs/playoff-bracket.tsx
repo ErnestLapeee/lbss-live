@@ -22,7 +22,6 @@ function safeRecord(recordText: ((name: string) => string) | undefined, name: st
   return recordText(t);
 }
 
-/** Second line under ROUND N — omit if the API name is only “Round 1”, etc. */
 function roundSubtitle(name: string): string | null {
   const stripped = name.replace(/^\s*round\s*\d+\s*/i, '').trim();
   if (stripped) return stripped;
@@ -30,28 +29,28 @@ function roundSubtitle(name: string): string | null {
   return String(name).trim() || null;
 }
 
-/** Desktop: horizontal bracket paths with glow */
+/** Desktop: horizontal bracket paths — subtle accent */
 function BracketJoiner({ fromCount, toCount }: { fromCount: number; toCount: number }) {
-  const glow = 'drop-shadow-[0_0_8px_rgba(56,189,248,0.45)]';
+  const stroke = 'text-accent/60';
   if (fromCount === 1 && toCount === 1) {
     return (
       <div className="hidden w-10 shrink-0 items-center justify-center md:flex md:w-14 lg:w-16" aria-hidden>
         <svg
           viewBox="0 0 64 40"
-          className={`h-10 w-full max-w-[4rem] text-[#38bdf8] ${glow}`}
+          className={`h-10 w-full max-w-[4rem] ${stroke}`}
           preserveAspectRatio="xMidYMid meet"
         >
           <path
             d="M4 20 H44"
             stroke="currentColor"
-            strokeWidth="2.5"
+            strokeWidth="2"
             fill="none"
             strokeLinecap="round"
           />
           <path
             d="M40 13 L54 20 L40 27"
             stroke="currentColor"
-            strokeWidth="2.5"
+            strokeWidth="2"
             fill="none"
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -66,13 +65,13 @@ function BracketJoiner({ fromCount, toCount }: { fromCount: number; toCount: num
       <div className="hidden w-10 shrink-0 items-stretch py-4 md:flex md:w-14 lg:w-16" aria-hidden>
         <svg
           viewBox="0 0 64 220"
-          className={`h-full min-h-[10rem] w-full text-[#38bdf8] ${glow}`}
+          className={`h-full min-h-[10rem] w-full ${stroke}`}
           preserveAspectRatio="none"
         >
           <path
             d="M4 55 H28 V110 H60 M4 165 H28 V110"
             stroke="currentColor"
-            strokeWidth="2.5"
+            strokeWidth="2"
             fill="none"
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -87,13 +86,13 @@ function BracketJoiner({ fromCount, toCount }: { fromCount: number; toCount: num
       <div className="hidden w-10 shrink-0 items-stretch py-2 md:flex md:w-14" aria-hidden>
         <svg
           viewBox="0 0 64 360"
-          className={`h-full min-h-[16rem] w-full text-[#38bdf8] ${glow}`}
+          className={`h-full min-h-[16rem] w-full ${stroke}`}
           preserveAspectRatio="none"
         >
           <path
             d="M4 52 H28 V104 H60 M4 156 H28 V104 M4 208 H28 V260 H60 M4 312 H28 V260"
             stroke="currentColor"
-            strokeWidth="2.5"
+            strokeWidth="2"
             fill="none"
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -104,21 +103,20 @@ function BracketJoiner({ fromCount, toCount }: { fromCount: number; toCount: num
   }
 
   return (
-    <div className="hidden w-8 shrink-0 items-center justify-center text-[#38bdf8]/80 md:flex md:w-10" aria-hidden>
-      <span className={`select-none text-2xl font-light ${glow}`}>→</span>
+    <div className="hidden w-8 shrink-0 items-center justify-center text-text-faint md:flex md:w-10" aria-hidden>
+      <span className="select-none text-xl font-light">→</span>
     </div>
   );
 }
 
-/** Mobile: vertical connector between rounds */
 function MobileVerticalConnector() {
   return (
-    <div className="flex h-16 w-full shrink-0 flex-col items-center justify-center md:hidden" aria-hidden>
-      <svg viewBox="0 0 48 120" className="h-16 w-12 text-[#38bdf8] drop-shadow-[0_0_10px_rgba(56,189,248,0.5)]">
+    <div className="flex h-14 w-full shrink-0 flex-col items-center justify-center md:hidden" aria-hidden>
+      <svg viewBox="0 0 48 120" className="h-14 w-10 text-accent/50">
         <path
           d="M24 8 V88 M16 80 L24 96 L32 80"
           stroke="currentColor"
-          strokeWidth="2.5"
+          strokeWidth="2"
           fill="none"
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -140,17 +138,13 @@ function RoundColumn({
   return (
     <div className="flex w-full min-w-0 max-w-[22rem] shrink-0 flex-col justify-center gap-4 sm:max-w-[24rem]">
       <div className="flex flex-col items-center gap-1 text-center">
-        <span className="text-[10px] font-black uppercase tracking-[0.35em] text-sky-300/90">
-          Round {round.roundNumber}
-        </span>
+        <span className="text-[10px] font-bold uppercase tracking-[0.28em] text-text-faint">Round {round.roundNumber}</span>
         {sub ? (
-          <p className="max-w-[18rem] text-balance text-sm font-semibold leading-snug text-slate-300/95">
-            {sub}
-          </p>
+          <p className="max-w-[18rem] text-balance text-sm font-semibold leading-snug text-text-muted">{sub}</p>
         ) : null}
-        <div className="h-px w-8 bg-gradient-to-r from-transparent via-amber-400/50 to-transparent" aria-hidden />
+        <div className="h-px w-10 bg-border" aria-hidden />
       </div>
-      <div className="flex flex-col gap-6 md:gap-7">
+      <div className="flex flex-col gap-5 md:gap-6">
         {round.series.map((s) => (
           <div key={s.id ?? `${round.roundNumber}-${s.label}-${s.higherTeamName}`} className="min-w-0">
             <PlayoffSeriesCard
@@ -177,12 +171,7 @@ export function PlayoffBracket({ rounds, recordText }: PlayoffBracketProps) {
   if (list.length === 0) return null;
 
   return (
-    <div className="playoff-bracket-wrap relative overflow-hidden rounded-2xl border border-sky-500/25 bg-gradient-to-b from-[#0a1628] via-[#0c1829] to-[#070b12] p-4 shadow-[0_0_0_1px_rgba(255,255,255,0.04),0_8px_40px_rgba(0,0,0,0.5),0_0_80px_rgba(14,165,233,0.08)] sm:p-6 md:p-8">
-      <div
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_100%_80%_at_50%_-30%,rgba(56,189,248,0.14),transparent_55%)]"
-        aria-hidden
-      />
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_60%_40%_at_100%_80%,rgba(251,191,36,0.06),transparent_50%)]" aria-hidden />
+    <div className="playoff-bracket-wrap relative overflow-hidden rounded-2xl border border-border bg-surface p-4 shadow-sm sm:p-6 md:p-8">
       <div className="relative overflow-x-auto overflow-y-visible pb-1 [-webkit-overflow-scrolling:touch]">
         <div className="flex min-w-0 flex-col items-stretch justify-center gap-0 md:min-w-min md:flex-row md:items-stretch md:justify-center md:gap-0 md:px-1">
           {list.map((round, ri) => (
