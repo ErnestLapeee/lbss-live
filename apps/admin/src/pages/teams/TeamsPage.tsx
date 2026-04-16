@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
 import { useAdminSeason } from '@/context/AdminSeasonContext';
 
@@ -282,7 +283,14 @@ export function TeamsPage() {
       <div className="flex items-center justify-between mb-6 gap-4 flex-wrap">
         <div>
           <h1 className="font-heading text-2xl font-bold">Teams & Rosters</h1>
-          <p className="text-sm text-text-muted mt-1">Rosters use the workspace season in the top bar.</p>
+          <p className="text-sm text-text-muted mt-1">
+            Rosters use the workspace season in the top bar. To attach teams to a league and bulk-copy last
+            season&apos;s rosters, use{' '}
+            <Link to="/season-setup" className="text-accent hover:text-accent-light font-medium">
+              Season setup
+            </Link>
+            .
+          </p>
         </div>
         <button
           type="button"

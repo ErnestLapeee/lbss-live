@@ -6,6 +6,7 @@ const sidebarItems = [
   { label: 'Dashboard', href: '/', icon: '□' },
   { label: 'Seasons', href: '/seasons', icon: '◷' },
   { label: 'Leagues', href: '/leagues', icon: '⊞' },
+  { label: 'Season setup', href: '/season-setup', icon: '⊕' },
   { label: 'Teams', href: '/teams', icon: '⚑' },
   { label: 'Players', href: '/players', icon: '⚇' },
   { label: 'Games', href: '/games', icon: '⚾' },
