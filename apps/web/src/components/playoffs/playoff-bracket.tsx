@@ -29,28 +29,29 @@ function roundSubtitle(name: string): string | null {
   return String(name).trim() || null;
 }
 
-/** Desktop: horizontal bracket paths — subtle accent */
+/** Desktop: bracket connectors — muted stroke so lines read as structure, not a loud accent */
 function BracketJoiner({ fromCount, toCount }: { fromCount: number; toCount: number }) {
-  const stroke = 'text-accent/60';
+  const stroke = 'text-text-faint/45';
+  const strokeWidth = 1.75;
   if (fromCount === 1 && toCount === 1) {
     return (
-      <div className="hidden w-10 shrink-0 items-center justify-center md:flex md:w-14 lg:w-16" aria-hidden>
+      <div className="hidden w-10 shrink-0 items-center justify-center md:flex md:w-12 lg:w-14" aria-hidden>
         <svg
           viewBox="0 0 64 40"
-          className={`h-10 w-full max-w-[4rem] ${stroke}`}
+          className={`h-10 w-full max-w-[3.5rem] ${stroke}`}
           preserveAspectRatio="xMidYMid meet"
         >
           <path
             d="M4 20 H44"
             stroke="currentColor"
-            strokeWidth="2"
+            strokeWidth={strokeWidth}
             fill="none"
             strokeLinecap="round"
           />
           <path
             d="M40 13 L54 20 L40 27"
             stroke="currentColor"
-            strokeWidth="2"
+            strokeWidth={strokeWidth}
             fill="none"
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -62,16 +63,16 @@ function BracketJoiner({ fromCount, toCount }: { fromCount: number; toCount: num
 
   if (fromCount === 2 && toCount === 1) {
     return (
-      <div className="hidden w-10 shrink-0 items-stretch py-4 md:flex md:w-14 lg:w-16" aria-hidden>
+      <div className="hidden w-8 shrink-0 items-stretch py-2 md:flex md:w-12 lg:w-14" aria-hidden>
         <svg
           viewBox="0 0 64 220"
-          className={`h-full min-h-[10rem] w-full ${stroke}`}
+          className={`h-full min-h-[9rem] w-full ${stroke}`}
           preserveAspectRatio="none"
         >
           <path
-            d="M4 55 H28 V110 H60 M4 165 H28 V110"
+            d="M4 55 H22 Q28 55 28 61 V106 Q28 110 32 110 H60 M4 165 H22 Q28 165 28 159 V114 Q28 110 32 110"
             stroke="currentColor"
-            strokeWidth="2"
+            strokeWidth={strokeWidth}
             fill="none"
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -83,16 +84,16 @@ function BracketJoiner({ fromCount, toCount }: { fromCount: number; toCount: num
 
   if (fromCount === 4 && toCount === 2) {
     return (
-      <div className="hidden w-10 shrink-0 items-stretch py-2 md:flex md:w-14" aria-hidden>
+      <div className="hidden w-8 shrink-0 items-stretch py-2 md:flex md:w-12" aria-hidden>
         <svg
           viewBox="0 0 64 360"
           className={`h-full min-h-[16rem] w-full ${stroke}`}
           preserveAspectRatio="none"
         >
           <path
-            d="M4 52 H28 V104 H60 M4 156 H28 V104 M4 208 H28 V260 H60 M4 312 H28 V260"
+            d="M4 52 H22 Q28 52 28 58 V100 Q28 104 32 104 H60 M4 156 H22 Q28 156 28 150 V108 Q28 104 32 104 M4 208 H22 Q28 208 28 214 V256 Q28 260 32 260 H60 M4 312 H22 Q28 312 28 306 V264 Q28 260 32 260"
             stroke="currentColor"
-            strokeWidth="2"
+            strokeWidth={strokeWidth}
             fill="none"
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -112,11 +113,11 @@ function BracketJoiner({ fromCount, toCount }: { fromCount: number; toCount: num
 function MobileVerticalConnector() {
   return (
     <div className="flex h-14 w-full shrink-0 flex-col items-center justify-center md:hidden" aria-hidden>
-      <svg viewBox="0 0 48 120" className="h-14 w-10 text-accent/50">
+      <svg viewBox="0 0 48 120" className="h-14 w-10 text-text-faint/45">
         <path
           d="M24 8 V88 M16 80 L24 96 L32 80"
           stroke="currentColor"
-          strokeWidth="2"
+          strokeWidth="1.75"
           fill="none"
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -134,17 +135,19 @@ function RoundColumn({
   recordText?: (teamName: string) => string;
 }) {
   const sub = roundSubtitle(round.name);
+  const seriesGap =
+    round.series.length === 2 ? 'gap-3 md:gap-4' : round.series.length >= 4 ? 'gap-4 md:gap-5' : 'gap-5 md:gap-6';
 
   return (
     <div className="flex w-full min-w-0 max-w-[22rem] shrink-0 flex-col justify-center gap-4 sm:max-w-[24rem]">
-      <div className="flex flex-col items-center gap-1 text-center">
-        <span className="text-[10px] font-bold uppercase tracking-[0.28em] text-text-faint">Round {round.roundNumber}</span>
+      <div className="flex flex-col items-center gap-1.5 text-center">
+        <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-text-muted">Round {round.roundNumber}</span>
         {sub ? (
           <p className="max-w-[18rem] text-balance text-sm font-semibold leading-snug text-text-muted">{sub}</p>
         ) : null}
-        <div className="h-px w-10 bg-border" aria-hidden />
+        <div className="h-px w-12 bg-border" aria-hidden />
       </div>
-      <div className="flex flex-col gap-5 md:gap-6">
+      <div className={`flex flex-col ${seriesGap}`}>
         {round.series.map((s) => (
           <div key={s.id ?? `${round.roundNumber}-${s.label}-${s.higherTeamName}`} className="min-w-0">
             <PlayoffSeriesCard
