@@ -5,24 +5,45 @@ import { asc, desc, eq, inArray } from 'drizzle-orm';
 import { getSeasonsColumnFlagsCached } from '../../lib/seasons-playoff-columns-cache.js';
 import { seasonsRowSelectShape } from '../../lib/seasons-drizzle-select.js';
 
-const playoffsSelect = {
+/**
+ * Core columns only — avoid `created_at` / `updated_at` in SELECT/RETURNING so older or partial DBs
+ * (missing timestamp columns) do not 500 on list/create/update/delete.
+ */
+const playoffsCore = {
   id: playoffs.id,
   seasonId: playoffs.seasonId,
   name: playoffs.name,
   isActive: playoffs.isActive,
   config: playoffs.config,
-  createdAt: playoffs.createdAt,
-  updatedAt: playoffs.updatedAt,
+};
+
+const playoffSeriesCore = {
+  id: playoffSeries.id,
+  playoffsId: playoffSeries.playoffsId,
+  roundNumber: playoffSeries.roundNumber,
+  seriesIndex: playoffSeries.seriesIndex,
+  label: playoffSeries.label,
+  higherSeed: playoffSeries.higherSeed,
+  lowerSeed: playoffSeries.lowerSeed,
+  higherTeamId: playoffSeries.higherTeamId,
+  lowerTeamId: playoffSeries.lowerTeamId,
+  bestOf: playoffSeries.bestOf,
+  winnerTeamId: playoffSeries.winnerTeamId,
 };
 
 export async function adminPlayoffsRoutes(app: FastifyInstance) {
   // GET /?seasonId= - list playoffs rows (optionally filtered by season)
   app.get<{ Querystring: { seasonId?: string } }>('/', async (request, reply) => {
     try {
-      const seasonId = request.query?.seasonId ? parseInt(request.query.seasonId, 10) : null;
-      const rows = seasonId
-        ? await db.select(playoffsSelect).from(playoffs).where(eq(playoffs.seasonId, seasonId)).orderBy(desc(playoffs.id))
-        : await db.select(playoffsSelect).from(playoffs).orderBy(desc(playoffs.id));
+      const raw = request.query?.seasonId;
+      const seasonId =
+        raw != null && String(raw).trim() !== '' ? parseInt(String(raw), 10) : null;
+      if (raw != null && String(raw).trim() !== '' && (seasonId == null || !Number.isFinite(seasonId))) {
+        return reply.status(400).send({ message: 'Invalid seasonId' });
+      }
+      const rows = seasonId != null
+        ? await db.select(playoffsCore).from(playoffs).where(eq(playoffs.seasonId, seasonId)).orderBy(desc(playoffs.id))
+        : await db.select(playoffsCore).from(playoffs).orderBy(desc(playoffs.id));
       return reply.send(rows);
     } catch (err) {
       request.log.error(err);
@@ -64,7 +85,7 @@ export async function adminPlayoffsRoutes(app: FastifyInstance) {
         name,
         isActive: isActive ?? true,
         config: config ?? {},
-      }).returning(playoffsSelect);
+      }).returning(playoffsCore);
 
       // Ensure season is marked as having playoffs.
       await db.update(seasons).set({ hasPlayoffs: true }).where(eq(seasons.id, seasonId));
@@ -86,8 +107,7 @@ export async function adminPlayoffsRoutes(app: FastifyInstance) {
         ...(name !== undefined && { name }),
         ...(isActive !== undefined && { isActive }),
         ...(config !== undefined && { config }),
-        updatedAt: new Date(),
-      }).where(eq(playoffs.id, id)).returning(playoffsSelect);
+      }).where(eq(playoffs.id, id)).returning(playoffsCore);
       if (!row) return reply.status(404).send({ message: 'Playoffs not found' });
       return reply.send(row);
     } catch (err) {
@@ -110,7 +130,7 @@ export async function adminPlayoffsRoutes(app: FastifyInstance) {
           .where(inArray(games.playoffSeriesId, seriesIds.map(s => s.id)));
       }
 
-      const [deleted] = await db.delete(playoffs).where(eq(playoffs.id, id)).returning();
+      const [deleted] = await db.delete(playoffs).where(eq(playoffs.id, id)).returning({ id: playoffs.id });
       if (!deleted) return reply.status(404).send({ message: 'Playoffs not found' });
       return reply.send({ message: 'Playoffs deleted' });
     } catch (err) {
@@ -125,7 +145,7 @@ export async function adminPlayoffsRoutes(app: FastifyInstance) {
       const id = parseInt(request.params.id, 10);
       if (isNaN(id)) return reply.status(400).send({ message: 'Invalid playoffs id' });
       const rows = await db
-        .select()
+        .select(playoffSeriesCore)
         .from(playoffSeries)
         .where(eq(playoffSeries.playoffsId, id))
         .orderBy(asc(playoffSeries.roundNumber), asc(playoffSeries.seriesIndex));
@@ -145,7 +165,7 @@ export async function adminPlayoffsRoutes(app: FastifyInstance) {
       const playoffsId = parseInt(request.params.id, 10);
       if (isNaN(playoffsId)) return reply.status(400).send({ message: 'Invalid playoffs id' });
 
-      const [po] = await db.select(playoffsSelect).from(playoffs).where(eq(playoffs.id, playoffsId)).limit(1);
+      const [po] = await db.select(playoffsCore).from(playoffs).where(eq(playoffs.id, playoffsId)).limit(1);
       if (!po) return reply.status(404).send({ message: 'Playoffs not found' });
 
       const raw = (request.body as { teamIdsOrdered?: unknown; replaceExisting?: unknown }) ?? {};
@@ -261,7 +281,7 @@ export async function adminPlayoffsRoutes(app: FastifyInstance) {
         lowerSeed: body.lowerSeed ?? null,
         higherTeamId: body.higherTeamId ?? null,
         lowerTeamId: body.lowerTeamId ?? null,
-      }).returning();
+      }).returning(playoffSeriesCore);
       return reply.status(201).send(row);
     } catch (err) {
       request.log.error(err);
@@ -285,8 +305,7 @@ export async function adminPlayoffsRoutes(app: FastifyInstance) {
         ...(body.higherTeamId !== undefined && { higherTeamId: body.higherTeamId }),
         ...(body.lowerTeamId !== undefined && { lowerTeamId: body.lowerTeamId }),
         ...(body.winnerTeamId !== undefined && { winnerTeamId: body.winnerTeamId }),
-        updatedAt: new Date(),
-      }).where(eq(playoffSeries.id, seriesId)).returning();
+      }).where(eq(playoffSeries.id, seriesId)).returning(playoffSeriesCore);
       if (!row) return reply.status(404).send({ message: 'Series not found' });
       return reply.send(row);
     } catch (err) {
@@ -301,7 +320,7 @@ export async function adminPlayoffsRoutes(app: FastifyInstance) {
       const seriesId = parseInt(request.params.seriesId, 10);
       if (isNaN(seriesId)) return reply.status(400).send({ message: 'Invalid series id' });
       await db.update(games).set({ playoffSeriesId: null }).where(eq(games.playoffSeriesId, seriesId));
-      const [row] = await db.delete(playoffSeries).where(eq(playoffSeries.id, seriesId)).returning();
+      const [row] = await db.delete(playoffSeries).where(eq(playoffSeries.id, seriesId)).returning({ id: playoffSeries.id });
       if (!row) return reply.status(404).send({ message: 'Series not found' });
       return reply.send({ message: 'Series deleted' });
     } catch (err) {
