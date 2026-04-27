@@ -15,6 +15,7 @@ import {
   gameEvents,
 } from '../../db/schema/index.js';
 import { eq, and, gte, lte, sql, desc, sum, inArray } from 'drizzle-orm';
+import { rowsFromExecute } from '../../lib/pg-result.js';
 
 /** Pad inning-by-inning lines so zeros render and short arrays align to innings played. */
 function padLineScores(
@@ -155,62 +156,64 @@ export async function gamesRoutes(app: FastifyInstance) {
       const basesMap: Record<number, { first: boolean; second: boolean; third: boolean }> = {};
       const currentBatterMap: Record<number, { name: string; battingOrder: number } | null> = {};
       if (liveIds.length > 0) {
-        for (const gid of liveIds) {
-          // Get base state from last non-pitch event
-          const [lastEvt] = await db.select({
-            runnerFirstId: gameEvents.runnerFirstId,
-            runnerSecondId: gameEvents.runnerSecondId,
-            runnerThirdId: gameEvents.runnerThirdId,
-          }).from(gameEvents)
-            .where(and(
-              eq(gameEvents.gameId, gid),
-              eq(gameEvents.isDeleted, false),
-              sql`${gameEvents.eventType} != 'pitch'`,
-            ))
-            .orderBy(desc(gameEvents.eventNumber))
-            .limit(1);
-          if (lastEvt) {
-            basesMap[gid] = {
-              first: !!lastEvt.runnerFirstId,
-              second: !!lastEvt.runnerSecondId,
-              third: !!lastEvt.runnerThirdId,
-            };
-          }
+        const liveIdArray = sql.raw(`ARRAY[${liveIds.join(',')}]`);
+        const baseRows = rowsFromExecute<{
+          game_id: number;
+          runner_first_id: number | null;
+          runner_second_id: number | null;
+          runner_third_id: number | null;
+        }>(await db.execute(sql`
+          select distinct on (game_id)
+            game_id, runner_first_id, runner_second_id, runner_third_id
+          from game_events
+          where game_id = any(${liveIdArray})
+            and is_deleted = false
+            and event_type != 'pitch'
+          order by game_id, event_number desc
+        `));
+        for (const row of baseRows) {
+          basesMap[row.game_id] = {
+            first: !!row.runner_first_id,
+            second: !!row.runner_second_id,
+            third: !!row.runner_third_id,
+          };
+        }
 
-          // Get current batter from the most recent event with a batterId
-          const [lastBatterEvt] = await db.select({
-            batterId: gameEvents.batterId,
-          }).from(gameEvents)
-            .where(and(
-              eq(gameEvents.gameId, gid),
-              eq(gameEvents.isDeleted, false),
-              sql`${gameEvents.batterId} IS NOT NULL`,
-            ))
-            .orderBy(desc(gameEvents.eventNumber))
-            .limit(1);
-
-          if (lastBatterEvt?.batterId) {
-            // Get batter name and batting order
-            const [playerRow] = await db.select({
+        const batterRows = rowsFromExecute<{ game_id: number; batter_id: number }>(await db.execute(sql`
+          select distinct on (game_id) game_id, batter_id
+          from game_events
+          where game_id = any(${liveIdArray})
+            and is_deleted = false
+            and batter_id is not null
+          order by game_id, event_number desc
+        `));
+        const batterIds = [...new Set(batterRows.map((row) => row.batter_id))];
+        if (batterIds.length > 0) {
+          const [playerRows, lineupRows] = await Promise.all([
+            db.select({
+              id: players.id,
               firstName: players.firstName,
               lastName: players.lastName,
-            }).from(players).where(eq(players.id, lastBatterEvt.batterId)).limit(1);
-
-            const [lineupRow] = await db.select({
+            }).from(players).where(inArray(players.id, batterIds)),
+            db.select({
+              gameId: gameLineups.gameId,
+              playerId: gameLineups.playerId,
               battingOrder: gameLineups.battingOrder,
-            }).from(gameLineups)
-              .where(and(
-                eq(gameLineups.gameId, gid),
-                eq(gameLineups.playerId, lastBatterEvt.batterId),
-              ))
-              .limit(1);
-
-            if (playerRow) {
-              currentBatterMap[gid] = {
-                name: `${playerRow.firstName.charAt(0)}. ${playerRow.lastName}`,
-                battingOrder: lineupRow?.battingOrder ?? 0,
-              };
-            }
+            }).from(gameLineups).where(and(
+              inArray(gameLineups.gameId, liveIds),
+              inArray(gameLineups.playerId, batterIds),
+            )),
+          ]);
+          const playerMap = new Map(playerRows.map((row) => [row.id, row]));
+          const lineupMap = new Map(lineupRows.map((row) => [`${row.gameId}:${row.playerId}`, row]));
+          for (const row of batterRows) {
+            const playerRow = playerMap.get(row.batter_id);
+            if (!playerRow) continue;
+            const lineupRow = lineupMap.get(`${row.game_id}:${row.batter_id}`);
+            currentBatterMap[row.game_id] = {
+              name: `${playerRow.firstName.charAt(0)}. ${playerRow.lastName}`,
+              battingOrder: lineupRow?.battingOrder ?? 0,
+            };
           }
         }
       }

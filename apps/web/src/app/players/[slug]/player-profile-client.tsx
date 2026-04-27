@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { SprayChart } from '@/components/stats/spray-chart';
 import { TeamMark } from '@/components/ui/team-mark';
 import { getStatAbbreviationMeaning } from '@/lib/stat-abbreviations';
@@ -342,6 +342,14 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
     { key: 'gamelog', label: 'Game Log' },
     { key: 'spraychart', label: 'Spray Chart' },
   ];
+  const battingCountLines = useMemo(
+    () => new Map((platoonSplits?.battingCounts?.counts ?? []).map((line: any) => [line.count, line])),
+    [platoonSplits?.battingCounts?.counts],
+  );
+  const pitchingCountLines = useMemo(
+    () => new Map((platoonSplits?.pitchingCounts?.counts ?? []).map((line: any) => [line.count, line])),
+    [platoonSplits?.pitchingCounts?.counts],
+  );
 
   return (
     <div>
@@ -579,7 +587,7 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
                   </thead>
                   <tbody>
                     {COUNT_SPLIT_ROWS.map(([key, label]) => {
-                      const line = platoonSplits.battingCounts?.counts?.find((r: any) => r.count === key);
+                      const line = battingCountLines.get(key);
                       return (
                         <tr key={key} className="border-b border-border last:border-0">
                           <td className="px-2 py-2 font-semibold text-xs">{label}</td>
@@ -814,7 +822,7 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
                   </thead>
                   <tbody>
                     {COUNT_SPLIT_ROWS.map(([key, label]) => {
-                      const line = platoonSplits.pitchingCounts?.counts?.find((r: any) => r.count === key);
+                      const line = pitchingCountLines.get(key);
                       const pa = Number(line?.plateAppearances ?? 0);
                       const so = Number(line?.strikeouts ?? 0);
                       return (

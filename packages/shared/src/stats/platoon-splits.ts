@@ -202,32 +202,22 @@ export function pitchingBucketFromBatterBats(
   return null;
 }
 
-function accumulateBatting(rows: (PlatoonBattingEventRow | PlatoonPitchingEventRow)[]): PlatoonBattingLine {
-  const acc = emptyLine();
-  for (const e of rows) {
-    const t = e.eventType;
-    if (!isPlateAppearance(t)) continue;
-    applyPaToLine(acc, e);
-  }
-  return finalizeLine(acc);
-}
-
 /**
  * Aggregate batting platoon splits (this player batting vs RHP/LHP).
  */
 export function aggregateBattingPlatoon(rows: PlatoonBattingEventRow[]): Record<BattingPlatoonBucket, PlatoonBattingLine> {
-  const buckets: Record<BattingPlatoonBucket, PlatoonBattingEventRow[]> = {
-    vsRhp: [],
-    vsLhp: [],
+  const buckets: Record<BattingPlatoonBucket, PlatoonBattingLine> = {
+    vsRhp: emptyLine(),
+    vsLhp: emptyLine(),
   };
   for (const r of rows) {
     if (!isPlateAppearance(r.eventType)) continue;
     const b = battingBucketFromPitcherThrows(r.pitcherThrows);
-    if (b) buckets[b].push(r);
+    if (b) applyPaToLine(buckets[b], r);
   }
   return {
-    vsRhp: accumulateBatting(buckets.vsRhp),
-    vsLhp: accumulateBatting(buckets.vsLhp),
+    vsRhp: finalizeLine(buckets.vsRhp),
+    vsLhp: finalizeLine(buckets.vsLhp),
   };
 }
 
@@ -236,18 +226,18 @@ export function aggregateBattingPlatoon(rows: PlatoonBattingEventRow[]): Record<
  * Interprets the same PA stat rules from the batter’s perspective → “against” slash lines.
  */
 export function aggregatePitchingPlatoon(rows: PlatoonPitchingEventRow[]): Record<PitchingPlatoonBucket, PlatoonBattingLine> {
-  const buckets: Record<PitchingPlatoonBucket, PlatoonPitchingEventRow[]> = {
-    vsRhb: [],
-    vsLhb: [],
+  const buckets: Record<PitchingPlatoonBucket, PlatoonBattingLine> = {
+    vsRhb: emptyLine(),
+    vsLhb: emptyLine(),
   };
   for (const r of rows) {
     if (!isPlateAppearance(r.eventType)) continue;
     const b = pitchingBucketFromBatterBats(r.batterBats);
-    if (b) buckets[b].push(r);
+    if (b) applyPaToLine(buckets[b], r);
   }
   return {
-    vsRhb: accumulateBatting(buckets.vsRhb),
-    vsLhb: accumulateBatting(buckets.vsLhb),
+    vsRhb: finalizeLine(buckets.vsRhb),
+    vsLhb: finalizeLine(buckets.vsLhb),
   };
 }
 

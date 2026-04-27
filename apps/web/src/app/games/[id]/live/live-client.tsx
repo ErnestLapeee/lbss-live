@@ -246,8 +246,9 @@ export function LiveGameClient({
   const [openPitchCards, setOpenPitchCards] = useState<Record<string, boolean>>({});
   const { connected, gameState, lastEvent, isFinal, viewerCount } = useGameSocket(gameId, apiBase);
 
-  /** Always refetch events in the browser — fixes SSR when the server cannot reach the API (common on Vercel). */
+  /** Refetch only when SSR could not provide events; live updates still arrive via socket/polling below. */
   useEffect(() => {
+    if (initialEvents.length > 0) return;
     let cancelled = false;
     fetchPublicGameEvents(gameId).then((evts) => {
       if (cancelled || evts === null) return;
@@ -256,7 +257,7 @@ export function LiveGameClient({
     return () => {
       cancelled = true;
     };
-  }, [gameId]);
+  }, [gameId, initialEvents.length]);
 
   /** While WebSocket is connected we disable polling; refresh once on connect so PBP isn't stuck empty until the next live pitch. */
   useEffect(() => {

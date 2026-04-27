@@ -37,24 +37,26 @@ export default async function HomePage() {
         ? ((seasonDetail as any).leagues ?? [])
         : [];
 
-      const rows: typeof miniStandings = [];
-      for (const lg of leagues) {
-        if (!lg?.id) continue;
-        const lgRows = toArray<any>(await apiFetch(`/api/public/standings/${lg.id}?includeZeroGames=1`, { noCache: true }));
-        for (const r of lgRows) {
-          rows.push({
-            teamId: r.teamId,
-            teamName: r.teamName,
-            wins: r.wins ?? 0,
-            losses: r.losses ?? 0,
-            ties: r.ties ?? 0,
-            winPct: r.winPct ?? null,
-            gamesBehind: r.gamesBehind ?? null,
-            leagueName: lg.name ?? 'League',
-          });
-        }
-      }
-      miniStandings = rows;
+      const standingsByLeague = await Promise.all(
+        leagues
+          .filter((lg: any) => lg?.id)
+          .map(async (lg: any) => {
+            const lgRows = toArray<any>(
+              await apiFetch(`/api/public/standings/${lg.id}?includeZeroGames=1`, { noCache: true }),
+            );
+            return lgRows.map((r) => ({
+              teamId: r.teamId,
+              teamName: r.teamName,
+              wins: r.wins ?? 0,
+              losses: r.losses ?? 0,
+              ties: r.ties ?? 0,
+              winPct: r.winPct ?? null,
+              gamesBehind: r.gamesBehind ?? null,
+              leagueName: lg.name ?? 'League',
+            }));
+          }),
+      );
+      miniStandings = standingsByLeague.flat();
     }
   } catch {}
 

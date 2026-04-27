@@ -41,6 +41,16 @@ function fieldingPositionLabel(
 
 type PosCountRow = { seasonId: number; teamId: number; position: number | null; games: number };
 
+const COLUMN_FLAGS_TTL_MS = 5 * 60 * 1000;
+
+type PlayerRouteColumnFlags = {
+  gamesHavePlayoffSeriesId: boolean;
+  gameEventsHaveBatterSide: boolean;
+};
+
+let playerRouteColumnFlags: PlayerRouteColumnFlags | null = null;
+let playerRouteColumnFlagsCachedAt = 0;
+
 function fieldingPosMap(rows: PosCountRow[]): Map<string, { position: number; games: number }[]> {
   const m = new Map<string, { position: number; games: number }[]>();
   for (const row of rows) {
@@ -52,39 +62,53 @@ function fieldingPosMap(rows: PosCountRow[]): Map<string, { position: number; ga
   return m;
 }
 
-async function gamesHavePlayoffSeriesId(): Promise<boolean> {
+async function getPlayerRouteColumnFlags(): Promise<PlayerRouteColumnFlags> {
+  const now = Date.now();
+  if (playerRouteColumnFlags && now - playerRouteColumnFlagsCachedAt < COLUMN_FLAGS_TTL_MS) {
+    return playerRouteColumnFlags;
+  }
+
+  let flags: PlayerRouteColumnFlags = {
+    gamesHavePlayoffSeriesId: false,
+    gameEventsHaveBatterSide: false,
+  };
   try {
     const rows = await db.execute(sql`
-      select 1
+      select table_name, column_name
       from information_schema.columns
       where table_schema = 'public'
-        and table_name = 'games'
-        and column_name = 'playoff_series_id'
-      limit 1
+        and (
+          (table_name = 'games' and column_name = 'playoff_series_id')
+          or (table_name = 'game_events' and column_name = 'batter_side')
+        )
     `);
-    const list = rowsFromExecute<Record<string, unknown>>(rows);
-    return list.length > 0;
+    const columns = new Set(
+      rowsFromExecute<Record<string, unknown>>(rows)
+        .map((row) => `${String(row.table_name ?? '')}.${String(row.column_name ?? '')}`),
+    );
+    flags = {
+      gamesHavePlayoffSeriesId: columns.has('games.playoff_series_id'),
+      gameEventsHaveBatterSide: columns.has('game_events.batter_side'),
+    };
   } catch {
-    return false;
+    flags = {
+      gamesHavePlayoffSeriesId: false,
+      gameEventsHaveBatterSide: false,
+    };
   }
+
+  playerRouteColumnFlags = flags;
+  playerRouteColumnFlagsCachedAt = now;
+  return flags;
+}
+
+async function gamesHavePlayoffSeriesId(): Promise<boolean> {
+  return (await getPlayerRouteColumnFlags()).gamesHavePlayoffSeriesId;
 }
 
 /** Migration 0010 — when not applied, platoon SQL must not reference ge.batter_side. */
 async function gameEventsHasBatterSideColumn(): Promise<boolean> {
-  try {
-    const rows = await db.execute(sql`
-      select 1
-      from information_schema.columns
-      where table_schema = 'public'
-        and table_name = 'game_events'
-        and column_name = 'batter_side'
-      limit 1
-    `);
-    const list = rowsFromExecute<Record<string, unknown>>(rows);
-    return list.length > 0;
-  } catch {
-    return false;
-  }
+  return (await getPlayerRouteColumnFlags()).gameEventsHaveBatterSide;
 }
 
 export async function playersRoutes(app: FastifyInstance) {

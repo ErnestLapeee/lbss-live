@@ -122,13 +122,19 @@ function emptyAgg(): PitchingAggregate {
  */
 export function aggregatePitchingStatsByPitcher(events: PitchingEventInput[]): Map<number, PitchingAggregate> {
   const inningCutoffEventNumber = buildInningCutoffMap(events);
-  const pitcherIds = new Set(
-    events.filter(e => e.pitcherId != null && e.pitcherId !== 0).map(e => e.pitcherId as number),
-  );
+  const eventsByPitcher = new Map<number, PitchingEventInput[]>();
+  for (const e of events) {
+    if (e.pitcherId == null || e.pitcherId === 0) continue;
+    const pitcherEvents = eventsByPitcher.get(e.pitcherId);
+    if (pitcherEvents) {
+      pitcherEvents.push(e);
+    } else {
+      eventsByPitcher.set(e.pitcherId, [e]);
+    }
+  }
   const out = new Map<number, PitchingAggregate>();
 
-  for (const pitcherId of pitcherIds) {
-    const pitcherEvents = events.filter(e => e.pitcherId === pitcherId);
+  for (const [pitcherId, pitcherEvents] of eventsByPitcher) {
     const a = emptyAgg();
 
     let currentPaFirstPitchStrike: boolean | null = null;
