@@ -37,9 +37,9 @@ function getDotShape(hit: SprayChartHit): 'circle' | 'square' | 'diamond' {
 }
 
 function getDotSize(hit: SprayChartHit, compact: boolean): number {
-  const base = compact ? 3 : 4;
-  if (hit.hitHardness === 'hard') return base + 1;
-  if (hit.hitHardness === 'soft') return base - 1;
+  const base = compact ? 2.5 : 3;
+  if (hit.hitHardness === 'hard') return base + 0.75;
+  if (hit.hitHardness === 'soft') return base - 0.75;
   return base;
 }
 
@@ -62,60 +62,39 @@ export function SprayChart({ hits, width = 560, height = 360, compact = false, s
         viewBox="0 0 300 200"
         width={width}
         height={height}
-        className="h-auto w-full max-w-2xl mx-auto overflow-hidden rounded-2xl border border-border/60 shadow-md"
-        style={{ background: '#07111f' }}
+        className="h-auto w-full max-w-2xl mx-auto overflow-hidden rounded-2xl border border-border/70 bg-white"
       >
-        <defs>
-          <radialGradient id="scBackdrop" cx="50%" cy="45%" r="75%">
-            <stop offset="0%" stopColor="#16304c" />
-            <stop offset="58%" stopColor="#0b1a2c" />
-            <stop offset="100%" stopColor="#050b14" />
-          </radialGradient>
-          <radialGradient id="scGrass" cx="50%" cy="82%" r="58%">
-            <stop offset="0%" stopColor="#2f8b50" />
-            <stop offset="62%" stopColor="#176334" />
-            <stop offset="100%" stopColor="#0b391d" />
-          </radialGradient>
-          <radialGradient id="scDirt" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="#9a6a3a" />
-            <stop offset="100%" stopColor="#613a1b" />
-          </radialGradient>
-          <filter id="scDotShadow" x="-40%" y="-40%" width="180%" height="180%">
-            <feDropShadow dx="0" dy="1" stdDeviation="1" floodColor="#000" floodOpacity="0.45" />
-          </filter>
-        </defs>
-        <rect width="300" height="200" fill="url(#scBackdrop)" />
-        <circle cx="150" cy="178" r="170" fill="rgba(255,255,255,0.025)" />
+        <rect width="300" height="200" fill="#f8fafc" />
         {/* Outfield grass */}
-        <path d="M 45,78 Q 150,-20 255,78 L 202,130 L 150,78 L 98,130 Z" fill="url(#scGrass)" />
-        <path d="M 64,86 Q 150,6 236,86" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="1" />
-        <path d="M 82,96 Q 150,30 218,96" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="1" />
-        <path d="M 102,108 Q 150,54 198,108" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="1" />
+        <path d="M 45,78 Q 150,-20 255,78 L 202,130 L 150,78 L 98,130 Z" fill="#3fa45f" />
+        <path d="M 64,86 Q 150,6 236,86" fill="none" stroke="#2f8a50" strokeWidth="1" opacity="0.45" />
+        <path d="M 82,96 Q 150,30 218,96" fill="none" stroke="#2f8a50" strokeWidth="1" opacity="0.35" />
+        <path d="M 102,108 Q 150,54 198,108" fill="none" stroke="#2f8a50" strokeWidth="1" opacity="0.3" />
         {/* Infield dirt diamond */}
-        <polygon points="150,78 202,130 150,182 98,130" fill="url(#scDirt)" />
-        <path d="M 150,182 Q 150,138 150,78" stroke="rgba(255,255,255,0.08)" strokeWidth="1" strokeDasharray="3 4" />
+        <polygon points="150,78 202,130 150,182 98,130" fill="#c98545" />
+        <path d="M 150,182 Q 150,138 150,78" stroke="#9b6634" strokeWidth="0.8" strokeDasharray="3 4" opacity="0.45" />
         {/* Grass cutout */}
-        <circle cx="150" cy="130" r="10" fill="#1b5e30" />
+        <circle cx="150" cy="130" r="10" fill="#3fa45f" />
         {/* Mound rubber */}
-        <rect x="147" y="129" width="6" height="2" rx="1" fill="rgba(255,255,255,0.4)" />
+        <rect x="147" y="129" width="6" height="2" rx="1" fill="#f8fafc" opacity="0.75" />
         {/* Baselines */}
-        <line x1="150" y1="182" x2="202" y2="130" stroke="rgba(255,255,255,0.25)" strokeWidth="0.8" />
-        <line x1="150" y1="182" x2="98" y2="130" stroke="rgba(255,255,255,0.25)" strokeWidth="0.8" />
-        <line x1="98" y1="130" x2="150" y2="78" stroke="rgba(255,255,255,0.25)" strokeWidth="0.8" />
-        <line x1="202" y1="130" x2="150" y2="78" stroke="rgba(255,255,255,0.25)" strokeWidth="0.8" />
+        <line x1="150" y1="182" x2="202" y2="130" stroke="#f8fafc" strokeWidth="0.9" opacity="0.8" />
+        <line x1="150" y1="182" x2="98" y2="130" stroke="#f8fafc" strokeWidth="0.9" opacity="0.8" />
+        <line x1="98" y1="130" x2="150" y2="78" stroke="#f8fafc" strokeWidth="0.9" opacity="0.65" />
+        <line x1="202" y1="130" x2="150" y2="78" stroke="#f8fafc" strokeWidth="0.9" opacity="0.65" />
         {/* Foul lines */}
-        <line x1="150" y1="182" x2="45" y2="78" stroke="rgba(255,255,255,0.15)" strokeWidth="0.8" />
-        <line x1="150" y1="182" x2="255" y2="78" stroke="rgba(255,255,255,0.15)" strokeWidth="0.8" />
+        <line x1="150" y1="182" x2="45" y2="78" stroke="#64748b" strokeWidth="0.7" opacity="0.25" />
+        <line x1="150" y1="182" x2="255" y2="78" stroke="#64748b" strokeWidth="0.7" opacity="0.25" />
         {/* Fence arc */}
-        <path d="M 46,77 Q 150,-18 254,77" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="4" />
+        <path d="M 46,77 Q 150,-18 254,77" fill="none" stroke="#64748b" strokeWidth="2" opacity="0.16" />
         {/* Bases */}
-        <rect x="147" y="76" width="6" height="6" rx="0.5" transform="rotate(45 150 79)" fill="rgba(255,255,255,0.12)" stroke="white" strokeWidth="0.5" />
-        <rect x="199" y="128" width="6" height="6" rx="0.5" transform="rotate(45 202 131)" fill="rgba(255,255,255,0.12)" stroke="white" strokeWidth="0.5" />
-        <rect x="95" y="128" width="6" height="6" rx="0.5" transform="rotate(45 98 131)" fill="rgba(255,255,255,0.12)" stroke="white" strokeWidth="0.5" />
+        <rect x="147" y="76" width="6" height="6" rx="0.5" transform="rotate(45 150 79)" fill="#f8fafc" stroke="#cbd5e1" strokeWidth="0.5" />
+        <rect x="199" y="128" width="6" height="6" rx="0.5" transform="rotate(45 202 131)" fill="#f8fafc" stroke="#cbd5e1" strokeWidth="0.5" />
+        <rect x="95" y="128" width="6" height="6" rx="0.5" transform="rotate(45 98 131)" fill="#f8fafc" stroke="#cbd5e1" strokeWidth="0.5" />
         {/* Home plate */}
-        <polygon points="150,180 147,184 150,188 153,184" fill="#ddd" />
-        <line x1="145" y1="181" x2="137" y2="190" stroke="rgba(255,255,255,0.22)" strokeWidth="0.7" />
-        <line x1="155" y1="181" x2="163" y2="190" stroke="rgba(255,255,255,0.22)" strokeWidth="0.7" />
+        <polygon points="150,180 147,184 150,188 153,184" fill="#f8fafc" stroke="#cbd5e1" strokeWidth="0.5" />
+        <line x1="145" y1="181" x2="137" y2="190" stroke="#64748b" strokeWidth="0.6" opacity="0.24" />
+        <line x1="155" y1="181" x2="163" y2="190" stroke="#64748b" strokeWidth="0.6" opacity="0.24" />
 
         {hits.map((hit, i) => {
           const color = getDotColor(hit);
@@ -127,9 +106,8 @@ export function SprayChart({ hits, width = 560, height = 360, compact = false, s
               <rect key={i}
                 x={hit.hitLocationX - size} y={hit.hitLocationY - size}
                 width={size * 2} height={size * 2}
-                fill={color} opacity="0.9"
-                stroke="rgba(255,255,255,0.75)" strokeWidth="0.6"
-                filter="url(#scDotShadow)"
+                fill={color} opacity="0.82"
+                stroke="#0f172a" strokeWidth="0.35"
               />
             );
           }
@@ -138,9 +116,8 @@ export function SprayChart({ hits, width = 560, height = 360, compact = false, s
               <rect key={i}
                 x={hit.hitLocationX - size} y={hit.hitLocationY - size}
                 width={size * 2} height={size * 2}
-                fill={color} opacity="0.9"
-                stroke="rgba(255,255,255,0.75)" strokeWidth="0.6"
-                filter="url(#scDotShadow)"
+                fill={color} opacity="0.82"
+                stroke="#0f172a" strokeWidth="0.35"
                 transform={`rotate(45 ${hit.hitLocationX} ${hit.hitLocationY})`}
               />
             );
@@ -148,9 +125,8 @@ export function SprayChart({ hits, width = 560, height = 360, compact = false, s
           return (
             <circle key={i}
               cx={hit.hitLocationX} cy={hit.hitLocationY}
-              r={size} fill={color} opacity="0.9"
-              stroke="rgba(255,255,255,0.75)" strokeWidth="0.6"
-              filter="url(#scDotShadow)"
+              r={size} fill={color} opacity="0.82"
+              stroke="#0f172a" strokeWidth="0.35"
             />
           );
         })}
