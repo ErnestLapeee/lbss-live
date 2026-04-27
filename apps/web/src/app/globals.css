@@ -27,7 +27,7 @@
   --font-sans: var(--font-ibm-plex), ui-sans-serif, system-ui, sans-serif;
   --font-heading: var(--font-ibm-plex), system-ui, sans-serif;
   --font-body: var(--font-ibm-plex), system-ui, sans-serif;
-  --font-mono: ui-monospace, monospace;
+  --font-mono: var(--font-ibm-plex), ui-sans-serif, system-ui, sans-serif;
 }
 
 /* ── Base ── */

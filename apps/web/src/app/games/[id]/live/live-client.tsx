@@ -74,6 +74,8 @@ interface GameData {
   currentHalf: string;
   currentOuts: number;
   venue: string;
+  umpire?: string | null;
+  officialScorer?: string | null;
   scheduledAt: string;
 }
 
@@ -701,34 +703,89 @@ export function LiveGameClient({
     const teamId = rows[0]?.teamId ?? batting[0]?.teamId ?? 0;
 
     const shortName = (p: LineupEntry) => `${p.firstName?.charAt(0)}. ${p.lastName}`;
-    const battingNotes = (() => {
+    const notes = (() => {
       const collectNames = (predicate: (box: BattingBoxScore | undefined, live: typeof liveBattingMap[number] | undefined) => boolean) =>
         rows
           .filter(p => predicate(battingMap[p.playerId], liveBattingMap[p.playerId]))
           .map(shortName);
-      const parts: string[] = [];
+      const withCounts = (items: Array<{ name: string | null; count: number }>) =>
+        items
+          .filter((item) => item.count > 0)
+          .map((item) => `${item.name || 'Unknown'}${item.count > 1 ? ` (${item.count})` : ''}`);
+      const battingParts: string[] = [];
       const doublesNames = collectNames((box) => (box?.doubles ?? 0) > 0);
-      if (doublesNames.length > 0) parts.push(`2B: ${doublesNames.join(', ')}`);
+      if (doublesNames.length > 0) battingParts.push(`2B: ${doublesNames.join(', ')}`);
       const triplesNames = collectNames((box) => (box?.triples ?? 0) > 0);
-      if (triplesNames.length > 0) parts.push(`3B: ${triplesNames.join(', ')}`);
+      if (triplesNames.length > 0) battingParts.push(`3B: ${triplesNames.join(', ')}`);
       const hrNames = collectNames((box, live) => (box?.homeRuns ?? live?.hr ?? 0) > 0);
-      if (hrNames.length > 0) parts.push(`HR: ${hrNames.join(', ')}`);
+      if (hrNames.length > 0) battingParts.push(`HR: ${hrNames.join(', ')}`);
       const sfNames = collectNames((box, live) => (box?.sacrificeFlies ?? live?.sf ?? 0) > 0);
-      if (sfNames.length > 0) parts.push(`SF: ${sfNames.join(', ')}`);
+      if (sfNames.length > 0) battingParts.push(`SF: ${sfNames.join(', ')}`);
       const shNames = collectNames((box) => (box?.sacrificeBunts ?? 0) > 0);
-      if (shNames.length > 0) parts.push(`SH: ${shNames.join(', ')}`);
+      if (shNames.length > 0) battingParts.push(`SH: ${shNames.join(', ')}`);
       const gdpNames = collectNames((box) => (box?.groundedIntoDoublePlays ?? 0) > 0);
-      if (gdpNames.length > 0) parts.push(`GDP: ${gdpNames.join(', ')}`);
-      return parts;
+      if (gdpNames.length > 0) battingParts.push(`GDP: ${gdpNames.join(', ')}`);
+
+      const isHomeTeam = teamId === game.homeTeamId;
+      const battingHalf = isHomeTeam ? 'bot' : 'top';
+      const fieldingHalf = isHomeTeam ? 'top' : 'bot';
+      const battingEvents = events.filter((event) => event.half === battingHalf);
+      const fieldingEvents = events.filter((event) => event.half === fieldingHalf);
+
+      const fieldingParts: string[] = [];
+      const errors = isHomeTeam ? errorCounts.home : errorCounts.away;
+      if (errors > 0) fieldingParts.push(`E: ${errors}`);
+      const doublePlays = fieldingEvents.filter((event) => event.eventType === 'double_play').length;
+      if (doublePlays > 0) fieldingParts.push(`DP: ${doublePlays}`);
+      const triplePlays = fieldingEvents.filter((event) => event.eventType === 'triple_play').length;
+      if (triplePlays > 0) fieldingParts.push(`TP: ${triplePlays}`);
+      const passedBalls = fieldingEvents.filter((event) => event.eventType === 'passed_ball').length;
+      if (passedBalls > 0) fieldingParts.push(`PB: ${passedBalls}`);
+
+      const baseRunningParts: string[] = [];
+      const stolenBases = withCounts(battingEvents.filter((event) => event.eventType === 'stolen_base').map((event) => ({ name: event.batterName, count: 1 })));
+      if (stolenBases.length > 0) baseRunningParts.push(`SB: ${stolenBases.join(', ')}`);
+      const caughtStealing = withCounts(battingEvents.filter((event) => event.eventType === 'caught_stealing').map((event) => ({ name: event.batterName, count: 1 })));
+      if (caughtStealing.length > 0) baseRunningParts.push(`CS: ${caughtStealing.join(', ')}`);
+      const pickedOff = withCounts(battingEvents.filter((event) => event.eventType === 'picked_off').map((event) => ({ name: event.batterName, count: 1 })));
+      if (pickedOff.length > 0) baseRunningParts.push(`PO: ${pickedOff.join(', ')}`);
+      const defensiveIndifference = battingEvents.filter((event) => event.eventType === 'defensive_indifference').length;
+      if (defensiveIndifference > 0) baseRunningParts.push(`DI: ${defensiveIndifference}`);
+      const lob = teamLobMap[teamId] ?? 0;
+      if (lob > 0) baseRunningParts.push(`LOB: ${lob}`);
+
+      const pitchingRows = isHomeTeam ? homePitching : awayPitching;
+      const pitchingParts: string[] = [];
+      const wildPitches = withCounts(pitchingRows.map((pitcher) => ({ name: `${pitcher.firstName?.charAt(0)}. ${pitcher.lastName}`, count: pitcher.wildPitches ?? 0 })));
+      if (wildPitches.length > 0) pitchingParts.push(`WP: ${wildPitches.join(', ')}`);
+      const balks = withCounts(pitchingRows.map((pitcher) => ({ name: `${pitcher.firstName?.charAt(0)}. ${pitcher.lastName}`, count: pitcher.balks ?? 0 })));
+      if (balks.length > 0) pitchingParts.push(`BK: ${balks.join(', ')}`);
+      const hitBatters = withCounts(pitchingRows.map((pitcher) => ({ name: `${pitcher.firstName?.charAt(0)}. ${pitcher.lastName}`, count: pitcher.hitBatters ?? 0 })));
+      if (hitBatters.length > 0) pitchingParts.push(`HBP: ${hitBatters.join(', ')}`);
+      const pitches = pitchingRows.reduce((sum, pitcher) => sum + (pitcher.pitchesThrown ?? 0), 0);
+      const strikes = pitchingRows.reduce((sum, pitcher) => sum + (pitcher.strikes ?? 0), 0);
+      if (pitches > 0) pitchingParts.push(`P-S: ${pitches}-${strikes}`);
+
+      return {
+        batting: battingParts,
+        fielding: fieldingParts,
+        baseRunning: baseRunningParts,
+        pitching: pitchingParts,
+      };
     })();
-    const lob = teamLobMap[teamId] ?? 0;
+    const renderNoteLine = (label: string, parts: string[]) => (
+      <div>
+        <span className="font-semibold text-slate-700">{label}:</span>{' '}
+        {parts.length > 0 ? parts.join(' | ') : '—'}
+      </div>
+    );
 
     return (
       <div className="mb-8">
         <h4 className="mb-3 text-sm font-semibold text-slate-800">{teamName}</h4>
         <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
           <div className="overflow-x-auto overscroll-x-contain">
-            <table className="w-full min-w-[920px] text-[11px] whitespace-nowrap font-mono">
+            <table className="w-full min-w-[920px] text-[11px] whitespace-nowrap tabular-nums">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-100 text-slate-600">
                   <th className="py-2 pl-3 pr-1 text-left text-[10px] font-semibold uppercase tracking-wide">#</th>
@@ -872,12 +929,12 @@ export function LiveGameClient({
           </table>
           </div>
         </div>
-        {(battingNotes.length > 0 || lob > 0) && (
-          <div className="mt-2 text-[10px] text-slate-600">
-            <span className="font-semibold text-slate-700">Batting notes:</span>{' '}
-            {[...battingNotes, `LOB: ${lob}`].join(' | ')}
+          <div className="mt-2 space-y-0.5 text-[10px] text-slate-600">
+            {renderNoteLine('Batting', notes.batting)}
+            {renderNoteLine('Fielding', notes.fielding)}
+            {renderNoteLine('Base Running', notes.baseRunning)}
+            {renderNoteLine('Pitching', notes.pitching)}
           </div>
-        )}
       </div>
     );
   };
@@ -1304,7 +1361,7 @@ export function LiveGameClient({
         <h4 className="text-sm font-semibold text-slate-800 mb-3">{teamName}</h4>
         <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
           <div className="overflow-x-auto overscroll-x-contain">
-            <table className="min-w-[920px] w-full text-[11px] whitespace-nowrap font-mono">
+            <table className="min-w-[920px] w-full text-[11px] whitespace-nowrap font-mono tabular-nums">
               <thead>
                 <tr className="bg-slate-100 text-slate-600 border-b border-slate-200">
                   <th className="sticky left-0 z-20 bg-slate-100 text-left py-2.5 pl-3 pr-2 min-w-[7.5rem] text-[10px] font-semibold uppercase tracking-wide text-slate-500 shadow-[4px_0_12px_-4px_rgba(15,23,42,0.12)]">
@@ -1784,6 +1841,8 @@ export function LiveGameClient({
         {/* Game info footer */}
         <div className="space-y-0.5 pb-8 text-center text-xs text-slate-500">
           {game.venue && <p>{game.venue}</p>}
+          {game.umpire && <p>Umpire: {game.umpire}</p>}
+          {game.officialScorer && <p>Scorer: {game.officialScorer}</p>}
           <p>{new Date(game.scheduledAt).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
         </div>
       </div>

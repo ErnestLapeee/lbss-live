@@ -7,7 +7,7 @@ interface Player { playerId: number; firstName: string; lastName: string; jersey
 interface LineupEntry { id: number; playerId: number; battingOrder: number; position: number; isActive: boolean; isStarter: boolean; firstName: string; lastName: string; teamId: number; bats?: string | null }
 interface GameState { inning: number; half: 'top' | 'bot'; outs: number; homeScore: number; awayScore: number; bases: { first: number | null; second: number | null; third: number | null }; homeLineScore: number[]; awayLineScore: number[]; eventCount: number; balls: number; strikes: number }
 interface GameEvent { id: number; eventNumber: number; eventType: string; batterId?: number; batterSide?: string | null; pitcherId?: number; inning: number; half: string; balls?: number; strikes?: number; runsScored?: number; rbi?: number; outsRecorded?: number; errorsOnPlay?: number; eventDetail?: string; fieldingSequence?: string; putoutFielderIds?: number[]; assistFielderIds?: number[]; errorFielderIds?: number[]; pitchCount?: number | null; pitchSequence?: string | null; hitLocationX?: string | null; hitLocationY?: string | null; hitType?: string | null; hitHardness?: string | null; runnerFirstId?: number | null; runnerSecondId?: number | null; runnerThirdId?: number | null; runnersScored?: number[] }
-interface GameData { id: number; status: string; homeTeamId: number; awayTeamId: number; homeTeamName: string; awayTeamName: string; isFinalized: boolean }
+interface GameData { id: number; status: string; homeTeamId: number; awayTeamId: number; homeTeamName: string; awayTeamName: string; isFinalized: boolean; umpire?: string | null; officialScorer?: string | null }
 type PositionChangeDraft = { playerId: number; oldPosition: number; newPosition: number };
 
 function battingTeamIdFromHalf(half: string | undefined, homeTeamId: number, awayTeamId: number): number | null {
@@ -276,6 +276,8 @@ export function LiveScoringPage() {
   const [setupHome, setSetupHome] = useState<Array<{ playerId: number; position: number }>>([]);
   const [setupAway, setSetupAway] = useState<Array<{ playerId: number; position: number }>>([]);
   const [setupTeam, setSetupTeam] = useState<'home' | 'away'>('away');
+  const [setupUmpire, setSetupUmpire] = useState('');
+  const [setupScorer, setSetupScorer] = useState('');
 
   const [balls, setBalls] = useState(0);
   const [strikes, setStrikes] = useState(0);
@@ -373,6 +375,11 @@ export function LiveScoringPage() {
   }, [gameId]);
 
   useEffect(() => { loadState(); loadRosters(); }, [loadState, loadRosters]);
+  useEffect(() => {
+    if (!game) return;
+    setSetupUmpire(game.umpire ?? '');
+    setSetupScorer(game.officialScorer ?? '');
+  }, [game?.id]);
 
   // Derive current batter position from events (computed during render, always in sync)
   const NON_AB_EVENTS = useMemo(() => new Set([
@@ -461,7 +468,10 @@ export function LiveScoringPage() {
     try {
       await apiPost(`/admin/scoring/${gameId}/lineup`, { teamId: game!.homeTeamId, lineup: setupHome.map((p, i) => ({ playerId: p.playerId, battingOrder: i + 1, position: p.position })) });
       await apiPost(`/admin/scoring/${gameId}/lineup`, { teamId: game!.awayTeamId, lineup: setupAway.map((p, i) => ({ playerId: p.playerId, battingOrder: i + 1, position: p.position })) });
-      await apiPost(`/admin/scoring/${gameId}/start`, {});
+      await apiPost(`/admin/scoring/${gameId}/start`, {
+        umpire: setupUmpire.trim(),
+        officialScorer: setupScorer.trim(),
+      });
       await loadState(); setPhase('scoring');
     } catch (err: any) { alert(err.message || 'Failed'); }
   };
@@ -1427,9 +1437,29 @@ function needsRunnerAdvanceErrorFieldingPrompt(
         <div className="bg-[#162038] border-b border-white/10 px-6 py-4 flex items-center justify-between">
           <button onClick={() => navigate('/games')} className="text-sm text-white/50 hover:text-white">← Back</button>
           <h1 className="font-bold text-lg">{game.awayTeamName} @ {game.homeTeamName} — Lineup</h1>
-          <button onClick={handleSetupSubmit} disabled={setupHome.length === 0 || setupAway.length === 0} className="px-4 py-2 bg-green-600 hover:bg-green-500 disabled:opacity-30 text-white text-sm font-bold rounded-lg">Start Game</button>
+          <button onClick={handleSetupSubmit} disabled={setupHome.length === 0 || setupAway.length === 0 || !setupUmpire.trim() || !setupScorer.trim()} className="px-4 py-2 bg-green-600 hover:bg-green-500 disabled:opacity-30 text-white text-sm font-bold rounded-lg">Start Game</button>
         </div>
         <div className="max-w-6xl mx-auto p-6">
+          <div className="mb-4 grid gap-3 rounded-lg border border-white/10 bg-white/5 p-4 sm:grid-cols-2">
+            <label className="block">
+              <span className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-white/40">Umpire</span>
+              <input
+                value={setupUmpire}
+                onChange={(e) => setSetupUmpire(e.target.value)}
+                placeholder="Umpire name"
+                className="w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none placeholder:text-white/20 focus:border-white/30"
+              />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-white/40">Scorer</span>
+              <input
+                value={setupScorer}
+                onChange={(e) => setSetupScorer(e.target.value)}
+                placeholder="Scorer name"
+                className="w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none placeholder:text-white/20 focus:border-white/30"
+              />
+            </label>
+          </div>
           <div className="flex flex-wrap gap-2 mb-4 items-center">
             {(['away', 'home'] as const).map(side => (
               <button key={side} onClick={() => setSetupTeam(side)} className={`px-4 py-2 rounded-lg text-sm font-semibold ${setupTeam === side ? 'bg-accent text-white' : 'bg-white/10 text-white/60'}`}>

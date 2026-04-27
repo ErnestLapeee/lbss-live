@@ -539,6 +539,8 @@ export async function adminScoringRoutes(app: FastifyInstance) {
     awayTeamId: number;
     scheduledAt: Date | string;
     venue: string | null;
+    umpire: string | null;
+    officialScorer: string | null;
     status: string;
     homeScore: number;
     awayScore: number;
@@ -562,6 +564,8 @@ export async function adminScoringRoutes(app: FastifyInstance) {
         away_team_id as "awayTeamId",
         scheduled_at as "scheduledAt",
         venue,
+        umpire,
+        official_scorer as "officialScorer",
         status,
         home_score as "homeScore",
         away_score as "awayScore",
@@ -875,15 +879,22 @@ export async function adminScoringRoutes(app: FastifyInstance) {
   });
 
   // ── POST /:gameId/start ── Start the game
-  app.post<{ Params: { gameId: string } }>('/:gameId/start', async (request, reply) => {
+  app.post<{
+    Params: { gameId: string };
+    Body?: { umpire?: string; officialScorer?: string };
+  }>('/:gameId/start', async (request, reply) => {
     try {
       const gameId = parseInt(request.params.gameId, 10);
+      const umpire = String(request.body?.umpire ?? '').trim();
+      const officialScorer = String(request.body?.officialScorer ?? '').trim();
 
       const [game] = await db.update(games).set({
         status: 'live',
         currentInning: 1,
         currentHalf: 'top',
         currentOuts: 0,
+        umpire: umpire || null,
+        officialScorer: officialScorer || null,
         updatedAt: new Date(),
       }).where(eq(games.id, gameId)).returning();
 

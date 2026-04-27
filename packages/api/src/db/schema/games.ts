@@ -27,6 +27,8 @@ export const games = pgTable(
       .references(() => teams.id),
     scheduledAt: timestamp('scheduled_at', { withTimezone: true }).notNull(),
     venue: varchar('venue', { length: 200 }),
+    umpire: varchar('umpire', { length: 200 }),
+    officialScorer: varchar('official_scorer', { length: 200 }),
     status: varchar('status', { length: 20 }).default('scheduled'),
     homeScore: integer('home_score').default(0),
     awayScore: integer('away_score').default(0),
