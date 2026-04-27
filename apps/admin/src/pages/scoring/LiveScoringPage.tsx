@@ -737,7 +737,12 @@ function needsRunnerAdvanceErrorFieldingPrompt(
 
   const MULTI_RUNNER_EVENTS = new Set(['wild_pitch', 'passed_ball', 'balk', 'advance_on_error', 'stolen_base', 'defensive_indifference']);
 
-  const startBetweenPitchRunnerCheck = (action: string, initiatingBase?: 'first' | 'second' | 'third' | null, initiatingDest?: string | null) => {
+  const startBetweenPitchRunnerCheck = (
+    action: string,
+    initiatingBase?: 'first' | 'second' | 'third' | null,
+    initiatingDest?: string | null,
+    initiatingErrorFielding?: number[],
+  ) => {
     if (!gameState) return;
     setBetweenPitchEvent(action);
     const initiator = initiatingBase ? (gameState.bases as any)[initiatingBase] as number | null : null;
@@ -755,6 +760,9 @@ function needsRunnerAdvanceErrorFieldingPrompt(
           r.outcome = 'safe';
           r.destination = initiatingDest as any;
           r.advanceReason = action;
+          if (action === 'advance_on_error' && initiatingErrorFielding?.length) {
+            r.advanceErrorFielding = [...initiatingErrorFielding];
+          }
           break;
         }
       }
@@ -762,7 +770,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
 
     const firstUnanswered = runners.findIndex(r => r.outcome === null);
     if (firstUnanswered === -1) {
-      submitBetweenPitchPlay(action, runners);
+      submitBetweenPitchPlay(action, runners, initiator ?? null);
       return;
     }
 
@@ -774,7 +782,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
     setStep('runner');
   };
 
-  const submitBetweenPitchPlay = async (action: string, runners: RunnerQuestion[]) => {
+  const submitBetweenPitchPlay = async (action: string, runners: RunnerQuestion[], initiatingRunnerId = betweenPitchInitiatorRunnerId) => {
     if (!gameState || submitting) return;
     setSubmitting(true);
     try {
@@ -837,7 +845,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
         // IMPORTANT: for runner events like stolen_base / caught_stealing we store the initiating runner in batterId
         // so finalize-game can attribute SB/CS to the correct player.
         eventType: action,
-        batterId: betweenPitchInitiatorRunnerId,
+        batterId: initiatingRunnerId,
         pitcherId: currentPitcher?.playerId,
         inning: gameState.inning, half: gameState.half, rbi: 0, runsScored,
         outsRecorded, balls, strikes,
@@ -863,7 +871,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
 
     // For multi-runner events (WP, PB, balk, advance on error), prompt for ALL runners
     if (MULTI_RUNNER_EVENTS.has(action)) {
-      startBetweenPitchRunnerCheck(action, activeRunnerBase, dest);
+      startBetweenPitchRunnerCheck(action, activeRunnerBase, dest, fielding);
       return;
     }
 
