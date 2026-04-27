@@ -1636,17 +1636,18 @@ export function LiveGameClient({
                             const showPitchDetails = playMode === 'expanded' || Boolean(openPitchCards[cardKey]);
                             const isCompact = playMode === 'compact';
                             const isSystemRow = result?.eventType === 'substitution' || result?.eventType === 'adjust_score';
+                            const isCompactSystemRow = isCompact && isSystemRow;
                             const contextLine = `${group.half === 'top' ? game.awayTeamName : game.homeTeamName} batting • ${group.half === 'top' ? game.homeTeamName : game.awayTeamName} pitching`;
                             const metaParts = [
-                              displayedPitchCount > 0 ? `${displayedPitchCount} pitch${displayedPitchCount === 1 ? '' : 'es'}` : null,
-                              formatted?.subtitle || null,
+                              !isSystemRow && displayedPitchCount > 0 ? `${displayedPitchCount} pitch${displayedPitchCount === 1 ? '' : 'es'}` : null,
+                              !isSystemRow ? formatted?.subtitle || null : null,
                               contextLine,
                             ].filter(Boolean);
 
                             return (
                               <div
                                 key={`ab-${abIdx}`}
-                                className={`${borderClass} rounded-lg border border-gray-300/80 ${isSystemRow ? 'bg-slate-100/90' : 'bg-gray-200/90'} ${isCompact ? 'px-3 py-2 shadow-[0_1px_0_rgba(15,23,42,0.04)]' : 'px-3 py-3 shadow-sm'}`}
+                                className={`${isCompactSystemRow ? 'border-l border-slate-300' : borderClass} rounded-lg border border-gray-300/80 ${isSystemRow ? 'bg-slate-100/90' : 'bg-gray-200/90'} ${isCompactSystemRow ? 'px-3 py-1.5 shadow-none' : isCompact ? 'px-3 py-2 shadow-[0_1px_0_rgba(15,23,42,0.04)]' : 'px-3 py-3 shadow-sm'}`}
                               >
                                 <div className={`flex items-start justify-between ${isCompact ? 'gap-2' : 'gap-3'}`}>
                                   <div className="min-w-0 flex-1">
@@ -1658,7 +1659,7 @@ export function LiveGameClient({
                                         </span>
                                       )}
                                     </div>
-                                    <div className={`${isCompact ? 'text-[13px]' : 'text-[14px]'} leading-snug text-gray-950 font-semibold`}>
+                                    <div className={`${isCompactSystemRow ? 'text-[12px] font-semibold' : isCompact ? 'text-[13px] font-semibold' : 'text-[14px] font-semibold'} leading-snug text-gray-950`}>
                                       {formatted
                                         ? formatted.title
                                         : ab.pitches.length > 0
@@ -1671,10 +1672,12 @@ export function LiveGameClient({
                                       {metaParts.join(' · ')}
                                     </div>
                                   </div>
+                                  {!isCompactSystemRow && (
                                   <div className={`flex shrink-0 ${isCompact ? 'items-center gap-1 pt-0' : 'flex-col items-end gap-1.5 pt-0.5'}`}>
                                     <BaseDiamond first={bases.first} second={bases.second} third={bases.third} compact={isCompact} />
                                     <OutsIndicator outs={outsAfter} compact={isCompact} />
                                   </div>
+                                  )}
                                 </div>
                                 {!isCompact && (
                                 <div className="mt-2.5 text-[10px] text-gray-700 flex flex-wrap items-center gap-x-3 gap-y-1">

@@ -19,6 +19,8 @@ export async function standingsRoutes(app: FastifyInstance) {
           leagueId: standings.leagueId,
           teamId: standings.teamId,
           teamName: teams.name,
+          teamShortName: teams.shortName,
+          teamLogoUrl: teams.logoUrl,
           wins: standings.wins,
           losses: standings.losses,
           ties: standings.ties,

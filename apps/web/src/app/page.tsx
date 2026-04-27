@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { apiFetch } from '@/lib/api';
-import { ScoreboardStrip } from '@/components/ui/scoreboard-strip';
 import { SectionHeader } from '@/components/ui/section-header';
+import { TeamMark } from '@/components/ui/team-mark';
 
 function toArray<T>(v: unknown): T[] {
   if (Array.isArray(v)) return v;
@@ -16,7 +16,7 @@ export default async function HomePage() {
   let teams: any[] = [];
   let seasons: any[] = [];
   let activeSeason: any | null = null;
-  let miniStandings: Array<{ teamId: number; teamName: string; wins: number; losses: number; ties: number; winPct: any; gamesBehind: any; leagueName: string }> = [];
+  let miniStandings: Array<{ teamId: number; teamName: string; teamShortName: string | null; teamLogoUrl: string | null; wins: number; losses: number; ties: number; winPct: any; gamesBehind: any; leagueName: string }> = [];
 
   try { articles = toArray(await apiFetch('/api/public/articles')); } catch {}
   try { seasons = toArray(await apiFetch('/api/public/seasons', { noCache: true })); } catch {}
@@ -47,6 +47,8 @@ export default async function HomePage() {
             return lgRows.map((r) => ({
               teamId: r.teamId,
               teamName: r.teamName,
+              teamShortName: r.teamShortName ?? null,
+              teamLogoUrl: r.teamLogoUrl ?? null,
               wins: r.wins ?? 0,
               losses: r.losses ?? 0,
               ties: r.ties ?? 0,
@@ -66,14 +68,10 @@ export default async function HomePage() {
   const upcomingGames = games
     .filter((g: any) => g.status === 'scheduled')
     .slice(0, 4);
-  const scoreboardGames = recentGames.slice(0, 6);
   const recentArticles = articles.slice(0, 4);
 
   return (
     <div>
-      {/* ── Scoreboard Strip ── */}
-      <ScoreboardStrip games={scoreboardGames} />
-
       {/* ── Hero ── */}
       <section className="bg-white border-b border-[#ccc]">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-10">
@@ -135,11 +133,11 @@ export default async function HomePage() {
                         </div>
                         <div className="space-y-1.5">
                           <div className="flex items-center gap-2">
-                            <TeamBadge name={game.awayTeamName || 'TBD'} />
+                            <TeamBadge name={game.awayTeamName || 'TBD'} shortName={game.awayTeamShort} logoUrl={game.awayTeamLogoUrl} />
                             <span className="font-semibold text-sm">{game.awayTeamName || 'TBD'}</span>
                           </div>
                           <div className="flex items-center gap-2">
-                            <TeamBadge name={game.homeTeamName || 'TBD'} />
+                            <TeamBadge name={game.homeTeamName || 'TBD'} shortName={game.homeTeamShort} logoUrl={game.homeTeamLogoUrl} />
                             <span className="font-semibold text-sm">{game.homeTeamName || 'TBD'}</span>
                           </div>
                         </div>
@@ -176,7 +174,7 @@ export default async function HomePage() {
                         <div className="flex items-center justify-between">
                           <div className="flex-1 space-y-1">
                             <div className="flex items-center gap-2">
-                              <TeamBadge name={game.awayTeamName || 'TBD'} />
+                              <TeamBadge name={game.awayTeamName || 'TBD'} shortName={game.awayTeamShort} logoUrl={game.awayTeamLogoUrl} />
                               <span className={`text-sm font-semibold ${awayWon ? '' : 'text-text-muted'}`}>
                                 {game.awayTeamName || 'TBD'}
                               </span>
@@ -185,7 +183,7 @@ export default async function HomePage() {
                               </span>
                             </div>
                             <div className="flex items-center gap-2">
-                              <TeamBadge name={game.homeTeamName || 'TBD'} />
+                              <TeamBadge name={game.homeTeamName || 'TBD'} shortName={game.homeTeamShort} logoUrl={game.homeTeamLogoUrl} />
                               <span className={`text-sm font-semibold ${homeWon ? '' : 'text-text-muted'}`}>
                                 {game.homeTeamName || 'TBD'}
                               </span>
@@ -235,7 +233,7 @@ export default async function HomePage() {
                     {miniStandings.slice(0, 6).map((row: any, i: number) => (
                       <div key={`${row.leagueName}-${row.teamId}`} className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-surface-alt transition-colors">
                         <span className="text-[11px] font-bold text-text-faint w-4">{i + 1}</span>
-                        <TeamBadge name={row.teamName} />
+                        <TeamBadge name={row.teamName} shortName={row.teamShortName} logoUrl={row.teamLogoUrl} />
                         <div className="flex-1 min-w-0">
                           <div className="text-sm font-medium truncate">{row.teamName}</div>
                           <div className="text-[10px] text-text-faint truncate">{row.leagueName}</div>
@@ -267,14 +265,15 @@ function StatBox({ label, value }: { label: string; value: string | number }) {
   );
 }
 
-function TeamBadge({ name }: { name: string }) {
-  const abbr = name.length <= 3
-    ? name.toUpperCase()
-    : name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+function TeamBadge({ name, shortName, logoUrl }: { name: string; shortName?: string | null; logoUrl?: string | null }) {
   return (
-    <div className="w-6 h-6 rounded border border-[#ccc] bg-[#f0f0f0] flex items-center justify-center shrink-0">
-      <span className="text-[9px] font-bold text-[#333]">{abbr}</span>
-    </div>
+    <TeamMark
+      name={name}
+      shortName={shortName}
+      logoUrl={logoUrl}
+      variant="tableSm"
+      className="border-[#ccc] bg-[#f0f0f0]"
+    />
   );
 }
 
