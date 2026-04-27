@@ -69,6 +69,9 @@ function normalizeIncomingRunScoring(body: {
   if (rr.length !== 0 && rr.length !== rs.length) {
     return { ok: false, message: 'runnerScoredReasons length must match runnersScored length (or be empty)' };
   }
+  if (new Set(rs).size !== rs.length) {
+    return { ok: false, message: 'The same runner cannot score more than once on one event' };
+  }
   if (rs.length !== runsScored) {
     return { ok: false, message: `runsScored (${runsScored}) must equal runnersScored length (${rs.length})` };
   }
@@ -270,6 +273,25 @@ function computeGameState(events: any[]): GameState {
   }
 
   return state;
+}
+
+function validateScoringEventTimeline(events: any[]): { ok: true } | { ok: false; message: string } {
+  const sorted = events
+    .filter((e: any) => !e.isDeleted)
+    .sort((a: any, b: any) => a.eventNumber - b.eventNumber);
+  let state = computeGameState([]);
+
+  for (const event of sorted) {
+    if (event.eventType !== 'substitution') {
+      const validation = validateScoringEventPayload(event, { expectedState: state, strictState: true });
+      if (!validation.ok) {
+        return { ok: false, message: `Event #${event.eventNumber}: ${validation.message}` };
+      }
+    }
+    state = computeGameState([...sorted.filter((e: any) => e.eventNumber <= event.eventNumber)]);
+  }
+
+  return { ok: true };
 }
 
 async function clearRedoTail(gameId: number, conn: any = db) {
@@ -1235,6 +1257,15 @@ export async function adminScoringRoutes(app: FastifyInstance) {
         updates.errorsOnPlay = eventValidation.normalizedErrorsOnPlay;
       }
 
+      const activeEventsBeforeUpdate = await db.select().from(gameEvents)
+        .where(and(eq(gameEvents.gameId, gameId), eq(gameEvents.isDeleted, false)))
+        .orderBy(gameEvents.eventNumber);
+      const activeEventsAfterUpdate = activeEventsBeforeUpdate.map((event) =>
+        event.id === eventId ? { ...event, ...updates } : event,
+      );
+      const timelineValidation = validateScoringEventTimeline(activeEventsAfterUpdate);
+      if (!timelineValidation.ok) return reply.status(400).send({ message: timelineValidation.message });
+
       // Basic validation / normalization for scorer attribution.
       if ('runnersScored' in updates || 'runnerScoredReasons' in updates || 'runsScored' in updates) {
         const nextRunners: number[] = 'runnersScored' in updates
@@ -1502,34 +1533,49 @@ export async function adminScoringRoutes(app: FastifyInstance) {
       if (!changes || changes.length === 0) {
         return reply.status(400).send({ message: 'No changes provided' });
       }
+      const normalizedChanges = changes.map((change) => ({
+        playerId: Number(change.playerId),
+        newPosition: Number(change.newPosition),
+      }));
+      if (normalizedChanges.some((change) => !Number.isInteger(change.playerId) || !Number.isInteger(change.newPosition) || change.newPosition < 1 || change.newPosition > 10)) {
+        return reply.status(400).send({ message: 'Position changes must include valid player IDs and positions' });
+      }
+      if (new Set(normalizedChanges.map((change) => change.playerId)).size !== normalizedChanges.length) {
+        return reply.status(400).send({ message: 'Each player can only appear once in a position change' });
+      }
 
-      const snapshots: Array<{
-        playerId: number;
-        oldPosition: number;
-        newPosition: number;
-        firstName: string;
-        lastName: string;
-      }> = [];
+      const user = request.user;
+      const newState = await db.transaction(async (tx) => {
+        const snapshots: Array<{
+          playerId: number;
+          teamId: number;
+          oldPosition: number;
+          newPosition: number;
+          firstName: string;
+          lastName: string;
+        }> = [];
 
-      for (const change of changes) {
-        const [row] = await db.select({
-          position: gameLineups.position,
-          playerId: gameLineups.playerId,
-          firstName: players.firstName,
-          lastName: players.lastName,
-        })
-          .from(gameLineups)
-          .innerJoin(players, eq(players.id, gameLineups.playerId))
-          .where(and(
-            eq(gameLineups.gameId, gameId),
-            eq(gameLineups.playerId, change.playerId),
-            eq(gameLineups.isActive, true),
-          ))
-          .limit(1);
+        for (const change of normalizedChanges) {
+          const [row] = await tx.select({
+            teamId: gameLineups.teamId,
+            position: gameLineups.position,
+            playerId: gameLineups.playerId,
+            firstName: players.firstName,
+            lastName: players.lastName,
+          })
+            .from(gameLineups)
+            .innerJoin(players, eq(players.id, gameLineups.playerId))
+            .where(and(
+              eq(gameLineups.gameId, gameId),
+              eq(gameLineups.playerId, change.playerId),
+              eq(gameLineups.isActive, true),
+            ))
+            .limit(1);
 
-        if (row) {
+          if (!row) throw new Error(`POSITION_SWAP_VALIDATION:Player #${change.playerId} is not active in this game`);
           snapshots.push({
             playerId: change.playerId,
+            teamId: row.teamId,
             oldPosition: row.position,
             newPosition: change.newPosition,
             firstName: row.firstName,
@@ -1537,26 +1583,48 @@ export async function adminScoringRoutes(app: FastifyInstance) {
           });
         }
 
-        await db.update(gameLineups)
-          .set({ position: change.newPosition })
+        const changeByPlayerId = new Map(normalizedChanges.map((change) => [change.playerId, change.newPosition]));
+        const changedTeamIds = [...new Set(snapshots.map((snapshot) => snapshot.teamId))];
+        const activeRows = await tx.select({
+          playerId: gameLineups.playerId,
+          teamId: gameLineups.teamId,
+          position: gameLineups.position,
+        })
+          .from(gameLineups)
           .where(and(
             eq(gameLineups.gameId, gameId),
-            eq(gameLineups.playerId, change.playerId),
             eq(gameLineups.isActive, true),
+            inArray(gameLineups.teamId, changedTeamIds),
           ));
-      }
+        const finalPositionsByTeam = new Map<number, Set<number>>();
+        for (const row of activeRows) {
+          const finalPosition = changeByPlayerId.get(row.playerId) ?? row.position;
+          const positions = finalPositionsByTeam.get(row.teamId) ?? new Set<number>();
+          if (positions.has(finalPosition)) {
+            throw new Error('POSITION_SWAP_VALIDATION:Two active players on the same team cannot be assigned the same position');
+          }
+          positions.add(finalPosition);
+          finalPositionsByTeam.set(row.teamId, positions);
+        }
 
-      const user = request.user;
+        await clearRedoTail(gameId, tx);
 
-      if (snapshots.length > 0) {
-        await clearRedoTail(gameId);
-
-        const allEventsBefore = await db.select().from(gameEvents)
+        const allEventsBefore = await tx.select().from(gameEvents)
           .where(and(eq(gameEvents.gameId, gameId), eq(gameEvents.isDeleted, false)))
           .orderBy(gameEvents.eventNumber);
         const stateBefore = computeGameState(allEventsBefore);
 
-        const [maxEvt] = await db
+        for (const change of normalizedChanges) {
+          await tx.update(gameLineups)
+            .set({ position: change.newPosition })
+            .where(and(
+              eq(gameLineups.gameId, gameId),
+              eq(gameLineups.playerId, change.playerId),
+              eq(gameLineups.isActive, true),
+            ));
+        }
+
+        const [maxEvt] = await tx
           .select({ maxNum: max(gameEvents.eventNumber) })
           .from(gameEvents)
           .where(eq(gameEvents.gameId, gameId));
@@ -1573,7 +1641,7 @@ export async function adminScoringRoutes(app: FastifyInstance) {
           })),
         });
 
-        await db.insert(gameEvents).values({
+        await tx.insert(gameEvents).values({
           gameId,
           eventNumber,
           inning: stateBefore.inning,
@@ -1596,30 +1664,35 @@ export async function adminScoringRoutes(app: FastifyInstance) {
           createdBy: user?.id ?? null,
         });
 
-        const allAfter = await db.select().from(gameEvents)
+        const allAfter = await tx.select().from(gameEvents)
           .where(and(eq(gameEvents.gameId, gameId), eq(gameEvents.isDeleted, false)))
           .orderBy(gameEvents.eventNumber);
-        const newState = computeGameState(allAfter);
+        const stateAfter = computeGameState(allAfter);
 
-        await db.update(games).set({
-          homeScore: newState.homeScore,
-          awayScore: newState.awayScore,
-          currentInning: newState.inning,
-          currentHalf: newState.half,
-          currentOuts: newState.outs,
+        await tx.update(games).set({
+          homeScore: stateAfter.homeScore,
+          awayScore: stateAfter.awayScore,
+          currentInning: stateAfter.inning,
+          currentHalf: stateAfter.half,
+          currentOuts: stateAfter.outs,
           updatedAt: new Date(),
         }).where(eq(games.id, gameId));
 
-        try {
-          getIO().to(`game:${gameId}`).emit('game:update', { state: newState });
-        } catch {}
-      }
+        return stateAfter;
+      });
+
+      try {
+        getIO().to(`game:${gameId}`).emit('game:update', { state: newState });
+      } catch {}
 
       const [game] = await db.select({ isFinalized: games.isFinalized }).from(games).where(eq(games.id, gameId)).limit(1);
       if (game?.isFinalized) await finalizeGame(gameId, user?.id, { recompute: true });
 
       return reply.send({ success: true });
     } catch (err) {
+      if (err instanceof Error && err.message.startsWith('POSITION_SWAP_VALIDATION:')) {
+        return reply.status(400).send({ message: err.message.replace('POSITION_SWAP_VALIDATION:', '') });
+      }
       request.log.error(err);
       return reply.status(500).send({ message: 'Failed to swap positions' });
     }

@@ -469,7 +469,11 @@ export function LiveGameClient({
     };
 
     const hitTypes = new Set(['single', 'bunt_single', 'double', 'triple', 'home_run', 'inside_park_hr', 'ground_rule_double']);
-    const outTypes = new Set(['ground_out', 'fly_out', 'line_out', 'pop_out', 'bunt_out', 'foul_out', 'fielders_choice', 'infield_fly']);
+    const outTypes = new Set([
+      'ground_out', 'fly_out', 'line_out', 'pop_out', 'bunt_out', 'foul_out', 'fielders_choice', 'infield_fly',
+      'hit_by_batted_ball', 'runner_interference_batter', 'offensive_interference_batter',
+      'batting_out_of_turn', 'fan_interference', 'thrown_bat', 'out_of_box', 'left_base_path_batter', 'other_out',
+    ]);
     const kTypes = new Set(['strikeout', 'strikeout_swinging', 'strikeout_looking', 'caught_foul_tip', 'bunt_foul', 'dropped_third_strike_out', 'dropped_third_strike', 'wild_pitch_third_strike']);
     const walkTypes = new Set(['walk', 'intentional_walk']);
     const sacFly = new Set(['sacrifice_fly', 'sac_fly_error']);
@@ -1071,7 +1075,7 @@ export function LiveGameClient({
     const resultType = r.eventType;
     const n = pitchEventsSorted.length;
 
-    const walkLike = new Set(['walk', 'intentional_walk', 'hit_by_pitch', 'catcher_obstruction']);
+    const walkLike = new Set(['walk', 'intentional_walk', 'hit_by_pitch', 'catcher_obstruction', 'catcher_interference']);
     const strikeoutLike = new Set([
       'strikeout', 'strikeout_swinging', 'strikeout_looking', 'caught_foul_tip', 'bunt_foul',
       'dropped_third_strike_out', 'dropped_third_strike', 'wild_pitch_third_strike',
@@ -1083,6 +1087,8 @@ export function LiveGameClient({
       'ground_out', 'fly_out', 'line_out', 'pop_out', 'bunt_out', 'foul_out', 'fielders_choice',
       'sacrifice_fly', 'sacrifice_bunt', 'infield_fly', 'double_play', 'triple_play',
       'error', 'sac_bunt_error', 'sac_fly_error', 'advance_on_error',
+      'hit_by_batted_ball', 'runner_interference_batter', 'offensive_interference_batter',
+      'batting_out_of_turn', 'fan_interference', 'thrown_bat', 'out_of_box', 'left_base_path_batter', 'other_out',
     ]);
 
     const replaceLastRow = (label: string) => {
@@ -1581,7 +1587,15 @@ export function LiveGameClient({
                             const outsAfter = cumOuts[abIdx] ?? 0;
                             const HIT_SET = new Set(['single', 'bunt_single', 'double', 'triple', 'home_run', 'inside_park_hr', 'ground_rule_double']);
                             const WALK_SET = new Set(['walk', 'intentional_walk', 'hit_by_pitch']);
-                            const OUT_SET = new Set(['ground_out', 'fly_out', 'line_out', 'pop_out', 'bunt_out', 'foul_out', 'strikeout', 'strikeout_swinging', 'strikeout_looking', 'sacrifice_fly', 'sacrifice_bunt', 'infield_fly', 'dropped_third_strike_out', 'caught_foul_tip', 'bunt_foul', 'double_play', 'triple_play', 'fielders_choice']);
+                            const OUT_SET = new Set([
+                              'ground_out', 'fly_out', 'line_out', 'pop_out', 'bunt_out', 'foul_out',
+                              'strikeout', 'strikeout_swinging', 'strikeout_looking', 'sacrifice_fly', 'sacrifice_bunt',
+                              'infield_fly', 'dropped_third_strike_out', 'caught_foul_tip', 'bunt_foul',
+                              'double_play', 'triple_play', 'fielders_choice',
+                              'hit_by_batted_ball', 'runner_interference_batter', 'offensive_interference_batter',
+                              'batting_out_of_turn', 'fan_interference', 'thrown_bat', 'out_of_box',
+                              'left_base_path_batter', 'other_out',
+                            ]);
                             const isHit = result && HIT_SET.has(result.eventType);
                             const isWalk = result && WALK_SET.has(result.eventType);
                             const isOut = result && OUT_SET.has(result.eventType);

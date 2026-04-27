@@ -36,6 +36,15 @@ export type EventType =
   | 'foul_out'
   | 'bunt_out'
   | 'infield_fly'
+  | 'hit_by_batted_ball'
+  | 'runner_interference_batter'
+  | 'offensive_interference_batter'
+  | 'batting_out_of_turn'
+  | 'fan_interference'
+  | 'thrown_bat'
+  | 'out_of_box'
+  | 'left_base_path_batter'
+  | 'other_out'
 
   // Sacrifice / FC
   | 'sacrifice_fly'

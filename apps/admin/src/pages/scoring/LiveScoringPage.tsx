@@ -279,7 +279,6 @@ export function LiveScoringPage() {
 
   const [balls, setBalls] = useState(0);
   const [strikes, setStrikes] = useState(0);
-  const [skipOffset, setSkipOffset] = useState<Record<string, number>>({ home: 0, away: 0 });
   /** Switch hitter (bats=S): which box side for the current PA — required before recording pitches/plays. */
   const [switchBatSide, setSwitchBatSide] = useState<'L' | 'R' | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -343,7 +342,7 @@ export function LiveScoringPage() {
       } else if (!RUNNER_EVENTS.has(e.eventType)) {
         counts[e.pitcherId].total++;
         // The result event's final pitch: walks/HBP/CI are balls, everything else is a strike (contact or K)
-        if (WALK_TYPES.has(e.eventType) || e.eventType === 'hit_by_pitch' || e.eventType === 'catcher_obstruction') {
+        if (WALK_TYPES.has(e.eventType) || e.eventType === 'hit_by_pitch' || e.eventType === 'catcher_obstruction' || e.eventType === 'catcher_interference') {
           counts[e.pitcherId].balls++;
         } else {
           counts[e.pitcherId].strikes++;
@@ -417,7 +416,7 @@ export function LiveScoringPage() {
   const currentPitcher = fieldingLineup.find(l => l.position === 1);
 
   const battingSide = gameState?.half === 'top' ? 'away' : 'home';
-  const rawIdx = (derivedBatterIdx[battingSide] || 0) + (skipOffset[battingSide] || 0);
+  const rawIdx = derivedBatterIdx[battingSide] || 0;
 
   const battingOrderSlot = (rawIdx % 9) + 1;
   const currentBatter = battingLineup.find(l => l.battingOrder === battingOrderSlot) ?? null;
@@ -1292,10 +1291,6 @@ function needsRunnerAdvanceErrorFieldingPrompt(
     if (!confirm('Finalize? Stats and standings will be computed from the event log. Later event edits can recompute official stats.')) return;
     try { await apiPost(`/admin/scoring/${gameId}/finalize`, {}); alert('Game finalized!'); navigate('/games'); } catch (err: any) { alert(err.message); }
   };
-  const handleSkipBatter = () => {
-    setSkipOffset(prev => ({ ...prev, [battingSide]: (prev[battingSide] || 0) + 1 }));
-    setBalls(0); setStrikes(0); cancelWizard();
-  };
   const handleEndHalfInning = async () => {
     if (!gameState || submitting) return;
     const outsToAdd = Math.max(0, 3 - gameState.outs);
@@ -1322,6 +1317,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
   };
   const submitAdjustScore = async () => {
     try {
+      if (!confirm('Adjust the team score only? Player runs, RBIs, and pitcher runs are not changed by this correction.')) return;
       await apiPut(`/admin/scoring/${gameId}/adjust-score`, { homeScore: adjustHome, awayScore: adjustAway });
       cancelWizard(); await loadState();
     } catch (err: any) { alert(err.message || 'Failed to adjust score'); }
@@ -1745,11 +1741,10 @@ function needsRunnerAdvanceErrorFieldingPrompt(
 
           {/* ── Wizard panels ── */}
           <div className="px-3 pb-2">
-            {/* EMPTY SLOT — automatic out or skip */}
+            {/* EMPTY SLOT — automatic out */}
             {step === 'pitch' && isEmptySlot && (
               <div className="bg-[#111d30] rounded-xl border border-white/10 overflow-hidden p-4 text-center">
                 <p className="text-xs text-white/40 uppercase font-bold tracking-wide mb-4">Batting slot #{battingOrderSlot} is empty</p>
-                <div className="flex gap-2">
                   <button onClick={async () => {
                     setSubmitting(true);
                     try {
@@ -1765,14 +1760,9 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                     } catch (err: any) { alert(err.message || 'Failed'); }
                     setSubmitting(false);
                   }} disabled={submitting}
-                    className="flex-1 py-3 bg-red-900 hover:bg-red-800 text-white text-xs font-bold rounded-lg uppercase transition-colors disabled:opacity-30">
+                    className="w-full py-3 bg-red-900 hover:bg-red-800 text-white text-xs font-bold rounded-lg uppercase transition-colors disabled:opacity-30">
                     AUTOMATIC OUT
                   </button>
-                  <button onClick={() => setSkipOffset(prev => ({ ...prev, [battingSide]: (prev[battingSide] || 0) + 1 }))}
-                    className="flex-1 py-3 bg-white/10 hover:bg-white/15 text-white/60 text-xs font-bold rounded-lg uppercase transition-colors">
-                    SKIP SLOT
-                  </button>
-                </div>
               </div>
             )}
 
@@ -2763,7 +2753,6 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                     { label: 'Pinch Hitter', fn: () => { if (currentBatter) { setSubBattingSlot(battingOrderSlot); setStep('sub_offense'); } } },
                     { label: 'Balk', fn: () => handleMiscEvent('balk', 'Balk') },
                     { label: 'Illegal Pitch', fn: () => handleMiscEvent('illegal_pitch', 'Illegal pitch') },
-                    { label: 'Skip Batter', fn: handleSkipBatter },
                     { label: 'End Half Inning', fn: handleEndHalfInning },
                     { label: 'Adjust Score', fn: openAdjustScore },
                     { label: 'End Game', fn: handleFinalize },
@@ -2782,6 +2771,9 @@ function needsRunnerAdvanceErrorFieldingPrompt(
             {step === 'adjust_score' && (
               <div className="bg-[#111d30] rounded-lg border border-white/10 p-4">
                 <p className="text-xs text-white/40 uppercase font-bold text-center mb-4">Adjust Score</p>
+                <p className="mb-3 text-center text-[10px] leading-snug text-amber-200/60">
+                  Team-score correction only. Player runs/RBIs and pitcher runs stay unchanged.
+                </p>
                 <div className="flex items-center gap-6 justify-center mb-4">
                   <div className="text-center">
                     <p className="text-[10px] text-white/40 uppercase mb-1">{game.awayTeamName}</p>
