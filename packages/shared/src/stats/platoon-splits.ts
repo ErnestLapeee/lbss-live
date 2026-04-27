@@ -97,7 +97,10 @@ export type CountSplitLine = PlatoonBattingLine & {
 
 export interface CountSplitSummary {
   firstPitch: FirstPitchLine;
+  /** PA results where the plate appearance ended on the listed count. */
   counts: CountSplitLine[];
+  /** Final PA results after the plate appearance reached the listed count at any point. */
+  reachedCounts: CountSplitLine[];
 }
 
 function emptyLine(): PlatoonBattingLine {
@@ -331,10 +334,71 @@ function aggregateCountSplits(rows: CountSplitEventRow[]): CountSplitLine[] {
   });
 }
 
+function sortedCountRows(rows: CountSplitEventRow[]): CountSplitEventRow[] {
+  return [...rows].sort((a, b) => {
+    const gameDiff = Number(a.gameId ?? 0) - Number(b.gameId ?? 0);
+    if (gameDiff !== 0) return gameDiff;
+    return Number(a.eventNumber ?? 0) - Number(b.eventNumber ?? 0);
+  });
+}
+
+function emptyCountBuckets(): Map<string, PlatoonBattingLine> {
+  const buckets = new Map<string, PlatoonBattingLine>();
+  for (const [balls, strikes] of COUNT_BUCKETS) {
+    buckets.set(countKey(balls, strikes), emptyLine());
+  }
+  return buckets;
+}
+
+function countBucketLines(buckets: Map<string, PlatoonBattingLine>): CountSplitLine[] {
+  return COUNT_BUCKETS.map(([balls, strikes]) => {
+    const key = countKey(balls, strikes);
+    return {
+      ...finalizeLine(buckets.get(key) ?? emptyLine()),
+      count: key,
+      balls,
+      strikesCount: strikes,
+    };
+  });
+}
+
+function aggregateReachedCountSplits(rows: CountSplitEventRow[]): CountSplitLine[] {
+  const buckets = emptyCountBuckets();
+  let currentGameId: number | null = null;
+  let reached = new Set<string>(['0-0']);
+
+  for (const row of sortedCountRows(rows)) {
+    const rowGameId = row.gameId == null ? null : Number(row.gameId);
+    if (rowGameId !== currentGameId) {
+      currentGameId = rowGameId;
+      reached = new Set(['0-0']);
+    }
+
+    const count = normalizedCount(row);
+    const key = count ? countKey(count.balls, count.strikes) : null;
+    if (key && buckets.has(key)) reached.add(key);
+
+    const t = row.eventType;
+    if (!isPlateAppearance(t)) {
+      if (t === 'end_half_inning' || t === 'substitution') reached = new Set(['0-0']);
+      continue;
+    }
+
+    for (const reachedKey of reached) {
+      const line = buckets.get(reachedKey);
+      if (line) applyPaToLine(line, row);
+    }
+    reached = new Set(['0-0']);
+  }
+
+  return countBucketLines(buckets);
+}
+
 export function aggregateBattingCountSplits(rows: CountSplitEventRow[]): CountSplitSummary {
   return {
     firstPitch: aggregateFirstPitch(rows),
     counts: aggregateCountSplits(rows),
+    reachedCounts: aggregateReachedCountSplits(rows),
   };
 }
 
@@ -342,5 +406,6 @@ export function aggregatePitchingCountSplits(rows: CountSplitEventRow[]): CountS
   return {
     firstPitch: aggregateFirstPitch(rows),
     counts: aggregateCountSplits(rows),
+    reachedCounts: aggregateReachedCountSplits(rows),
   };
 }

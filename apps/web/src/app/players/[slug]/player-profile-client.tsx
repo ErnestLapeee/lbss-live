@@ -285,8 +285,8 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
   const [platoonSplits, setPlatoonSplits] = useState<{
     batting: Record<string, any>;
     pitching: Record<string, any>;
-    battingCounts?: { firstPitch?: any; counts?: any[] };
-    pitchingCounts?: { firstPitch?: any; counts?: any[] };
+    battingCounts?: { firstPitch?: any; counts?: any[]; reachedCounts?: any[] };
+    pitchingCounts?: { firstPitch?: any; counts?: any[]; reachedCounts?: any[] };
   } | null>(null);
 
   // Season filter: splits, game log, spray chart (career tables stay all-time)
@@ -346,9 +346,17 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
     () => new Map((platoonSplits?.battingCounts?.counts ?? []).map((line: any) => [line.count, line])),
     [platoonSplits?.battingCounts?.counts],
   );
+  const battingReachedCountLines = useMemo(
+    () => new Map((platoonSplits?.battingCounts?.reachedCounts ?? []).map((line: any) => [line.count, line])),
+    [platoonSplits?.battingCounts?.reachedCounts],
+  );
   const pitchingCountLines = useMemo(
     () => new Map((platoonSplits?.pitchingCounts?.counts ?? []).map((line: any) => [line.count, line])),
     [platoonSplits?.pitchingCounts?.counts],
+  );
+  const pitchingReachedCountLines = useMemo(
+    () => new Map((platoonSplits?.pitchingCounts?.reachedCounts ?? []).map((line: any) => [line.count, line])),
+    [platoonSplits?.pitchingCounts?.reachedCounts],
   );
 
   return (
@@ -609,6 +617,50 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
                   </tbody>
                 </table>
               </div>
+              <div className="mt-6">
+                <h4 className="mb-2 text-xs font-bold uppercase tracking-wider text-text-muted">
+                  Outcome after reaching count
+                </h4>
+                <div className="rounded-xl border border-border bg-surface overflow-x-auto max-w-5xl">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-border bg-surface-alt">
+                        {['Reached', 'PA', 'AB', 'H', '2B', '3B', 'HR', 'BB', 'SO', 'AVG', 'OBP', 'SLG', 'OPS'].map(col => (
+                          <th key={col} title={getStatAbbreviationMeaning(col) ?? undefined}
+                            className={`px-2 py-2 text-[10px] font-bold uppercase tracking-wider text-text-faint whitespace-nowrap ${col === 'Reached' ? 'text-left' : 'text-right'}`}>
+                            {col}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {COUNT_SPLIT_ROWS.map(([key, label]) => {
+                        const line = battingReachedCountLines.get(key);
+                        return (
+                          <tr key={key} className="border-b border-border last:border-0">
+                            <td className="px-2 py-2 font-semibold text-xs">{label}</td>
+                            <td className="px-2 py-2 text-right font-mono text-xs">{n(line?.plateAppearances)}</td>
+                            <td className="px-2 py-2 text-right font-mono text-xs">{n(line?.atBats)}</td>
+                            <td className="px-2 py-2 text-right font-mono text-xs">{n(line?.hits)}</td>
+                            <td className="px-2 py-2 text-right font-mono text-xs">{n(line?.doubles)}</td>
+                            <td className="px-2 py-2 text-right font-mono text-xs">{n(line?.triples)}</td>
+                            <td className="px-2 py-2 text-right font-mono text-xs">{n(line?.homeRuns)}</td>
+                            <td className="px-2 py-2 text-right font-mono text-xs">{n(line?.walks)}</td>
+                            <td className="px-2 py-2 text-right font-mono text-xs">{n(line?.strikeouts)}</td>
+                            <td className="px-2 py-2 text-right font-mono text-xs font-bold">{fmtRate(line?.battingAvg)}</td>
+                            <td className="px-2 py-2 text-right font-mono text-xs">{fmtRate(line?.onBasePct)}</td>
+                            <td className="px-2 py-2 text-right font-mono text-xs">{fmtRate(line?.sluggingPct)}</td>
+                            <td className="px-2 py-2 text-right font-mono text-xs font-bold">{fmtRate(line?.ops)}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="mt-2 text-[11px] text-text-faint">
+                  Rows show the final PA outcome after the plate appearance reached that count. 0-0 includes every PA.
+                </p>
+              </div>
             </div>
           )}
         </div>
@@ -846,6 +898,50 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
                     })}
                   </tbody>
                 </table>
+              </div>
+              <div className="mt-6">
+                <h4 className="mb-2 text-xs font-bold uppercase tracking-wider text-text-muted">
+                  Outcome after reaching count
+                </h4>
+                <div className="rounded-xl border border-border bg-surface overflow-x-auto max-w-5xl">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-border bg-surface-alt">
+                        {['Reached', 'PA', 'AB', 'H', '2B', '3B', 'HR', 'BB', 'SO', 'K%', 'AVG', 'OBP', 'SLG', 'OPS'].map(col => (
+                          <th key={col} title={getStatAbbreviationMeaning(col) ?? undefined}
+                            className={`px-2 py-2 text-[10px] font-bold uppercase tracking-wider text-text-faint whitespace-nowrap ${col === 'Reached' ? 'text-left' : 'text-right'}`}>
+                            {col}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {COUNT_SPLIT_ROWS.map(([key, label]) => {
+                        const line = pitchingReachedCountLines.get(key);
+                        const pa = Number(line?.plateAppearances ?? 0);
+                        const so = Number(line?.strikeouts ?? 0);
+                        return (
+                          <tr key={key} className="border-b border-border last:border-0">
+                            <td className="px-2 py-2 font-semibold text-xs">{label}</td>
+                            <td className="px-2 py-2 text-right font-mono text-xs">{n(line?.plateAppearances)}</td>
+                            <td className="px-2 py-2 text-right font-mono text-xs">{n(line?.atBats)}</td>
+                            <td className="px-2 py-2 text-right font-mono text-xs">{n(line?.hits)}</td>
+                            <td className="px-2 py-2 text-right font-mono text-xs">{n(line?.doubles)}</td>
+                            <td className="px-2 py-2 text-right font-mono text-xs">{n(line?.triples)}</td>
+                            <td className="px-2 py-2 text-right font-mono text-xs">{n(line?.homeRuns)}</td>
+                            <td className="px-2 py-2 text-right font-mono text-xs">{n(line?.walks)}</td>
+                            <td className="px-2 py-2 text-right font-mono text-xs">{n(line?.strikeouts)}</td>
+                            <td className="px-2 py-2 text-right font-mono text-xs">{fmtKPct(so, pa)}</td>
+                            <td className="px-2 py-2 text-right font-mono text-xs font-bold">{fmtRate(line?.battingAvg)}</td>
+                            <td className="px-2 py-2 text-right font-mono text-xs">{fmtRate(line?.onBasePct)}</td>
+                            <td className="px-2 py-2 text-right font-mono text-xs">{fmtRate(line?.sluggingPct)}</td>
+                            <td className="px-2 py-2 text-right font-mono text-xs font-bold">{fmtRate(line?.ops)}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
               <p className="mt-2 text-[11px] text-text-faint">
                 Count rows show opponent batting results from that count.

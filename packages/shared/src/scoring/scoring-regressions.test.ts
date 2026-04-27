@@ -42,3 +42,6 @@ assert(countSplits.firstPitch.total === 2, 'first-pitch totals should count both
 assert(countSplits.firstPitch.strikes === 1, 'called strike should count as first-pitch strike');
 assert(countSplits.counts.find((line) => line.count === '0-1')?.hits === 1, '0-1 single should land in the 0-1 split');
 assert(countSplits.counts.find((line) => line.count === '3-0')?.walks === 1, 'between-pitch events should not reset count before the walk');
+assert(countSplits.reachedCounts.find((line) => line.count === '0-0')?.plateAppearances === 2, '0-0 reached count should include all PAs');
+assert(countSplits.reachedCounts.find((line) => line.count === '1-0')?.walks === 1, 'walk should count as the final result after reaching 1-0');
+assert(countSplits.reachedCounts.find((line) => line.count === '3-0')?.walks === 1, 'walk should count as the final result after reaching 3-0');
