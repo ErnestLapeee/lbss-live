@@ -2,7 +2,7 @@
 
 import { Fragment } from 'react';
 import type { PlayoffSeriesForCard } from './playoff-series-card';
-import { PlayoffSeriesCard } from './playoff-series-card';
+import { PlayoffSeriesCard, type WinnerSemifinalNumbers } from './playoff-series-card';
 
 export type PlayoffBracketRound = {
   roundNumber: number;
@@ -27,6 +27,33 @@ function roundSubtitle(name: string): string | null {
   if (stripped) return stripped;
   if (/^round\s*\d+\s*$/i.test(String(name).trim())) return null;
   return String(name).trim() || null;
+}
+
+/** Derive "Semifinal N" from admin labels (e.g. "SEMIFINAL 2 • BO3"); fallback = order in the penultimate round. */
+function parseSemifinalNumber(label: string, fallback: number): number {
+  const s = String(label ?? '').trim();
+  const semi = /\bsemifinal\s*(\d+)/i.exec(s);
+  if (semi) return parseInt(semi[1]!, 10);
+  const ser = /\bseries\s*(\d+)/i.exec(s);
+  if (ser) return parseInt(ser[1]!, 10);
+  return fallback;
+}
+
+/** Map final higher/lower rows to the two semifinal series immediately before the final (4- and 8-team, and 3-team ladder). */
+function winnerSemifinalNumbersFromBracket(rounds: PlayoffBracketRound[]): WinnerSemifinalNumbers | undefined {
+  if (rounds.length < 2) return undefined;
+  const penultimate = rounds[rounds.length - 2]!;
+  const semis = penultimate.series ?? [];
+  if (semis.length === 2) {
+    return {
+      higher: parseSemifinalNumber(semis[0]!.label, 1),
+      lower: parseSemifinalNumber(semis[1]!.label, 2),
+    };
+  }
+  if (semis.length === 1) {
+    return { lower: parseSemifinalNumber(semis[0]!.label, 1) };
+  }
+  return undefined;
 }
 
 /** Desktop: bracket connectors — muted stroke so lines read as structure, not a loud accent */
@@ -130,9 +157,11 @@ function MobileVerticalConnector() {
 function RoundColumn({
   round,
   recordText,
+  winnerSemifinalNumbers,
 }: {
   round: PlayoffBracketRound;
   recordText?: (teamName: string) => string;
+  winnerSemifinalNumbers?: WinnerSemifinalNumbers;
 }) {
   const sub = roundSubtitle(round.name);
   const seriesGap =
@@ -153,6 +182,7 @@ function RoundColumn({
             <PlayoffSeriesCard
               embedded
               series={s}
+              winnerSemifinalNumbers={winnerSemifinalNumbers}
               recordText={
                 recordText
                   ? (n) => {
@@ -173,13 +203,19 @@ export function PlayoffBracket({ rounds, recordText }: PlayoffBracketProps) {
   const list = rounds?.filter((r) => (r.series?.length ?? 0) > 0) ?? [];
   if (list.length === 0) return null;
 
+  const winnerSf = winnerSemifinalNumbersFromBracket(list);
+
   return (
     <div className="playoff-bracket-wrap relative overflow-hidden rounded-2xl border border-border bg-surface p-4 shadow-sm sm:p-6 md:p-8">
       <div className="relative overflow-x-auto overflow-y-visible pb-1 [-webkit-overflow-scrolling:touch]">
         <div className="flex min-w-0 flex-col items-stretch justify-center gap-0 md:min-w-min md:flex-row md:items-stretch md:justify-center md:gap-0 md:px-1">
           {list.map((round, ri) => (
             <Fragment key={round.roundNumber}>
-              <RoundColumn round={round} recordText={recordText} />
+              <RoundColumn
+                round={round}
+                recordText={recordText}
+                winnerSemifinalNumbers={ri === list.length - 1 ? winnerSf : undefined}
+              />
               {ri < list.length - 1 ? (
                 <>
                   <BracketJoiner fromCount={round.series.length} toCount={list[ri + 1]!.series.length} />

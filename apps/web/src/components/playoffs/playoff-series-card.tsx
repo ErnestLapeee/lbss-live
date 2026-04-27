@@ -53,13 +53,21 @@ function isTbdName(name: string): boolean {
   return !t || t === '—' || t === 'TBD';
 }
 
+export type WinnerSemifinalNumbers = { higher?: number; lower?: number };
+
 /** Empty/TBD slot waiting on a prior round (e.g. final vs semifinal winner). */
-function tbdSlotLabel(series: PlayoffSeriesForCard, slot: 'higher' | 'lower'): string | undefined {
+function tbdSlotLabel(
+  series: PlayoffSeriesForCard,
+  slot: 'higher' | 'lower',
+  winnerSf?: WinnerSemifinalNumbers,
+): string | undefined {
+  const n = slot === 'higher' ? winnerSf?.higher : winnerSf?.lower;
+  const numbered = n != null ? `Winner Semifinal ${n}` : 'Winner Semifinal';
   if (slot === 'lower' && isTbdName(series.lowerTeamName) && series.lowerTeamId == null) {
-    return 'Winner Semifinal';
+    return numbered;
   }
   if (slot === 'higher' && isTbdName(series.higherTeamName) && series.higherTeamId == null) {
-    return 'Winner Semifinal';
+    return numbered;
   }
   return undefined;
 }
@@ -167,10 +175,12 @@ export function PlayoffSeriesCard({
   series,
   recordText,
   embedded = false,
+  winnerSemifinalNumbers,
 }: {
   series: PlayoffSeriesForCard;
   recordText?: (teamName: string) => string;
   embedded?: boolean;
+  winnerSemifinalNumbers?: WinnerSemifinalNumbers;
 }) {
   const seriesId = series.id;
   const canLoadGames = seriesId != null && seriesId > 0;
@@ -299,7 +309,7 @@ export function PlayoffSeriesCard({
                   shortName={series.higherTeamShortName}
                   logoUrl={series.higherTeamLogoUrl}
                   wins={wH}
-                  tbdLabel={tbdSlotLabel(series, 'higher')}
+                  tbdLabel={tbdSlotLabel(series, 'higher', winnerSemifinalNumbers)}
                   recordLine={
                     recordText && !isTbdName(series.higherTeamName) ? recordText(series.higherTeamName) || undefined : undefined
                   }
@@ -316,7 +326,7 @@ export function PlayoffSeriesCard({
                   shortName={series.lowerTeamShortName}
                   logoUrl={series.lowerTeamLogoUrl}
                   wins={wL}
-                  tbdLabel={tbdSlotLabel(series, 'lower')}
+                  tbdLabel={tbdSlotLabel(series, 'lower', winnerSemifinalNumbers)}
                   recordLine={
                     recordText && !isTbdName(series.lowerTeamName) ? recordText(series.lowerTeamName) || undefined : undefined
                   }
@@ -352,7 +362,7 @@ export function PlayoffSeriesCard({
                 shortName={series.higherTeamShortName}
                 logoUrl={series.higherTeamLogoUrl}
                 wins={wH}
-                tbdLabel={tbdSlotLabel(series, 'higher')}
+                tbdLabel={tbdSlotLabel(series, 'higher', winnerSemifinalNumbers)}
                 recordLine={
                   recordText && !isTbdName(series.higherTeamName) ? recordText(series.higherTeamName) || undefined : undefined
                 }
@@ -369,7 +379,7 @@ export function PlayoffSeriesCard({
                 shortName={series.lowerTeamShortName}
                 logoUrl={series.lowerTeamLogoUrl}
                 wins={wL}
-                tbdLabel={tbdSlotLabel(series, 'lower')}
+                tbdLabel={tbdSlotLabel(series, 'lower', winnerSemifinalNumbers)}
                 recordLine={
                   recordText && !isTbdName(series.lowerTeamName) ? recordText(series.lowerTeamName) || undefined : undefined
                 }
