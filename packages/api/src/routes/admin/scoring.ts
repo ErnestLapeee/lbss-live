@@ -126,6 +126,30 @@ function validateScoringEventPayload(
   if (options?.strictState && options.expectedState && eventType !== 'end_half_inning' && options.expectedState.outs + outsRecorded > 3) {
     return { ok: false, message: 'outsRecorded would exceed three outs in the half-inning' };
   }
+  if (options?.strictState && options.expectedState && eventType === 'end_half_inning') {
+    const expectedOuts = Math.max(0, 3 - options.expectedState.outs);
+    if (outsRecorded !== expectedOuts) {
+      return { ok: false, message: `end_half_inning must record exactly ${expectedOuts} out${expectedOuts === 1 ? '' : 's'}` };
+    }
+    if (Number(payload.runsScored ?? 0) !== 0) {
+      return { ok: false, message: 'end_half_inning cannot score runs' };
+    }
+    if (payload.runnerFirstId != null || payload.runnerSecondId != null || payload.runnerThirdId != null) {
+      return { ok: false, message: 'end_half_inning must clear the bases' };
+    }
+  }
+  if (eventType === 'double_play') {
+    if (outsRecorded !== 2) return { ok: false, message: 'double_play must record exactly two outs' };
+    if (options?.strictState && options.expectedState && options.expectedState.outs > 1) {
+      return { ok: false, message: 'double_play is not possible with two outs already recorded' };
+    }
+  }
+  if (eventType === 'triple_play') {
+    if (outsRecorded !== 3) return { ok: false, message: 'triple_play must record exactly three outs' };
+    if (options?.strictState && options.expectedState && options.expectedState.outs !== 0) {
+      return { ok: false, message: 'triple_play is only possible with no outs' };
+    }
+  }
 
   const baseErr = duplicateBaseRunnerMessage([payload.runnerFirstId, payload.runnerSecondId, payload.runnerThirdId]);
   if (baseErr) return { ok: false, message: baseErr };
@@ -246,6 +270,21 @@ function computeGameState(events: any[]): GameState {
   }
 
   return state;
+}
+
+async function clearRedoTail(gameId: number, conn: any = db) {
+  const [activeTail] = await conn
+    .select({ maxNum: max(gameEvents.eventNumber) })
+    .from(gameEvents)
+    .where(and(eq(gameEvents.gameId, gameId), eq(gameEvents.isDeleted, false)));
+  const activeTailEventNumber = Number(activeTail?.maxNum ?? 0);
+  await conn
+    .delete(gameEvents)
+    .where(and(
+      eq(gameEvents.gameId, gameId),
+      eq(gameEvents.isDeleted, true),
+      sql`${gameEvents.eventNumber} > ${activeTailEventNumber}`,
+    ));
 }
 
 export async function adminScoringRoutes(app: FastifyInstance) {
@@ -902,19 +941,7 @@ export async function adminScoringRoutes(app: FastifyInstance) {
       const user = request.user;
 
       // A new event after one or more undos starts a new history branch.
-      // Clear the deleted tail so redo cannot later mix abandoned future events back in.
-      const [activeTail] = await db
-        .select({ maxNum: max(gameEvents.eventNumber) })
-        .from(gameEvents)
-        .where(and(eq(gameEvents.gameId, gameId), eq(gameEvents.isDeleted, false)));
-      const activeTailEventNumber = Number(activeTail?.maxNum ?? 0);
-      await db
-        .delete(gameEvents)
-        .where(and(
-          eq(gameEvents.gameId, gameId),
-          eq(gameEvents.isDeleted, true),
-          sql`${gameEvents.eventNumber} > ${activeTailEventNumber}`,
-        ));
+      await clearRedoTail(gameId);
 
       // Get next event number
       const [maxEvt] = await db
@@ -1381,6 +1408,8 @@ export async function adminScoringRoutes(app: FastifyInstance) {
       });
 
       const newState = await db.transaction(async (tx) => {
+        await clearRedoTail(gameId, tx);
+
         const allEventsBefore = await tx.select().from(gameEvents)
           .where(and(eq(gameEvents.gameId, gameId), eq(gameEvents.isDeleted, false)))
           .orderBy(gameEvents.eventNumber);
@@ -1520,6 +1549,8 @@ export async function adminScoringRoutes(app: FastifyInstance) {
       const user = request.user;
 
       if (snapshots.length > 0) {
+        await clearRedoTail(gameId);
+
         const allEventsBefore = await db.select().from(gameEvents)
           .where(and(eq(gameEvents.gameId, gameId), eq(gameEvents.isDeleted, false)))
           .orderBy(gameEvents.eventNumber);
@@ -1616,6 +1647,8 @@ export async function adminScoringRoutes(app: FastifyInstance) {
       if (homeDelta === 0 && awayDelta === 0) {
         return reply.send({ success: true, noOp: true, state });
       }
+
+      await clearRedoTail(gameId);
 
       const [maxEvt] = await db
         .select({ maxNum: max(gameEvents.eventNumber) })
