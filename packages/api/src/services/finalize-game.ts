@@ -180,6 +180,102 @@ function defensiveInningsForStint(
   return 0;
 }
 
+type EventPositionMap = Map<number, Map<number, number>>;
+
+function cloneEventPositionMap(src: EventPositionMap): EventPositionMap {
+  const out: EventPositionMap = new Map();
+  for (const [teamId, posMap] of src) out.set(teamId, new Map(posMap));
+  return out;
+}
+
+function removePlayerFromTeamPositions(posMap: Map<number, number>, playerId: number) {
+  for (const [pos, pid] of [...posMap.entries()]) {
+    if (pid === playerId) posMap.delete(pos);
+  }
+}
+
+function setPlayerPosition(current: EventPositionMap, teamId: number | undefined, playerId: number | undefined, position: number | undefined) {
+  if (!teamId || !playerId || !position) return;
+  const posMap = current.get(teamId) ?? new Map<number, number>();
+  removePlayerFromTeamPositions(posMap, playerId);
+  posMap.set(position, playerId);
+  current.set(teamId, posMap);
+}
+
+function buildPositionMapsByEvent(events: any[], lineups: any[]): Map<number, EventPositionMap> {
+  const playerTeam = new Map<number, number>();
+  const current: EventPositionMap = new Map();
+  for (const row of lineups) {
+    playerTeam.set(row.playerId, row.teamId);
+    if (!row.isActive || row.position == null) continue;
+    const posMap = current.get(row.teamId) ?? new Map<number, number>();
+    posMap.set(row.position, row.playerId);
+    current.set(row.teamId, posMap);
+  }
+
+  const byEventId = new Map<number, EventPositionMap>();
+  const descEvents = [...events].sort((a, b) => (b.eventNumber ?? 0) - (a.eventNumber ?? 0));
+  for (const event of descEvents) {
+    if (event.id != null) byEventId.set(event.id, cloneEventPositionMap(current));
+    if (event.eventType !== 'substitution' || !event.eventDetail) continue;
+
+    let detail: {
+      kind?: string;
+      teamId?: number;
+      position?: number;
+      outPlayerId?: number;
+      inPlayerId?: number;
+      changes?: Array<{ playerId?: number; oldPosition?: number; newPosition?: number }>;
+    } = {};
+    try {
+      detail = JSON.parse(event.eventDetail || '{}');
+    } catch {
+      continue;
+    }
+
+    if (detail.kind === 'position_swap' && Array.isArray(detail.changes)) {
+      for (const change of detail.changes) {
+        const playerId = Number(change.playerId);
+        const teamId = playerTeam.get(playerId);
+        const oldPosition = Number(change.oldPosition);
+        if (!Number.isFinite(playerId) || !Number.isFinite(oldPosition)) continue;
+        setPlayerPosition(current, teamId, playerId, oldPosition);
+      }
+    } else if (detail.kind === 'player_change') {
+      const teamId = Number(detail.teamId);
+      const inPlayerId = Number(detail.inPlayerId);
+      const outPlayerId = Number(detail.outPlayerId);
+      const position = Number(detail.position);
+      if (Number.isFinite(teamId) && Number.isFinite(inPlayerId)) {
+        const posMap = current.get(teamId);
+        if (posMap) removePlayerFromTeamPositions(posMap, inPlayerId);
+      }
+      if (Number.isFinite(teamId) && Number.isFinite(outPlayerId) && Number.isFinite(position)) {
+        setPlayerPosition(current, teamId, outPlayerId, position);
+      }
+    }
+  }
+
+  return byEventId;
+}
+
+function scoreDeltasFromEvent(e: any): { home: number; away: number } {
+  if (e.eventType === 'adjust_score') {
+    try {
+      const detail = JSON.parse(e.eventDetail || '{}') as { homeDelta?: number; awayDelta?: number };
+      return {
+        home: Number(detail.homeDelta) || 0,
+        away: Number(detail.awayDelta) || 0,
+      };
+    } catch {
+      return { home: 0, away: 0 };
+    }
+  }
+  const runs = Number(e.runsScored ?? 0) || 0;
+  if (runs <= 0) return { home: 0, away: 0 };
+  return e.half === 'top' ? { home: 0, away: runs } : { home: runs, away: 0 };
+}
+
 /* ═══════════════════════════════════════════════════════════════
    Main finalize function
    ═══════════════════════════════════════════════════════════════ */
@@ -198,6 +294,10 @@ export async function finalizeGame(gameId: number, userId?: number, options?: Fi
     .orderBy(gameEvents.eventNumber);
 
   const lineups = await db.select().from(gameLineups).where(eq(gameLineups.gameId, gameId));
+
+  await db.delete(playerGameBatting).where(eq(playerGameBatting.gameId, gameId));
+  await db.delete(playerGamePitching).where(eq(playerGamePitching.gameId, gameId));
+  await db.delete(playerGameFielding).where(eq(playerGameFielding.gameId, gameId));
 
   const playerTeamMap = new Map<number, number>();
   for (const entry of lineups) {
@@ -345,7 +445,8 @@ export async function finalizeGame(gameId: number, userId?: number, options?: Fi
 
     let pickedOff = 0;
     for (const e of events) {
-      if (e.eventType === 'picked_off' && e.batterId === batterId) pickedOff++;
+      const actorId = (e.batterId ?? runnerActorByEventId.get(e.id)) as number | undefined;
+      if (e.eventType === 'picked_off' && actorId === batterId) pickedOff++;
     }
 
     // Count SB/CS from runner events where this batter was involved
@@ -513,17 +614,7 @@ export async function finalizeGame(gameId: number, userId?: number, options?: Fi
   const fielderCCS = new Map<number, number>(); // catcher: caught stealing
   const fielderPickoffs = new Map<number, number>();
 
-  // Find catchers (position 2) for each team
-  const homeCatcher = lineups.find(l => l.teamId === game.homeTeamId && l.position === 2 && l.isActive);
-  const awayCatcher = lineups.find(l => l.teamId === game.awayTeamId && l.position === 2 && l.isActive);
-
-  // Build position-to-player map for each team (for fieldingSequence fallback)
-  const homePosToPid = new Map<number, number>();
-  const awayPosToPid = new Map<number, number>();
-  for (const l of lineups) {
-    if (l.position && l.teamId === game.homeTeamId) homePosToPid.set(l.position, l.playerId);
-    if (l.position && l.teamId === game.awayTeamId) awayPosToPid.set(l.position, l.playerId);
-  }
+  const positionMapsByEvent = buildPositionMapsByEvent(events, lineups);
 
   for (const e of events) {
     let po = (e.putoutFielderIds as number[]) || [];
@@ -531,7 +622,8 @@ export async function finalizeGame(gameId: number, userId?: number, options?: Fi
     let err = (e.errorFielderIds as number[]) || [];
 
     const isTopHalf = e.half === 'top';
-    const posMap = isTopHalf ? homePosToPid : awayPosToPid;
+    const fieldingTeamId = isTopHalf ? game.homeTeamId : game.awayTeamId;
+    const posMap = positionMapsByEvent.get(e.id)?.get(fieldingTeamId) ?? new Map<number, number>();
 
     // Fallback: if no player IDs but fieldingSequence exists, parse it
     if (e.fieldingSequence) {
@@ -555,6 +647,10 @@ export async function finalizeGame(gameId: number, userId?: number, options?: Fi
       }
     }
 
+    po = [...new Set(po)];
+    ast = [...new Set(ast)];
+    err = [...new Set(err)];
+
     for (const pid of po) fielderPutouts.set(pid, (fielderPutouts.get(pid) || 0) + 1);
     for (const pid of ast) fielderAssists.set(pid, (fielderAssists.get(pid) || 0) + 1);
     for (const pid of err) fielderErrors.set(pid, (fielderErrors.get(pid) || 0) + 1);
@@ -575,20 +671,20 @@ export async function finalizeGame(gameId: number, userId?: number, options?: Fi
 
     // Passed balls (credit to the catcher of the fielding team)
     if (t === 'passed_ball') {
-      const catcher = isTopHalf ? homeCatcher : awayCatcher;
-      if (catcher) fielderPB.set(catcher.playerId, (fielderPB.get(catcher.playerId) || 0) + 1);
+      const catcherId = posMap.get(2);
+      if (catcherId) fielderPB.set(catcherId, (fielderPB.get(catcherId) || 0) + 1);
     }
 
     // Stolen bases (charge to catcher)
     if (t === 'stolen_base') {
-      const catcher = isTopHalf ? homeCatcher : awayCatcher;
-      if (catcher) fielderCSB.set(catcher.playerId, (fielderCSB.get(catcher.playerId) || 0) + 1);
+      const catcherId = posMap.get(2);
+      if (catcherId) fielderCSB.set(catcherId, (fielderCSB.get(catcherId) || 0) + 1);
     }
 
     // Caught stealing (credit catcher)
     if (t === 'caught_stealing') {
-      const catcher = isTopHalf ? homeCatcher : awayCatcher;
-      if (catcher) fielderCCS.set(catcher.playerId, (fielderCCS.get(catcher.playerId) || 0) + 1);
+      const catcherId = posMap.get(2);
+      if (catcherId) fielderCCS.set(catcherId, (fielderCCS.get(catcherId) || 0) + 1);
     }
 
     // Pickoffs (credit pitcher or whoever is credited)
@@ -623,6 +719,12 @@ export async function finalizeGame(gameId: number, userId?: number, options?: Fi
   for (const pid of fielderPutouts.keys()) allFielders.add(pid);
   for (const pid of fielderAssists.keys()) allFielders.add(pid);
   for (const pid of fielderErrors.keys()) allFielders.add(pid);
+  for (const pid of fielderDP.keys()) allFielders.add(pid);
+  for (const pid of fielderTP.keys()) allFielders.add(pid);
+  for (const pid of fielderPB.keys()) allFielders.add(pid);
+  for (const pid of fielderCSB.keys()) allFielders.add(pid);
+  for (const pid of fielderCCS.keys()) allFielders.add(pid);
+  for (const pid of fielderPickoffs.keys()) allFielders.add(pid);
 
   for (const pid of allFielders) {
     const teamId = playerTeamMap.get(pid) || game.homeTeamId;
@@ -788,10 +890,9 @@ async function assignPitcherDecisions(
     if (e.half === 'top' && e.pitcherId) curHomePitcher = e.pitcherId;
     if (e.half === 'bot' && e.pitcherId) curAwayPitcher = e.pitcherId;
 
-    const runs = e.runsScored ?? 0;
-    if (runs > 0) {
-      if (e.half === 'top') runA += runs; else runH += runs;
-    }
+    const delta = scoreDeltasFromEvent(e);
+    runH += delta.home;
+    runA += delta.away;
 
     const winningIsHome = winningTeamId === game.homeTeamId;
     const winningScore = winningIsHome ? runH : runA;
@@ -811,11 +912,11 @@ async function assignPitcherDecisions(
     if (e.half === 'top' && e.pitcherId) curHomePitcher = e.pitcherId;
     if (e.half === 'bot' && e.pitcherId) curAwayPitcher = e.pitcherId;
 
-    const runs = e.runsScored ?? 0;
-    if (runs <= 0) continue;
-
     const prevH = runH, prevA = runA;
-    if (e.half === 'top') runA += runs; else runH += runs;
+    const delta = scoreDeltasFromEvent(e);
+    if (delta.home === 0 && delta.away === 0) continue;
+    runH += delta.home;
+    runA += delta.away;
 
     // Only consider scoring that occurs strictly after the last not-leading point.
     if ((e.eventNumber ?? 0) <= lastNotLeadingEvtNum) continue;

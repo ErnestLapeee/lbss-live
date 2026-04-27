@@ -76,6 +76,7 @@ export type EventType =
   // System / roster
   | 'end_half_inning'
   | 'substitution'
+  | 'adjust_score'
 
   // Misc/legacy
   | 'interference'

@@ -14,7 +14,18 @@ export interface GameState {
   homeLineScore: number[];
   awayLineScore: number[];
   eventCount: number;
+  balls: number;
+  strikes: number;
 }
+
+const BETWEEN_PITCH_EVENTS = new Set([
+  'stolen_base', 'caught_stealing', 'picked_off', 'wild_pitch', 'passed_ball',
+  'balk', 'advance', 'advance_on_error', 'defensive_indifference',
+  'runner_interference', 'appeal_play', 'tagged_out', 'force_out',
+  'hit_by_ball', 'missed_base', 'left_base_early', 'left_base_path',
+  'offensive_interference', 'passed_runner', 'hesitation',
+  'double_play', 'triple_play', 'illegal_pitch', 'end_half_inning',
+]);
 
 export function initialGameState(): GameState {
   return {
@@ -27,6 +38,8 @@ export function initialGameState(): GameState {
     homeLineScore: [0],
     awayLineScore: [],
     eventCount: 0,
+    balls: 0,
+    strikes: 0,
   };
 }
 
@@ -38,6 +51,45 @@ export function applyEvent(state: GameState, event: GameEvent): GameState {
     homeLineScore: [...state.homeLineScore],
     awayLineScore: [...state.awayLineScore],
   };
+
+  if (event.eventType === 'pitch') {
+    const detail = (event.eventDetail || '').toLowerCase();
+    if (detail === 'ball') next.balls = Math.min(3, state.balls + 1);
+    else if (detail === 'foul') next.strikes = state.strikes < 2 ? state.strikes + 1 : state.strikes;
+    else if (detail === 'strike' || detail === 'called_strike' || detail === 'swinging_strike') {
+      next.strikes = Math.min(2, state.strikes + 1);
+    }
+    next.eventCount = state.eventCount + 1;
+    return next;
+  }
+
+  if (event.eventType === 'substitution') {
+    next.eventCount = state.eventCount + 1;
+    return next;
+  }
+
+  if (event.eventType === 'adjust_score') {
+    let detail: { homeDelta?: number; awayDelta?: number } = {};
+    try {
+      detail = JSON.parse(event.eventDetail || '{}');
+    } catch {
+      // Leave score unchanged if the correction payload is malformed.
+    }
+    const homeDelta = Number(detail.homeDelta) || 0;
+    const awayDelta = Number(detail.awayDelta) || 0;
+    next.homeScore += homeDelta;
+    next.awayScore += awayDelta;
+    if (homeDelta !== 0) {
+      while (next.homeLineScore.length < event.inning) next.homeLineScore.push(0);
+      next.homeLineScore[event.inning - 1] += homeDelta;
+    }
+    if (awayDelta !== 0) {
+      while (next.awayLineScore.length < event.inning) next.awayLineScore.push(0);
+      next.awayLineScore[event.inning - 1] += awayDelta;
+    }
+    next.eventCount = state.eventCount + 1;
+    return next;
+  }
 
   // Track runs scored on this play
   const runs = event.runsScored || 0;
@@ -68,10 +120,17 @@ export function applyEvent(state: GameState, event: GameEvent): GameState {
     third: event.runnerThirdId ?? null,
   };
 
+  if (!BETWEEN_PITCH_EVENTS.has(event.eventType)) {
+    next.balls = 0;
+    next.strikes = 0;
+  }
+
   // Check for half-inning change (3 outs)
   if (next.outs >= 3) {
     next.outs = 0;
     next.bases = { first: null, second: null, third: null };
+    next.balls = 0;
+    next.strikes = 0;
     if (event.half === 'top') {
       next.half = 'bot';
       // Ensure homeLineScore has entry for this inning

@@ -98,6 +98,18 @@ export interface PlatoonPitchingEventRow {
   batterBats?: string | null;
 }
 
+export interface CountSplitEventRow {
+  gameId?: number | null;
+  eventNumber?: number | null;
+  eventType: string;
+  eventDetail?: string | null;
+  balls?: number | null;
+  strikes?: number | null;
+  rbi?: number | null;
+  outsRecorded?: number | null;
+  hitType?: string | null;
+}
+
 export interface PlatoonBattingLine {
   plateAppearances: number;
   atBats: number;
@@ -116,6 +128,25 @@ export interface PlatoonBattingLine {
   onBasePct: number | null;
   sluggingPct: number | null;
   ops: number | null;
+}
+
+export interface FirstPitchLine {
+  total: number;
+  strikes: number;
+  swings: number;
+  strikePct: number | null;
+  swingPct: number | null;
+}
+
+export type CountSplitLine = PlatoonBattingLine & {
+  count: string;
+  balls: number;
+  strikesCount: number;
+};
+
+export interface CountSplitSummary {
+  firstPitch: FirstPitchLine;
+  counts: CountSplitLine[];
 }
 
 function emptyLine(): PlatoonBattingLine {
@@ -140,6 +171,16 @@ function emptyLine(): PlatoonBattingLine {
   };
 }
 
+function emptyFirstPitchLine(): FirstPitchLine {
+  return {
+    total: 0,
+    strikes: 0,
+    swings: 0,
+    strikePct: null,
+    swingPct: null,
+  };
+}
+
 function finalizeLine(line: PlatoonBattingLine): PlatoonBattingLine {
   const ab = line.atBats;
   const h = line.hits;
@@ -159,6 +200,14 @@ function finalizeLine(line: PlatoonBattingLine): PlatoonBattingLine {
     onBasePct: obp,
     sluggingPct: slg,
     ops,
+  };
+}
+
+function finalizeFirstPitch(line: FirstPitchLine): FirstPitchLine {
+  return {
+    ...line,
+    strikePct: line.total > 0 ? line.strikes / line.total : null,
+    swingPct: line.total > 0 ? line.swings / line.total : null,
   };
 }
 
@@ -251,5 +300,121 @@ export function aggregatePitchingPlatoon(rows: PlatoonPitchingEventRow[]): Recor
   return {
     vsRhb: accumulateBatting(buckets.vsRhb),
     vsLhb: accumulateBatting(buckets.vsLhb),
+  };
+}
+
+const COUNT_BUCKETS = [
+  [0, 0], [1, 0], [2, 0], [3, 0],
+  [0, 1], [1, 1], [2, 1], [3, 1],
+  [0, 2], [1, 2], [2, 2], [3, 2],
+] as const;
+
+const DEFINITE_SWING_PITCH_DETAILS = new Set(['foul', 'swinging_strike']);
+
+function countKey(balls: number, strikes: number): string {
+  return `${balls}-${strikes}`;
+}
+
+function normalizedCount(row: CountSplitEventRow): { balls: number; strikes: number } | null {
+  const balls = Math.max(0, Math.min(3, Math.floor(Number(row.balls ?? 0))));
+  const strikes = Math.max(0, Math.min(2, Math.floor(Number(row.strikes ?? 0))));
+  if (!Number.isFinite(balls) || !Number.isFinite(strikes)) return null;
+  return { balls, strikes };
+}
+
+function isDefiniteSwingPa(t: string): boolean {
+  if (WALK_EVENTS.has(t)) return false;
+  if (t === 'hit_by_pitch' || t === 'catcher_obstruction' || t === 'catcher_interference') return false;
+  if (t === 'strikeout_looking') return false;
+  return isPlateAppearance(t);
+}
+
+function inferFirstPitchFromPa(row: CountSplitEventRow): { strike: boolean; swing: boolean } | null {
+  const count = normalizedCount(row);
+  if (!count || count.balls !== 0 || count.strikes !== 0) return null;
+  const t = row.eventType;
+  if (!isPlateAppearance(t)) return null;
+  return {
+    strike: !(WALK_EVENTS.has(t) || t === 'hit_by_pitch' || t === 'catcher_obstruction' || t === 'catcher_interference'),
+    swing: isDefiniteSwingPa(t),
+  };
+}
+
+function aggregateFirstPitch(rows: CountSplitEventRow[]): FirstPitchLine {
+  const sorted = [...rows].sort((a, b) => {
+    const gameDiff = Number(a.gameId ?? 0) - Number(b.gameId ?? 0);
+    if (gameDiff !== 0) return gameDiff;
+    return Number(a.eventNumber ?? 0) - Number(b.eventNumber ?? 0);
+  });
+  const line = emptyFirstPitchLine();
+  let pendingFirstPitch: { strike: boolean; swing: boolean } | null = null;
+
+  for (const row of sorted) {
+    const t = row.eventType;
+    if (t === 'pitch') {
+      if (pendingFirstPitch == null) {
+        const detail = String(row.eventDetail || '').toLowerCase();
+        pendingFirstPitch = {
+          strike: detail !== 'ball',
+          swing: DEFINITE_SWING_PITCH_DETAILS.has(detail),
+        };
+      }
+      continue;
+    }
+    if (!isPlateAppearance(t)) {
+      if (t === 'end_half_inning' || t === 'substitution') pendingFirstPitch = null;
+      continue;
+    }
+
+    const firstPitch = pendingFirstPitch ?? inferFirstPitchFromPa(row);
+    if (firstPitch) {
+      line.total++;
+      if (firstPitch.strike) line.strikes++;
+      if (firstPitch.swing) line.swings++;
+    }
+    pendingFirstPitch = null;
+  }
+
+  return finalizeFirstPitch(line);
+}
+
+function aggregateCountSplits(rows: CountSplitEventRow[]): CountSplitLine[] {
+  const buckets = new Map<string, PlatoonBattingLine>();
+  for (const [balls, strikes] of COUNT_BUCKETS) {
+    buckets.set(countKey(balls, strikes), emptyLine());
+  }
+
+  for (const row of rows) {
+    if (!isPlateAppearance(row.eventType)) continue;
+    const count = normalizedCount(row);
+    if (!count) continue;
+    const key = countKey(count.balls, count.strikes);
+    const line = buckets.get(key);
+    if (!line) continue;
+    applyPaToLine(line, row);
+  }
+
+  return COUNT_BUCKETS.map(([balls, strikes]) => {
+    const key = countKey(balls, strikes);
+    return {
+      ...finalizeLine(buckets.get(key) ?? emptyLine()),
+      count: key,
+      balls,
+      strikesCount: strikes,
+    };
+  });
+}
+
+export function aggregateBattingCountSplits(rows: CountSplitEventRow[]): CountSplitSummary {
+  return {
+    firstPitch: aggregateFirstPitch(rows),
+    counts: aggregateCountSplits(rows),
+  };
+}
+
+export function aggregatePitchingCountSplits(rows: CountSplitEventRow[]): CountSplitSummary {
+  return {
+    firstPitch: aggregateFirstPitch(rows),
+    counts: aggregateCountSplits(rows),
   };
 }

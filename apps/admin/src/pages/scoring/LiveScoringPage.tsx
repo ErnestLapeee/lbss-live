@@ -8,6 +8,7 @@ interface LineupEntry { id: number; playerId: number; battingOrder: number; posi
 interface GameState { inning: number; half: 'top' | 'bot'; outs: number; homeScore: number; awayScore: number; bases: { first: number | null; second: number | null; third: number | null }; homeLineScore: number[]; awayLineScore: number[]; eventCount: number; balls: number; strikes: number }
 interface GameEvent { id: number; eventNumber: number; eventType: string; batterId?: number; batterSide?: string | null; pitcherId?: number; inning: number; half: string; runsScored?: number; rbi?: number; outsRecorded?: number; eventDetail?: string; fieldingSequence?: string; hitLocationX?: string | null; hitLocationY?: string | null; hitType?: string | null; hitHardness?: string | null; runnerFirstId?: number | null; runnerSecondId?: number | null; runnerThirdId?: number | null; runnersScored?: number[] }
 interface GameData { id: number; status: string; homeTeamId: number; awayTeamId: number; homeTeamName: string; awayTeamName: string; isFinalized: boolean }
+type PositionChangeDraft = { playerId: number; oldPosition: number; newPosition: number };
 
 function battingTeamIdFromHalf(half: string | undefined, homeTeamId: number, awayTeamId: number): number | null {
   const h = String(half ?? '').toLowerCase();
@@ -174,6 +175,7 @@ const NO_RBI_BATTER_EVENTS = new Set(['error', 'sac_bunt_error', 'sac_fly_error'
 
 const BASE_ORDER: Record<string, number> = { first: 1, second: 2, third: 3, home: 4 };
 const BASE_FROM_ORDER: Record<number, 'first' | 'second' | 'third' | 'home'> = { 1: 'first', 2: 'second', 3: 'third', 4: 'home' };
+const uniqNums = (values: number[]) => [...new Set(values)];
 
 /** Fielding positions from an earlier runner on this same batted-ball play (e.g. two runs on one throwing error). */
 function getPriorSamePlayErrorFielding(runners: RunnerQuestion[], currentIdx: number): number[] | null {
@@ -285,6 +287,7 @@ export function LiveScoringPage() {
   // Substitution state
   const [subPosition, setSubPosition] = useState<number | null>(null); // defensive position being substituted
   const [subBattingSlot, setSubBattingSlot] = useState<number | null>(null); // batting slot being substituted
+  const [pendingPositionChanges, setPendingPositionChanges] = useState<PositionChangeDraft[]>([]);
 
   // Runner action state (click on a runner)
   const [activeRunnerBase, setActiveRunnerBase] = useState<'first' | 'second' | 'third' | null>(null);
@@ -390,6 +393,14 @@ export function LiveScoringPage() {
     .filter(l => l.isActive).sort((a, b) => a.battingOrder - b.battingOrder);
   const fieldingLineup = (fieldingTeamId === game?.homeTeamId ? homeLineup : awayLineup)
     .filter(l => l.isActive).sort((a, b) => a.battingOrder - b.battingOrder);
+  const draftFieldingLineup = useMemo(() => {
+    if (pendingPositionChanges.length === 0) return fieldingLineup;
+    const nextByPlayerId = new Map(pendingPositionChanges.map(c => [c.playerId, c.newPosition]));
+    return fieldingLineup.map(entry => ({
+      ...entry,
+      position: nextByPlayerId.get(entry.playerId) ?? entry.position,
+    }));
+  }, [fieldingLineup, pendingPositionChanges]);
   const currentPitcher = fieldingLineup.find(l => l.position === 1);
 
   const battingSide = gameState?.half === 'top' ? 'away' : 'home';
@@ -806,8 +817,9 @@ function needsRunnerAdvanceErrorFieldingPrompt(
 
       const outsRecorded = runners.filter(r => r.outcome === 'out').length;
       const detail = `${action.replace(/_/g, ' ')}: ${detailParts.join(', ')}`;
-      const errorsOnPlay = new Set(errorFielderIds).size;
-      const errPosSeq = runners.flatMap(r => r.advanceErrorFielding ?? []);
+      const uniqueErrorFielderIds = uniqNums(errorFielderIds);
+      const errorsOnPlay = uniqueErrorFielderIds.length;
+      const errPosSeq = uniqNums(runners.flatMap(r => r.advanceErrorFielding ?? []));
       const fsErr = errPosSeq.length > 0 ? `E${errPosSeq.join('')}` : null;
 
       await apiPost(`/admin/scoring/${gameId}/event`, {
@@ -820,7 +832,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
         outsRecorded, balls, strikes,
         runnerFirstId, runnerSecondId, runnerThirdId, runnersScored,
         eventDetail: detail,
-        putoutFielderIds: [], assistFielderIds: [], errorFielderIds,
+        putoutFielderIds: [], assistFielderIds: [], errorFielderIds: uniqueErrorFielderIds,
         fieldingSequence: fsErr,
         errorsOnPlay,
       });
@@ -899,7 +911,8 @@ function needsRunnerAdvanceErrorFieldingPrompt(
         outsRecorded: isOut ? 1 : 0, balls, strikes,
         runnerFirstId, runnerSecondId, runnerThirdId, runnersScored,
         fieldingSequence: isErrorAction && fld.length > 0 ? `E${fld.join('')}` : fieldingSequence,
-        putoutFielderIds, assistFielderIds, errorFielderIds,
+        putoutFielderIds: uniqNums(putoutFielderIds), assistFielderIds: uniqNums(assistFielderIds), errorFielderIds: uniqNums(errorFielderIds),
+        errorsOnPlay: uniqNums(errorFielderIds).length,
         eventDetail: detail,
       });
       setActiveRunnerBase(null); setRunnerActionType(null); setRunnerActionDest(null);
@@ -929,19 +942,40 @@ function needsRunnerAdvanceErrorFieldingPrompt(
 
   const handlePositionSwap = async (targetPosition: number) => {
     if (!game || subPosition === null) return;
-    const currentPlayer = fieldingLineup.find(l => l.position === subPosition);
-    const targetPlayer = fieldingLineup.find(l => l.position === targetPosition);
+    const currentPlayer = draftFieldingLineup.find(l => l.position === subPosition);
+    const targetPlayer = draftFieldingLineup.find(l => l.position === targetPosition);
     if (!currentPlayer) return;
 
-    const changes: Array<{ playerId: number; newPosition: number }> = [];
-    changes.push({ playerId: currentPlayer.playerId, newPosition: targetPosition });
+    const nextPositions = new Map(fieldingLineup.map(l => [l.playerId, l.position]));
+    for (const change of pendingPositionChanges) {
+      nextPositions.set(change.playerId, change.newPosition);
+    }
+    nextPositions.set(currentPlayer.playerId, targetPosition);
     if (targetPlayer) {
-      changes.push({ playerId: targetPlayer.playerId, newPosition: subPosition });
+      nextPositions.set(targetPlayer.playerId, subPosition);
     }
 
+    const nextChanges = fieldingLineup
+      .map(entry => ({
+        playerId: entry.playerId,
+        oldPosition: entry.position,
+        newPosition: nextPositions.get(entry.playerId) ?? entry.position,
+      }))
+      .filter(change => change.oldPosition !== change.newPosition);
+
+    setPendingPositionChanges(nextChanges);
+    setSubPosition(targetPlayer ? subPosition : targetPosition);
+  };
+
+  const handleCommitPositionChanges = async () => {
+    if (pendingPositionChanges.length === 0) return;
     try {
-      await apiPut(`/admin/scoring/${gameId}/swap-positions`, { changes });
-      setSubPosition(null); setStep('pitch');
+      await apiPut(`/admin/scoring/${gameId}/swap-positions`, {
+        changes: pendingPositionChanges.map(({ playerId, newPosition }) => ({ playerId, newPosition })),
+      });
+      setPendingPositionChanges([]);
+      setSubPosition(null);
+      setStep('pitch');
       await loadState();
     } catch (err: any) { alert(err.message || 'Swap failed'); }
   };
@@ -1111,13 +1145,14 @@ function needsRunnerAdvanceErrorFieldingPrompt(
       }
       const detail = `${currentBatter.firstName} ${currentBatter.lastName}: ${eventType.replace(/_/g, ' ')}${fieldingSequence ? ` (${isErrorPlay ? 'E' : ''}${fieldingSequence})` : ''}${runnerSuffix}${batterAdvanceSuffix}`;
       const paSide = batterSideForCurrentPa();
-      const errorsOnPlay = new Set(errorFielderIds).size;
+      const uniqueErrorFielderIds = uniqNums(errorFielderIds);
+      const errorsOnPlay = uniqueErrorFielderIds.length;
       await apiPost(`/admin/scoring/${gameId}/event`, {
         eventType, batterId: currentBatter.playerId, pitcherId: currentPitcher?.playerId,
         inning: gameState.inning, half: gameState.half, rbi, runsScored, outsRecorded,
         balls, strikes, runnerFirstId, runnerSecondId, runnerThirdId, runnersScored, runnerScoredReasons, fieldingSequence, eventDetail: detail,
         hitLocationX, hitLocationY, hitType, hitHardness,
-        putoutFielderIds, assistFielderIds, errorFielderIds,
+        putoutFielderIds: uniqNums(putoutFielderIds), assistFielderIds: uniqNums(assistFielderIds), errorFielderIds: uniqueErrorFielderIds,
         errorsOnPlay,
         ...(paSide ? { batterSide: paSide } : {}),
       });
@@ -1279,7 +1314,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
       cancelWizard(); await loadState();
     } catch (err: any) { alert(err.message || 'Failed'); } finally { setSubmitting(false); }
   };
-  const cancelWizard = () => { setStep('pitch'); setSelectedEvent(null); setFieldingPositions([]); setRunnerQuestions([]); setCurrentRunnerIdx(0); setActiveRunnerBase(null); setRunnerActionType(null); setRunnerActionDest(null); setRunnerActionOutType(null); setRunnerActionFielding([]); setSubPosition(null); setSubBattingSlot(null); setRunnerOutSafeTab('safe'); setRunnerSafeDest(null); setHitLocationX(null); setHitLocationY(null); setHitType(null); setHitHardness(null); setBetweenPitchEvent(null); setBetweenPitchInitiatorRunnerId(null); setOutSafeMorePage(false); setRunnerOutPendingType(null); setRunnerOutFielding([]); setRunnerAdvanceErrorPending(null); setRunnerAdvanceErrorFielding([]); };
+  const cancelWizard = () => { setStep('pitch'); setSelectedEvent(null); setFieldingPositions([]); setRunnerQuestions([]); setCurrentRunnerIdx(0); setActiveRunnerBase(null); setRunnerActionType(null); setRunnerActionDest(null); setRunnerActionOutType(null); setRunnerActionFielding([]); setSubPosition(null); setSubBattingSlot(null); setPendingPositionChanges([]); setRunnerOutSafeTab('safe'); setRunnerSafeDest(null); setHitLocationX(null); setHitLocationY(null); setHitType(null); setHitHardness(null); setBetweenPitchEvent(null); setBetweenPitchInitiatorRunnerId(null); setOutSafeMorePage(false); setRunnerOutPendingType(null); setRunnerOutFielding([]); setRunnerAdvanceErrorPending(null); setRunnerAdvanceErrorFielding([]); };
 
   if (!gameIdStr || Number.isNaN(gameId) || gameId <= 0) {
     return (
@@ -2499,8 +2534,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
 
             {/* DEFENSIVE SUB / POSITION SWAP */}
             {step === 'sub_defense' && subPosition !== null && (() => {
-              const currentPlayer = fieldingLineup.find(l => l.position === subPosition);
-              const otherPositions = Object.entries(POS_LABELS).filter(([k]) => parseInt(k) !== subPosition && parseInt(k) <= 9);
+              const currentPlayer = draftFieldingLineup.find(l => l.position === subPosition);
               return (
                 <div className="bg-[#111d30] rounded-lg border border-white/10 p-3 max-h-72 overflow-y-auto">
                   <p className="text-[10px] text-white/40 uppercase font-bold text-center mb-2">
@@ -2508,10 +2542,31 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                   </p>
                   <div className="flex gap-1 mb-2">
                     <button onClick={() => setStep('swap_position')}
-                      className="flex-1 py-2 bg-blue-900/40 hover:bg-blue-800/40 text-white text-[10px] font-bold rounded uppercase">Move Position</button>
+                      className="flex-1 py-2 bg-blue-900/40 hover:bg-blue-800/40 text-white text-[10px] font-bold rounded uppercase">Arrange Positions</button>
                     <button onClick={() => setStep('sub_defense')}
                       className="flex-1 py-2 bg-white/10 text-white/60 text-[10px] font-bold rounded uppercase">Sub from Bench</button>
                   </div>
+                  {pendingPositionChanges.length > 0 && (
+                    <div className="mb-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2">
+                      <p className="text-[9px] font-bold uppercase text-amber-200/80">Pending position changes</p>
+                      <div className="mt-1 space-y-0.5">
+                        {pendingPositionChanges.map(change => {
+                          const player = fieldingLineup.find(l => l.playerId === change.playerId);
+                          return (
+                            <div key={change.playerId} className="text-[10px] text-white/70">
+                              {player ? `${player.firstName.charAt(0)}. ${player.lastName}` : `#${change.playerId}`} {POS_LABELS[change.oldPosition]} → {POS_LABELS[change.newPosition]}
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <div className="mt-2 flex gap-1">
+                        <button onClick={handleCommitPositionChanges}
+                          className="flex-1 rounded bg-amber-600 px-2 py-1.5 text-[10px] font-bold uppercase text-white hover:bg-amber-500">Commit All</button>
+                        <button onClick={() => setPendingPositionChanges([])}
+                          className="rounded bg-white/10 px-2 py-1.5 text-[10px] font-bold uppercase text-white/60 hover:bg-white/15">Clear</button>
+                      </div>
+                    </div>
+                  )}
                   <div className="space-y-1">
                     {availableFieldingSubs.map(p => (
                       <button key={p.playerId} onClick={() => handleDefensiveSub(p.playerId)}
@@ -2526,16 +2581,24 @@ function needsRunnerAdvanceErrorFieldingPrompt(
 
             {/* SWAP POSITION picker */}
             {step === 'swap_position' && subPosition !== null && (() => {
-              const currentPlayer = fieldingLineup.find(l => l.position === subPosition);
+              const currentPlayer = draftFieldingLineup.find(l => l.position === subPosition);
               return (
                 <div className="bg-[#111d30] rounded-lg border border-white/10 p-3 max-h-72 overflow-y-auto">
                   <p className="text-[10px] text-white/40 uppercase font-bold text-center mb-1">
                     Move {currentPlayer?.lastName ?? ''} ({POS_LABELS[subPosition]}) to:
                   </p>
+                  <div className="mb-2 grid grid-cols-3 gap-1">
+                    {[...draftFieldingLineup].sort((a, b) => a.position - b.position).map(entry => (
+                      <button key={entry.playerId} onClick={() => setSubPosition(entry.position)}
+                        className={`rounded px-1 py-1.5 text-[9px] transition-all ${entry.position === subPosition ? 'bg-amber-500/20 text-amber-200' : 'bg-white/5 text-white/50 hover:bg-white/10'}`}>
+                        <span className="font-bold">{POS_LABELS[entry.position]}</span> {entry.lastName}
+                      </button>
+                    ))}
+                  </div>
                   <div className="grid grid-cols-3 gap-1.5 mt-2">
                     {Object.entries(POS_LABELS).filter(([k]) => parseInt(k) !== subPosition && parseInt(k) <= 9).map(([k, label]) => {
                       const posNum = parseInt(k);
-                      const occupant = fieldingLineup.find(l => l.position === posNum);
+                      const occupant = draftFieldingLineup.find(l => l.position === posNum);
                       return (
                         <button key={k} onClick={() => handlePositionSwap(posNum)}
                           className="py-2.5 bg-[#1e2d48] hover:bg-[#283a58] text-white rounded transition-all text-center">
@@ -2545,6 +2608,16 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                       );
                     })}
                   </div>
+                  {pendingPositionChanges.length > 0 && (
+                    <div className="mt-2 flex gap-1">
+                      <button onClick={handleCommitPositionChanges}
+                        className="flex-1 rounded bg-amber-600 px-2 py-2 text-[10px] font-bold uppercase text-white hover:bg-amber-500">
+                        Commit {pendingPositionChanges.length} Change{pendingPositionChanges.length === 1 ? '' : 's'}
+                      </button>
+                      <button onClick={() => setPendingPositionChanges([])}
+                        className="rounded bg-white/10 px-2 py-2 text-[10px] font-bold uppercase text-white/60 hover:bg-white/15">Clear</button>
+                    </div>
+                  )}
                   <button onClick={() => setStep('sub_defense')} className="w-full mt-2 py-2 text-white/40 text-[10px] font-bold uppercase hover:text-white/60">← BACK</button>
                 </div>
               );
@@ -2554,7 +2627,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
             {step === 'swap_position_pick' && (
               <div className="bg-[#111d30] rounded-lg border border-white/10 p-3 max-h-72 overflow-y-auto">
                 <div className="space-y-1">
-                  {fieldingLineup.map(entry => (
+                  {draftFieldingLineup.map(entry => (
                     <button key={entry.playerId} onClick={() => { setSubPosition(entry.position); setStep('swap_position'); }}
                       className="w-full flex items-center gap-2 px-3 py-2 bg-white/5 hover:bg-white/10 rounded text-xs text-left">
                       <span className="text-white/40 font-bold w-6">{POS_LABELS[entry.position]}</span>

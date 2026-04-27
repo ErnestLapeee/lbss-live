@@ -36,7 +36,7 @@ const GROUND_BALL_OUTS = new Set(['ground_out', 'bunt_out']);
 const FLY_BALL_OUTS = new Set(['fly_out', 'line_out', 'pop_out', 'infield_fly']);
 
 /** Per-run reasons that mark the run as unearned */
-const UNEARNED_REASONS = new Set(['passed_ball', 'advance_on_error', 'error', 'defensive_indifference', 'obstruction']);
+const UNEARNED_REASONS = new Set(['passed_ball', 'advance_on_error', 'error', 'defensive_indifference', 'obstruction', 'catcher_obstruction']);
 
 const ERROR_EVENT_TYPES = new Set(['error', 'sac_bunt_error', 'sac_fly_error']);
 

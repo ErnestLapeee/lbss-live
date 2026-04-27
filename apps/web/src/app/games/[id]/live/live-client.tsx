@@ -365,16 +365,16 @@ export function LiveGameClient({
   const awayLineScore = gameState?.awayLineScore ?? (evtLineScore.away.length > 0 ? evtLineScore.away : []);
   const maxInnings = Math.max(homeLineScore.length, awayLineScore.length, displayInning, 1);
 
-  // Compute team error counts from events
+  // Compute team error counts from scorer-confirmed errors, including runner advances on error.
   const errorCounts = useMemo(() => {
-    const errorTypes = new Set(['error', 'sac_bunt_error', 'sac_fly_error', 'advance_on_error']);
     let awayErrors = 0;
     let homeErrors = 0;
     for (const e of events) {
-      if (errorTypes.has(e.eventType)) {
+      const errors = Number(e.errorsOnPlay ?? 0) || 0;
+      if (errors > 0) {
         // Errors are charged to the fielding team (opposite of batting team)
-        if (e.half === 'top') homeErrors++; // top = away batting, home fielding
-        else awayErrors++; // bot = home batting, away fielding
+        if (e.half === 'top') homeErrors += errors; // top = away batting, home fielding
+        else awayErrors += errors; // bot = home batting, away fielding
       }
     }
     return { home: homeErrors, away: awayErrors };

@@ -21,6 +21,7 @@ interface PlayerProfileClientProps {
 type Tab = 'batting' | 'pitching' | 'fielding' | 'gamelog' | 'spraychart';
 
 const fmtRate = (v: any) => (v != null && v !== '' ? Number(v).toFixed(3).replace(/^0/, '') : '—');
+const fmtPct = (v: any) => (v != null && v !== '' ? `${(Number(v) * 100).toFixed(1)}%` : '—');
 /** Strikeout rate for platoon pitching rows: SO / PA. */
 const fmtKPct = (so: number, pa: number) =>
   pa > 0 ? `${((so / pa) * 100).toFixed(1)}%` : '—';
@@ -219,6 +220,12 @@ const POS_LABELS: Record<number, string> = {
   1: 'P', 2: 'C', 3: '1B', 4: '2B', 5: '3B', 6: 'SS', 7: 'LF', 8: 'CF', 9: 'RF',
 };
 
+const COUNT_SPLIT_ROWS = [
+  ['0-0', '0-0'], ['1-0', '1-0'], ['2-0', '2-0'], ['3-0', '3-0'],
+  ['0-1', '0-1'], ['1-1', '1-1'], ['2-1', '2-1'], ['3-1', '3-1'],
+  ['0-2', '0-2'], ['1-2', '1-2'], ['2-2', '2-2'], ['3-2', 'Full Count'],
+] as const;
+
 export function PlayerProfileClient({ slug, initialBattingStats, seasons }: PlayerProfileClientProps) {
   async function fetchJson(path: string) {
     const proxyPath = path.replace(/^\/api\//, '/api/proxy/');
@@ -240,9 +247,11 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
   const [platoonSplits, setPlatoonSplits] = useState<{
     batting: Record<string, any>;
     pitching: Record<string, any>;
+    battingCounts?: { firstPitch?: any; counts?: any[] };
+    pitchingCounts?: { firstPitch?: any; counts?: any[] };
   } | null>(null);
 
-  // Season filter: platoon splits, game log, spray chart (career tables stay all-time)
+  // Season filter: splits, game log, spray chart (career tables stay all-time)
   const filterParam = selectedSeasonId != null ? `seasonId=${selectedSeasonId}` : '';
 
   // Batting: use server-provided all-time only (no refetch on season change)
@@ -279,7 +288,7 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
     fetchJson(url).then(d => setSprayData(Array.isArray(d) ? d : []));
   }, [tab, slug, filterParam]);
 
-  // Platoon / handedness splits from events (vs RHP/LHP batting; vs RHB/LHB pitching)
+  // Event-derived splits from game_events (platoon, count, first-pitch)
   useEffect(() => {
     if (tab !== 'batting' && tab !== 'pitching') return;
     const url = filterParam ? `/api/public/players/${slug}/splits?${filterParam}` : `/api/public/players/${slug}/splits`;
@@ -334,7 +343,7 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
             ))}
           </select>
           <span className="text-[11px] text-text-faint max-w-md">
-            Filters platoon splits, game log, and spray chart.
+            Filters splits, game log, and spray chart.
           </span>
         </div>
       )}
@@ -476,6 +485,70 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
                   </tbody>
                 </table>
               </div>
+            </div>
+          )}
+
+          {platoonSplits?.battingCounts && (
+            <div>
+              <h3 className="font-heading text-sm font-bold mb-3 flex items-center gap-2">
+                <div className="w-1 h-4 rounded-full bg-accent" />
+                Count splits (batting)
+              </h3>
+              <div className="mb-3 grid gap-2 sm:grid-cols-3">
+                <div className="rounded-xl border border-border bg-surface p-3">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-text-faint">First-pitch strike</div>
+                  <div className="mt-1 font-mono text-xl font-bold">{fmtPct(platoonSplits.battingCounts.firstPitch?.strikePct)}</div>
+                  <div className="text-[11px] text-text-muted">
+                    {n(platoonSplits.battingCounts.firstPitch?.strikes)} / {n(platoonSplits.battingCounts.firstPitch?.total)}
+                  </div>
+                </div>
+                <div className="rounded-xl border border-border bg-surface p-3">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-text-faint">First-pitch swing</div>
+                  <div className="mt-1 font-mono text-xl font-bold">{fmtPct(platoonSplits.battingCounts.firstPitch?.swingPct)}</div>
+                  <div className="text-[11px] text-text-muted">
+                    {n(platoonSplits.battingCounts.firstPitch?.swings)} / {n(platoonSplits.battingCounts.firstPitch?.total)}
+                  </div>
+                </div>
+              </div>
+              <div className="rounded-xl border border-border bg-surface overflow-x-auto max-w-5xl">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border bg-surface-alt">
+                      {['Count', 'PA', 'AB', 'H', '2B', '3B', 'HR', 'BB', 'SO', 'AVG', 'OBP', 'SLG', 'OPS'].map(col => (
+                        <th key={col} title={getStatAbbreviationMeaning(col) ?? undefined}
+                          className={`px-2 py-2 text-[10px] font-bold uppercase tracking-wider text-text-faint whitespace-nowrap ${col === 'Count' ? 'text-left' : 'text-right'}`}>
+                          {col}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {COUNT_SPLIT_ROWS.map(([key, label]) => {
+                      const line = platoonSplits.battingCounts?.counts?.find((r: any) => r.count === key);
+                      return (
+                        <tr key={key} className="border-b border-border last:border-0">
+                          <td className="px-2 py-2 font-semibold text-xs">{label}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs">{n(line?.plateAppearances)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs">{n(line?.atBats)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs">{n(line?.hits)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs">{n(line?.doubles)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs">{n(line?.triples)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs">{n(line?.homeRuns)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs">{n(line?.walks)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs">{n(line?.strikeouts)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs font-bold">{fmtRate(line?.battingAvg)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs">{fmtRate(line?.onBasePct)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs">{fmtRate(line?.sluggingPct)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs font-bold">{fmtRate(line?.ops)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <p className="mt-2 text-[11px] text-text-faint">
+                First-pitch swing counts definite swings from foul balls or plate appearances completed on 0-0.
+              </p>
             </div>
           )}
         </div>
@@ -627,6 +700,73 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
                   </tbody>
                 </table>
               </div>
+            </div>
+          )}
+
+          {platoonSplits?.pitchingCounts && (
+            <div className="mt-8">
+              <h3 className="font-heading text-sm font-bold mb-3 flex items-center gap-2">
+                <div className="w-1 h-4 rounded-full bg-accent" />
+                Count splits (pitching)
+              </h3>
+              <div className="mb-3 grid gap-2 sm:grid-cols-3">
+                <div className="rounded-xl border border-border bg-surface p-3">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-text-faint">First-pitch strike</div>
+                  <div className="mt-1 font-mono text-xl font-bold">{fmtPct(platoonSplits.pitchingCounts.firstPitch?.strikePct)}</div>
+                  <div className="text-[11px] text-text-muted">
+                    {n(platoonSplits.pitchingCounts.firstPitch?.strikes)} / {n(platoonSplits.pitchingCounts.firstPitch?.total)}
+                  </div>
+                </div>
+                <div className="rounded-xl border border-border bg-surface p-3">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-text-faint">First-pitch swing</div>
+                  <div className="mt-1 font-mono text-xl font-bold">{fmtPct(platoonSplits.pitchingCounts.firstPitch?.swingPct)}</div>
+                  <div className="text-[11px] text-text-muted">
+                    {n(platoonSplits.pitchingCounts.firstPitch?.swings)} / {n(platoonSplits.pitchingCounts.firstPitch?.total)}
+                  </div>
+                </div>
+              </div>
+              <div className="rounded-xl border border-border bg-surface overflow-x-auto max-w-5xl">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border bg-surface-alt">
+                      {['Count', 'PA', 'AB', 'H', '2B', '3B', 'HR', 'BB', 'SO', 'K%', 'AVG', 'OBP', 'SLG', 'OPS'].map(col => (
+                        <th key={col} title={getStatAbbreviationMeaning(col) ?? undefined}
+                          className={`px-2 py-2 text-[10px] font-bold uppercase tracking-wider text-text-faint whitespace-nowrap ${col === 'Count' ? 'text-left' : 'text-right'}`}>
+                          {col}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {COUNT_SPLIT_ROWS.map(([key, label]) => {
+                      const line = platoonSplits.pitchingCounts?.counts?.find((r: any) => r.count === key);
+                      const pa = Number(line?.plateAppearances ?? 0);
+                      const so = Number(line?.strikeouts ?? 0);
+                      return (
+                        <tr key={key} className="border-b border-border last:border-0">
+                          <td className="px-2 py-2 font-semibold text-xs">{label}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs">{n(line?.plateAppearances)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs">{n(line?.atBats)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs">{n(line?.hits)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs">{n(line?.doubles)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs">{n(line?.triples)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs">{n(line?.homeRuns)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs">{n(line?.walks)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs">{n(line?.strikeouts)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs">{fmtKPct(so, pa)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs font-bold">{fmtRate(line?.battingAvg)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs">{fmtRate(line?.onBasePct)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs">{fmtRate(line?.sluggingPct)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs font-bold">{fmtRate(line?.ops)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <p className="mt-2 text-[11px] text-text-faint">
+                Count rows show opponent batting results from that count.
+              </p>
             </div>
           )}
         </div>

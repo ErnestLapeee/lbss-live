@@ -26,6 +26,11 @@ function jsonbStringArray(v: unknown): string[] {
   return v.map((x) => String(x));
 }
 
+function uniqueNumberArray(v: unknown): number[] {
+  if (!Array.isArray(v)) return [];
+  return [...new Set(v.map((x) => Number(x)).filter((n) => Number.isFinite(n)))];
+}
+
 // ── Game state reducer (inline for speed) ──
 
 interface GameState {
@@ -238,12 +243,43 @@ export async function adminScoringRoutes(app: FastifyInstance) {
     return { ok: true };
   }
 
-  /** Undo DB lineup changes for a `player_change` substitution (soft-deleted event must still be readable from `eventDetail`). */
-  async function revertPlayerChangeSubstitution(gameId: number, eventDetail: string | null) {
-    let detail: { kind?: string; outPlayerId?: number; inPlayerId?: number } = {};
+  type PositionSwapChange = { playerId?: number; oldPosition?: number; newPosition?: number };
+
+  async function applyPositionSwapChanges(
+    gameId: number,
+    changes: PositionSwapChange[] | undefined,
+    direction: 'undo' | 'redo',
+  ) {
+    if (!Array.isArray(changes)) return;
+    for (const change of changes) {
+      const playerId = Number(change.playerId);
+      const position = direction === 'undo' ? Number(change.oldPosition) : Number(change.newPosition);
+      if (!Number.isFinite(playerId) || !Number.isFinite(position)) continue;
+      await db.update(gameLineups)
+        .set({ position })
+        .where(and(
+          eq(gameLineups.gameId, gameId),
+          eq(gameLineups.playerId, playerId),
+          eq(gameLineups.isActive, true),
+        ));
+    }
+  }
+
+  /** Undo DB lineup changes for substitution events (soft-deleted event must still be readable from `eventDetail`). */
+  async function revertSubstitutionLineupChanges(gameId: number, eventDetail: string | null) {
+    let detail: {
+      kind?: string;
+      outPlayerId?: number;
+      inPlayerId?: number;
+      changes?: PositionSwapChange[];
+    } = {};
     try {
       detail = JSON.parse(eventDetail || '{}');
     } catch {
+      return;
+    }
+    if (detail.kind === 'position_swap') {
+      await applyPositionSwapChanges(gameId, detail.changes, 'undo');
       return;
     }
     if (detail.kind !== 'player_change' || !detail.outPlayerId || !detail.inPlayerId) return;
@@ -287,6 +323,66 @@ export async function adminScoringRoutes(app: FastifyInstance) {
           exitedHalf: null,
         })
         .where(eq(gameLineups.id, outRow.id));
+    }
+  }
+
+  async function redoSubstitutionLineupChanges(
+    gameId: number,
+    event: { eventDetail: string | null; inning: number | null; half: string | null },
+  ): Promise<{ ok: true } | { ok: false; message: string }> {
+    let detail: {
+      kind?: string;
+      outPlayerId?: number;
+      inPlayerId?: number;
+      teamId?: number;
+      position?: number;
+      changes?: PositionSwapChange[];
+    } = {};
+    try {
+      detail = JSON.parse(event.eventDetail || '{}');
+    } catch {
+      return { ok: true };
+    }
+
+    if (detail.kind === 'position_swap') {
+      await applyPositionSwapChanges(gameId, detail.changes, 'redo');
+      return { ok: true };
+    }
+
+    if (
+      detail.kind === 'player_change' &&
+      detail.outPlayerId != null &&
+      detail.inPlayerId != null &&
+      detail.teamId != null &&
+      detail.position != null
+    ) {
+      return applyPlayerSubstitutionLineup(gameId, {
+        outPlayerId: detail.outPlayerId,
+        inPlayerId: detail.inPlayerId,
+        teamId: detail.teamId,
+        position: detail.position,
+        inning: event.inning ?? 1,
+        half: String(event.half ?? 'top'),
+      });
+    }
+
+    return { ok: true };
+  }
+
+  async function rebuildSubstitutionLineupState(gameId: number, extraAppliedDeletedEventId?: number) {
+    const substitutions = await db.select()
+      .from(gameEvents)
+      .where(and(eq(gameEvents.gameId, gameId), eq(gameEvents.eventType, 'substitution')))
+      .orderBy(gameEvents.eventNumber);
+
+    const appliedBeforeRebuild = substitutions.filter((event) => !event.isDeleted || event.id === extraAppliedDeletedEventId);
+    for (const event of [...appliedBeforeRebuild].sort((a, b) => b.eventNumber - a.eventNumber)) {
+      await revertSubstitutionLineupChanges(gameId, event.eventDetail);
+    }
+
+    for (const event of substitutions.filter((event) => !event.isDeleted).sort((a, b) => a.eventNumber - b.eventNumber)) {
+      const r = await redoSubstitutionLineupChanges(gameId, event);
+      if (!r.ok) throw new Error(r.message || 'Cannot rebuild substitutions');
     }
   }
 
@@ -723,9 +819,9 @@ export async function adminScoringRoutes(app: FastifyInstance) {
         runnersScored: runNorm.runnersScored,
         runnerScoredReasons: runNorm.runnerScoredReasons,
         fieldingSequence: body.fieldingSequence ?? null,
-        putoutFielderIds: body.putoutFielderIds ?? [],
-        assistFielderIds: body.assistFielderIds ?? [],
-        errorFielderIds: body.errorFielderIds ?? [],
+        putoutFielderIds: uniqueNumberArray(body.putoutFielderIds),
+        assistFielderIds: uniqueNumberArray(body.assistFielderIds),
+        errorFielderIds: uniqueNumberArray(body.errorFielderIds),
         pitchCount: body.pitchCount ?? null,
         pitchSequence: body.pitchSequence ?? null,
         hitLocationX: body.hitLocationX != null ? String(body.hitLocationX) : null,
@@ -796,7 +892,7 @@ export async function adminScoringRoutes(app: FastifyInstance) {
         .where(eq(gameEvents.id, lastEvent.id));
 
       if (lastEvent.eventType === 'substitution' && lastEvent.eventDetail) {
-        await revertPlayerChangeSubstitution(gameId, lastEvent.eventDetail);
+        await revertSubstitutionLineupChanges(gameId, lastEvent.eventDetail);
       }
 
       // Recompute state
@@ -842,34 +938,9 @@ export async function adminScoringRoutes(app: FastifyInstance) {
       if (!lastDeleted) return reply.status(400).send({ message: 'No events to redo' });
 
       if (lastDeleted.eventType === 'substitution' && lastDeleted.eventDetail) {
-        let detail: {
-          kind?: string;
-          outPlayerId?: number;
-          inPlayerId?: number;
-          teamId?: number;
-          position?: number;
-        } = {};
-        try {
-          detail = JSON.parse(lastDeleted.eventDetail);
-        } catch { /* ignore */ }
-        if (
-          detail.kind === 'player_change' &&
-          detail.outPlayerId != null &&
-          detail.inPlayerId != null &&
-          detail.teamId != null &&
-          detail.position != null
-        ) {
-          const r = await applyPlayerSubstitutionLineup(gameId, {
-            outPlayerId: detail.outPlayerId,
-            inPlayerId: detail.inPlayerId,
-            teamId: detail.teamId,
-            position: detail.position,
-            inning: lastDeleted.inning ?? 1,
-            half: String(lastDeleted.half ?? 'top'),
-          });
-          if (!r.ok) {
-            return reply.status(400).send({ message: r.message || 'Cannot redo substitution' });
-          }
+        const r = await redoSubstitutionLineupChanges(gameId, lastDeleted);
+        if (!r.ok) {
+          return reply.status(400).send({ message: r.message || 'Cannot redo substitution' });
         }
       }
 
@@ -1027,6 +1098,10 @@ export async function adminScoringRoutes(app: FastifyInstance) {
       await db.update(gameEvents)
         .set({ isDeleted: true })
         .where(eq(gameEvents.id, eventId));
+
+      if (existing.eventType === 'substitution') {
+        await rebuildSubstitutionLineupState(gameId, existing.id);
+      }
 
       const allEvents = await db.select().from(gameEvents)
         .where(and(eq(gameEvents.gameId, gameId), eq(gameEvents.isDeleted, false)))

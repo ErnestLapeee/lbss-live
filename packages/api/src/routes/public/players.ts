@@ -1,7 +1,10 @@
 import type { FastifyInstance } from 'fastify';
 import {
   aggregateBattingPlatoon,
+  aggregateBattingCountSplits,
+  aggregatePitchingCountSplits,
   aggregatePitchingPlatoon,
+  type CountSplitEventRow,
   type PlatoonBattingEventRow,
   type PlatoonPitchingEventRow,
 } from '@lbss/shared';
@@ -671,7 +674,7 @@ export async function playersRoutes(app: FastifyInstance) {
     }
   });
 
-  // GET /:slug/splits - platoon / handedness splits from game_events (vs RHP/LHP batting; vs RHB/LHB pitching)
+  // GET /:slug/splits - event-derived splits from game_events
   app.get<{ Params: { slug: string }; Querystring: { seasonId?: string } }>(
     '/:slug/splits', async (request, reply) => {
     try {
@@ -693,7 +696,8 @@ export async function playersRoutes(app: FastifyInstance) {
       }
 
       const battingEv = await db.execute(sql`
-        SELECT ge.event_type, ge.rbi, ge.outs_recorded, ge.hit_type, ge.event_number,
+        SELECT ge.game_id, ge.event_type, ge.event_detail, ge.rbi, ge.outs_recorded, ge.hit_type,
+          ge.event_number, ge.balls, ge.strikes,
           p.throws AS pitcher_throws
         FROM game_events ge
         JOIN games g ON ge.game_id = g.id
@@ -709,7 +713,8 @@ export async function playersRoutes(app: FastifyInstance) {
       const pitchingEv = await db.execute(
         hasBatterSideCol
           ? sql`
-        SELECT ge.event_type, ge.rbi, ge.outs_recorded, ge.hit_type, ge.event_number,
+        SELECT ge.game_id, ge.event_type, ge.event_detail, ge.rbi, ge.outs_recorded, ge.hit_type,
+          ge.event_number, ge.balls, ge.strikes,
           COALESCE(
             NULLIF(TRIM(ge.batter_side::text), ''),
             CASE
@@ -727,7 +732,8 @@ export async function playersRoutes(app: FastifyInstance) {
           ${seasonFilter != null ? sql`AND l.season_id = ${seasonFilter}` : sql``}
       `
           : sql`
-        SELECT ge.event_type, ge.rbi, ge.outs_recorded, ge.hit_type, ge.event_number,
+        SELECT ge.game_id, ge.event_type, ge.event_detail, ge.rbi, ge.outs_recorded, ge.hit_type,
+          ge.event_number, ge.balls, ge.strikes,
           b.bats AS batter_bats
         FROM game_events ge
         JOIN games g ON ge.game_id = g.id
@@ -761,10 +767,36 @@ export async function playersRoutes(app: FastifyInstance) {
         batterBats: r.batter_bats as string | null | undefined,
       }));
 
+      const battingCountIn: CountSplitEventRow[] = (bRows as Record<string, unknown>[]).map((r) => ({
+        gameId: r.game_id as number | null | undefined,
+        eventNumber: r.event_number as number | null | undefined,
+        eventType: String(r.event_type ?? ''),
+        eventDetail: r.event_detail as string | null | undefined,
+        balls: r.balls as number | null | undefined,
+        strikes: r.strikes as number | null | undefined,
+        rbi: r.rbi as number | null | undefined,
+        outsRecorded: r.outs_recorded as number | null | undefined,
+        hitType: r.hit_type as string | null | undefined,
+      }));
+
+      const pitchingCountIn: CountSplitEventRow[] = (pRows as Record<string, unknown>[]).map((r) => ({
+        gameId: r.game_id as number | null | undefined,
+        eventNumber: r.event_number as number | null | undefined,
+        eventType: String(r.event_type ?? ''),
+        eventDetail: r.event_detail as string | null | undefined,
+        balls: r.balls as number | null | undefined,
+        strikes: r.strikes as number | null | undefined,
+        rbi: r.rbi as number | null | undefined,
+        outsRecorded: r.outs_recorded as number | null | undefined,
+        hitType: r.hit_type as string | null | undefined,
+      }));
+
       return reply.send({
         seasonId: seasonFilter,
         batting: aggregateBattingPlatoon(battingIn),
         pitching: aggregatePitchingPlatoon(pitchingIn),
+        battingCounts: aggregateBattingCountSplits(battingCountIn),
+        pitchingCounts: aggregatePitchingCountSplits(pitchingCountIn),
       });
     } catch (err) {
       request.log.error(err);
