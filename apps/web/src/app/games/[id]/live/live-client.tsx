@@ -899,20 +899,69 @@ export function LiveGameClient({
     return `${inning}${suffix}`;
   };
 
+  const runnerReasonTag = (eventType: string, fallback?: string | null) => {
+    const reason = String(fallback || eventType).toLowerCase();
+    if (reason === 'stolen_base') return 'SB';
+    if (reason === 'caught_stealing') return 'CS';
+    if (reason === 'picked_off') return 'PO';
+    if (reason === 'wild_pitch') return 'WP';
+    if (reason === 'passed_ball') return 'PB';
+    if (reason === 'balk') return 'BK';
+    if (reason === 'advance_on_error' || reason === 'error') return 'E';
+    if (reason === 'defensive_indifference') return 'DI';
+    if (reason === 'on_throw' || reason === 'advance') return 'TH';
+    if (reason === 'on_play') return 'play';
+    if (reason === 'held') return 'held';
+    return reason.replace(/_/g, ' ');
+  };
+
+  const shortenBaseText = (text: string) =>
+    text
+      .replace(/\b1st\b/gi, '1B')
+      .replace(/\b2nd\b/gi, '2B')
+      .replace(/\b3rd\b/gi, '3B')
+      .replace(/\bhome\b/gi, 'home');
+
+  const compactRunnerEventSummary = (evt: GameEvent) => {
+    const detail = evt.eventDetail || '';
+    const movement = detail.includes(': ') ? detail.substring(detail.indexOf(': ') + 2) : '';
+    const tag = runnerReasonTag(evt.eventType);
+    const suffix = tag ? ` (${tag})` : '';
+
+    if (movement) {
+      return movement
+        .split(',')
+        .map((part) => {
+          const trimmed = shortenBaseText(part.trim());
+          const partTag = /\bstays?\b/i.test(trimmed) ? 'held' : tag;
+          return `${trimmed}${partTag ? ` (${partTag})` : ''}`;
+        })
+        .filter(Boolean)
+        .join(', ');
+    }
+
+    const formatted = formatPlayByPlay(evt, fmtPbpCtx).title;
+    return formatted ? `${formatted}${suffix}` : '';
+  };
+
   const compactRunnerSummary = (ab: AtBat) => {
     const entries: string[] = [];
     for (const re of ab.betweenEvents) {
-      const title = formatPlayByPlay(re, fmtPbpCtx).title;
+      const title = compactRunnerEventSummary(re);
       if (title) entries.push(title);
     }
-    if (ab.result?.runsScored && ab.result.runsScored > 0) {
-      entries.push(`${ab.result.runsScored} run${ab.result.runsScored > 1 ? 's' : ''} scored`);
+    const resultReasons = ab.result?.runnerScoredReasons ?? [];
+    const scoredNames = ab.result?.runnersScoredNames ?? [];
+    if (scoredNames.length > 0 && resultReasons.some((reason) => reason && reason !== 'on_play')) {
+      for (let i = 0; i < scoredNames.length; i++) {
+        entries.push(`${scoredNames[i]} scores (${runnerReasonTag(ab.result!.eventType, resultReasons[i])})`);
+      }
     }
-    return entries.join(' → ');
+    return entries.length > 0 ? `Runners: ${entries.join('; ')}` : '';
   };
 
-  const BaseDiamond = ({ first, second, third }: { first: boolean; second: boolean; third: boolean }) => (
-    <svg viewBox="0 0 50 50" className="w-10 h-10 shrink-0 drop-shadow-sm" aria-label="Runners on base">
+  const BaseDiamond = ({ first, second, third, compact = false }: { first: boolean; second: boolean; third: boolean; compact?: boolean }) => (
+    <svg viewBox="0 0 50 50" className={`${compact ? 'h-7 w-7' : 'h-10 w-10'} shrink-0 drop-shadow-sm`} aria-label="Runners on base">
       <rect x="19" y="2" width="12" height="12" rx="1.5" transform="rotate(45 25 8)"
         fill={second ? '#10b981' : '#f1f5f9'} stroke={second ? '#059669' : '#cbd5e1'} strokeWidth="1.25" />
       <rect x="35" y="18" width="12" height="12" rx="1.5" transform="rotate(45 41 24)"
@@ -922,18 +971,18 @@ export function LiveGameClient({
     </svg>
   );
 
-  const OutsIndicator = ({ outs }: { outs: number }) => {
+  const OutsIndicator = ({ outs, compact = false }: { outs: number; compact?: boolean }) => {
     const o = Math.max(0, Math.min(3, outs));
     return (
       <div
-        className="flex items-center justify-end gap-1"
+        className={`flex items-center justify-end ${compact ? 'gap-0.5' : 'gap-1'}`}
         aria-label={`${o} out${o === 1 ? '' : 's'} after this play`}
         title="Outs in inning (after this play)"
       >
         {[0, 1, 2].map(i => (
           <span
             key={i}
-            className={`h-2 w-2 rounded-full border-2 transition-colors ${
+            className={`${compact ? 'h-1.5 w-1.5 border' : 'h-2 w-2 border-2'} rounded-full transition-colors ${
               i < o
                 ? 'border-red-600 bg-red-600 shadow-[0_0_0_1px_rgba(220,38,38,0.25)]'
                 : 'border-slate-300 bg-white'
@@ -1585,21 +1634,31 @@ export function LiveGameClient({
                             const pitchBreakdown = derivePitchBreakdown(ab);
                             const cardKey = `${group.key}-${abIdx}-${ab.result?.id ?? 'runner'}`;
                             const showPitchDetails = playMode === 'expanded' || Boolean(openPitchCards[cardKey]);
+                            const isCompact = playMode === 'compact';
+                            const isSystemRow = result?.eventType === 'substitution' || result?.eventType === 'adjust_score';
                             const contextLine = `${group.half === 'top' ? game.awayTeamName : game.homeTeamName} batting • ${group.half === 'top' ? game.homeTeamName : game.awayTeamName} pitching`;
+                            const metaParts = [
+                              displayedPitchCount > 0 ? `${displayedPitchCount} pitch${displayedPitchCount === 1 ? '' : 'es'}` : null,
+                              formatted?.subtitle || null,
+                              contextLine,
+                            ].filter(Boolean);
 
                             return (
-                              <div key={`ab-${abIdx}`} className={`${borderClass} rounded-lg border border-gray-300/90 bg-gray-200/90 px-3 py-3 shadow-sm`}>
-                                <div className="flex items-start justify-between gap-3">
+                              <div
+                                key={`ab-${abIdx}`}
+                                className={`${borderClass} rounded-lg border border-gray-300/80 ${isSystemRow ? 'bg-slate-100/90' : 'bg-gray-200/90'} ${isCompact ? 'px-3 py-2 shadow-[0_1px_0_rgba(15,23,42,0.04)]' : 'px-3 py-3 shadow-sm'}`}
+                              >
+                                <div className={`flex items-start justify-between ${isCompact ? 'gap-2' : 'gap-3'}`}>
                                   <div className="min-w-0 flex-1">
-                                    <div className="flex items-center gap-2 mb-1.5">
+                                    <div className={`flex items-center gap-2 ${isCompact ? 'mb-0.5' : 'mb-1.5'}`}>
                                       <span className={`text-[9px] font-medium uppercase tracking-[0.12em] ${tone.cls}`}>{tone.tag}</span>
-                                      {displayedPitchCount > 0 && (
+                                      {!isCompact && displayedPitchCount > 0 && (
                                         <span className="text-[9px] text-gray-600">
                                           {displayedPitchCount} pitch{displayedPitchCount === 1 ? '' : 'es'}
                                         </span>
                                       )}
                                     </div>
-                                    <div className="text-[14px] leading-snug text-gray-950 font-semibold">
+                                    <div className={`${isCompact ? 'text-[13px]' : 'text-[14px]'} leading-snug text-gray-950 font-semibold`}>
                                       {formatted
                                         ? formatted.title
                                         : ab.pitches.length > 0
@@ -1608,15 +1667,16 @@ export function LiveGameClient({
                                             ? formatPlayByPlay(stateEvt, fmtPbpCtx).title
                                             : `${ab.batterName} play`}
                                     </div>
-                                    <div className="text-[10px] text-gray-800 mt-1">
-                                      {formatted?.subtitle ? `${formatted.subtitle} • ${contextLine}` : contextLine}
+                                    <div className={`${isCompact ? 'mt-0.5 text-[10px]' : 'mt-1 text-[10px]'} text-gray-700`}>
+                                      {metaParts.join(' · ')}
                                     </div>
                                   </div>
-                                  <div className="flex flex-col items-end gap-1.5 shrink-0 pt-0.5">
-                                    <BaseDiamond first={bases.first} second={bases.second} third={bases.third} />
-                                    <OutsIndicator outs={outsAfter} />
+                                  <div className={`flex shrink-0 ${isCompact ? 'items-center gap-1 pt-0' : 'flex-col items-end gap-1.5 pt-0.5'}`}>
+                                    <BaseDiamond first={bases.first} second={bases.second} third={bases.third} compact={isCompact} />
+                                    <OutsIndicator outs={outsAfter} compact={isCompact} />
                                   </div>
                                 </div>
+                                {!isCompact && (
                                 <div className="mt-2.5 text-[10px] text-gray-700 flex flex-wrap items-center gap-x-3 gap-y-1">
                                   {pitchSymbols.length > 0 && (
                                     <PitchLetterStrip symbols={pitchSymbols} max={8} />
@@ -1625,20 +1685,10 @@ export function LiveGameClient({
                                     <span key={ci}>{chip}</span>
                                   ))}
                                 </div>
+                                )}
 
-                                {pitchBreakdown.rows.length > 0 && (
+                                {pitchBreakdown.rows.length > 0 && playMode === 'expanded' && (
                                   <div className="mt-1.5">
-                                    {playMode === 'compact' && (
-                                      <button
-                                        type="button"
-                                        className="text-[10px] text-gray-500 hover:text-gray-700 transition-colors"
-                                        onClick={() =>
-                                          setOpenPitchCards(prev => ({ ...prev, [cardKey]: !prev[cardKey] }))
-                                        }
-                                      >
-                                        {showPitchDetails ? 'Hide pitches' : 'View pitches'}
-                                      </button>
-                                    )}
                                     {showPitchDetails && (
                                       <div className="mt-1.5 pl-2 border-l border-gray-200 space-y-1.5">
                                         <div className="text-[10px] uppercase tracking-[0.1em] text-gray-500">At-bat detail</div>
@@ -1659,11 +1709,11 @@ export function LiveGameClient({
                                   </div>
                                 )}
 
-                                {playMode === 'compact' && runnerSummary && ab.betweenEvents.length === 0 && (
-                                  <div className="text-[11px] text-gray-600 mt-1.5">{runnerSummary}</div>
+                                {playMode === 'compact' && runnerSummary && (
+                                  <div className="mt-1 text-[10px] text-gray-600">{runnerSummary}</div>
                                 )}
 
-                                {ab.betweenEvents.length > 0 && (
+                                {playMode === 'expanded' && ab.betweenEvents.length > 0 && (
                                   <div className="mt-1.5 space-y-1">
                                     {ab.betweenEvents.map((re, rei) => {
                                       const reFormatted = formatPlayByPlay(re, fmtPbpCtx);

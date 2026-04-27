@@ -277,6 +277,31 @@ export async function adminScoringRoutes(app: FastifyInstance) {
     if (!outEntry) {
       return { ok: false, message: 'Outgoing player is not active in lineup' };
     }
+    if (outEntry.teamId !== teamId) {
+      return { ok: false, message: 'Outgoing player is active for a different team in this game' };
+    }
+
+    const [activeIncomingEntry] = await conn
+      .select({ id: gameLineups.id, teamId: gameLineups.teamId })
+      .from(gameLineups)
+      .where(
+        and(
+          eq(gameLineups.gameId, gameId),
+          eq(gameLineups.playerId, inPlayerId),
+          eq(gameLineups.isActive, true),
+        ),
+      )
+      .limit(1);
+
+    if (activeIncomingEntry) {
+      return {
+        ok: false,
+        message:
+          activeIncomingEntry.teamId === teamId
+            ? 'Incoming player is already active for this team'
+            : 'Incoming player is already active for the other team in this game',
+      };
+    }
 
     await conn
       .update(gameLineups)
@@ -721,10 +746,44 @@ export async function adminScoringRoutes(app: FastifyInstance) {
       const gameId = parseInt(request.params.gameId, 10);
       const { teamId, lineup } = request.body;
 
-      const [game] = await db.select({ status: games.status, isFinalized: games.isFinalized }).from(games).where(eq(games.id, gameId)).limit(1);
+      const [game] = await db
+        .select({
+          status: games.status,
+          isFinalized: games.isFinalized,
+          homeTeamId: games.homeTeamId,
+          awayTeamId: games.awayTeamId,
+        })
+        .from(games)
+        .where(eq(games.id, gameId))
+        .limit(1);
       if (!game) return reply.status(404).send({ message: 'Game not found' });
       if (game.isFinalized || game.status === 'live') {
         return reply.status(400).send({ message: 'Lineups cannot be rewritten after a game is live or finalized. Use substitutions or event edits so stats can replay correctly.' });
+      }
+      if (teamId !== game.homeTeamId && teamId !== game.awayTeamId) {
+        return reply.status(400).send({ message: 'Lineup team must be one of the two teams in this game' });
+      }
+
+      const lineupPlayerIds = (lineup ?? []).map((entry) => Number(entry.playerId)).filter((id) => Number.isFinite(id));
+      if (new Set(lineupPlayerIds).size !== lineupPlayerIds.length) {
+        return reply.status(400).send({ message: 'The same player cannot appear twice in one lineup' });
+      }
+      if (lineupPlayerIds.length > 0) {
+        const opponentTeamId = teamId === game.homeTeamId ? game.awayTeamId : game.homeTeamId;
+        const [opponentConflict] = await db
+          .select({ playerId: gameLineups.playerId })
+          .from(gameLineups)
+          .where(and(
+            eq(gameLineups.gameId, gameId),
+            eq(gameLineups.teamId, opponentTeamId),
+            eq(gameLineups.isActive, true),
+            inArray(gameLineups.playerId, lineupPlayerIds),
+          ))
+          .limit(1);
+
+        if (opponentConflict) {
+          return reply.status(400).send({ message: 'The same player cannot be active for both teams in one game' });
+        }
       }
 
       // Delete existing lineup for this team in this game

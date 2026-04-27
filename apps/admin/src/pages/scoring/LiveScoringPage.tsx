@@ -437,6 +437,15 @@ export function LiveScoringPage() {
   // ── Setup handlers ──
   const handleSetupSubmit = async () => {
     if (setupHome.length === 0 || setupAway.length === 0) { alert('Both teams need at least 1 player'); return; }
+    const homeIds = new Set(setupHome.map((p) => p.playerId));
+    const duplicatePlayer = setupAway.find((p) => homeIds.has(p.playerId));
+    if (duplicatePlayer) {
+      const player =
+        homeRoster.find((p) => p.playerId === duplicatePlayer.playerId) ??
+        awayRoster.find((p) => p.playerId === duplicatePlayer.playerId);
+      alert(`${player ? `${player.firstName} ${player.lastName}` : 'This player'} cannot be in both lineups for the same game.`);
+      return;
+    }
     try {
       await apiPost(`/admin/scoring/${gameId}/lineup`, { teamId: game!.homeTeamId, lineup: setupHome.map((p, i) => ({ playerId: p.playerId, battingOrder: i + 1, position: p.position })) });
       await apiPost(`/admin/scoring/${gameId}/lineup`, { teamId: game!.awayTeamId, lineup: setupAway.map((p, i) => ({ playerId: p.playerId, battingOrder: i + 1, position: p.position })) });
@@ -1375,6 +1384,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
     const currentRoster = setupTeam === 'home' ? homeRoster : awayRoster;
     const currentSetup = setupTeam === 'home' ? setupHome : setupAway;
     const selectedIds = new Set(currentSetup.map(p => p.playerId));
+    const opposingSelectedIds = new Set((setupTeam === 'home' ? setupAway : setupHome).map(p => p.playerId));
     return (
       <div className="min-h-screen bg-[#0c1220] text-white">
         <div className="bg-[#162038] border-b border-white/10 px-6 py-4 flex items-center justify-between">
@@ -1393,7 +1403,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
           <div className="grid grid-cols-2 gap-6">
             <div>
               <h3 className="text-sm font-bold text-white/50 uppercase mb-3">Available</h3>
-              <div className="space-y-1">{currentRoster.filter(p => !selectedIds.has(p.playerId)).map(p => (
+              <div className="space-y-1">{currentRoster.filter(p => !selectedIds.has(p.playerId) && !opposingSelectedIds.has(p.playerId)).map(p => (
                 <button key={p.playerId} onClick={() => addToSetup(setupTeam, p.playerId)} className="w-full text-left px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-sm flex items-center gap-2">
                   {p.jerseyNumber && <span className="text-white/30 font-mono">#{p.jerseyNumber}</span>}
                   <span className="flex-1">{p.firstName.charAt(0)}. {p.lastName}</span>

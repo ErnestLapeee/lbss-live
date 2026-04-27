@@ -133,7 +133,7 @@ export function SeasonSetupPage() {
 
   const handleImport = async () => {
     if (leagueId == null || sourceSeasonId == null) return;
-    if (!confirm('Copy players from the source season onto the same teams for the current workspace season? Players already on any team this season are skipped.')) {
+    if (!confirm('Copy players from the source season onto the same teams for the current workspace season? Exact player/team roster slots that already exist this season are skipped.')) {
       return;
     }
     setImporting(true);

@@ -64,7 +64,7 @@ export function TeamsPage() {
   const [assignToTeamId, setAssignToTeamId] = useState<number | null>(null);
   const [assignForm, setAssignForm] = useState({ playerId: '', jerseyNumber: '' });
 
-  // Move player modal
+  // Add player to another team modal
   const [showMoveModal, setShowMoveModal] = useState(false);
   const [movingPlayer, setMovingPlayer] = useState<RosterPlayer | null>(null);
   const [moveTargetTeamId, setMoveTargetTeamId] = useState('');
@@ -95,9 +95,20 @@ export function TeamsPage() {
     loadRosters();
   }, [selectedSeasonId, loadRosters]);
 
-  /* ───── derived: unassigned players ───── */
-  const assignedPlayerIds = new Set(teams.flatMap(t => t.players.map(p => p.playerId)));
-  const unassignedPlayers = allPlayers.filter(p => p.isActive && !assignedPlayerIds.has(p.id));
+  /* ───── derived: roster membership ───── */
+  const rosterTeamIdsByPlayer = new Map<number, Set<number>>();
+  for (const team of teams) {
+    for (const player of team.players) {
+      const teamIds = rosterTeamIdsByPlayer.get(player.playerId) ?? new Set<number>();
+      teamIds.add(team.id);
+      rosterTeamIdsByPlayer.set(player.playerId, teamIds);
+    }
+  }
+  const getAssignablePlayers = (teamId: number | null) => {
+    if (!teamId) return [];
+    return allPlayers.filter((p) => p.isActive && !rosterTeamIdsByPlayer.get(p.id)?.has(teamId));
+  };
+  const unassignedPlayers = allPlayers.filter(p => p.isActive && !rosterTeamIdsByPlayer.has(p.id));
 
   /* ───── team CRUD ───── */
   const openCreateTeam = () => {
@@ -220,7 +231,7 @@ export function TeamsPage() {
     }
   };
 
-  /* ───── move player between teams ───── */
+  /* ───── add existing roster player to another team ───── */
   const openMovePlayer = (player: RosterPlayer) => {
     setMovingPlayer(player);
     setMoveTargetTeamId('');
@@ -239,7 +250,7 @@ export function TeamsPage() {
       setMovingPlayer(null);
       await loadRosters();
     } catch (err: any) {
-      alert(err.message || 'Failed to move');
+      alert(err.message || 'Failed to add player to team');
     } finally {
       setSaving(false);
     }
@@ -404,7 +415,7 @@ export function TeamsPage() {
                           <button
                             onClick={() => openMovePlayer(p)}
                             className="p-1 text-text-muted hover:text-accent rounded"
-                            title="Move to another team"
+                            title="Add to another team"
                           >
                             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
@@ -433,7 +444,7 @@ export function TeamsPage() {
                   >
                     + New Player
                   </button>
-                  {unassignedPlayers.length > 0 && (
+                  {getAssignablePlayers(team.id).length > 0 && (
                     <button
                       onClick={() => openAssignExisting(team.id)}
                       className="flex-1 py-2 text-xs font-semibold text-text-muted hover:bg-surface-alt border border-dashed border-border rounded-lg transition-colors"
@@ -557,7 +568,7 @@ export function TeamsPage() {
             <Field label="Player *">
               <select value={assignForm.playerId} onChange={e => setAssignForm(f => ({ ...f, playerId: e.target.value }))} className={inputClass} required>
                 <option value="">Select player...</option>
-                {unassignedPlayers.map(p => (
+                {getAssignablePlayers(assignToTeamId).map(p => (
                   <option key={p.id} value={p.id}>{p.firstName} {p.lastName}</option>
                 ))}
               </select>
@@ -570,22 +581,25 @@ export function TeamsPage() {
         </Modal>
       )}
 
-      {/* ── Move player modal ── */}
+      {/* ── Add player to another team modal ── */}
       {showMoveModal && movingPlayer && (
         <Modal onClose={() => { setShowMoveModal(false); setMovingPlayer(null); }}>
           <h2 className="font-heading text-xl font-bold mb-4">
-            Move {movingPlayer.firstName} {movingPlayer.lastName}
+            Add {movingPlayer.firstName} {movingPlayer.lastName} to another team
           </h2>
           <form onSubmit={handleMoveSubmit} className="space-y-4">
-            <Field label="Move to team *">
+            <Field label="Add to team *">
               <select value={moveTargetTeamId} onChange={e => setMoveTargetTeamId(e.target.value)} className={inputClass} required>
                 <option value="">Select team...</option>
-                {teams.filter(t => t.id !== movingPlayer.teamId).map(t => (
+                {teams.filter(t => !rosterTeamIdsByPlayer.get(movingPlayer.playerId)?.has(t.id)).map(t => (
                   <option key={t.id} value={t.id}>{t.name}</option>
                 ))}
               </select>
             </Field>
-            <ModalActions onCancel={() => { setShowMoveModal(false); setMovingPlayer(null); }} saving={saving} label="Move Player" />
+            <p className="text-xs text-text-muted">
+              This keeps their existing roster entry, so past and future games can use the correct team.
+            </p>
+            <ModalActions onCancel={() => { setShowMoveModal(false); setMovingPlayer(null); }} saving={saving} label="Add to Team" />
           </form>
         </Modal>
       )}

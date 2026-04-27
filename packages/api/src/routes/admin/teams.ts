@@ -71,7 +71,7 @@ export async function adminTeamsRoutes(app: FastifyInstance) {
     }
   });
 
-  // PUT /roster/:rosterId/transfer - move a player to a different team
+  // PUT /roster/:rosterId/transfer - add a player to another team for the same season
   app.put<{
     Params: { rosterId: string };
     Body: { newTeamId: number };
@@ -87,20 +87,50 @@ export async function adminTeamsRoutes(app: FastifyInstance) {
         return reply.status(400).send({ message: 'newTeamId required' });
       }
 
-      const [updated] = await db
-        .update(playerSeasons)
-        .set({ teamId: newTeamId })
+      const [sourceRoster] = await db
+        .select()
+        .from(playerSeasons)
         .where(eq(playerSeasons.id, rosterId))
-        .returning();
+        .limit(1);
 
-      if (!updated) {
+      if (!sourceRoster) {
         return reply.status(404).send({ message: 'Roster entry not found' });
       }
 
-      return reply.send(updated);
+      if (sourceRoster.teamId === newTeamId) {
+        return reply.status(400).send({ message: 'Player is already on that team roster' });
+      }
+
+      const [existingTargetRoster] = await db
+        .select()
+        .from(playerSeasons)
+        .where(and(
+          eq(playerSeasons.playerId, sourceRoster.playerId),
+          eq(playerSeasons.teamId, newTeamId),
+          eq(playerSeasons.seasonId, sourceRoster.seasonId),
+        ))
+        .limit(1);
+
+      if (existingTargetRoster) {
+        return reply.send(existingTargetRoster);
+      }
+
+      const [created] = await db
+        .insert(playerSeasons)
+        .values({
+          playerId: sourceRoster.playerId,
+          teamId: newTeamId,
+          seasonId: sourceRoster.seasonId,
+          jerseyNumber: sourceRoster.jerseyNumber,
+          position: sourceRoster.position,
+          role: sourceRoster.role ?? 'player',
+        })
+        .returning();
+
+      return reply.status(201).send(created);
     } catch (err) {
       request.log.error(err);
-      return reply.status(500).send({ message: 'Failed to transfer player' });
+      return reply.status(500).send({ message: 'Failed to add player to team' });
     }
   });
 

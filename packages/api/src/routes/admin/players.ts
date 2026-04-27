@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { db } from '../../db/index.js';
 import { players, playerSeasons, licenses } from '../../db/schema/index.js';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { slugify } from '../../utils/slugify.js';
 
 export async function adminPlayersRoutes(app: FastifyInstance) {
@@ -180,6 +180,20 @@ export async function adminPlayersRoutes(app: FastifyInstance) {
       const { teamId, seasonId, jerseyNumber, position } = request.body ?? {};
       if (!teamId || !seasonId) {
         return reply.status(400).send({ message: 'teamId and seasonId required' });
+      }
+
+      const [existingRosterEntry] = await db
+        .select()
+        .from(playerSeasons)
+        .where(and(
+          eq(playerSeasons.playerId, playerId),
+          eq(playerSeasons.teamId, teamId),
+          eq(playerSeasons.seasonId, seasonId),
+        ))
+        .limit(1);
+
+      if (existingRosterEntry) {
+        return reply.send(existingRosterEntry);
       }
 
       const [rosterEntry] = await db

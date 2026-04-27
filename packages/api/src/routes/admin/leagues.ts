@@ -194,17 +194,18 @@ export async function adminLeaguesRoutes(app: FastifyInstance) {
         .where(and(eq(playerSeasons.seasonId, sourceSeasonId), inArray(playerSeasons.teamId, teamIds)));
 
       const existingTarget = await db
-        .select({ playerId: playerSeasons.playerId })
+        .select({ playerId: playerSeasons.playerId, teamId: playerSeasons.teamId })
         .from(playerSeasons)
         .where(eq(playerSeasons.seasonId, targetSeasonId));
-      const alreadyInTarget = new Set(existingTarget.map((r) => r.playerId));
+      const alreadyInTarget = new Set(existingTarget.map((r) => `${r.playerId}:${r.teamId}`));
 
       let imported = 0;
       let skipped = 0;
 
       await db.transaction(async (tx) => {
         for (const row of sourceRoster) {
-          if (alreadyInTarget.has(row.playerId)) {
+          const targetKey = `${row.playerId}:${row.teamId}`;
+          if (alreadyInTarget.has(targetKey)) {
             skipped++;
             continue;
           }
@@ -216,7 +217,7 @@ export async function adminLeaguesRoutes(app: FastifyInstance) {
             position: row.position,
             role: row.role ?? 'player',
           });
-          alreadyInTarget.add(row.playerId);
+          alreadyInTarget.add(targetKey);
           imported++;
         }
       });
@@ -224,7 +225,7 @@ export async function adminLeaguesRoutes(app: FastifyInstance) {
       return reply.send({
         imported,
         skipped,
-        message: `Imported ${imported} roster slot(s); skipped ${skipped} (already on a team this season).`,
+        message: `Imported ${imported} roster slot(s); skipped ${skipped} (already on that team this season).`,
       });
     } catch (err) {
       request.log.error(err);
