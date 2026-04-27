@@ -785,7 +785,17 @@ function needsRunnerAdvanceErrorFieldingPrompt(
       const runnersScored: number[] = [];
 
       const detailParts: string[] = [];
+      const putoutFielderIds: number[] = [];
+      const assistFielderIds: number[] = [];
       const errorFielderIds: number[] = [];
+      const addFieldingCredits = (positions: number[]) => {
+        for (let i = 0; i < positions.length; i++) {
+          const fielder = fieldingLineup.find(l => l.position === positions[i]);
+          if (!fielder) continue;
+          if (i === positions.length - 1) putoutFielderIds.push(fielder.playerId);
+          else assistFielderIds.push(fielder.playerId);
+        }
+      };
       for (const r of runners) {
         if (r.outcome === 'safe') {
           if (r.base === 'first') runnerFirstId = null;
@@ -808,6 +818,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
           if (r.base === 'first') runnerFirstId = null;
           else if (r.base === 'second') runnerSecondId = null;
           else if (r.base === 'third') runnerThirdId = null;
+          if (r.fielding?.length) addFieldingCredits(r.fielding);
           const fldStr = r.fielding?.length ? ` (${r.fielding.join('-')})` : '';
           detailParts.push(`${r.playerName} out${fldStr}`);
         } else {
@@ -832,7 +843,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
         outsRecorded, balls, strikes,
         runnerFirstId, runnerSecondId, runnerThirdId, runnersScored,
         eventDetail: detail,
-        putoutFielderIds: [], assistFielderIds: [], errorFielderIds: uniqueErrorFielderIds,
+        putoutFielderIds: uniqNums(putoutFielderIds), assistFielderIds: uniqNums(assistFielderIds), errorFielderIds: uniqueErrorFielderIds,
         fieldingSequence: fsErr,
         errorsOnPlay,
       });
@@ -1108,6 +1119,16 @@ function needsRunnerAdvanceErrorFieldingPrompt(
               else assistFielderIds.push(fielder.playerId);
             }
           }
+        }
+      }
+
+      for (const r of runners) {
+        if (r.outcome !== 'out' || !r.fielding?.length) continue;
+        for (let i = 0; i < r.fielding.length; i++) {
+          const fielder = fieldingLineup.find(l => l.position === r.fielding![i]);
+          if (!fielder) continue;
+          if (i === r.fielding.length - 1) putoutFielderIds.push(fielder.playerId);
+          else assistFielderIds.push(fielder.playerId);
         }
       }
 
@@ -2956,10 +2977,13 @@ function EventTimelinePanel({ gameId, events, homeLineup, awayLineup, onClose, o
       if (reasons.length !== scored.length) {
         reasons = scored.map((_, i) => reasons[i] || 'on_play');
       }
+      const errorFielderIds: number[] = Array.isArray(editForm.errorFielderIds) ? editForm.errorFielderIds : [];
       const payload = {
         ...editForm,
         runnersScored: scored,
         runnerScoredReasons: reasons,
+        errorFielderIds,
+        errorsOnPlay: errorFielderIds.length > 0 ? errorFielderIds.length : (parseInt(String(editForm.errorsOnPlay ?? 0), 10) || 0),
         // If user didn't set runsScored explicitly, keep it consistent with scorers.
         runsScored: typeof editForm.runsScored === 'number' ? editForm.runsScored : scored.length,
       };
@@ -3174,13 +3198,16 @@ function EventTimelinePanel({ gameId, events, homeLineup, awayLineup, onClose, o
                                   type="checkbox"
                                   checked={checked}
                                   onChange={(e) => {
-                                    const next = new Set<number>(editForm.runnersScored || []);
+                                    const prevScored: number[] = Array.isArray(editForm.runnersScored) ? editForm.runnersScored : [];
+                                    const prevReasons: string[] = Array.isArray(editForm.runnerScoredReasons) ? editForm.runnerScoredReasons : [];
+                                    const reasonByPlayer = new Map(prevScored.map((pid, i) => [pid, prevReasons[i] || 'on_play']));
+                                    const next = new Set<number>(prevScored);
                                     if (e.target.checked) next.add(id); else next.delete(id);
                                     const arr = [...next];
                                     setEditForm(f => ({
                                       ...f,
                                       runnersScored: arr,
-                                      runnerScoredReasons: arr.map((_, i) => (f.runnerScoredReasons?.[i] || 'on_play')),
+                                      runnerScoredReasons: arr.map(pid => reasonByPlayer.get(pid) || 'on_play'),
                                     }));
                                   }}
                                 />

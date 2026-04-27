@@ -491,7 +491,10 @@ export async function finalizeGame(gameId: number, userId?: number, options?: Fi
   for (const pitcherId of pitcherIds) {
     const a = pitcherAgg.get(pitcherId);
     if (!a) continue;
-    const teamId = playerTeamMap.get(pitcherId) || game.homeTeamId;
+    const pitcherEvent = events.find((e) => e.pitcherId === pitcherId);
+    const teamId =
+      playerTeamMap.get(pitcherId) ??
+      (pitcherEvent?.half === 'bot' ? game.awayTeamId : game.homeTeamId);
 
     const outsRecorded = a.outsRecorded;
     const hitsAllowed = a.hitsAllowed;
@@ -775,35 +778,54 @@ export async function finalizeGame(gameId: number, userId?: number, options?: Fi
       });
   }
 
-  /* ── Lock game (skip when recomputing already-finalized games) ── */
-  if (!options?.recompute) {
-    await db
-      .update(games)
-      .set({
-        isFinalized: true,
-        status: 'final',
-        finalizedAt: new Date(),
-        finalizedBy: userId ?? null,
-        updatedAt: new Date(),
-      })
-      .where(eq(games.id, gameId));
+  let lockedGame = false;
+  let seasonIdVal: number | undefined;
+  try {
+    /* ── Lock game before aggregate recompute so this game is included in season totals. ── */
+    if (!options?.recompute) {
+      await db
+        .update(games)
+        .set({
+          isFinalized: true,
+          status: 'final',
+          finalizedAt: new Date(),
+          finalizedBy: userId ?? null,
+          updatedAt: new Date(),
+        })
+        .where(eq(games.id, gameId));
+      lockedGame = true;
+    }
+
+    /* ── Recompute season aggregates ── */
+    const seasonResult = await db.execute(
+      sql`SELECT s.id FROM seasons s JOIN leagues l ON l.season_id = s.id WHERE l.id = ${game.leagueId} LIMIT 1`
+    );
+    seasonIdVal = firstRowFromExecute<{ id: number }>(seasonResult)?.id;
+
+    if (seasonIdVal) {
+      await recomputeSeasonBatting(seasonIdVal);
+      await recomputeSeasonPitching(seasonIdVal);
+      await recomputeSeasonFielding(seasonIdVal);
+    } else {
+      throw new Error(`Could not find seasonId for leagueId=${game.leagueId}. Season stats were not recomputed.`);
+    }
+
+    await recomputeStandings(game.leagueId);
+  } catch (err) {
+    if (lockedGame) {
+      await db
+        .update(games)
+        .set({
+          isFinalized: false,
+          status: game.status ?? 'live',
+          finalizedAt: null,
+          finalizedBy: null,
+          updatedAt: new Date(),
+        })
+        .where(eq(games.id, gameId));
+    }
+    throw err;
   }
-
-  /* ── Recompute season aggregates ── */
-  const seasonResult = await db.execute(
-    sql`SELECT s.id FROM seasons s JOIN leagues l ON l.season_id = s.id WHERE l.id = ${game.leagueId} LIMIT 1`
-  );
-  const seasonIdVal = firstRowFromExecute<{ id: number }>(seasonResult)?.id;
-
-  if (seasonIdVal) {
-    await recomputeSeasonBatting(seasonIdVal);
-    await recomputeSeasonPitching(seasonIdVal);
-    await recomputeSeasonFielding(seasonIdVal);
-  } else {
-    throw new Error(`Could not find seasonId for leagueId=${game.leagueId}. Season stats were not recomputed.`);
-  }
-
-  await recomputeStandings(game.leagueId);
 
   return { success: true, gameId, seasonRecomputed: !!seasonIdVal };
 }

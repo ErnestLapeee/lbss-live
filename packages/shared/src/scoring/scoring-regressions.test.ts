@@ -40,6 +40,5 @@ const countSplits = aggregateBattingCountSplits([
 
 assert(countSplits.firstPitch.total === 2, 'first-pitch totals should count both PAs');
 assert(countSplits.firstPitch.strikes === 1, 'called strike should count as first-pitch strike');
-assert(countSplits.firstPitch.swings === 0, 'called strike should not count as first-pitch swing');
 assert(countSplits.counts.find((line) => line.count === '0-1')?.hits === 1, '0-1 single should land in the 0-1 split');
 assert(countSplits.counts.find((line) => line.count === '3-0')?.walks === 1, 'between-pitch events should not reset count before the walk');

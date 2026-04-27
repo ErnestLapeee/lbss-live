@@ -107,6 +107,9 @@ function validateScoringEventPayload(
 ): { ok: true; normalizedErrorsOnPlay: number } | { ok: false; message: string } {
   const eventType = String(payload.eventType ?? '').trim();
   if (!eventType || !isKnownEventType(eventType)) return { ok: false, message: `Unknown event type: ${eventType || '(empty)'}` };
+  if (eventType === 'substitution') {
+    return { ok: false, message: 'Use the substitution endpoint so lineup state and event log stay synchronized' };
+  }
 
   const inning = Math.max(1, Math.floor(Number(payload.inning ?? options?.expectedState?.inning ?? 1)) || 1);
   const half = normalizeHalf(payload.half);
@@ -256,9 +259,10 @@ export async function adminScoringRoutes(app: FastifyInstance) {
       inning: number;
       half: string;
     },
+    conn: any = db,
   ): Promise<{ ok: true } | { ok: false; message: string }> {
     const { outPlayerId, inPlayerId, teamId, position, inning, half } = params;
-    const [outEntry] = await db
+    const [outEntry] = await conn
       .select()
       .from(gameLineups)
       .where(
@@ -274,7 +278,7 @@ export async function adminScoringRoutes(app: FastifyInstance) {
       return { ok: false, message: 'Outgoing player is not active in lineup' };
     }
 
-    await db
+    await conn
       .update(gameLineups)
       .set({
         isActive: false,
@@ -283,7 +287,7 @@ export async function adminScoringRoutes(app: FastifyInstance) {
       })
       .where(eq(gameLineups.id, outEntry.id));
 
-    await db.insert(gameLineups).values({
+    await conn.insert(gameLineups).values({
       gameId,
       teamId,
       playerId: inPlayerId,
@@ -1055,6 +1059,7 @@ export async function adminScoringRoutes(app: FastifyInstance) {
         .where(and(eq(gameEvents.id, eventId), eq(gameEvents.gameId, gameId)))
         .limit(1);
       if (!existing) return reply.status(404).send({ message: 'Event not found' });
+      if (existing.isDeleted) return reply.status(400).send({ message: 'Deleted events cannot be edited; redo the event first' });
 
       const allowedFields: Record<string, (v: any) => any> = {
         inning: (v) => Math.max(1, Math.floor(Number(v)) || 1),
@@ -1099,6 +1104,9 @@ export async function adminScoringRoutes(app: FastifyInstance) {
       if (Object.keys(updates).length === 0) {
         return reply.status(400).send({ message: 'No valid fields to update' });
       }
+      if (existing.eventType === 'substitution' || updates.eventType === 'substitution') {
+        return reply.status(400).send({ message: 'Substitution events cannot be edited here; delete and re-enter the substitution so lineup state stays synchronized' });
+      }
 
       const candidate = {
         eventType: 'eventType' in updates ? updates.eventType : existing.eventType,
@@ -1114,7 +1122,10 @@ export async function adminScoringRoutes(app: FastifyInstance) {
         errorFielderIds: 'errorFielderIds' in updates ? updates.errorFielderIds : uniqueNumberArray(existing.errorFielderIds),
         errorsOnPlay: 'errorsOnPlay' in updates ? updates.errorsOnPlay : existing.errorsOnPlay,
       };
-      const eventValidation = validateScoringEventPayload(candidate);
+      const previousEvents = await db.select().from(gameEvents)
+        .where(and(eq(gameEvents.gameId, gameId), eq(gameEvents.isDeleted, false), sql`${gameEvents.eventNumber} < ${existing.eventNumber}`))
+        .orderBy(gameEvents.eventNumber);
+      const eventValidation = validateScoringEventPayload(candidate, { expectedState: computeGameState(previousEvents), strictState: true });
       if (!eventValidation.ok) return reply.status(400).send({ message: eventValidation.message });
       if ('errorFielderIds' in updates || 'errorsOnPlay' in updates) {
         updates.errorsOnPlay = eventValidation.normalizedErrorsOnPlay;
@@ -1267,32 +1278,9 @@ export async function adminScoringRoutes(app: FastifyInstance) {
           ? request.body.subKind
           : 'defensive';
 
-      const applied = await applyPlayerSubstitutionLineup(gameId, {
-        outPlayerId,
-        inPlayerId,
-        teamId,
-        position,
-        inning,
-        half,
-      });
-      if (!applied.ok) {
-        return reply.status(400).send({ message: applied.message });
-      }
-
       const user = request.user;
       const halfNorm = normalizeHalf(half);
       const inningNum = Math.max(1, Math.floor(Number(inning)) || 1);
-
-      const allEventsBefore = await db.select().from(gameEvents)
-        .where(and(eq(gameEvents.gameId, gameId), eq(gameEvents.isDeleted, false)))
-        .orderBy(gameEvents.eventNumber);
-      const stateBefore = computeGameState(allEventsBefore);
-
-      const [maxEvt] = await db
-        .select({ maxNum: max(gameEvents.eventNumber) })
-        .from(gameEvents)
-        .where(eq(gameEvents.gameId, gameId));
-      const eventNumber = ((maxEvt?.maxNum as number) || 0) + 1;
 
       const nameRows = await db.select({
         id: players.id,
@@ -1315,42 +1303,67 @@ export async function adminScoringRoutes(app: FastifyInstance) {
         inName,
       });
 
-      await db.insert(gameEvents).values({
-        gameId,
-        eventNumber,
-        inning: inningNum,
-        half: halfNorm,
-        batterId: null,
-        pitcherId: null,
-        eventType: 'substitution',
-        eventDetail: detail,
-        rbi: 0,
-        runsScored: 0,
-        outsRecorded: 0,
-        errorsOnPlay: 0,
-        balls: 0,
-        strikes: 0,
-        runnerFirstId: stateBefore.bases.first,
-        runnerSecondId: stateBefore.bases.second,
-        runnerThirdId: stateBefore.bases.third,
-        runnersScored: [],
-        runnerScoredReasons: [],
-        createdBy: user?.id ?? null,
+      const newState = await db.transaction(async (tx) => {
+        const allEventsBefore = await tx.select().from(gameEvents)
+          .where(and(eq(gameEvents.gameId, gameId), eq(gameEvents.isDeleted, false)))
+          .orderBy(gameEvents.eventNumber);
+        const stateBefore = computeGameState(allEventsBefore);
+
+        const applied = await applyPlayerSubstitutionLineup(gameId, {
+          outPlayerId,
+          inPlayerId,
+          teamId,
+          position,
+          inning: inningNum,
+          half: halfNorm,
+        }, tx);
+        if (!applied.ok) throw new Error(`SUBSTITUTION_VALIDATION:${applied.message}`);
+
+        const [maxEvt] = await tx
+          .select({ maxNum: max(gameEvents.eventNumber) })
+          .from(gameEvents)
+          .where(eq(gameEvents.gameId, gameId));
+        const eventNumber = ((maxEvt?.maxNum as number) || 0) + 1;
+
+        await tx.insert(gameEvents).values({
+          gameId,
+          eventNumber,
+          inning: inningNum,
+          half: halfNorm,
+          batterId: null,
+          pitcherId: null,
+          eventType: 'substitution',
+          eventDetail: detail,
+          rbi: 0,
+          runsScored: 0,
+          outsRecorded: 0,
+          errorsOnPlay: 0,
+          balls: 0,
+          strikes: 0,
+          runnerFirstId: stateBefore.bases.first,
+          runnerSecondId: stateBefore.bases.second,
+          runnerThirdId: stateBefore.bases.third,
+          runnersScored: [],
+          runnerScoredReasons: [],
+          createdBy: user?.id ?? null,
+        });
+
+        const allAfter = await tx.select().from(gameEvents)
+          .where(and(eq(gameEvents.gameId, gameId), eq(gameEvents.isDeleted, false)))
+          .orderBy(gameEvents.eventNumber);
+        const state = computeGameState(allAfter);
+
+        await tx.update(games).set({
+          homeScore: state.homeScore,
+          awayScore: state.awayScore,
+          currentInning: state.inning,
+          currentHalf: state.half,
+          currentOuts: state.outs,
+          updatedAt: new Date(),
+        }).where(eq(games.id, gameId));
+
+        return state;
       });
-
-      const allAfter = await db.select().from(gameEvents)
-        .where(and(eq(gameEvents.gameId, gameId), eq(gameEvents.isDeleted, false)))
-        .orderBy(gameEvents.eventNumber);
-      const newState = computeGameState(allAfter);
-
-      await db.update(games).set({
-        homeScore: newState.homeScore,
-        awayScore: newState.awayScore,
-        currentInning: newState.inning,
-        currentHalf: newState.half,
-        currentOuts: newState.outs,
-        updatedAt: new Date(),
-      }).where(eq(games.id, gameId));
 
       try {
         getIO().to(`game:${gameId}`).emit('game:update', { state: newState });
@@ -1361,6 +1374,9 @@ export async function adminScoringRoutes(app: FastifyInstance) {
 
       return reply.send({ success: true });
     } catch (err) {
+      if (err instanceof Error && err.message.startsWith('SUBSTITUTION_VALIDATION:')) {
+        return reply.status(400).send({ message: err.message.replace('SUBSTITUTION_VALIDATION:', '') });
+      }
       request.log.error(err);
       return reply.status(500).send({ message: 'Failed to substitute' });
     }
