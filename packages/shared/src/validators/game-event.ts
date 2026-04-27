@@ -18,6 +18,7 @@ const eventTypes = [
   'intentional_walk',
   'hit_by_pitch',
   'catcher_obstruction',
+  'catcher_interference',
 
   // Strikeouts / special K outcomes
   'strikeout',
@@ -78,6 +79,7 @@ const eventTypes = [
   // System / roster
   'end_half_inning',
   'substitution',
+  'adjust_score',
 
   // Misc/legacy
   'interference',

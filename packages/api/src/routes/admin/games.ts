@@ -415,24 +415,20 @@ export async function adminGamesRoutes(app: FastifyInstance) {
         await db.update(playerGameFielding).set(updates).where(and(eq(playerGameFielding.gameId, id), eq(playerGameFielding.playerId, playerId)));
       }
 
-      // Recompute season aggregates and standings so manual edits propagate.
-      try {
-        const seasonId = await getSeasonIdForLeague(game.leagueId);
-        if (seasonId) {
-          await recomputeSeasonBatting(seasonId);
-          await recomputeSeasonPitching(seasonId);
-          await recomputeSeasonFielding(seasonId);
-        }
-      } catch (err) {
-        request.log.error(err, 'Failed to recompute season aggregates after manual stat edit');
+      // Manual stat edits are explicit overrides until the next event-derived recompute.
+      const seasonId = await getSeasonIdForLeague(game.leagueId);
+      if (seasonId) {
+        await recomputeSeasonBatting(seasonId);
+        await recomputeSeasonPitching(seasonId);
+        await recomputeSeasonFielding(seasonId);
       }
-      try {
-        await recomputeStandings(game.leagueId);
-      } catch (err) {
-        request.log.error(err, 'Failed to recompute standings after manual stat edit');
-      }
+      await recomputeStandings(game.leagueId);
 
-      return reply.send({ success: true });
+      return reply.send({
+        success: true,
+        manualOverride: true,
+        message: 'Manual stat line saved. Later event edits/finalization recomputes can overwrite this row.',
+      });
     } catch (err) {
       request.log.error(err);
       return reply.status(500).send({ message: 'Failed to update game stats' });

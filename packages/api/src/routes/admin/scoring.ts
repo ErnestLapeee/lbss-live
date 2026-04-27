@@ -14,6 +14,7 @@ import { eq, and, or, desc, max, sql, inArray } from 'drizzle-orm';
 import { getIO } from '../../app.js';
 import { finalizeGame } from '../../services/finalize-game.js';
 import { firstRowFromExecute } from '../../lib/pg-result.js';
+import { isBetweenPitchEvent, isKnownEventType } from '@lbss/shared';
 
 /** JSONB array columns — normalize without `as any` on DB rows. */
 function jsonbNumberArray(v: unknown): number[] {
@@ -47,16 +48,6 @@ interface GameState {
   strikes: number;
 }
 
-const BETWEEN_PITCH_EVENTS = new Set([
-  'stolen_base', 'caught_stealing', 'picked_off', 'wild_pitch', 'passed_ball',
-  'balk', 'advance', 'advance_on_error', 'defensive_indifference',
-  'runner_interference', 'appeal_play', 'tagged_out', 'force_out',
-  'hit_by_ball', 'missed_base', 'left_base_early', 'left_base_path',
-  'offensive_interference', 'passed_runner', 'hesitation',
-  'double_play', 'triple_play', 'illegal_pitch', 'end_half_inning',
-  'adjust_score',
-]);
-
 function normalizeHalf(h: string | undefined): 'top' | 'bot' {
   const s = String(h ?? 'top').trim().toLowerCase();
   if (s === 'bottom' || s === 'bot') return 'bot';
@@ -83,6 +74,70 @@ function normalizeIncomingRunScoring(body: {
   }
   const runnerScoredReasons = rr.length === 0 && rs.length > 0 ? rs.map(() => 'on_play') : rr;
   return { ok: true, runsScored, runnersScored: rs, runnerScoredReasons };
+}
+
+function duplicateBaseRunnerMessage(bases: Array<number | null | undefined>): string | null {
+  const seen = new Set<number>();
+  for (const raw of bases) {
+    if (raw == null) continue;
+    const id = Number(raw);
+    if (!Number.isFinite(id)) return 'Base runner IDs must be valid numbers';
+    if (seen.has(id)) return 'The same runner cannot occupy multiple bases';
+    seen.add(id);
+  }
+  return null;
+}
+
+function validateScoringEventPayload(
+  payload: {
+    eventType?: string;
+    inning?: number;
+    half?: string;
+    outsRecorded?: number;
+    runsScored?: number;
+    runnersScored?: number[];
+    runnerScoredReasons?: string[];
+    runnerFirstId?: number | null;
+    runnerSecondId?: number | null;
+    runnerThirdId?: number | null;
+    errorFielderIds?: number[];
+    errorsOnPlay?: number;
+  },
+  options?: { expectedState?: GameState; strictState?: boolean },
+): { ok: true; normalizedErrorsOnPlay: number } | { ok: false; message: string } {
+  const eventType = String(payload.eventType ?? '').trim();
+  if (!eventType || !isKnownEventType(eventType)) return { ok: false, message: `Unknown event type: ${eventType || '(empty)'}` };
+
+  const inning = Math.max(1, Math.floor(Number(payload.inning ?? options?.expectedState?.inning ?? 1)) || 1);
+  const half = normalizeHalf(payload.half);
+  if (options?.strictState && options.expectedState) {
+    if (inning !== options.expectedState.inning || half !== options.expectedState.half) {
+      return { ok: false, message: `Event inning/half (${half} ${inning}) does not match current state (${options.expectedState.half} ${options.expectedState.inning})` };
+    }
+  }
+
+  const outsRecorded = Number(payload.outsRecorded ?? 0);
+  if (!Number.isInteger(outsRecorded) || outsRecorded < 0 || outsRecorded > 3) {
+    return { ok: false, message: 'outsRecorded must be an integer between 0 and 3' };
+  }
+  if (options?.strictState && options.expectedState && eventType !== 'end_half_inning' && options.expectedState.outs + outsRecorded > 3) {
+    return { ok: false, message: 'outsRecorded would exceed three outs in the half-inning' };
+  }
+
+  const baseErr = duplicateBaseRunnerMessage([payload.runnerFirstId, payload.runnerSecondId, payload.runnerThirdId]);
+  if (baseErr) return { ok: false, message: baseErr };
+
+  const runNorm = normalizeIncomingRunScoring(payload);
+  if (!runNorm.ok) return { ok: false, message: runNorm.message };
+
+  const uniqueErrors = uniqueNumberArray(payload.errorFielderIds);
+  const providedErrors = Number(payload.errorsOnPlay ?? 0);
+  const normalizedErrorsOnPlay = uniqueErrors.length > 0 ? uniqueErrors.length : Math.max(0, Math.floor(providedErrors) || 0);
+  if (uniqueErrors.length > 0 && providedErrors !== 0 && providedErrors !== uniqueErrors.length) {
+    return { ok: false, message: 'errorsOnPlay must match unique errorFielderIds length' };
+  }
+
+  return { ok: true, normalizedErrorsOnPlay };
 }
 
 function computeGameState(events: any[]): GameState {
@@ -160,7 +215,7 @@ function computeGameState(events: any[]): GameState {
     };
 
     // Reset count for at-bat-concluding events (not runner events between pitches)
-    if (!BETWEEN_PITCH_EVENTS.has(event.eventType)) {
+    if (!isBetweenPitchEvent(event.eventType)) {
       state.balls = 0;
       state.strikes = 0;
     }
@@ -662,6 +717,12 @@ export async function adminScoringRoutes(app: FastifyInstance) {
       const gameId = parseInt(request.params.gameId, 10);
       const { teamId, lineup } = request.body;
 
+      const [game] = await db.select({ status: games.status, isFinalized: games.isFinalized }).from(games).where(eq(games.id, gameId)).limit(1);
+      if (!game) return reply.status(404).send({ message: 'Game not found' });
+      if (game.isFinalized || game.status === 'live') {
+        return reply.status(400).send({ message: 'Lineups cannot be rewritten after a game is live or finalized. Use substitutions or event edits so stats can replay correctly.' });
+      }
+
       // Delete existing lineup for this team in this game
       await db.delete(gameLineups).where(
         and(eq(gameLineups.gameId, gameId), eq(gameLineups.teamId, teamId))
@@ -791,17 +852,21 @@ export async function adminScoringRoutes(app: FastifyInstance) {
       const runNorm = normalizeIncomingRunScoring(body);
       if (!runNorm.ok) return reply.status(400).send({ message: runNorm.message });
 
+      const priorEvents = await db.select().from(gameEvents)
+        .where(and(eq(gameEvents.gameId, gameId), eq(gameEvents.isDeleted, false)))
+        .orderBy(gameEvents.eventNumber);
+      const priorState = computeGameState(priorEvents);
+      const eventValidation = validateScoringEventPayload(body, { expectedState: priorState, strictState: true });
+      if (!eventValidation.ok) return reply.status(400).send({ message: eventValidation.message });
+
       const outsRecorded = Number(body.outsRecorded ?? 0);
-      if (outsRecorded < 0 || outsRecorded > 3) {
-        return reply.status(400).send({ message: 'outsRecorded must be between 0 and 3' });
-      }
 
       // Insert event
       const [event] = await db.insert(gameEvents).values({
         gameId,
         eventNumber,
         inning: body.inning,
-        half: body.half,
+        half: normalizeHalf(body.half),
         batterId: body.batterId ?? null,
         batterSide: batterSideNorm,
         pitcherId: body.pitcherId ?? null,
@@ -810,7 +875,7 @@ export async function adminScoringRoutes(app: FastifyInstance) {
         rbi: body.rbi ?? 0,
         runsScored: runNorm.runsScored,
         outsRecorded,
-        errorsOnPlay: body.errorsOnPlay ?? 0,
+        errorsOnPlay: eventValidation.normalizedErrorsOnPlay,
         balls: body.balls ?? 0,
         strikes: body.strikes ?? 0,
         runnerFirstId: body.runnerFirstId ?? null,
@@ -992,13 +1057,22 @@ export async function adminScoringRoutes(app: FastifyInstance) {
       if (!existing) return reply.status(404).send({ message: 'Event not found' });
 
       const allowedFields: Record<string, (v: any) => any> = {
+        inning: (v) => Math.max(1, Math.floor(Number(v)) || 1),
+        half: (v) => normalizeHalf(v),
         eventType: (v) => v,
         eventDetail: (v) => v ?? null,
         rbi: (v) => v ?? 0,
         runsScored: (v) => v ?? 0,
         outsRecorded: (v) => v ?? 0,
         errorsOnPlay: (v) => v ?? 0,
+        balls: (v) => Math.max(0, Math.min(3, Math.floor(Number(v) || 0))),
+        strikes: (v) => Math.max(0, Math.min(2, Math.floor(Number(v) || 0))),
         fieldingSequence: (v) => v ?? null,
+        putoutFielderIds: (v) => uniqueNumberArray(v),
+        assistFielderIds: (v) => uniqueNumberArray(v),
+        errorFielderIds: (v) => uniqueNumberArray(v),
+        pitchCount: (v) => (v == null || v === '' ? null : Number(v)),
+        pitchSequence: (v) => v ?? null,
         hitLocationX: (v) => v != null ? String(v) : null,
         hitLocationY: (v) => v != null ? String(v) : null,
         hitType: (v) => v ?? null,
@@ -1024,6 +1098,26 @@ export async function adminScoringRoutes(app: FastifyInstance) {
 
       if (Object.keys(updates).length === 0) {
         return reply.status(400).send({ message: 'No valid fields to update' });
+      }
+
+      const candidate = {
+        eventType: 'eventType' in updates ? updates.eventType : existing.eventType,
+        inning: 'inning' in updates ? updates.inning : existing.inning,
+        half: 'half' in updates ? updates.half : existing.half,
+        outsRecorded: 'outsRecorded' in updates ? updates.outsRecorded : existing.outsRecorded,
+        runsScored: 'runsScored' in updates ? updates.runsScored : existing.runsScored,
+        runnersScored: 'runnersScored' in updates ? updates.runnersScored : jsonbNumberArray(existing.runnersScored),
+        runnerScoredReasons: 'runnerScoredReasons' in updates ? updates.runnerScoredReasons : jsonbStringArray(existing.runnerScoredReasons),
+        runnerFirstId: 'runnerFirstId' in updates ? updates.runnerFirstId : existing.runnerFirstId,
+        runnerSecondId: 'runnerSecondId' in updates ? updates.runnerSecondId : existing.runnerSecondId,
+        runnerThirdId: 'runnerThirdId' in updates ? updates.runnerThirdId : existing.runnerThirdId,
+        errorFielderIds: 'errorFielderIds' in updates ? updates.errorFielderIds : uniqueNumberArray(existing.errorFielderIds),
+        errorsOnPlay: 'errorsOnPlay' in updates ? updates.errorsOnPlay : existing.errorsOnPlay,
+      };
+      const eventValidation = validateScoringEventPayload(candidate);
+      if (!eventValidation.ok) return reply.status(400).send({ message: eventValidation.message });
+      if ('errorFielderIds' in updates || 'errorsOnPlay' in updates) {
+        updates.errorsOnPlay = eventValidation.normalizedErrorsOnPlay;
       }
 
       // Basic validation / normalization for scorer attribution.

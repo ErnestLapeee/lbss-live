@@ -16,6 +16,7 @@ export type EventType =
   | 'intentional_walk'
   | 'hit_by_pitch'
   | 'catcher_obstruction'
+  | 'catcher_interference'
 
   // Strikeouts / special K outcomes
   | 'strikeout'

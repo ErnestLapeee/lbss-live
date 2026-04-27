@@ -3,74 +3,27 @@
  * Mirrors packages/api/src/services/finalize-game.ts batting PA classification.
  */
 
-const HIT_EVENTS = new Set([
-  'single',
-  'bunt_single',
-  'double',
-  'ground_rule_double',
-  'triple',
-  'home_run',
-  'inside_park_hr',
-]);
+import {
+  BASE_ON_BALLS_EVENTS,
+  HIT_EVENTS as SHARED_HIT_EVENTS,
+  STRIKEOUT_EVENTS as SHARED_STRIKEOUT_EVENTS,
+  isAtBatEvent,
+  isPlateAppearanceEvent,
+} from '../constants/event-types.js';
 
-const STRIKEOUT_EVENTS = new Set([
-  'strikeout',
-  'strikeout_swinging',
-  'strikeout_looking',
-  'caught_foul_tip',
-  'bunt_foul',
-  'dropped_third_strike',
-  'dropped_third_strike_out',
-  'wild_pitch_third_strike',
-]);
-
-const WALK_EVENTS = new Set(['walk', 'intentional_walk']);
+const HIT_EVENTS = new Set<string>(SHARED_HIT_EVENTS);
+const STRIKEOUT_EVENTS = new Set<string>(SHARED_STRIKEOUT_EVENTS);
+const WALK_EVENTS = new Set<string>(BASE_ON_BALLS_EVENTS);
 
 const SACRIFICE_FLY_EVENTS = new Set(['sacrifice_fly', 'sac_fly_error']);
 const SACRIFICE_BUNT_EVENTS = new Set(['sacrifice_bunt', 'sac_bunt_error']);
 
-const NON_PA_EVENTS = new Set([
-  'pitch',
-  'stolen_base',
-  'caught_stealing',
-  'picked_off',
-  'balk',
-  'illegal_pitch',
-  'wild_pitch',
-  'passed_ball',
-  'end_half_inning',
-  'advance',
-  'defensive_indifference',
-  'runner_interference',
-  'appeal_play',
-  'tagged_out',
-  'force_out',
-  'hit_by_ball',
-  'missed_base',
-  'left_base_early',
-  'left_base_path',
-  'offensive_interference',
-  'passed_runner',
-  'hesitation',
-  'double_play',
-  'triple_play',
-  'advance_on_error',
-  'adjust_score',
-  'substitution',
-]);
-
 function isPlateAppearance(t: string): boolean {
-  return !NON_PA_EVENTS.has(t);
+  return isPlateAppearanceEvent(t);
 }
 
 function isAtBat(t: string): boolean {
-  if (!isPlateAppearance(t)) return false;
-  if (WALK_EVENTS.has(t)) return false;
-  if (t === 'hit_by_pitch') return false;
-  if (t === 'catcher_obstruction') return false;
-  if (SACRIFICE_FLY_EVENTS.has(t)) return false;
-  if (SACRIFICE_BUNT_EVENTS.has(t)) return false;
-  return true;
+  return isAtBatEvent(t);
 }
 
 export type BattingPlatoonBucket = 'vsRhp' | 'vsLhp';

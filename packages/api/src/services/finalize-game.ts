@@ -13,31 +13,26 @@ import {
   teams,
 } from '../db/schema/index.js';
 import { eq, and, sql, desc } from 'drizzle-orm';
-import { aggregatePitchingStatsByPitcher, inningsFromOuts } from '@lbss/shared';
+import {
+  BASE_ON_BALLS_EVENTS,
+  HIT_EVENTS as SHARED_HIT_EVENTS,
+  STRIKEOUT_EVENTS as SHARED_STRIKEOUT_EVENTS,
+  aggregatePitchingStatsByPitcher,
+  inningsFromOuts,
+  isAtBatEvent,
+  isPlateAppearanceEvent,
+} from '@lbss/shared';
 import { firstRowFromExecute, rowsFromExecute } from '../lib/pg-result.js';
 
 /* ═══════════════════════════════════════════════════════════════
    Event-type classification helpers (MLB Rules 9.02 – 9.16)
    ═══════════════════════════════════════════════════════════════ */
 
-const HIT_EVENTS = new Set([
-  'single', 'bunt_single',
-  'double', 'ground_rule_double',
-  'triple',
-  'home_run', 'inside_park_hr',
-]);
-
 const STRIKEOUT_LOOKING = new Set(['strikeout_looking', 'caught_foul_tip', 'bunt_foul']);
 const STRIKEOUT_SWINGING = new Set(['strikeout_swinging', 'dropped_third_strike', 'dropped_third_strike_out', 'wild_pitch_third_strike']);
-const STRIKEOUT_EVENTS = new Set([
-  'strikeout', 'strikeout_swinging', 'strikeout_looking',
-  'caught_foul_tip', 'bunt_foul',
-  'dropped_third_strike', 'dropped_third_strike_out',
-  'wild_pitch_third_strike',
-]);
-
-const WALK_EVENTS = new Set(['walk', 'intentional_walk']);
-
+const HIT_EVENTS = new Set<string>(SHARED_HIT_EVENTS);
+const STRIKEOUT_EVENTS = new Set<string>(SHARED_STRIKEOUT_EVENTS);
+const WALK_EVENTS = new Set<string>(BASE_ON_BALLS_EVENTS);
 const OUT_BATTED_EVENTS = new Set([
   'ground_out', 'fly_out', 'line_out', 'pop_out',
   'bunt_out', 'infield_fly', 'fielders_choice',
@@ -45,35 +40,15 @@ const OUT_BATTED_EVENTS = new Set([
 
 const SACRIFICE_FLY_EVENTS = new Set(['sacrifice_fly', 'sac_fly_error']);
 const SACRIFICE_BUNT_EVENTS = new Set(['sacrifice_bunt', 'sac_bunt_error']);
-
-const NON_PA_EVENTS = new Set([
-  'pitch',
-  'stolen_base', 'caught_stealing', 'picked_off',
-  'balk', 'illegal_pitch', 'wild_pitch', 'passed_ball',
-  'end_half_inning', 'advance', 'defensive_indifference',
-  'runner_interference', 'appeal_play', 'tagged_out', 'force_out',
-  'hit_by_ball', 'missed_base', 'left_base_early', 'left_base_path',
-  'offensive_interference', 'passed_runner', 'hesitation',
-  'double_play', 'triple_play', 'advance_on_error',
-  'adjust_score',
-  'substitution',
-]);
-
 const GROUND_BALL_OUTS = new Set(['ground_out', 'bunt_out']);
 const FLY_BALL_OUTS = new Set(['fly_out', 'line_out', 'pop_out', 'infield_fly']);
 
 function isPlateAppearance(t: string): boolean {
-  return !NON_PA_EVENTS.has(t);
+  return isPlateAppearanceEvent(t);
 }
 
 function isAtBat(t: string): boolean {
-  if (!isPlateAppearance(t)) return false;
-  if (WALK_EVENTS.has(t)) return false;
-  if (t === 'hit_by_pitch') return false;
-  if (t === 'catcher_obstruction') return false;
-  if (SACRIFICE_FLY_EVENTS.has(t)) return false;
-  if (SACRIFICE_BUNT_EVENTS.has(t)) return false;
-  return true;
+  return isAtBatEvent(t);
 }
 
 function inningHalfOrder(inn: number | null | undefined, half: string | null | undefined): number {
@@ -410,9 +385,9 @@ export async function finalizeGame(gameId: number, userId?: number, options?: Fi
       if (t === 'hit_by_pitch') hitByPitch++;
       if (SACRIFICE_FLY_EVENTS.has(t)) sacrificeFlies++;
       if (SACRIFICE_BUNT_EVENTS.has(t)) sacrificeBunts++;
-      if (t === 'error' || t === 'sac_bunt_error' || t === 'sac_fly_error' || t === 'catcher_obstruction') {
+      if (t === 'error' || t === 'sac_bunt_error' || t === 'sac_fly_error' || t === 'catcher_obstruction' || t === 'catcher_interference') {
         if (t === 'error') reachedOnError++;
-        if (t === 'catcher_obstruction') catcherInterference++;
+        if (t === 'catcher_obstruction' || t === 'catcher_interference') catcherInterference++;
       }
 
       if (GROUND_BALL_OUTS.has(t)) groundOuts++;
@@ -821,30 +796,14 @@ export async function finalizeGame(gameId: number, userId?: number, options?: Fi
   const seasonIdVal = firstRowFromExecute<{ id: number }>(seasonResult)?.id;
 
   if (seasonIdVal) {
-    try {
-      await recomputeSeasonBatting(seasonIdVal);
-    } catch (err) {
-      console.error('[finalize] recomputeSeasonBatting failed:', err);
-    }
-    try {
-      await recomputeSeasonPitching(seasonIdVal);
-    } catch (err) {
-      console.error('[finalize] recomputeSeasonPitching failed:', err);
-    }
-    try {
-      await recomputeSeasonFielding(seasonIdVal);
-    } catch (err) {
-      console.error('[finalize] recomputeSeasonFielding failed:', err);
-    }
+    await recomputeSeasonBatting(seasonIdVal);
+    await recomputeSeasonPitching(seasonIdVal);
+    await recomputeSeasonFielding(seasonIdVal);
   } else {
-    console.error(`[finalize] Could not find seasonId for leagueId=${game.leagueId}. Season stats NOT recomputed.`);
+    throw new Error(`Could not find seasonId for leagueId=${game.leagueId}. Season stats were not recomputed.`);
   }
 
-  try {
-    await recomputeStandings(game.leagueId);
-  } catch (err) {
-    console.error('[finalize] recomputeStandings failed:', err);
-  }
+  await recomputeStandings(game.leagueId);
 
   return { success: true, gameId, seasonRecomputed: !!seasonIdVal };
 }
@@ -1084,6 +1043,20 @@ export async function recomputeSeasonBatting(seasonId: number) {
       babip = EXCLUDED.babip,
       last_computed_at = NOW()
   `);
+  await db.execute(sql`
+    DELETE FROM player_season_batting psb
+    WHERE psb.season_id = ${seasonId}
+      AND NOT EXISTS (
+        SELECT 1
+        FROM player_game_batting pgb
+        JOIN games g ON pgb.game_id = g.id
+        JOIN leagues l ON g.league_id = l.id
+        WHERE l.season_id = psb.season_id
+          AND g.is_finalized = true
+          AND pgb.player_id = psb.player_id
+          AND pgb.team_id = psb.team_id
+      )
+  `);
 }
 
 export async function recomputeSeasonPitching(seasonId: number) {
@@ -1245,31 +1218,65 @@ export async function recomputeSeasonPitching(seasonId: number) {
       babip = EXCLUDED.babip,
       last_computed_at = NOW()
   `);
+  await db.execute(sql`
+    DELETE FROM player_season_pitching psp
+    WHERE psp.season_id = ${seasonId}
+      AND NOT EXISTS (
+        SELECT 1
+        FROM player_game_pitching pgp
+        JOIN games g ON pgp.game_id = g.id
+        JOIN leagues l ON g.league_id = l.id
+        WHERE l.season_id = psp.season_id
+          AND g.is_finalized = true
+          AND pgp.player_id = psp.player_id
+          AND pgp.team_id = psp.team_id
+      )
+  `);
 }
 
 export async function recomputeSeasonFielding(seasonId: number) {
   await db.execute(sql`
+    WITH fielding_agg AS (
+      SELECT
+        pgf.player_id,
+        pgf.team_id,
+        l.season_id,
+        COUNT(DISTINCT pgf.game_id) AS games,
+        SUM(
+          TRUNC(COALESCE(pgf.innings, 0)::numeric) * 3 +
+          ROUND((COALESCE(pgf.innings, 0)::numeric - TRUNC(COALESCE(pgf.innings, 0)::numeric)) * 10)
+        ) AS total_outs,
+        SUM(pgf.putouts) AS putouts,
+        SUM(pgf.assists) AS assists,
+        SUM(pgf.errors) AS errors,
+        SUM(pgf.double_plays) AS double_plays,
+        SUM(pgf.triple_plays) AS triple_plays,
+        SUM(pgf.passed_balls) AS passed_balls,
+        SUM(pgf.catcher_stolen_bases) AS catcher_stolen_bases,
+        SUM(pgf.catcher_caught_stealing) AS catcher_caught_stealing,
+        SUM(pgf.pickoffs) AS pickoffs
+      FROM player_game_fielding pgf
+      JOIN games g ON pgf.game_id = g.id
+      JOIN leagues l ON g.league_id = l.id
+      WHERE l.season_id = ${seasonId} AND g.is_finalized = true
+      GROUP BY pgf.player_id, pgf.team_id, l.season_id
+    )
     INSERT INTO player_season_fielding (player_id, team_id, season_id, games,
       innings, putouts, assists, errors, double_plays, triple_plays,
       passed_balls, catcher_stolen_bases, catcher_caught_stealing, pickoffs,
       fielding_pct, last_computed_at)
     SELECT
-      pgf.player_id, pgf.team_id, l.season_id,
-      COUNT(DISTINCT pgf.game_id),
-      SUM(COALESCE(pgf.innings, 0)),
-      SUM(pgf.putouts), SUM(pgf.assists), SUM(pgf.errors),
-      SUM(pgf.double_plays), SUM(pgf.triple_plays),
-      SUM(pgf.passed_balls), SUM(pgf.catcher_stolen_bases),
-      SUM(pgf.catcher_caught_stealing), SUM(pgf.pickoffs),
-      CASE WHEN (SUM(pgf.putouts) + SUM(pgf.assists) + SUM(pgf.errors)) > 0
-        THEN ROUND((SUM(pgf.putouts) + SUM(pgf.assists))::numeric / (SUM(pgf.putouts) + SUM(pgf.assists) + SUM(pgf.errors)), 3)
+      player_id, team_id, season_id, games,
+      TRUNC(total_outs / 3) + (total_outs % 3) * 0.1,
+      putouts, assists, errors,
+      double_plays, triple_plays,
+      passed_balls, catcher_stolen_bases,
+      catcher_caught_stealing, pickoffs,
+      CASE WHEN (putouts + assists + errors) > 0
+        THEN ROUND((putouts + assists)::numeric / (putouts + assists + errors), 3)
         ELSE 1.000 END,
       NOW()
-    FROM player_game_fielding pgf
-    JOIN games g ON pgf.game_id = g.id
-    JOIN leagues l ON g.league_id = l.id
-    WHERE l.season_id = ${seasonId} AND g.is_finalized = true
-    GROUP BY pgf.player_id, pgf.team_id, l.season_id
+    FROM fielding_agg
     ON CONFLICT (player_id, team_id, season_id) DO UPDATE SET
       games = EXCLUDED.games,
       innings = EXCLUDED.innings,
@@ -1284,6 +1291,20 @@ export async function recomputeSeasonFielding(seasonId: number) {
       pickoffs = EXCLUDED.pickoffs,
       fielding_pct = EXCLUDED.fielding_pct,
       last_computed_at = NOW()
+  `);
+  await db.execute(sql`
+    DELETE FROM player_season_fielding psf
+    WHERE psf.season_id = ${seasonId}
+      AND NOT EXISTS (
+        SELECT 1
+        FROM player_game_fielding pgf
+        JOIN games g ON pgf.game_id = g.id
+        JOIN leagues l ON g.league_id = l.id
+        WHERE l.season_id = psf.season_id
+          AND g.is_finalized = true
+          AND pgf.player_id = psf.player_id
+          AND pgf.team_id = psf.team_id
+      )
   `);
 }
 

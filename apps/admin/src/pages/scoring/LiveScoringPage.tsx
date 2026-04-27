@@ -6,7 +6,7 @@ import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
 interface Player { playerId: number; firstName: string; lastName: string; jerseyNumber?: string; teamId: number; licensePaid?: string | null }
 interface LineupEntry { id: number; playerId: number; battingOrder: number; position: number; isActive: boolean; isStarter: boolean; firstName: string; lastName: string; teamId: number; bats?: string | null }
 interface GameState { inning: number; half: 'top' | 'bot'; outs: number; homeScore: number; awayScore: number; bases: { first: number | null; second: number | null; third: number | null }; homeLineScore: number[]; awayLineScore: number[]; eventCount: number; balls: number; strikes: number }
-interface GameEvent { id: number; eventNumber: number; eventType: string; batterId?: number; batterSide?: string | null; pitcherId?: number; inning: number; half: string; runsScored?: number; rbi?: number; outsRecorded?: number; eventDetail?: string; fieldingSequence?: string; hitLocationX?: string | null; hitLocationY?: string | null; hitType?: string | null; hitHardness?: string | null; runnerFirstId?: number | null; runnerSecondId?: number | null; runnerThirdId?: number | null; runnersScored?: number[] }
+interface GameEvent { id: number; eventNumber: number; eventType: string; batterId?: number; batterSide?: string | null; pitcherId?: number; inning: number; half: string; balls?: number; strikes?: number; runsScored?: number; rbi?: number; outsRecorded?: number; errorsOnPlay?: number; eventDetail?: string; fieldingSequence?: string; putoutFielderIds?: number[]; assistFielderIds?: number[]; errorFielderIds?: number[]; pitchCount?: number | null; pitchSequence?: string | null; hitLocationX?: string | null; hitLocationY?: string | null; hitType?: string | null; hitHardness?: string | null; runnerFirstId?: number | null; runnerSecondId?: number | null; runnerThirdId?: number | null; runnersScored?: number[] }
 interface GameData { id: number; status: string; homeTeamId: number; awayTeamId: number; homeTeamName: string; awayTeamName: string; isFinalized: boolean }
 type PositionChangeDraft = { playerId: number; oldPosition: number; newPosition: number };
 
@@ -1215,7 +1215,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
     } catch (err: any) { alert(err.message); }
   };
   const handleFinalize = async () => {
-    if (!confirm('Finalize? Stats computed, standings updated, cannot undo.')) return;
+    if (!confirm('Finalize? Stats and standings will be computed from the event log. Later event edits can recompute official stats.')) return;
     try { await apiPost(`/admin/scoring/${gameId}/finalize`, {}); alert('Game finalized!'); navigate('/games'); } catch (err: any) { alert(err.message); }
   };
   const handleSkipBatter = () => {
@@ -2810,6 +2810,33 @@ function EventTimelinePanel({ gameId, events, homeLineup, awayLineup, onClose, o
 
   const playerName = (id?: number | null) => id ? (allPlayers.get(id) || `#${id}`) : '';
 
+  const EVENT_TYPE_OPTIONS = [
+    'pitch', 'single', 'bunt_single', 'double', 'ground_rule_double', 'triple', 'home_run', 'inside_park_hr',
+    'walk', 'intentional_walk', 'hit_by_pitch', 'catcher_obstruction', 'catcher_interference',
+    'strikeout', 'strikeout_swinging', 'strikeout_looking', 'caught_foul_tip', 'bunt_foul', 'dropped_third_strike', 'dropped_third_strike_out', 'wild_pitch_third_strike',
+    'ground_out', 'fly_out', 'line_out', 'pop_out', 'foul_out', 'bunt_out', 'infield_fly', 'sacrifice_fly', 'sacrifice_bunt', 'fielders_choice',
+    'double_play', 'triple_play', 'error', 'sac_bunt_error', 'sac_fly_error',
+    'stolen_base', 'caught_stealing', 'picked_off', 'wild_pitch', 'passed_ball', 'balk', 'defensive_indifference',
+    'advance', 'advance_on_error', 'runner_interference', 'appeal_play', 'tagged_out', 'force_out', 'hit_by_ball',
+    'missed_base', 'left_base_early', 'left_base_path', 'offensive_interference', 'passed_runner', 'hesitation', 'illegal_pitch',
+    'end_half_inning', 'substitution', 'adjust_score', 'interference', 'other',
+  ];
+
+  const playerOptions = [...allPlayers.entries()].sort((a, b) => a[1].localeCompare(b[1]));
+
+  const setPlayerArray = (field: 'putoutFielderIds' | 'assistFielderIds' | 'errorFielderIds', id: number, checked: boolean) => {
+    setEditForm(f => {
+      const next = new Set<number>(Array.isArray(f[field]) ? f[field] : []);
+      if (checked) next.add(id); else next.delete(id);
+      const arr = [...next];
+      return {
+        ...f,
+        [field]: arr,
+        ...(field === 'errorFielderIds' ? { errorsOnPlay: arr.length } : {}),
+      };
+    });
+  };
+
   const RUN_SCORE_REASON_OPTIONS: Array<{ value: string; label: string }> = [
     { value: 'on_play', label: 'On play' },
     { value: 'wild_pitch', label: 'Wild pitch' },
@@ -2892,15 +2919,28 @@ function EventTimelinePanel({ gameId, events, homeLineup, awayLineup, onClose, o
     const reasons = (evt as any).runnerScoredReasons as string[] | undefined;
     setScoreEditPlayerIds(scored);
     setEditForm({
+      inning: evt.inning ?? 1,
+      half: evt.half ?? 'top',
       eventType: evt.eventType,
       eventDetail: evt.eventDetail || '',
       rbi: evt.rbi ?? 0,
       runsScored: evt.runsScored ?? 0,
       outsRecorded: evt.outsRecorded ?? 0,
+      balls: evt.balls ?? 0,
+      strikes: evt.strikes ?? 0,
       batterId: evt.batterId ?? null,
       batterSide: evt.batterSide ?? null,
       pitcherId: evt.pitcherId ?? null,
       errorsOnPlay: (evt as any).errorsOnPlay ?? 0,
+      runnerFirstId: evt.runnerFirstId ?? null,
+      runnerSecondId: evt.runnerSecondId ?? null,
+      runnerThirdId: evt.runnerThirdId ?? null,
+      fieldingSequence: evt.fieldingSequence ?? '',
+      putoutFielderIds: Array.isArray(evt.putoutFielderIds) ? evt.putoutFielderIds : [],
+      assistFielderIds: Array.isArray(evt.assistFielderIds) ? evt.assistFielderIds : [],
+      errorFielderIds: Array.isArray(evt.errorFielderIds) ? evt.errorFielderIds : [],
+      pitchCount: evt.pitchCount ?? null,
+      pitchSequence: evt.pitchSequence ?? '',
       runnersScored: scored,
       runnerScoredReasons: Array.isArray(reasons) ? reasons : scored.map(() => 'on_play'),
     });
@@ -2995,9 +3035,22 @@ function EventTimelinePanel({ gameId, events, homeLineup, awayLineup, onClose, o
                 <div className={`px-4 py-1.5 border-b border-white/[0.04] hover:bg-white/[0.03] ${previewState?.eventNumber === evt.eventNumber ? 'bg-blue-900/20' : ''}`}>
                   {editingId === evt.id ? (
                     <div className="space-y-1.5 py-1">
+                      <div className="rounded border border-amber-500/20 bg-amber-500/10 px-2 py-1 text-[9px] text-amber-100/80">
+                        Editing or deleting an earlier event replays downstream game state. If the game is finalized, official stats will be recomputed from the event log.
+                      </div>
+                      <div className="flex gap-2 text-[10px]">
+                        <label className="text-white/40 w-16 shrink-0">Inning:</label>
+                        <input type="number" min={1} value={editForm.inning ?? 1} onChange={e => setEditForm(f => ({ ...f, inning: parseInt(e.target.value, 10) || 1 }))} className="w-14 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-[10px]" />
+                        <select value={editForm.half ?? 'top'} onChange={e => setEditForm(f => ({ ...f, half: e.target.value }))} className="flex-1 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-[10px]">
+                          <option value="top">Top</option>
+                          <option value="bot">Bottom</option>
+                        </select>
+                      </div>
                       <div className="flex gap-2 text-[10px]">
                         <label className="text-white/40 w-16 shrink-0">Type:</label>
-                        <input value={editForm.eventType || ''} onChange={e => setEditForm(f => ({ ...f, eventType: e.target.value }))} className="flex-1 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-[10px]" />
+                        <select value={editForm.eventType || ''} onChange={e => setEditForm(f => ({ ...f, eventType: e.target.value }))} className="flex-1 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-[10px]">
+                          {EVENT_TYPE_OPTIONS.map(t => <option key={t} value={t}>{t.replace(/_/g, ' ')}</option>)}
+                        </select>
                       </div>
                       <div className="flex gap-2 text-[10px]">
                         <label className="text-white/40 w-16 shrink-0">Detail:</label>
@@ -3007,7 +3060,7 @@ function EventTimelinePanel({ gameId, events, homeLineup, awayLineup, onClose, o
                         <label className="text-white/40 w-16 shrink-0">Batter:</label>
                         <select value={editForm.batterId ?? ''} onChange={e => setEditForm(f => ({ ...f, batterId: e.target.value === '' ? null : parseInt(e.target.value, 10) }))} className="flex-1 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-[10px]">
                           <option value="">—</option>
-                          {[...allPlayers.entries()].sort((a, b) => a[1].localeCompare(b[1])).map(([id, name]) => (
+                          {playerOptions.map(([id, name]) => (
                             <option key={id} value={id}>{name}</option>
                           ))}
                         </select>
@@ -3028,10 +3081,17 @@ function EventTimelinePanel({ gameId, events, homeLineup, awayLineup, onClose, o
                         <label className="text-white/40 w-16 shrink-0">Pitcher:</label>
                         <select value={editForm.pitcherId ?? ''} onChange={e => setEditForm(f => ({ ...f, pitcherId: e.target.value === '' ? null : parseInt(e.target.value, 10) }))} className="flex-1 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-[10px]">
                           <option value="">—</option>
-                          {[...allPlayers.entries()].sort((a, b) => a[1].localeCompare(b[1])).map(([id, name]) => (
+                          {playerOptions.map(([id, name]) => (
                             <option key={id} value={id}>{name}</option>
                           ))}
                         </select>
+                      </div>
+                      <div className="flex gap-2 text-[10px]">
+                        <label className="text-white/40 w-16 shrink-0">Count:</label>
+                        <input type="number" min={0} max={3} value={editForm.balls ?? 0} onChange={e => setEditForm(f => ({ ...f, balls: parseInt(e.target.value, 10) || 0 }))} className="w-12 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-[10px]" />
+                        <span className="text-white/25 pt-0.5">balls</span>
+                        <input type="number" min={0} max={2} value={editForm.strikes ?? 0} onChange={e => setEditForm(f => ({ ...f, strikes: parseInt(e.target.value, 10) || 0 }))} className="w-12 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-[10px]" />
+                        <span className="text-white/25 pt-0.5">strikes</span>
                       </div>
                       <div className="flex gap-2 text-[10px]">
                         <label className="text-white/40 w-16 shrink-0">RBI:</label>
@@ -3044,7 +3104,51 @@ function EventTimelinePanel({ gameId, events, homeLineup, awayLineup, onClose, o
                       <div className="flex gap-2 text-[10px]">
                         <label className="text-white/40 w-16 shrink-0">Errors:</label>
                         <input type="number" value={editForm.errorsOnPlay ?? 0} onChange={e => setEditForm(f => ({ ...f, errorsOnPlay: parseInt(e.target.value) || 0 }))} className="w-12 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-[10px]" />
-                        <span className="text-white/25 text-[9px] mt-1">Used for legacy ER calc</span>
+                        <span className="text-white/25 text-[9px] mt-1">Auto-matches selected error fielders</span>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-1.5 text-[10px]">
+                        {[
+                          ['runnerFirstId', '1B'],
+                          ['runnerSecondId', '2B'],
+                          ['runnerThirdId', '3B'],
+                        ].map(([field, label]) => (
+                          <label key={field} className="text-white/40">
+                            {label}
+                            <select value={editForm[field] ?? ''} onChange={e => setEditForm(f => ({ ...f, [field]: e.target.value === '' ? null : parseInt(e.target.value, 10) }))} className="mt-0.5 w-full bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-[10px]">
+                              <option value="">Empty</option>
+                              {playerOptions.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+                            </select>
+                          </label>
+                        ))}
+                      </div>
+
+                      <div className="space-y-1 rounded bg-white/[0.03] border border-white/10 p-2">
+                        <div className="flex gap-2 text-[10px]">
+                          <label className="text-white/40 w-16 shrink-0">Seq:</label>
+                          <input value={editForm.fieldingSequence || ''} onChange={e => setEditForm(f => ({ ...f, fieldingSequence: e.target.value }))} className="flex-1 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-[10px]" />
+                        </div>
+                        {[
+                          ['putoutFielderIds', 'PO'],
+                          ['assistFielderIds', 'A'],
+                          ['errorFielderIds', 'E'],
+                        ].map(([field, label]) => (
+                          <div key={field}>
+                            <div className="text-white/40 text-[9px] font-bold">{label} fielders</div>
+                            <div className="grid grid-cols-2 gap-1 mt-1">
+                              {playerOptions.map(([id, name]) => (
+                                <label key={`${field}:${id}`} className="flex items-center gap-1 text-[9px] text-white/45">
+                                  <input
+                                    type="checkbox"
+                                    checked={Array.isArray(editForm[field]) && editForm[field].includes(id)}
+                                    onChange={e => setPlayerArray(field as 'putoutFielderIds' | 'assistFielderIds' | 'errorFielderIds', id, e.target.checked)}
+                                  />
+                                  <span className="truncate">{name}</span>
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
                       </div>
 
                       {/* Scorers */}
@@ -3062,7 +3166,7 @@ function EventTimelinePanel({ gameId, events, homeLineup, awayLineup, onClose, o
                           </button>
                         </div>
                         <div className="mt-1 grid grid-cols-2 gap-1.5">
-                          {[...allPlayers.entries()].sort((a, b) => a[1].localeCompare(b[1])).map(([id, name]) => {
+                          {playerOptions.map(([id, name]) => {
                             const checked = (editForm.runnersScored || []).includes(id);
                             return (
                               <label key={id} className={`flex items-center gap-2 px-2 py-1 rounded border text-[9px] ${checked ? 'bg-green-900/20 border-green-700/40 text-white' : 'bg-white/5 border-white/10 text-white/40'}`}>

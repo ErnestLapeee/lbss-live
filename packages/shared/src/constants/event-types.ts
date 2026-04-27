@@ -17,7 +17,10 @@ export const WALK_EVENTS = [
   'hit_by_pitch',
   // Treated like HBP: batter awarded first, not an AB.
   'catcher_obstruction',
+  'catcher_interference',
 ] as const;
+
+export const BASE_ON_BALLS_EVENTS = ['walk', 'intentional_walk'] as const;
 
 export const SACRIFICE_EVENTS = ['sacrifice_fly', 'sacrifice_bunt'] as const;
 
@@ -88,6 +91,51 @@ export const RUNNER_ONLY_EVENTS = [
   'illegal_pitch',
 ] as const;
 
+export const SYSTEM_EVENTS = [
+  'pitch',
+  'end_half_inning',
+  'substitution',
+  'adjust_score',
+] as const;
+
+export const NON_PA_EVENTS = [
+  ...RUNNER_ONLY_EVENTS,
+  ...SYSTEM_EVENTS,
+] as const;
+
+export const KNOWN_EVENT_TYPES = [
+  ...PLATE_APPEARANCE_EVENTS,
+  ...RUNNER_ONLY_EVENTS,
+  ...SYSTEM_EVENTS,
+  'interference',
+  'other',
+] as const;
+
+export const PA_ENDING_EVENTS = [
+  ...PLATE_APPEARANCE_EVENTS,
+] as const;
+
+export const BETWEEN_PITCH_EVENTS = [
+  ...RUNNER_ONLY_EVENTS,
+  'end_half_inning',
+  'adjust_score',
+] as const;
+
+export const isKnownEventType = (eventType: string): boolean =>
+  (KNOWN_EVENT_TYPES as readonly string[]).includes(eventType);
+
+export const isPlateAppearanceEvent = (eventType: string): boolean =>
+  (PLATE_APPEARANCE_EVENTS as readonly string[]).includes(eventType);
+
+export const isAtBatEvent = (eventType: string): boolean =>
+  (AT_BAT_EVENTS as readonly string[]).includes(eventType);
+
+export const isBetweenPitchEvent = (eventType: string): boolean =>
+  (BETWEEN_PITCH_EVENTS as readonly string[]).includes(eventType);
+
+export const isRunnerOnlyEvent = (eventType: string): boolean =>
+  (RUNNER_ONLY_EVENTS as readonly string[]).includes(eventType);
+
 export const EVENT_TYPE_LABELS: Record<string, string> = {
   // Batter events
   single: 'Single',
@@ -101,6 +149,7 @@ export const EVENT_TYPE_LABELS: Record<string, string> = {
   intentional_walk: 'Intentional Walk',
   hit_by_pitch: 'Hit By Pitch',
   catcher_obstruction: "Catcher Interference",
+  catcher_interference: "Catcher Interference",
   strikeout: 'Strikeout',
   strikeout_swinging: 'Strikeout (Swinging)',
   strikeout_looking: 'Strikeout (Looking)',
@@ -152,6 +201,7 @@ export const EVENT_TYPE_LABELS: Record<string, string> = {
   pitch: 'Pitch',
   end_half_inning: 'End of Inning',
   substitution: 'Substitution',
+  adjust_score: 'Score Adjustment',
   interference: 'Interference',
   other: 'Other',
 };

@@ -1,4 +1,5 @@
 import type { GameEvent } from '../types/game-event.js';
+import { isBetweenPitchEvent } from '../constants/event-types.js';
 
 export interface GameState {
   inning: number;
@@ -17,15 +18,6 @@ export interface GameState {
   balls: number;
   strikes: number;
 }
-
-const BETWEEN_PITCH_EVENTS = new Set([
-  'stolen_base', 'caught_stealing', 'picked_off', 'wild_pitch', 'passed_ball',
-  'balk', 'advance', 'advance_on_error', 'defensive_indifference',
-  'runner_interference', 'appeal_play', 'tagged_out', 'force_out',
-  'hit_by_ball', 'missed_base', 'left_base_early', 'left_base_path',
-  'offensive_interference', 'passed_runner', 'hesitation',
-  'double_play', 'triple_play', 'illegal_pitch', 'end_half_inning',
-]);
 
 export function initialGameState(): GameState {
   return {
@@ -120,7 +112,7 @@ export function applyEvent(state: GameState, event: GameEvent): GameState {
     third: event.runnerThirdId ?? null,
   };
 
-  if (!BETWEEN_PITCH_EVENTS.has(event.eventType)) {
+  if (!isBetweenPitchEvent(event.eventType)) {
     next.balls = 0;
     next.strikes = 0;
   }
