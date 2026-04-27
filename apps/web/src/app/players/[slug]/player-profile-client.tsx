@@ -1,5 +1,6 @@
 'use client';
 
+import type { ReactNode } from 'react';
 import { useState, useEffect } from 'react';
 import { SprayChart } from '@/components/stats/spray-chart';
 import { TeamMark } from '@/components/ui/team-mark';
@@ -226,6 +227,25 @@ const COUNT_SPLIT_ROWS = [
   ['0-2', '0-2'], ['1-2', '1-2'], ['2-2', '2-2'], ['3-2', 'Full Count'],
 ] as const;
 
+function SummaryCard({ label, value, sub }: { label: string; value: string | number; sub?: string }) {
+  return (
+    <div className="rounded-xl border border-border bg-surface p-3 shadow-sm">
+      <div className="text-[10px] font-bold uppercase tracking-wider text-text-faint">{label}</div>
+      <div className="mt-1 font-mono text-2xl font-black tabular-nums text-text">{value}</div>
+      {sub ? <div className="mt-1 text-[11px] text-text-muted">{sub}</div> : null}
+    </div>
+  );
+}
+
+function SectionTitle({ children, accent = 'bg-accent' }: { children: ReactNode; accent?: string }) {
+  return (
+    <h3 className="font-heading text-sm font-bold mb-3 flex items-center gap-2">
+      <div className={`h-4 w-1 rounded-full ${accent}`} />
+      {children}
+    </h3>
+  );
+}
+
 export function PlayerProfileClient({ slug, initialBattingStats, seasons }: PlayerProfileClientProps) {
   async function fetchJson(path: string) {
     const proxyPath = path.replace(/^\/api\//, '/api/proxy/');
@@ -306,17 +326,17 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
   ];
 
   return (
-    <div>
+    <div className="space-y-6">
       {/* Tab bar */}
-      <div className="flex gap-1 border-b border-border mb-6">
+      <div className="flex gap-1 overflow-x-auto rounded-xl border border-border bg-surface-alt p-1">
         {tabs.map(t => (
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
-            className={`px-4 py-2.5 text-sm font-semibold transition-colors border-b-2 -mb-px ${
+            className={`whitespace-nowrap rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${
               tab === t.key
-                ? 'border-accent text-accent'
-                : 'border-transparent text-text-muted hover:text-text-secondary'
+                ? 'bg-surface text-text shadow-sm'
+                : 'text-text-muted hover:bg-surface/60 hover:text-text-secondary'
             }`}
           >
             {t.label}
@@ -325,7 +345,7 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
       </div>
 
       {(tab === 'batting' || tab === 'pitching' || tab === 'gamelog' || tab === 'spraychart') && (
-        <div className="flex flex-wrap items-center gap-2 mb-5">
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-surface p-3 shadow-sm">
           <label htmlFor="profile-season-filter" className="text-xs font-medium text-text-muted">
             Season:
           </label>
@@ -356,10 +376,27 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
               <p className="text-sm text-text-muted">No batting statistics recorded yet.</p>
             </div>
           ) : (
-            <div className="rounded-xl border border-border bg-surface overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border bg-surface-alt">
+            <>
+              {sumBattingRows(battingStats) && (() => {
+                const total = sumBattingRows(battingStats)!;
+                return (
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                    <SummaryCard label="OPS" value={fmtRate(total.ops)} sub={`${n(total.plateAppearances)} PA`} />
+                    <SummaryCard label="AVG" value={fmtRate(total.battingAvg)} sub={`${n(total.hits)} H / ${n(total.atBats)} AB`} />
+                    <SummaryCard label="OBP" value={fmtRate(total.onBasePct)} sub={`${n(total.walks)} BB, ${n(total.hitByPitch)} HBP`} />
+                    <SummaryCard label="SLG" value={fmtRate(total.sluggingPct)} sub={`${n(total.homeRuns)} HR`} />
+                    <SummaryCard label="Run production" value={n(total.rbi)} sub={`${n(total.runs)} R`} />
+                  </div>
+                );
+              })()}
+              <div className="overflow-hidden rounded-xl border border-border bg-surface shadow-sm">
+                <div className="border-b border-border bg-surface-alt px-4 py-3">
+                  <SectionTitle>Batting summary</SectionTitle>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[1180px] text-sm">
+                    <thead>
+                      <tr className="border-b border-border bg-surface-alt/70">
                     {['Season', 'Team', 'G', 'PA', 'AB', 'R', 'H', '2B', '3B', 'HR', 'RBI', 'BB', 'HBP', 'SO', 'SB', 'CS', 'SF', 'AVG', 'OBP', 'SLG', 'OPS', 'BABIP'].map(col => (
                       <th title={getStatAbbreviationMeaning(col) ?? undefined} key={col} className={`px-2 py-2.5 text-[10px] font-bold uppercase tracking-wider text-text-faint whitespace-nowrap ${col === 'Season' || col === 'Team' ? 'text-left' : 'text-right'}`}>
                         {col}
@@ -429,19 +466,18 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
                       </tr>
                     );
                   })()}
-                </tbody>
-              </table>
-            </div>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
           )}
 
           {/* Platoon splits (batting): vs RHP / LHP from opposing pitcher&apos;s throwing hand */}
           {platoonSplits && (
             <div>
-              <h3 className="font-heading text-sm font-bold mb-3 flex items-center gap-2">
-                <div className="w-1 h-4 rounded-full bg-accent" />
-                Platoon splits (batting)
-              </h3>
-              <div className="rounded-xl border border-border bg-surface overflow-x-auto max-w-3xl">
+              <SectionTitle>Platoon splits (batting)</SectionTitle>
+              <div className="rounded-xl border border-border bg-surface overflow-x-auto shadow-sm">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-border bg-surface-alt">
@@ -490,21 +526,21 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
 
           {platoonSplits?.battingCounts && (
             <div>
-              <h3 className="font-heading text-sm font-bold mb-3 flex items-center gap-2">
-                <div className="w-1 h-4 rounded-full bg-accent" />
-                Count splits (batting)
-              </h3>
-              <div className="mb-3 grid gap-2 sm:grid-cols-3">
-                <div className="rounded-xl border border-border bg-surface p-3">
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-text-faint">First-pitch strike</div>
-                  <div className="mt-1 font-mono text-xl font-bold">{fmtPct(platoonSplits.battingCounts.firstPitch?.strikePct)}</div>
-                  <div className="text-[11px] text-text-muted">
-                    {n(platoonSplits.battingCounts.firstPitch?.strikes)} / {n(platoonSplits.battingCounts.firstPitch?.total)}
-                  </div>
-                </div>
+              <SectionTitle>Count splits (batting)</SectionTitle>
+              <div className="mb-3 grid gap-3 sm:grid-cols-3">
+                <SummaryCard
+                  label="First-pitch strike"
+                  value={fmtPct(platoonSplits.battingCounts.firstPitch?.strikePct)}
+                  sub={`${n(platoonSplits.battingCounts.firstPitch?.strikes)} / ${n(platoonSplits.battingCounts.firstPitch?.total)}`}
+                />
+                <SummaryCard
+                  label="Tracked PA"
+                  value={n(platoonSplits.battingCounts.firstPitch?.total)}
+                  sub="with first-pitch context"
+                />
               </div>
-              <div className="rounded-xl border border-border bg-surface overflow-x-auto max-w-5xl">
-                <table className="w-full text-sm">
+              <div className="rounded-xl border border-border bg-surface overflow-x-auto shadow-sm">
+                <table className="w-full min-w-[980px] text-sm">
                   <thead>
                     <tr className="border-b border-border bg-surface-alt">
                       {['Count', 'PA', 'AB', 'H', '2B', '3B', 'HR', 'BB', 'SO', 'AVG', 'OBP', 'SLG', 'OPS'].map(col => (
@@ -546,7 +582,7 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
 
       {/* PITCHING TAB */}
       {tab === 'pitching' && (
-        <div>
+        <div className="space-y-8">
           {pitchingStats === null ? (
             <p className="text-sm text-text-muted py-4">Loading...</p>
           ) : pitchingStats.length === 0 ? (
@@ -554,10 +590,27 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
               <p className="text-sm text-text-muted">No pitching statistics recorded.</p>
             </div>
           ) : (
-            <div className="rounded-xl border border-border bg-surface overflow-x-auto">
-              <table className="w-full text-sm">
+            <>
+              {sumPitchingRows(pitchingStats) && (() => {
+                const total = sumPitchingRows(pitchingStats)!;
+                return (
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                    <SummaryCard label="ERA" value={fmtEra(total.era)} sub={`${fmtIp(total.inningsPitched)} IP`} />
+                    <SummaryCard label="WHIP" value={fmtEra(total.whip)} sub={`${n(total.walksAllowed)} BB + ${n(total.hitsAllowed)} H`} />
+                    <SummaryCard label="K/9" value={total.k9 != null ? String(total.k9) : '—'} sub={`${n(total.strikeouts)} SO`} />
+                    <SummaryCard label="BB/9" value={total.bb9 != null ? String(total.bb9) : '—'} sub={`${n(total.walksAllowed)} BB`} />
+                    <SummaryCard label="Record" value={`${n(total.wins)}-${n(total.losses)}`} sub={`${n(total.saves)} SV`} />
+                  </div>
+                );
+              })()}
+              <div className="overflow-hidden rounded-xl border border-border bg-surface shadow-sm">
+                <div className="border-b border-border bg-surface-alt px-4 py-3">
+                  <SectionTitle accent="bg-gold">Pitching summary</SectionTitle>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[1140px] text-sm">
                 <thead>
-                  <tr className="border-b border-border bg-surface-alt">
+                  <tr className="border-b border-border bg-surface-alt/70">
                     {['Season', 'Team', 'G', 'GS', 'W', 'L', 'SV', 'IP', 'H', 'R', 'ER', 'BB', 'SO', 'HR', 'HBP', 'WP', 'ERA', 'WHIP', 'FIP', 'K/9', 'BB/9', 'BABIP'].map(col => (
                       <th title={getStatAbbreviationMeaning(col) ?? undefined} key={col} className={`px-2 py-2.5 text-[10px] font-bold uppercase tracking-wider text-text-faint whitespace-nowrap ${col === 'Season' || col === 'Team' ? 'text-left' : 'text-right'}`}>
                         {col}
@@ -631,19 +684,18 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
                       </tr>
                     );
                   })()}
-                </tbody>
-              </table>
-            </div>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
           )}
 
           {/* Opponent slash by batter hand (same PA rules as batting line, from the batter&apos;s perspective) */}
           {platoonSplits && (
             <div className="mt-8">
-              <h3 className="font-heading text-sm font-bold mb-3 flex items-center gap-2">
-                <div className="w-1 h-4 rounded-full bg-accent" />
-                Platoon splits (pitching)
-              </h3>
-              <div className="rounded-xl border border-border bg-surface overflow-x-auto max-w-4xl">
+              <SectionTitle>Platoon splits (pitching)</SectionTitle>
+              <div className="rounded-xl border border-border bg-surface overflow-x-auto shadow-sm">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-border bg-surface-alt">
@@ -695,21 +747,21 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
 
           {platoonSplits?.pitchingCounts && (
             <div className="mt-8">
-              <h3 className="font-heading text-sm font-bold mb-3 flex items-center gap-2">
-                <div className="w-1 h-4 rounded-full bg-accent" />
-                Count splits (pitching)
-              </h3>
-              <div className="mb-3 grid gap-2 sm:grid-cols-3">
-                <div className="rounded-xl border border-border bg-surface p-3">
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-text-faint">First-pitch strike</div>
-                  <div className="mt-1 font-mono text-xl font-bold">{fmtPct(platoonSplits.pitchingCounts.firstPitch?.strikePct)}</div>
-                  <div className="text-[11px] text-text-muted">
-                    {n(platoonSplits.pitchingCounts.firstPitch?.strikes)} / {n(platoonSplits.pitchingCounts.firstPitch?.total)}
-                  </div>
-                </div>
+              <SectionTitle>Count splits (pitching)</SectionTitle>
+              <div className="mb-3 grid gap-3 sm:grid-cols-3">
+                <SummaryCard
+                  label="First-pitch strike"
+                  value={fmtPct(platoonSplits.pitchingCounts.firstPitch?.strikePct)}
+                  sub={`${n(platoonSplits.pitchingCounts.firstPitch?.strikes)} / ${n(platoonSplits.pitchingCounts.firstPitch?.total)}`}
+                />
+                <SummaryCard
+                  label="Tracked PA"
+                  value={n(platoonSplits.pitchingCounts.firstPitch?.total)}
+                  sub="with first-pitch context"
+                />
               </div>
-              <div className="rounded-xl border border-border bg-surface overflow-x-auto max-w-5xl">
-                <table className="w-full text-sm">
+              <div className="rounded-xl border border-border bg-surface overflow-x-auto shadow-sm">
+                <table className="w-full min-w-[1040px] text-sm">
                   <thead>
                     <tr className="border-b border-border bg-surface-alt">
                       {['Count', 'PA', 'AB', 'H', '2B', '3B', 'HR', 'BB', 'SO', 'K%', 'AVG', 'OBP', 'SLG', 'OPS'].map(col => (
@@ -757,7 +809,7 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
 
       {/* FIELDING TAB */}
       {tab === 'fielding' && (
-        <div>
+        <div className="space-y-8">
           {fieldingStats === null ? (
             <p className="text-sm text-text-muted py-4">Loading...</p>
           ) : fieldingStats.length === 0 ? (
@@ -766,10 +818,26 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
             </div>
           ) : (
             <>
-              <div className="rounded-xl border border-border bg-surface overflow-x-auto">
-                <table className="w-full text-sm">
+              {sumFieldingRows(fieldingStats) && (() => {
+                const total = sumFieldingRows(fieldingStats)!;
+                return (
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                    <SummaryCard label="FP%" value={fmtRate(total.fieldingPct)} sub={`${n(total.putouts)} PO, ${n(total.assists)} A`} />
+                    <SummaryCard label="Errors" value={n(total.errors)} sub="charged fielding errors" />
+                    <SummaryCard label="Double plays" value={n(total.doublePlays)} sub={`${n(total.triplePlays)} TP`} />
+                    <SummaryCard label="Catcher SBA" value={n(total.catcherStolenBases) + n(total.catcherCaughtStealing)} sub={`${n(total.catcherCaughtStealing)} CS`} />
+                    <SummaryCard label="Pickoffs" value={n(total.pickoffs)} sub={`${n(total.passedBalls)} PB`} />
+                  </div>
+                );
+              })()}
+              <div className="overflow-hidden rounded-xl border border-border bg-surface shadow-sm">
+                <div className="border-b border-border bg-surface-alt px-4 py-3">
+                  <SectionTitle>Fielding summary</SectionTitle>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[900px] text-sm">
                   <thead>
-                    <tr className="border-b border-border bg-surface-alt">
+                    <tr className="border-b border-border bg-surface-alt/70">
                       {['Season', 'Team', 'G', 'PO', 'A', 'E', 'DP', 'TP', 'PB', 'SB', 'CS', 'SBA', 'PK', 'FP%'].map(col => (
                         <th title={getStatAbbreviationMeaning(col) ?? undefined} key={col} className={`px-2 py-2.5 text-[10px] font-bold uppercase tracking-wider text-text-faint whitespace-nowrap ${col === 'Season' || col === 'Team' ? 'text-left' : 'text-right'}`}>
                           {col}
@@ -818,8 +886,9 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
                         </tr>
                       );
                     })()}
-                  </tbody>
-                </table>
+                    </tbody>
+                  </table>
+                </div>
               </div>
 
               {/* Fielding by Position */}
