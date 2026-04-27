@@ -47,34 +47,27 @@ export default async function PlayerProfilePage({ params }: Props) {
   return (
     <div>
       {/* Player header */}
-      <div className="border-b border-border bg-gradient-to-br from-surface via-surface to-surface-alt">
+      <div className="bg-surface border-b border-border">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
           <Link href="/players" className="text-xs text-text-muted hover:text-text transition-colors mb-5 inline-block">
             &larr; All Players
           </Link>
-          <div className="flex flex-col sm:flex-row sm:items-center gap-6">
+          <div className="flex flex-col sm:flex-row sm:items-start gap-6">
             {player.photoUrl ? (
               <img
                 src={player.photoUrl}
                 alt=""
                 className="h-28 w-28 rounded-2xl object-cover border border-border bg-surface-alt shrink-0 shadow-sm"
               />
-            ) : (
-              <div className="flex h-28 w-28 shrink-0 items-center justify-center rounded-2xl border border-border bg-surface-raised shadow-sm">
-                <span className="font-heading text-3xl font-black text-text">
-                  {String(player.firstName || '').charAt(0)}{String(player.lastName || '').charAt(0)}
-                </span>
-              </div>
-            )}
+            ) : null}
             <div className="flex-1 min-w-0">
-              <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.18em] text-text-faint">Player profile</div>
               <h1 className="font-heading text-3xl font-bold text-text tracking-tight">
                 {player.firstName} {player.lastName}
               </h1>
               {infoPills.length > 0 && (
                 <div className="flex flex-wrap gap-2 mt-3">
                   {infoPills.map((pill: string, i: number) => (
-                    <span key={i} className="inline-flex px-2.5 py-1 rounded-lg border border-border bg-surface text-xs font-medium text-text-muted">
+                    <span key={i} className="inline-flex px-2.5 py-0.5 rounded-md border border-border bg-surface-raised text-xs text-text-muted">
                       {pill}
                     </span>
                   ))}

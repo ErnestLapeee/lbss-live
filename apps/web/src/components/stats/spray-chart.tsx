@@ -52,25 +52,41 @@ export function SprayChart({ hits, width = 300, height = 220, compact = false, s
     );
   }
 
-  const dotSize = compact ? 3 : 4;
+  const hitsCount = hits.filter((hit) => HIT_EVENTS.has(hit.eventType)).length;
+  const outsCount = hits.filter((hit) => !HIT_EVENTS.has(hit.eventType) && !ERROR_EVENTS.has(hit.eventType)).length;
+  const errorsCount = hits.filter((hit) => ERROR_EVENTS.has(hit.eventType)).length;
 
   return (
     <div>
-      <svg viewBox="0 0 300 200" width={width} height={height} className="w-full max-w-md mx-auto" style={{ background: '#0a1628' }}>
+      <svg
+        viewBox="0 0 300 200"
+        width={width}
+        height={height}
+        className="w-full max-w-md mx-auto overflow-hidden rounded-xl border border-border/60 shadow-sm"
+        style={{ background: '#081324' }}
+      >
         <defs>
           <radialGradient id="scGrass" cx="50%" cy="82%" r="58%">
-            <stop offset="0%" stopColor="#1b5e30" />
-            <stop offset="100%" stopColor="#0d3018" />
+            <stop offset="0%" stopColor="#26713d" />
+            <stop offset="65%" stopColor="#155a2d" />
+            <stop offset="100%" stopColor="#0b321a" />
           </radialGradient>
           <radialGradient id="scDirt" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="#704828" />
-            <stop offset="100%" stopColor="#4e3015" />
+            <stop offset="0%" stopColor="#8a5d33" />
+            <stop offset="100%" stopColor="#5b3719" />
           </radialGradient>
+          <filter id="scDotShadow" x="-40%" y="-40%" width="180%" height="180%">
+            <feDropShadow dx="0" dy="1" stdDeviation="1" floodColor="#000" floodOpacity="0.45" />
+          </filter>
         </defs>
         {/* Outfield grass */}
         <path d="M 45,78 Q 150,-20 255,78 L 202,130 L 150,78 L 98,130 Z" fill="url(#scGrass)" />
+        <path d="M 64,86 Q 150,6 236,86" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="1" />
+        <path d="M 82,96 Q 150,30 218,96" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="1" />
+        <path d="M 102,108 Q 150,54 198,108" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="1" />
         {/* Infield dirt diamond */}
         <polygon points="150,78 202,130 150,182 98,130" fill="url(#scDirt)" />
+        <path d="M 150,182 Q 150,138 150,78" stroke="rgba(255,255,255,0.08)" strokeWidth="1" strokeDasharray="3 4" />
         {/* Grass cutout */}
         <circle cx="150" cy="130" r="10" fill="#1b5e30" />
         {/* Mound rubber */}
@@ -85,6 +101,13 @@ export function SprayChart({ hits, width = 300, height = 220, compact = false, s
         <line x1="150" y1="182" x2="255" y2="78" stroke="rgba(255,255,255,0.15)" strokeWidth="0.8" />
         {/* Fence arc */}
         <path d="M 46,77 Q 150,-18 254,77" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="4" />
+        {!compact && (
+          <>
+            <text x="74" y="70" fill="rgba(255,255,255,0.42)" fontSize="9" fontWeight="700">LF</text>
+            <text x="144" y="35" fill="rgba(255,255,255,0.42)" fontSize="9" fontWeight="700">CF</text>
+            <text x="217" y="70" fill="rgba(255,255,255,0.42)" fontSize="9" fontWeight="700">RF</text>
+          </>
+        )}
         {/* Bases */}
         <rect x="147" y="76" width="6" height="6" rx="0.5" transform="rotate(45 150 79)" fill="rgba(255,255,255,0.12)" stroke="white" strokeWidth="0.5" />
         <rect x="199" y="128" width="6" height="6" rx="0.5" transform="rotate(45 202 131)" fill="rgba(255,255,255,0.12)" stroke="white" strokeWidth="0.5" />
@@ -102,8 +125,9 @@ export function SprayChart({ hits, width = 300, height = 220, compact = false, s
               <rect key={i}
                 x={hit.hitLocationX - size} y={hit.hitLocationY - size}
                 width={size * 2} height={size * 2}
-                fill={color} opacity="0.85"
-                stroke="rgba(0,0,0,0.4)" strokeWidth="0.5"
+                fill={color} opacity="0.9"
+                stroke="rgba(255,255,255,0.75)" strokeWidth="0.6"
+                filter="url(#scDotShadow)"
               />
             );
           }
@@ -112,8 +136,9 @@ export function SprayChart({ hits, width = 300, height = 220, compact = false, s
               <rect key={i}
                 x={hit.hitLocationX - size} y={hit.hitLocationY - size}
                 width={size * 2} height={size * 2}
-                fill={color} opacity="0.85"
-                stroke="rgba(0,0,0,0.4)" strokeWidth="0.5"
+                fill={color} opacity="0.9"
+                stroke="rgba(255,255,255,0.75)" strokeWidth="0.6"
+                filter="url(#scDotShadow)"
                 transform={`rotate(45 ${hit.hitLocationX} ${hit.hitLocationY})`}
               />
             );
@@ -121,18 +146,19 @@ export function SprayChart({ hits, width = 300, height = 220, compact = false, s
           return (
             <circle key={i}
               cx={hit.hitLocationX} cy={hit.hitLocationY}
-              r={size} fill={color} opacity="0.85"
-              stroke="rgba(0,0,0,0.4)" strokeWidth="0.5"
+              r={size} fill={color} opacity="0.9"
+              stroke="rgba(255,255,255,0.75)" strokeWidth="0.6"
+              filter="url(#scDotShadow)"
             />
           );
         })}
       </svg>
 
       {showLegend && !compact && (
-        <div className="flex items-center justify-center gap-3 mt-2 text-[9px] text-[#888]">
-          <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-full bg-green-500" /> Hit</span>
-          <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-full bg-red-500" /> Out</span>
-          <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-full bg-blue-500" /> Error</span>
+        <div className="mt-3 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[10px] text-text-muted">
+          <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-full bg-green-500" /> Hit ({hitsCount})</span>
+          <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-full bg-red-500" /> Out ({outsCount})</span>
+          <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-full bg-blue-500" /> Error ({errorsCount})</span>
           <span className="flex items-center gap-1.5"><span className="inline-block w-2.5 h-2.5 bg-[#888] rounded-full" /> Fly</span>
           <span className="flex items-center gap-1.5"><span className="inline-block w-2.5 h-2.5 bg-[#888]" /> Ground</span>
           <span className="flex items-center gap-1.5"><span className="inline-block w-2.5 h-2.5 bg-[#888] rotate-45" /> Line</span>

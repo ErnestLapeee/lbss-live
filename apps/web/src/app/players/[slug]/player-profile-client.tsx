@@ -1,6 +1,5 @@
 'use client';
 
-import type { ReactNode } from 'react';
 import { useState, useEffect } from 'react';
 import { SprayChart } from '@/components/stats/spray-chart';
 import { TeamMark } from '@/components/ui/team-mark';
@@ -28,6 +27,11 @@ const fmtKPct = (so: number, pa: number) =>
   pa > 0 ? `${((so / pa) * 100).toFixed(1)}%` : '—';
 const fmtEra = (v: any) => (v != null && v !== '' ? Number(v).toFixed(2) : '—');
 const fmtIp = (v: any) => (v != null ? v : '—');
+const fmtRatio = (num: any, den: any) => {
+  const nVal = Number(num ?? 0);
+  const dVal = Number(den ?? 0);
+  return dVal > 0 ? `${((nVal / dVal) * 100).toFixed(1)}%` : '—';
+};
 const n = (v: any) => v ?? 0;
 const ipToOuts = (ip: any): number => {
   if (ip == null || ip === '') return 0;
@@ -58,6 +62,7 @@ const sumBattingRows = (rows: any[]) => {
     'atBats',
     'runs',
     'hits',
+    'singles',
     'doubles',
     'triples',
     'homeRuns',
@@ -68,6 +73,18 @@ const sumBattingRows = (rows: any[]) => {
     'caughtStealing',
     'hitByPitch',
     'sacrificeFlies',
+    'sacrificeBunts',
+    'groundedIntoDoublePlays',
+    'groundedIntoTriplePlay',
+    'intentionalWalks',
+    'reachedOnError',
+    'totalBases',
+    'buntSingles',
+    'strikeoutsLooking',
+    'strikeoutsSwinging',
+    'pickedOff',
+    'fieldersChoice',
+    'catcherInterference',
   ];
   for (const r of rows) {
     for (const k of keysToSum) acc[k] = (acc[k] || 0) + (Number(r[k] ?? 0) || 0);
@@ -118,6 +135,21 @@ const sumPitchingRows = (rows: any[]) => {
     'hitBatters',
     'wildPitches',
     'battersFaced',
+    'balks',
+    'intentionalWalks',
+    'groundOuts',
+    'flyOuts',
+    'holds',
+    'saveOpportunities',
+    'blownSaves',
+    'inheritedRunners',
+    'inheritedRunnersScored',
+    'strikeoutsLooking',
+    'strikeoutsSwinging',
+    'balls',
+    'strikes',
+    'firstPitchStrikes',
+    'firstPitchTotal',
   ];
   for (const r of rows) {
     for (const k of keysToSum) acc[k] = (acc[k] || 0) + (Number(r[k] ?? 0) || 0);
@@ -172,7 +204,9 @@ function gameBattingSlashLine(g: Record<string, unknown>) {
   const slg = ab > 0 ? tb / ab : null;
   const avg = ab > 0 ? h / ab : null;
   const ops = obp != null && slg != null ? obp + slg : null;
-  return { avg, obp, slg, ops, tb };
+  const babipDenom = ab - Number(gv(g, 'strikeouts', 'strikeouts') ?? 0) - hr + sf;
+  const babip = babipDenom > 0 ? (h - hr) / babipDenom : null;
+  return { avg, obp, slg, ops, babip, tb };
 }
 
 /** Per-game pitching rate stats (matches platform FIP constant 3.1). */
@@ -180,7 +214,7 @@ function gamePitchingRates(g: Record<string, unknown>) {
   const ipOuts = ipToOuts(gv(g, 'innings_pitched', 'inningsPitched'));
   const ip = ipOuts / 3;
   if (ip <= 0) {
-    return { era: '—', whip: '—', fip: '—', k9: '—', bb9: '—', babip: '—' };
+    return { era: '—', whip: '—', fip: '—', k9: '—', bb9: '—', h9: '—', babip: '—' };
   }
   const h = Number(gv(g, 'hits_allowed', 'hitsAllowed') ?? 0);
   const er = Number(gv(g, 'earned_runs', 'earnedRuns') ?? 0);
@@ -194,9 +228,10 @@ function gamePitchingRates(g: Record<string, unknown>) {
   const fip = (3.1 + (13 * hr + 3 * bb - 2 * k) / ip).toFixed(2);
   const k9 = ((k / ip) * 9).toFixed(1);
   const bb9 = ((bb / ip) * 9).toFixed(1);
+  const h9 = ((h / ip) * 9).toFixed(1);
   const babipDenom = bf - k - hr - bb - hb;
   const babip = babipDenom > 0 ? ((h - hr) / babipDenom).toFixed(3) : '—';
-  return { era, whip, fip, k9, bb9, babip };
+  return { era, whip, fip, k9, bb9, h9, babip };
 }
 
 const sumFieldingRows = (rows: any[]) => {
@@ -211,8 +246,10 @@ const sumFieldingRows = (rows: any[]) => {
   const e = acc.errors || 0;
   const tc = po + a + e;
   const fp = tc > 0 ? ((po + a) / tc).toFixed(3) : null;
+  const innings = outsToIp(rows.reduce((s, r) => s + ipToOuts(r.innings), 0));
   return {
     ...acc,
+    innings,
     fieldingPct: fp,
   };
 };
@@ -226,25 +263,6 @@ const COUNT_SPLIT_ROWS = [
   ['0-1', '0-1'], ['1-1', '1-1'], ['2-1', '2-1'], ['3-1', '3-1'],
   ['0-2', '0-2'], ['1-2', '1-2'], ['2-2', '2-2'], ['3-2', 'Full Count'],
 ] as const;
-
-function SummaryCard({ label, value, sub }: { label: string; value: string | number; sub?: string }) {
-  return (
-    <div className="rounded-xl border border-border bg-surface p-3 shadow-sm">
-      <div className="text-[10px] font-bold uppercase tracking-wider text-text-faint">{label}</div>
-      <div className="mt-1 font-mono text-2xl font-black tabular-nums text-text">{value}</div>
-      {sub ? <div className="mt-1 text-[11px] text-text-muted">{sub}</div> : null}
-    </div>
-  );
-}
-
-function SectionTitle({ children, accent = 'bg-accent' }: { children: ReactNode; accent?: string }) {
-  return (
-    <h3 className="font-heading text-sm font-bold mb-3 flex items-center gap-2">
-      <div className={`h-4 w-1 rounded-full ${accent}`} />
-      {children}
-    </h3>
-  );
-}
 
 export function PlayerProfileClient({ slug, initialBattingStats, seasons }: PlayerProfileClientProps) {
   async function fetchJson(path: string) {
@@ -326,17 +344,17 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
   ];
 
   return (
-    <div className="space-y-6">
+    <div>
       {/* Tab bar */}
-      <div className="flex gap-1 overflow-x-auto rounded-xl border border-border bg-surface-alt p-1">
+      <div className="flex gap-1 border-b border-border mb-6">
         {tabs.map(t => (
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
-            className={`whitespace-nowrap rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${
+            className={`px-4 py-2.5 text-sm font-semibold transition-colors border-b-2 -mb-px ${
               tab === t.key
-                ? 'bg-surface text-text shadow-sm'
-                : 'text-text-muted hover:bg-surface/60 hover:text-text-secondary'
+                ? 'border-accent text-accent'
+                : 'border-transparent text-text-muted hover:text-text-secondary'
             }`}
           >
             {t.label}
@@ -345,7 +363,7 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
       </div>
 
       {(tab === 'batting' || tab === 'pitching' || tab === 'gamelog' || tab === 'spraychart') && (
-        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-surface p-3 shadow-sm">
+        <div className="flex flex-wrap items-center gap-2 mb-5">
           <label htmlFor="profile-season-filter" className="text-xs font-medium text-text-muted">
             Season:
           </label>
@@ -376,28 +394,11 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
               <p className="text-sm text-text-muted">No batting statistics recorded yet.</p>
             </div>
           ) : (
-            <>
-              {sumBattingRows(battingStats) && (() => {
-                const total = sumBattingRows(battingStats)!;
-                return (
-                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-                    <SummaryCard label="OPS" value={fmtRate(total.ops)} sub={`${n(total.plateAppearances)} PA`} />
-                    <SummaryCard label="AVG" value={fmtRate(total.battingAvg)} sub={`${n(total.hits)} H / ${n(total.atBats)} AB`} />
-                    <SummaryCard label="OBP" value={fmtRate(total.onBasePct)} sub={`${n(total.walks)} BB, ${n(total.hitByPitch)} HBP`} />
-                    <SummaryCard label="SLG" value={fmtRate(total.sluggingPct)} sub={`${n(total.homeRuns)} HR`} />
-                    <SummaryCard label="Run production" value={n(total.rbi)} sub={`${n(total.runs)} R`} />
-                  </div>
-                );
-              })()}
-              <div className="overflow-hidden rounded-xl border border-border bg-surface shadow-sm">
-                <div className="border-b border-border bg-surface-alt px-4 py-3">
-                  <SectionTitle>Batting summary</SectionTitle>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-[1180px] text-sm">
-                    <thead>
-                      <tr className="border-b border-border bg-surface-alt/70">
-                    {['Season', 'Team', 'G', 'PA', 'AB', 'R', 'H', '2B', '3B', 'HR', 'RBI', 'BB', 'HBP', 'SO', 'SB', 'CS', 'SF', 'AVG', 'OBP', 'SLG', 'OPS', 'BABIP'].map(col => (
+            <div className="rounded-xl border border-border bg-surface overflow-x-auto">
+              <table className="w-full min-w-[1680px] text-sm">
+                <thead>
+                  <tr className="border-b border-border bg-surface-alt">
+                    {['Season', 'Team', 'G', 'PA', 'AB', 'R', 'H', '1B', '2B', '3B', 'HR', 'TB', 'RBI', 'BB', 'IBB', 'HBP', 'SO', 'K-L', 'K-S', 'SB', 'CS', 'PO', 'SF', 'SH', 'ROE', 'FC', 'GIDP', 'GITP', 'CI', 'AVG', 'OBP', 'SLG', 'OPS', 'BABIP'].map(col => (
                       <th title={getStatAbbreviationMeaning(col) ?? undefined} key={col} className={`px-2 py-2.5 text-[10px] font-bold uppercase tracking-wider text-text-faint whitespace-nowrap ${col === 'Season' || col === 'Team' ? 'text-left' : 'text-right'}`}>
                         {col}
                       </th>
@@ -421,16 +422,28 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
                       <td className="px-2 py-2 text-right font-mono text-xs">{n(s.atBats)}</td>
                       <td className="px-2 py-2 text-right font-mono text-xs">{n(s.runs)}</td>
                       <td className="px-2 py-2 text-right font-mono text-xs">{n(s.hits)}</td>
+                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.singles)}</td>
                       <td className="px-2 py-2 text-right font-mono text-xs">{n(s.doubles)}</td>
                       <td className="px-2 py-2 text-right font-mono text-xs">{n(s.triples)}</td>
                       <td className="px-2 py-2 text-right font-mono text-xs">{n(s.homeRuns)}</td>
+                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.totalBases)}</td>
                       <td className="px-2 py-2 text-right font-mono text-xs">{n(s.rbi)}</td>
                       <td className="px-2 py-2 text-right font-mono text-xs">{n(s.walks)}</td>
+                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.intentionalWalks)}</td>
                       <td className="px-2 py-2 text-right font-mono text-xs">{n(s.hitByPitch)}</td>
                       <td className="px-2 py-2 text-right font-mono text-xs">{n(s.strikeouts)}</td>
+                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.strikeoutsLooking)}</td>
+                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.strikeoutsSwinging)}</td>
                       <td className="px-2 py-2 text-right font-mono text-xs">{n(s.stolenBases)}</td>
                       <td className="px-2 py-2 text-right font-mono text-xs">{n(s.caughtStealing)}</td>
+                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.pickedOff)}</td>
                       <td className="px-2 py-2 text-right font-mono text-xs">{n(s.sacrificeFlies)}</td>
+                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.sacrificeBunts)}</td>
+                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.reachedOnError)}</td>
+                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.fieldersChoice)}</td>
+                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.groundedIntoDoublePlays)}</td>
+                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.groundedIntoTriplePlay)}</td>
+                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.catcherInterference)}</td>
                       <td className="px-2 py-2 text-right font-mono text-xs font-bold">{fmtRate(s.battingAvg)}</td>
                       <td className="px-2 py-2 text-right font-mono text-xs">{fmtRate(s.onBasePct)}</td>
                       <td className="px-2 py-2 text-right font-mono text-xs">{fmtRate(s.sluggingPct)}</td>
@@ -448,16 +461,28 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
                         <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.atBats)}</td>
                         <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.runs)}</td>
                         <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.hits)}</td>
+                        <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.singles)}</td>
                         <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.doubles)}</td>
                         <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.triples)}</td>
                         <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.homeRuns)}</td>
+                        <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.totalBases)}</td>
                         <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.rbi)}</td>
                         <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.walks)}</td>
+                        <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.intentionalWalks)}</td>
                         <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.hitByPitch)}</td>
                         <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.strikeouts)}</td>
+                        <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.strikeoutsLooking)}</td>
+                        <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.strikeoutsSwinging)}</td>
                         <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.stolenBases)}</td>
                         <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.caughtStealing)}</td>
+                        <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.pickedOff)}</td>
                         <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.sacrificeFlies)}</td>
+                        <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.sacrificeBunts)}</td>
+                        <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.reachedOnError)}</td>
+                        <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.fieldersChoice)}</td>
+                        <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.groundedIntoDoublePlays)}</td>
+                        <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.groundedIntoTriplePlay)}</td>
+                        <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.catcherInterference)}</td>
                         <td className="px-2 py-2 text-right font-mono text-xs font-bold">{fmtRate(total.battingAvg)}</td>
                         <td className="px-2 py-2 text-right font-mono text-xs font-bold">{fmtRate(total.onBasePct)}</td>
                         <td className="px-2 py-2 text-right font-mono text-xs font-bold">{fmtRate(total.sluggingPct)}</td>
@@ -466,18 +491,19 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
                       </tr>
                     );
                   })()}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </>
+                </tbody>
+              </table>
+            </div>
           )}
 
           {/* Platoon splits (batting): vs RHP / LHP from opposing pitcher&apos;s throwing hand */}
           {platoonSplits && (
             <div>
-              <SectionTitle>Platoon splits (batting)</SectionTitle>
-              <div className="rounded-xl border border-border bg-surface overflow-x-auto shadow-sm">
+              <h3 className="font-heading text-sm font-bold mb-3 flex items-center gap-2">
+                <div className="w-1 h-4 rounded-full bg-accent" />
+                Platoon splits (batting)
+              </h3>
+              <div className="rounded-xl border border-border bg-surface overflow-x-auto max-w-3xl">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-border bg-surface-alt">
@@ -526,21 +552,21 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
 
           {platoonSplits?.battingCounts && (
             <div>
-              <SectionTitle>Count splits (batting)</SectionTitle>
-              <div className="mb-3 grid gap-3 sm:grid-cols-3">
-                <SummaryCard
-                  label="First-pitch strike"
-                  value={fmtPct(platoonSplits.battingCounts.firstPitch?.strikePct)}
-                  sub={`${n(platoonSplits.battingCounts.firstPitch?.strikes)} / ${n(platoonSplits.battingCounts.firstPitch?.total)}`}
-                />
-                <SummaryCard
-                  label="Tracked PA"
-                  value={n(platoonSplits.battingCounts.firstPitch?.total)}
-                  sub="with first-pitch context"
-                />
+              <h3 className="font-heading text-sm font-bold mb-3 flex items-center gap-2">
+                <div className="w-1 h-4 rounded-full bg-accent" />
+                Count splits (batting)
+              </h3>
+              <div className="mb-3 grid gap-2 sm:grid-cols-3">
+                <div className="rounded-xl border border-border bg-surface p-3">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-text-faint">First-pitch strike</div>
+                  <div className="mt-1 font-mono text-xl font-bold">{fmtPct(platoonSplits.battingCounts.firstPitch?.strikePct)}</div>
+                  <div className="text-[11px] text-text-muted">
+                    {n(platoonSplits.battingCounts.firstPitch?.strikes)} / {n(platoonSplits.battingCounts.firstPitch?.total)}
+                  </div>
+                </div>
               </div>
-              <div className="rounded-xl border border-border bg-surface overflow-x-auto shadow-sm">
-                <table className="w-full min-w-[980px] text-sm">
+              <div className="rounded-xl border border-border bg-surface overflow-x-auto max-w-5xl">
+                <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-border bg-surface-alt">
                       {['Count', 'PA', 'AB', 'H', '2B', '3B', 'HR', 'BB', 'SO', 'AVG', 'OBP', 'SLG', 'OPS'].map(col => (
@@ -582,7 +608,7 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
 
       {/* PITCHING TAB */}
       {tab === 'pitching' && (
-        <div className="space-y-8">
+        <div>
           {pitchingStats === null ? (
             <p className="text-sm text-text-muted py-4">Loading...</p>
           ) : pitchingStats.length === 0 ? (
@@ -590,28 +616,11 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
               <p className="text-sm text-text-muted">No pitching statistics recorded.</p>
             </div>
           ) : (
-            <>
-              {sumPitchingRows(pitchingStats) && (() => {
-                const total = sumPitchingRows(pitchingStats)!;
-                return (
-                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-                    <SummaryCard label="ERA" value={fmtEra(total.era)} sub={`${fmtIp(total.inningsPitched)} IP`} />
-                    <SummaryCard label="WHIP" value={fmtEra(total.whip)} sub={`${n(total.walksAllowed)} BB + ${n(total.hitsAllowed)} H`} />
-                    <SummaryCard label="K/9" value={total.k9 != null ? String(total.k9) : '—'} sub={`${n(total.strikeouts)} SO`} />
-                    <SummaryCard label="BB/9" value={total.bb9 != null ? String(total.bb9) : '—'} sub={`${n(total.walksAllowed)} BB`} />
-                    <SummaryCard label="Record" value={`${n(total.wins)}-${n(total.losses)}`} sub={`${n(total.saves)} SV`} />
-                  </div>
-                );
-              })()}
-              <div className="overflow-hidden rounded-xl border border-border bg-surface shadow-sm">
-                <div className="border-b border-border bg-surface-alt px-4 py-3">
-                  <SectionTitle accent="bg-gold">Pitching summary</SectionTitle>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-[1140px] text-sm">
+            <div className="rounded-xl border border-border bg-surface overflow-x-auto">
+              <table className="w-full min-w-[1760px] text-sm">
                 <thead>
-                  <tr className="border-b border-border bg-surface-alt/70">
-                    {['Season', 'Team', 'G', 'GS', 'W', 'L', 'SV', 'IP', 'H', 'R', 'ER', 'BB', 'SO', 'HR', 'HBP', 'WP', 'ERA', 'WHIP', 'FIP', 'K/9', 'BB/9', 'BABIP'].map(col => (
+                  <tr className="border-b border-border bg-surface-alt">
+                    {['Season', 'Team', 'G', 'GS', 'W', 'L', 'SV', 'HLD', 'SVO', 'BS', 'IP', 'BF', 'H', 'R', 'ER', 'BB', 'IBB', 'SO', 'K-L', 'K-S', 'HR', 'HBP', 'WP', 'BK', 'FPS%', 'IR', 'IRS', 'GO', 'AO', 'ERA', 'WHIP', 'FIP', 'K/9', 'BB/9', 'H/9', 'BABIP'].map(col => (
                       <th title={getStatAbbreviationMeaning(col) ?? undefined} key={col} className={`px-2 py-2.5 text-[10px] font-bold uppercase tracking-wider text-text-faint whitespace-nowrap ${col === 'Season' || col === 'Team' ? 'text-left' : 'text-right'}`}>
                         {col}
                       </th>
@@ -635,20 +644,34 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
                       <td className="px-2 py-2 text-right font-mono text-xs">{n(s.wins)}</td>
                       <td className="px-2 py-2 text-right font-mono text-xs">{n(s.losses)}</td>
                       <td className="px-2 py-2 text-right font-mono text-xs">{n(s.saves)}</td>
+                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.holds)}</td>
+                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.saveOpportunities)}</td>
+                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.blownSaves)}</td>
                       <td className="px-2 py-2 text-right font-mono text-xs">{fmtIp(s.inningsPitched)}</td>
+                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.battersFaced)}</td>
                       <td className="px-2 py-2 text-right font-mono text-xs">{n(s.hitsAllowed)}</td>
                       <td className="px-2 py-2 text-right font-mono text-xs">{n(s.runsAllowed)}</td>
                       <td className="px-2 py-2 text-right font-mono text-xs">{n(s.earnedRuns)}</td>
                       <td className="px-2 py-2 text-right font-mono text-xs">{n(s.walksAllowed)}</td>
+                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.intentionalWalks)}</td>
                       <td className="px-2 py-2 text-right font-mono text-xs">{n(s.strikeouts)}</td>
+                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.strikeoutsLooking)}</td>
+                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.strikeoutsSwinging)}</td>
                       <td className="px-2 py-2 text-right font-mono text-xs">{n(s.homeRunsAllowed)}</td>
                       <td className="px-2 py-2 text-right font-mono text-xs">{n(s.hitBatters)}</td>
                       <td className="px-2 py-2 text-right font-mono text-xs">{n(s.wildPitches)}</td>
+                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.balks)}</td>
+                      <td className="px-2 py-2 text-right font-mono text-xs">{fmtRatio(s.firstPitchStrikes, s.firstPitchTotal)}</td>
+                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.inheritedRunners)}</td>
+                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.inheritedRunnersScored)}</td>
+                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.groundOuts)}</td>
+                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.flyOuts)}</td>
                       <td className="px-2 py-2 text-right font-mono text-xs font-bold">{fmtEra(s.era)}</td>
                       <td className="px-2 py-2 text-right font-mono text-xs">{fmtEra(s.whip)}</td>
                       <td className="px-2 py-2 text-right font-mono text-xs">{fmtEra(s.fip)}</td>
                       <td className="px-2 py-2 text-right font-mono text-xs">{s.k9 != null ? Number(s.k9).toFixed(1) : '—'}</td>
                       <td className="px-2 py-2 text-right font-mono text-xs">{s.bb9 != null ? Number(s.bb9).toFixed(1) : '—'}</td>
+                      <td className="px-2 py-2 text-right font-mono text-xs">{s.h9 != null ? Number(s.h9).toFixed(1) : '—'}</td>
                       <td className="px-2 py-2 text-right font-mono text-xs">{fmtRate(s.babip)}</td>
                     </tr>
                   ))}
@@ -662,15 +685,28 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
                         <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.wins)}</td>
                         <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.losses)}</td>
                         <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.saves)}</td>
+                        <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.holds)}</td>
+                        <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.saveOpportunities)}</td>
+                        <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.blownSaves)}</td>
                         <td className="px-2 py-2 text-right font-mono text-xs font-bold">{fmtIp(total.inningsPitched)}</td>
+                        <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.battersFaced)}</td>
                         <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.hitsAllowed)}</td>
                         <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.runsAllowed)}</td>
                         <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.earnedRuns)}</td>
                         <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.walksAllowed)}</td>
+                        <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.intentionalWalks)}</td>
                         <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.strikeouts)}</td>
+                        <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.strikeoutsLooking)}</td>
+                        <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.strikeoutsSwinging)}</td>
                         <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.homeRunsAllowed)}</td>
                         <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.hitBatters)}</td>
                         <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.wildPitches)}</td>
+                        <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.balks)}</td>
+                        <td className="px-2 py-2 text-right font-mono text-xs font-bold">{fmtRatio(total.firstPitchStrikes, total.firstPitchTotal)}</td>
+                        <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.inheritedRunners)}</td>
+                        <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.inheritedRunnersScored)}</td>
+                        <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.groundOuts)}</td>
+                        <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.flyOuts)}</td>
                         <td className="px-2 py-2 text-right font-mono text-xs font-bold">{fmtEra(total.era)}</td>
                         <td className="px-2 py-2 text-right font-mono text-xs font-bold">{fmtEra(total.whip)}</td>
                         <td className="px-2 py-2 text-right font-mono text-xs font-bold">{fmtEra(total.fip)}</td>
@@ -680,23 +716,27 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
                         <td className="px-2 py-2 text-right font-mono text-xs font-bold">
                           {total.bb9 != null ? String(total.bb9) : '—'}
                         </td>
+                        <td className="px-2 py-2 text-right font-mono text-xs font-bold">
+                          {total.inningsPitched && Number(total.inningsPitched) > 0 ? ((n(total.hitsAllowed) / (ipToOuts(total.inningsPitched) / 3)) * 9).toFixed(1) : '—'}
+                        </td>
                         <td className="px-2 py-2 text-right font-mono text-xs font-bold">{fmtRate(total.babip)}</td>
                       </tr>
                     );
                   })()}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </>
+                </tbody>
+              </table>
+            </div>
           )}
 
           {/* Opponent slash by batter hand (same PA rules as batting line, from the batter&apos;s perspective) */}
           {platoonSplits && (
             <div className="mt-8">
-              <SectionTitle>Platoon splits (pitching)</SectionTitle>
-              <div className="rounded-xl border border-border bg-surface overflow-x-auto shadow-sm">
-                <table className="w-full text-sm">
+              <h3 className="font-heading text-sm font-bold mb-3 flex items-center gap-2">
+                <div className="w-1 h-4 rounded-full bg-accent" />
+                Platoon splits (pitching)
+              </h3>
+              <div className="rounded-xl border border-border bg-surface overflow-x-auto max-w-4xl">
+                <table className="w-full min-w-[980px] text-sm">
                   <thead>
                     <tr className="border-b border-border bg-surface-alt">
                       {['Split', 'PA', 'AB', 'H', '2B', '3B', 'HR', 'BB', 'SO', 'K%', 'AVG', 'OBP', 'SLG', 'OPS'].map(col => (
@@ -747,21 +787,21 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
 
           {platoonSplits?.pitchingCounts && (
             <div className="mt-8">
-              <SectionTitle>Count splits (pitching)</SectionTitle>
-              <div className="mb-3 grid gap-3 sm:grid-cols-3">
-                <SummaryCard
-                  label="First-pitch strike"
-                  value={fmtPct(platoonSplits.pitchingCounts.firstPitch?.strikePct)}
-                  sub={`${n(platoonSplits.pitchingCounts.firstPitch?.strikes)} / ${n(platoonSplits.pitchingCounts.firstPitch?.total)}`}
-                />
-                <SummaryCard
-                  label="Tracked PA"
-                  value={n(platoonSplits.pitchingCounts.firstPitch?.total)}
-                  sub="with first-pitch context"
-                />
+              <h3 className="font-heading text-sm font-bold mb-3 flex items-center gap-2">
+                <div className="w-1 h-4 rounded-full bg-accent" />
+                Count splits (pitching)
+              </h3>
+              <div className="mb-3 grid gap-2 sm:grid-cols-3">
+                <div className="rounded-xl border border-border bg-surface p-3">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-text-faint">First-pitch strike</div>
+                  <div className="mt-1 font-mono text-xl font-bold">{fmtPct(platoonSplits.pitchingCounts.firstPitch?.strikePct)}</div>
+                  <div className="text-[11px] text-text-muted">
+                    {n(platoonSplits.pitchingCounts.firstPitch?.strikes)} / {n(platoonSplits.pitchingCounts.firstPitch?.total)}
+                  </div>
+                </div>
               </div>
-              <div className="rounded-xl border border-border bg-surface overflow-x-auto shadow-sm">
-                <table className="w-full min-w-[1040px] text-sm">
+              <div className="rounded-xl border border-border bg-surface overflow-x-auto max-w-5xl">
+                <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-border bg-surface-alt">
                       {['Count', 'PA', 'AB', 'H', '2B', '3B', 'HR', 'BB', 'SO', 'K%', 'AVG', 'OBP', 'SLG', 'OPS'].map(col => (
@@ -809,7 +849,7 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
 
       {/* FIELDING TAB */}
       {tab === 'fielding' && (
-        <div className="space-y-8">
+        <div>
           {fieldingStats === null ? (
             <p className="text-sm text-text-muted py-4">Loading...</p>
           ) : fieldingStats.length === 0 ? (
@@ -818,27 +858,11 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
             </div>
           ) : (
             <>
-              {sumFieldingRows(fieldingStats) && (() => {
-                const total = sumFieldingRows(fieldingStats)!;
-                return (
-                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-                    <SummaryCard label="FP%" value={fmtRate(total.fieldingPct)} sub={`${n(total.putouts)} PO, ${n(total.assists)} A`} />
-                    <SummaryCard label="Errors" value={n(total.errors)} sub="charged fielding errors" />
-                    <SummaryCard label="Double plays" value={n(total.doublePlays)} sub={`${n(total.triplePlays)} TP`} />
-                    <SummaryCard label="Catcher SBA" value={n(total.catcherStolenBases) + n(total.catcherCaughtStealing)} sub={`${n(total.catcherCaughtStealing)} CS`} />
-                    <SummaryCard label="Pickoffs" value={n(total.pickoffs)} sub={`${n(total.passedBalls)} PB`} />
-                  </div>
-                );
-              })()}
-              <div className="overflow-hidden rounded-xl border border-border bg-surface shadow-sm">
-                <div className="border-b border-border bg-surface-alt px-4 py-3">
-                  <SectionTitle>Fielding summary</SectionTitle>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-[900px] text-sm">
+              <div className="rounded-xl border border-border bg-surface overflow-x-auto">
+                <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-border bg-surface-alt/70">
-                      {['Season', 'Team', 'G', 'PO', 'A', 'E', 'DP', 'TP', 'PB', 'SB', 'CS', 'SBA', 'PK', 'FP%'].map(col => (
+                    <tr className="border-b border-border bg-surface-alt">
+                      {['Season', 'Team', 'Pos', 'G', 'INN', 'PO', 'A', 'E', 'DP', 'TP', 'PB', 'SB', 'CS', 'SBA', 'PK', 'FP%'].map(col => (
                         <th title={getStatAbbreviationMeaning(col) ?? undefined} key={col} className={`px-2 py-2.5 text-[10px] font-bold uppercase tracking-wider text-text-faint whitespace-nowrap ${col === 'Season' || col === 'Team' ? 'text-left' : 'text-right'}`}>
                           {col}
                         </th>
@@ -852,7 +876,9 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
                           {s.seasonYear != null ? `${s.seasonYear}${s.seasonLabel ? ` ${s.seasonLabel}` : ''}` : 'All time'}
                         </td>
                         <td className="px-2 py-2 text-xs text-text-muted">{s.teamName ?? '—'}</td>
+                        <td className="px-2 py-2 text-right font-mono text-xs">{s.positionLabel ?? '—'}</td>
                         <td className="px-2 py-2 text-right font-mono text-xs">{n(s.games)}</td>
+                        <td className="px-2 py-2 text-right font-mono text-xs">{fmtIp(s.innings)}</td>
                         <td className="px-2 py-2 text-right font-mono text-xs">{n(s.putouts)}</td>
                         <td className="px-2 py-2 text-right font-mono text-xs">{n(s.assists)}</td>
                         <td className="px-2 py-2 text-right font-mono text-xs">{n(s.errors)}</td>
@@ -870,8 +896,9 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
                       const total = sumFieldingRows(fieldingStats)!;
                       return (
                         <tr className="bg-surface-alt border-t border-border/80">
-                          <td className="px-2 py-2 font-bold text-xs" colSpan={2}>TOTAL</td>
+                          <td className="px-2 py-2 font-bold text-xs" colSpan={3}>TOTAL</td>
                           <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.games)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs font-bold">{fmtIp(total.innings)}</td>
                           <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.putouts)}</td>
                           <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.assists)}</td>
                           <td className="px-2 py-2 text-right font-mono text-xs font-bold">{n(total.errors)}</td>
@@ -886,9 +913,8 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
                         </tr>
                       );
                     })()}
-                    </tbody>
-                  </table>
-                </div>
+                  </tbody>
+                </table>
               </div>
 
               {/* Fielding by Position */}
@@ -972,12 +998,12 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
                     Batting Game Log
                   </h3>
                   <div className="rounded-xl border border-border bg-surface overflow-x-auto">
-                    <table className="w-full text-sm min-w-[1100px]">
+                    <table className="w-full text-sm min-w-[1640px]">
                       <thead>
                         <tr className="border-b border-border bg-surface-alt">
                           {[
-                            'Date', 'Opp', 'PA', 'AB', 'R', 'H', '2B', '3B', 'HR', 'RBI', 'BB', 'SO', 'SB', 'CS', 'HBP', 'SF', 'TB',
-                            'AVG', 'OBP', 'SLG', 'OPS',
+                            'Date', 'Opp', 'PA', 'AB', 'R', 'H', '1B', '2B', '3B', 'HR', 'TB', 'RBI', 'BB', 'IBB', 'HBP', 'SO',
+                            'K-L', 'K-S', 'SB', 'CS', 'PO', 'SF', 'SH', 'ROE', 'FC', 'GIDP', 'CI', 'AVG', 'OBP', 'SLG', 'OPS', 'BABIP',
                           ].map(col => (
                             <th
                               key={col}
@@ -1010,21 +1036,32 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
                               <td className="px-2 py-1.5 text-right font-mono text-xs">{n(gv(g, 'at_bats', 'atBats'))}</td>
                               <td className="px-2 py-1.5 text-right font-mono text-xs">{n(gv(g, 'runs', 'runs'))}</td>
                               <td className="px-2 py-1.5 text-right font-mono text-xs">{n(gv(g, 'hits', 'hits'))}</td>
+                              <td className="px-2 py-1.5 text-right font-mono text-xs">{n(gv(g, 'singles', 'singles'))}</td>
                               <td className="px-2 py-1.5 text-right font-mono text-xs">{n(gv(g, 'doubles', 'doubles'))}</td>
                               <td className="px-2 py-1.5 text-right font-mono text-xs">{n(gv(g, 'triples', 'triples'))}</td>
                               <td className="px-2 py-1.5 text-right font-mono text-xs">{n(gv(g, 'home_runs', 'homeRuns'))}</td>
+                              <td className="px-2 py-1.5 text-right font-mono text-xs">{slash.tb}</td>
                               <td className="px-2 py-1.5 text-right font-mono text-xs">{n(gv(g, 'rbi', 'rbi'))}</td>
                               <td className="px-2 py-1.5 text-right font-mono text-xs">{n(gv(g, 'walks', 'walks'))}</td>
+                              <td className="px-2 py-1.5 text-right font-mono text-xs">{n(gv(g, 'intentional_walks', 'intentionalWalks'))}</td>
+                              <td className="px-2 py-1.5 text-right font-mono text-xs">{n(gv(g, 'hit_by_pitch', 'hitByPitch'))}</td>
                               <td className="px-2 py-1.5 text-right font-mono text-xs">{n(gv(g, 'strikeouts', 'strikeouts'))}</td>
+                              <td className="px-2 py-1.5 text-right font-mono text-xs">{n(gv(g, 'strikeouts_looking', 'strikeoutsLooking'))}</td>
+                              <td className="px-2 py-1.5 text-right font-mono text-xs">{n(gv(g, 'strikeouts_swinging', 'strikeoutsSwinging'))}</td>
                               <td className="px-2 py-1.5 text-right font-mono text-xs">{n(gv(g, 'stolen_bases', 'stolenBases'))}</td>
                               <td className="px-2 py-1.5 text-right font-mono text-xs">{n(gv(g, 'caught_stealing', 'caughtStealing'))}</td>
-                              <td className="px-2 py-1.5 text-right font-mono text-xs">{n(gv(g, 'hit_by_pitch', 'hitByPitch'))}</td>
+                              <td className="px-2 py-1.5 text-right font-mono text-xs">{n(gv(g, 'picked_off', 'pickedOff'))}</td>
                               <td className="px-2 py-1.5 text-right font-mono text-xs">{n(gv(g, 'sacrifice_flies', 'sacrificeFlies'))}</td>
-                              <td className="px-2 py-1.5 text-right font-mono text-xs">{slash.tb}</td>
+                              <td className="px-2 py-1.5 text-right font-mono text-xs">{n(gv(g, 'sacrifice_bunts', 'sacrificeBunts'))}</td>
+                              <td className="px-2 py-1.5 text-right font-mono text-xs">{n(gv(g, 'reached_on_error', 'reachedOnError'))}</td>
+                              <td className="px-2 py-1.5 text-right font-mono text-xs">{n(gv(g, 'fielders_choice', 'fieldersChoice'))}</td>
+                              <td className="px-2 py-1.5 text-right font-mono text-xs">{n(gv(g, 'grounded_into_double_plays', 'groundedIntoDoublePlays'))}</td>
+                              <td className="px-2 py-1.5 text-right font-mono text-xs">{n(gv(g, 'catcher_interference', 'catcherInterference'))}</td>
                               <td className="px-2 py-1.5 text-right font-mono text-xs">{slash.avg != null ? fmtRate(slash.avg) : '—'}</td>
                               <td className="px-2 py-1.5 text-right font-mono text-xs">{slash.obp != null ? fmtRate(slash.obp) : '—'}</td>
                               <td className="px-2 py-1.5 text-right font-mono text-xs">{slash.slg != null ? fmtRate(slash.slg) : '—'}</td>
                               <td className="px-2 py-1.5 text-right font-mono text-xs font-semibold">{slash.ops != null ? fmtRate(slash.ops) : '—'}</td>
+                              <td className="px-2 py-1.5 text-right font-mono text-xs">{slash.babip != null ? fmtRate(slash.babip) : '—'}</td>
                             </tr>
                           );
                         })}
@@ -1042,12 +1079,13 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
                     Pitching Game Log
                   </h3>
                   <div className="rounded-xl border border-border bg-surface overflow-x-auto">
-                    <table className="w-full text-sm min-w-[1000px]">
+                    <table className="w-full text-sm min-w-[1720px]">
                       <thead>
                         <tr className="border-b border-border bg-surface-alt">
                           {[
-                            'Date', 'Opp', 'Dec', 'IP', 'H', 'R', 'ER', 'BB', 'SO', 'HR', 'HBP', 'WP', 'PIT',
-                            'ERA', 'WHIP', 'FIP', 'K/9', 'BB/9', 'BABIP',
+                            'Date', 'Opp', 'Dec', 'GS', 'IP', 'BF', 'H', 'R', 'ER', 'BB', 'IBB', 'SO', 'K-L', 'K-S',
+                            'HR', 'HBP', 'WP', 'BK', 'PIT', 'FPS%', 'HLD', 'SVO', 'BS', 'IR', 'IRS', 'GO', 'AO',
+                            'ERA', 'WHIP', 'FIP', 'K/9', 'BB/9', 'H/9', 'BABIP',
                           ].map(col => (
                             <th
                               key={col}
@@ -1080,21 +1118,36 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
                               <td className="px-2 py-1.5 text-right font-mono text-xs font-bold">
                                 {(gv(g, 'decision', 'decision') as string | null | undefined) || '—'}
                               </td>
+                              <td className="px-2 py-1.5 text-right font-mono text-xs">{gv(g, 'is_starter', 'isStarter') ? 'Y' : '—'}</td>
                               <td className="px-2 py-1.5 text-right font-mono text-xs">{String(gv(g, 'innings_pitched', 'inningsPitched') ?? '—')}</td>
+                              <td className="px-2 py-1.5 text-right font-mono text-xs">{n(gv(g, 'batters_faced', 'battersFaced'))}</td>
                               <td className="px-2 py-1.5 text-right font-mono text-xs">{n(gv(g, 'hits_allowed', 'hitsAllowed'))}</td>
                               <td className="px-2 py-1.5 text-right font-mono text-xs">{n(gv(g, 'runs_allowed', 'runsAllowed'))}</td>
                               <td className="px-2 py-1.5 text-right font-mono text-xs">{n(gv(g, 'earned_runs', 'earnedRuns'))}</td>
                               <td className="px-2 py-1.5 text-right font-mono text-xs">{n(gv(g, 'walks_allowed', 'walksAllowed'))}</td>
+                              <td className="px-2 py-1.5 text-right font-mono text-xs">{n(gv(g, 'intentional_walks', 'intentionalWalks'))}</td>
                               <td className="px-2 py-1.5 text-right font-mono text-xs">{n(gv(g, 'strikeouts', 'strikeouts'))}</td>
+                              <td className="px-2 py-1.5 text-right font-mono text-xs">{n(gv(g, 'strikeouts_looking', 'strikeoutsLooking'))}</td>
+                              <td className="px-2 py-1.5 text-right font-mono text-xs">{n(gv(g, 'strikeouts_swinging', 'strikeoutsSwinging'))}</td>
                               <td className="px-2 py-1.5 text-right font-mono text-xs">{n(gv(g, 'home_runs_allowed', 'homeRunsAllowed'))}</td>
                               <td className="px-2 py-1.5 text-right font-mono text-xs">{n(gv(g, 'hit_batters', 'hitBatters'))}</td>
                               <td className="px-2 py-1.5 text-right font-mono text-xs">{n(gv(g, 'wild_pitches', 'wildPitches'))}</td>
+                              <td className="px-2 py-1.5 text-right font-mono text-xs">{n(gv(g, 'balks', 'balks'))}</td>
                               <td className="px-2 py-1.5 text-right font-mono text-xs">{pit != null && pit !== '' ? String(pit) : '—'}</td>
+                              <td className="px-2 py-1.5 text-right font-mono text-xs">{fmtRatio(gv(g, 'first_pitch_strikes', 'firstPitchStrikes'), gv(g, 'first_pitch_total', 'firstPitchTotal'))}</td>
+                              <td className="px-2 py-1.5 text-right font-mono text-xs">{n(gv(g, 'holds', 'holds'))}</td>
+                              <td className="px-2 py-1.5 text-right font-mono text-xs">{n(gv(g, 'save_opportunities', 'saveOpportunities'))}</td>
+                              <td className="px-2 py-1.5 text-right font-mono text-xs">{n(gv(g, 'blown_saves', 'blownSaves'))}</td>
+                              <td className="px-2 py-1.5 text-right font-mono text-xs">{n(gv(g, 'inherited_runners', 'inheritedRunners'))}</td>
+                              <td className="px-2 py-1.5 text-right font-mono text-xs">{n(gv(g, 'inherited_runners_scored', 'inheritedRunnersScored'))}</td>
+                              <td className="px-2 py-1.5 text-right font-mono text-xs">{n(gv(g, 'ground_outs', 'groundOuts'))}</td>
+                              <td className="px-2 py-1.5 text-right font-mono text-xs">{n(gv(g, 'fly_outs', 'flyOuts'))}</td>
                               <td className="px-2 py-1.5 text-right font-mono text-xs">{pr.era}</td>
                               <td className="px-2 py-1.5 text-right font-mono text-xs">{pr.whip}</td>
                               <td className="px-2 py-1.5 text-right font-mono text-xs">{pr.fip}</td>
                               <td className="px-2 py-1.5 text-right font-mono text-xs">{pr.k9}</td>
                               <td className="px-2 py-1.5 text-right font-mono text-xs">{pr.bb9}</td>
+                              <td className="px-2 py-1.5 text-right font-mono text-xs">{pr.h9}</td>
                               <td className="px-2 py-1.5 text-right font-mono text-xs">{pr.babip}</td>
                             </tr>
                           );
