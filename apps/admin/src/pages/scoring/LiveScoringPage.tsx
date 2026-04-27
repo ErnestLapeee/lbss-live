@@ -1588,14 +1588,14 @@ function needsRunnerAdvanceErrorFieldingPrompt(
           {/* Batting lineup */}
           <div className="mb-3">
             <div className="text-[9px] text-white/30 font-bold uppercase tracking-wider px-1 mb-1.5">
-              {battingSide === 'away' ? game.awayTeamName : game.homeTeamName} (Batting)
+              {battingSide === 'away' ? game.awayTeamName : game.homeTeamName}
             </div>
             {Array.from({ length: 9 }, (_, i) => {
               const slot = i + 1;
               const entry = battingLineup.find(l => l.battingOrder === slot);
               const isCurrent = slot === battingOrderSlot;
               return (
-                <div key={slot} onClick={() => { if (entry) { setSubBattingSlot(slot); setStep('sub_offense'); } }}
+                <div key={slot} onClick={() => { if (entry) { setSubTeamId(battingTeamId ?? null); setSubPosition(entry.position); setStep('sub_defense'); } }}
                   className={`flex items-center gap-1.5 px-2 py-1 rounded cursor-pointer text-[11px] ${isCurrent ? 'bg-amber-500/15 border border-amber-500/20' : 'hover:bg-white/5'}`}>
                   {isCurrent && <span className="text-amber-400 text-xs">▸</span>}
                   <span className={`font-mono w-3 ${isCurrent ? 'text-amber-400' : 'text-white/25'}`}>{slot}</span>
@@ -1613,7 +1613,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
           {/* Defensive lineup */}
           <div>
             <div className="text-[9px] text-white/30 font-bold uppercase tracking-wider px-1 mb-1.5">
-              {battingSide === 'away' ? game.homeTeamName : game.awayTeamName} (Defense)
+              {battingSide === 'away' ? game.homeTeamName : game.awayTeamName}
             </div>
             {fieldingLineup.sort((a, b) => a.position - b.position).map(entry => (
               <div key={entry.playerId} onClick={() => { setSubTeamId(fieldingTeamId ?? null); setSubPosition(entry.position); setStep('sub_defense'); }}
@@ -2761,8 +2761,6 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                   {[
                     { label: 'Pitching Change', fn: () => { setSubTeamId(fieldingTeamId ?? null); setSubPosition(1); setStep('sub_defense'); } },
                     { label: 'Pinch Hitter', fn: () => { if (currentBatter) { setSubBattingSlot(battingOrderSlot); setStep('sub_offense'); } } },
-                    { label: 'Fielding Team Defense', fn: () => { setSubTeamId(fieldingTeamId ?? null); setStep('swap_position_pick'); } },
-                    { label: 'Batting Team Defense', fn: () => { setSubTeamId(battingTeamId ?? null); setStep('swap_position_pick'); } },
                     { label: 'Balk', fn: () => handleMiscEvent('balk', 'Balk') },
                     { label: 'Illegal Pitch', fn: () => handleMiscEvent('illegal_pitch', 'Illegal pitch') },
                     { label: 'Skip Batter', fn: handleSkipBatter },
