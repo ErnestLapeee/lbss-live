@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
-import Link from 'next/link';
 import { apiFetch } from '@/lib/api';
 import { PageHeader } from '@/components/ui/page-header';
+import { PlayersTable } from './players-table';
 
 export const metadata: Metadata = { title: 'Players' };
 
@@ -25,30 +25,7 @@ export default async function PlayersPage() {
             <p className="text-text-faint text-sm mt-2">Players will appear here once added by administrators.</p>
           </div>
         ) : (
-          <div className="rounded-xl border border-border bg-surface overflow-hidden">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border bg-surface-alt">
-                  <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-text-faint">Player</th>
-                  <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-text-faint">Nationality</th>
-                  <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-text-faint">B/T</th>
-                </tr>
-              </thead>
-              <tbody>
-                {players.map((p: any) => (
-                  <tr key={p.id} className="border-b border-border last:border-0 hover:bg-surface-alt/50 transition-colors">
-                    <td className="px-4 py-3">
-                      <Link href={`/players/${p.slug}`} className="font-semibold text-accent hover:text-accent-light transition-colors">
-                        {p.firstName} {p.lastName}
-                      </Link>
-                    </td>
-                    <td className="px-4 py-3 text-text-muted">{p.nationality || '—'}</td>
-                    <td className="px-4 py-3 text-text-muted font-mono text-xs">{[p.bats, p.throws].filter(Boolean).join('/') || '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <PlayersTable players={players} />
         )}
       </div>
     </div>

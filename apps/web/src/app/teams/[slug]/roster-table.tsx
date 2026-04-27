@@ -1,6 +1,6 @@
 'use client';
 
-import { usePlayerModal } from '@/components/player-modal';
+import Link from 'next/link';
 
 interface RosterPlayer {
   playerId: number;
@@ -20,50 +20,45 @@ const POS_LABELS: Record<number, string> = {
 };
 
 export function RosterTable({ roster }: { roster: RosterPlayer[] }) {
-  const { openModal, renderModal } = usePlayerModal();
-
   return (
-    <>
-      <div className="rounded-xl border border-border bg-surface overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border bg-surface-alt">
-              <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-text-faint w-12">#</th>
-              <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-text-faint">Player</th>
-              <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-text-faint">Pos</th>
-              <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-text-faint">B/T</th>
-              <th className="px-4 py-3 text-center text-[11px] font-bold uppercase tracking-wider text-text-faint w-16">License</th>
-            </tr>
-          </thead>
-          <tbody>
-            {roster.map((p, i) => {
-              const posStr = typeof p.position === 'number'
-                ? (POS_LABELS[p.position] || String(p.position))
-                : (p.position || '—');
-              return (
-                <tr key={p.playerId || i} className="border-b border-border last:border-0 hover:bg-surface-alt/50 transition-colors">
-                  <td className="px-4 py-3 font-mono text-text-faint font-bold">{p.jerseyNumber || '—'}</td>
-                  <td className="px-4 py-3">
-                    <button
-                      onClick={() => openModal(p.playerSlug || p.slug || '#', p.firstName, p.lastName)}
-                      className="font-semibold text-[#111] hover:text-[#136cb2] hover:underline transition-colors text-left"
-                    >
-                      {p.firstName} {p.lastName}
-                    </button>
-                  </td>
-                  <td className="px-4 py-3 text-text-muted text-xs font-mono">{posStr}</td>
-                  <td className="px-4 py-3 text-text-muted font-mono text-xs">{[p.bats, p.throws].filter(Boolean).join('/') || '—'}</td>
-                  <td className="px-4 py-3 text-center">
-                    <span className={`inline-block w-2 h-2 rounded-full ${p.licensePaid === 'paid' ? 'bg-green-500' : 'bg-red-500'}`}
-                      title={p.licensePaid === 'paid' ? 'License paid' : 'License unpaid'} />
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-      {renderModal()}
-    </>
+    <div className="rounded-xl border border-border bg-surface overflow-hidden">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-border bg-surface-alt">
+            <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-text-faint w-12">#</th>
+            <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-text-faint">Player</th>
+            <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-text-faint">Pos</th>
+            <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-text-faint">B/T</th>
+            <th className="px-4 py-3 text-center text-[11px] font-bold uppercase tracking-wider text-text-faint w-16">License</th>
+          </tr>
+        </thead>
+        <tbody>
+          {roster.map((p, i) => {
+            const posStr = typeof p.position === 'number'
+              ? (POS_LABELS[p.position] || String(p.position))
+              : (p.position || '—');
+            return (
+              <tr key={p.playerId || i} className="border-b border-border last:border-0 hover:bg-surface-alt/50 transition-colors">
+                <td className="px-4 py-3 font-mono text-text-faint font-bold">{p.jerseyNumber || '—'}</td>
+                <td className="px-4 py-3">
+                  <Link
+                    href={`/players/${p.playerSlug || p.slug || '#'}`}
+                    className="font-semibold text-[#111] hover:text-[#136cb2] hover:underline transition-colors"
+                  >
+                    {p.firstName} {p.lastName}
+                  </Link>
+                </td>
+                <td className="px-4 py-3 text-text-muted text-xs font-mono">{posStr}</td>
+                <td className="px-4 py-3 text-text-muted font-mono text-xs">{[p.bats, p.throws].filter(Boolean).join('/') || '—'}</td>
+                <td className="px-4 py-3 text-center">
+                  <span className={`inline-block w-2 h-2 rounded-full ${p.licensePaid === 'paid' ? 'bg-green-500' : 'bg-red-500'}`}
+                    title={p.licensePaid === 'paid' ? 'License paid' : 'License unpaid'} />
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   );
 }

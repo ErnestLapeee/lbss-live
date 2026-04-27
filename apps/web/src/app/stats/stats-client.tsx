@@ -3,7 +3,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
-import { usePlayerModal } from '@/components/player-modal';
 import { getStatAbbreviationMeaning } from '@/lib/stat-abbreviations';
 import { HorizontalScrollArea } from '@/components/stats/horizontal-scroll-area';
 import { TeamMark } from '@/components/ui/team-mark';
@@ -383,7 +382,6 @@ export function StatsClient({
       };
     });
   };
-  const { openModal, renderModal } = usePlayerModal();
   const router = useRouter();
   const pathname = usePathname();
   const [tab, setTab] = useState<StatsTab>('batting');
@@ -946,16 +944,12 @@ export function StatsClient({
                                     logoUrl={stat.teamLogoUrl}
                                   />
                                 )}
-                                <button
-                                  onClick={() => {
-                                    const modalSlug = stat.playerSlug || stat.slug || null;
-                                    if (!modalSlug) return;
-                                    openModal(modalSlug, stat.firstName, stat.lastName);
-                                  }}
-                                  className="font-semibold text-[#111] hover:text-[#136cb2] hover:underline transition-colors text-left"
+                                <Link
+                                  href={`/players/${stat.playerSlug || stat.slug || '#'}`}
+                                  className="font-semibold text-[#111] hover:text-[#136cb2] hover:underline transition-colors"
                                 >
                                   {stat.firstName} {stat.lastName}
-                                </button>
+                                </Link>
                               </div>
                             );
                           } else if (col.key === 'teamName') {
@@ -1015,9 +1009,6 @@ export function StatsClient({
           </section>
         </>
       )}
-
-      {/* Player modal */}
-      {renderModal()}
     </div>
   );
 }
