@@ -275,6 +275,7 @@ export function LiveScoringPage() {
   /** Switch hitter (bats=S): which box side for the current PA — required before recording pitches/plays. */
   const [switchBatSide, setSwitchBatSide] = useState<'L' | 'R' | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [historyBusy, setHistoryBusy] = useState(false);
 
   const [step, setStep] = useState<ScoringStep>('pitch');
   const [selectedEvent, setSelectedEvent] = useState<string | null>(null);
@@ -1239,18 +1240,24 @@ function needsRunnerAdvanceErrorFieldingPrompt(
   };
 
   const handleUndo = async () => {
+    if (historyBusy) return;
+    setHistoryBusy(true);
     try {
       await apiPost(`/admin/scoring/${gameId}/undo`, {});
       await loadState();
       cancelWizard();
     } catch (err: any) { alert(err.message); }
+    finally { setHistoryBusy(false); }
   };
   const handleRedo = async () => {
+    if (historyBusy) return;
+    setHistoryBusy(true);
     try {
       await apiPost(`/admin/scoring/${gameId}/redo`, {});
       await loadState();
       cancelWizard();
     } catch (err: any) { alert(err.message); }
+    finally { setHistoryBusy(false); }
   };
   const handleFinalize = async () => {
     if (!confirm('Finalize? Stats and standings will be computed from the event log. Later event edits can recompute official stats.')) return;
@@ -2756,8 +2763,8 @@ function needsRunnerAdvanceErrorFieldingPrompt(
           <div className="bg-[#060d1a] border-t border-white/10 px-3 py-1.5">
             <div className="flex items-center justify-between text-[10px] font-bold uppercase">
               <button onClick={() => navigate('/games')} className="px-3 py-1.5 text-white/40 hover:text-white">Exit</button>
-              <button onClick={handleUndo} className="px-3 py-1.5 text-white/40 hover:text-white">Undo</button>
-              <button onClick={handleRedo} className="px-3 py-1.5 text-white/40 hover:text-white">Redo</button>
+              <button onClick={handleUndo} disabled={historyBusy} className="px-3 py-1.5 text-white/40 hover:text-white disabled:opacity-30">Undo</button>
+              <button onClick={handleRedo} disabled={historyBusy} className="px-3 py-1.5 text-white/40 hover:text-white disabled:opacity-30">Redo</button>
               <button onClick={() => setShowEventTimeline(v => !v)} className="px-3 py-1.5 text-white/40 hover:text-white">Log</button>
               <button onClick={cancelWizard} className="px-3 py-1.5 text-white/40 hover:text-white">Reset</button>
               <button onClick={() => setStep('misc')} className="px-3 py-1.5 text-white/40 hover:text-white">Misc</button>

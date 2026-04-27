@@ -10,7 +10,7 @@ import {
   licenses,
   leagues,
 } from '../../db/schema/index.js';
-import { eq, and, or, desc, max, sql, inArray } from 'drizzle-orm';
+import { eq, and, or, asc, desc, max, sql, inArray } from 'drizzle-orm';
 import { getIO } from '../../app.js';
 import { finalizeGame } from '../../services/finalize-game.js';
 import { firstRowFromExecute } from '../../lib/pg-result.js';
@@ -901,6 +901,21 @@ export async function adminScoringRoutes(app: FastifyInstance) {
       const body = request.body;
       const user = request.user;
 
+      // A new event after one or more undos starts a new history branch.
+      // Clear the deleted tail so redo cannot later mix abandoned future events back in.
+      const [activeTail] = await db
+        .select({ maxNum: max(gameEvents.eventNumber) })
+        .from(gameEvents)
+        .where(and(eq(gameEvents.gameId, gameId), eq(gameEvents.isDeleted, false)));
+      const activeTailEventNumber = Number(activeTail?.maxNum ?? 0);
+      await db
+        .delete(gameEvents)
+        .where(and(
+          eq(gameEvents.gameId, gameId),
+          eq(gameEvents.isDeleted, true),
+          sql`${gameEvents.eventNumber} > ${activeTailEventNumber}`,
+        ));
+
       // Get next event number
       const [maxEvt] = await db
         .select({ maxNum: max(gameEvents.eventNumber) })
@@ -1059,8 +1074,11 @@ export async function adminScoringRoutes(app: FastifyInstance) {
 
       const [lastDeleted] = await db.select()
         .from(gameEvents)
-        .where(and(eq(gameEvents.gameId, gameId), eq(gameEvents.isDeleted, true)))
-        .orderBy(desc(gameEvents.eventNumber))
+        .where(and(
+          eq(gameEvents.gameId, gameId),
+          eq(gameEvents.isDeleted, true),
+        ))
+        .orderBy(asc(gameEvents.eventNumber))
         .limit(1);
 
       if (!lastDeleted) return reply.status(400).send({ message: 'No events to redo' });
