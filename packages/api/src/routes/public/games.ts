@@ -16,6 +16,7 @@ import {
 } from '../../db/schema/index.js';
 import { eq, and, gte, lte, sql, desc, sum, inArray } from 'drizzle-orm';
 import { rowsFromExecute } from '../../lib/pg-result.js';
+import { gamesTableHasOfficialColumns } from '../../lib/games-official-columns.js';
 
 /** Pad inning-by-inning lines so zeros render and short arrays align to innings played. */
 function padLineScores(
@@ -67,6 +68,7 @@ export async function gamesRoutes(app: FastifyInstance) {
         if (!isNaN(toDate.getTime())) conditions.push(lte(games.scheduledAt, toDate));
       }
 
+      const hasOfficialCols = await gamesTableHasOfficialColumns();
       const gameSelect = {
         id: games.id,
         leagueId: games.leagueId,
@@ -74,8 +76,7 @@ export async function gamesRoutes(app: FastifyInstance) {
         awayTeamId: games.awayTeamId,
         scheduledAt: games.scheduledAt,
         venue: games.venue,
-        umpire: games.umpire,
-        officialScorer: games.officialScorer,
+        ...(hasOfficialCols ? { umpire: games.umpire, officialScorer: games.officialScorer } : {}),
         status: games.status,
         homeScore: games.homeScore,
         awayScore: games.awayScore,
@@ -305,8 +306,11 @@ export async function gamesRoutes(app: FastifyInstance) {
         const bases = basesMap[g.id] ?? null;
         const currentBatter = currentBatterMap[g.id] ?? null;
         const seasonInfo = leagueSeasonMap[g.leagueId];
+        const row = g as typeof g & { umpire?: string | null; officialScorer?: string | null };
         return {
           ...g,
+          umpire: hasOfficialCols ? row.umpire ?? null : null,
+          officialScorer: hasOfficialCols ? row.officialScorer ?? null : null,
           seasonId: seasonInfo?.seasonId ?? null,
           seasonYear: seasonInfo?.seasonYear ?? null,
           seasonName: seasonInfo?.seasonName ?? null,
@@ -347,7 +351,8 @@ export async function gamesRoutes(app: FastifyInstance) {
 
       // IMPORTANT: do not `select()` all columns from games, because production DB may lag behind
       // app schema during deployments/migration rollbacks (e.g. playoff columns). Keep this to core columns.
-      const [game] = await db
+      const hasOfficialCols = await gamesTableHasOfficialColumns();
+      const [gameRow] = await db
         .select({
           id: games.id,
           leagueId: games.leagueId,
@@ -355,8 +360,7 @@ export async function gamesRoutes(app: FastifyInstance) {
           awayTeamId: games.awayTeamId,
           scheduledAt: games.scheduledAt,
           venue: games.venue,
-          umpire: games.umpire,
-          officialScorer: games.officialScorer,
+          ...(hasOfficialCols ? { umpire: games.umpire, officialScorer: games.officialScorer } : {}),
           status: games.status,
           homeScore: games.homeScore,
           awayScore: games.awayScore,
@@ -374,9 +378,16 @@ export async function gamesRoutes(app: FastifyInstance) {
         .where(eq(games.id, id))
         .limit(1);
 
-      if (!game) {
+      if (!gameRow) {
         return reply.status(404).send({ message: 'Game not found' });
       }
+
+      const gr = gameRow as typeof gameRow & { umpire?: string | null; officialScorer?: string | null };
+      const game = {
+        ...gameRow,
+        umpire: hasOfficialCols ? gr.umpire ?? null : null,
+        officialScorer: hasOfficialCols ? gr.officialScorer ?? null : null,
+      };
 
       const [homeTeam] = await db
         .select({ name: teams.name, slug: teams.slug, shortName: teams.shortName, logoUrl: teams.logoUrl })

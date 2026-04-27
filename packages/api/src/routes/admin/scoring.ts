@@ -14,6 +14,7 @@ import { eq, and, or, asc, desc, max, sql, inArray } from 'drizzle-orm';
 import { getIO } from '../../app.js';
 import { finalizeGame } from '../../services/finalize-game.js';
 import { firstRowFromExecute } from '../../lib/pg-result.js';
+import { gamesTableHasOfficialColumns } from '../../lib/games-official-columns.js';
 import { isBetweenPitchEvent, isKnownEventType } from '@lbss/shared';
 
 /** JSONB array columns — normalize without `as any` on DB rows. */
@@ -556,32 +557,60 @@ export async function adminScoringRoutes(app: FastifyInstance) {
   }
 
   async function getGameCore(gameId: number): Promise<GameCoreRow | null> {
-    const res = await db.execute(sql`
-      SELECT
-        id,
-        league_id as "leagueId",
-        home_team_id as "homeTeamId",
-        away_team_id as "awayTeamId",
-        scheduled_at as "scheduledAt",
-        venue,
-        umpire,
-        official_scorer as "officialScorer",
-        status,
-        home_score as "homeScore",
-        away_score as "awayScore",
-        innings_count as "inningsCount",
-        current_inning as "currentInning",
-        current_half as "currentHalf",
-        current_outs as "currentOuts",
-        is_finalized as "isFinalized",
-        finalized_at as "finalizedAt",
-        finalized_by as "finalizedBy",
-        created_at as "createdAt",
-        updated_at as "updatedAt"
-      FROM games
-      WHERE id = ${gameId}
-      LIMIT 1
-    `);
+    const hasOfficialCols = await gamesTableHasOfficialColumns();
+    const res = hasOfficialCols
+      ? await db.execute(sql`
+        SELECT
+          id,
+          league_id as "leagueId",
+          home_team_id as "homeTeamId",
+          away_team_id as "awayTeamId",
+          scheduled_at as "scheduledAt",
+          venue,
+          umpire,
+          official_scorer as "officialScorer",
+          status,
+          home_score as "homeScore",
+          away_score as "awayScore",
+          innings_count as "inningsCount",
+          current_inning as "currentInning",
+          current_half as "currentHalf",
+          current_outs as "currentOuts",
+          is_finalized as "isFinalized",
+          finalized_at as "finalizedAt",
+          finalized_by as "finalizedBy",
+          created_at as "createdAt",
+          updated_at as "updatedAt"
+        FROM games
+        WHERE id = ${gameId}
+        LIMIT 1
+      `)
+      : await db.execute(sql`
+        SELECT
+          id,
+          league_id as "leagueId",
+          home_team_id as "homeTeamId",
+          away_team_id as "awayTeamId",
+          scheduled_at as "scheduledAt",
+          venue,
+          NULL::varchar as "umpire",
+          NULL::varchar as "officialScorer",
+          status,
+          home_score as "homeScore",
+          away_score as "awayScore",
+          innings_count as "inningsCount",
+          current_inning as "currentInning",
+          current_half as "currentHalf",
+          current_outs as "currentOuts",
+          is_finalized as "isFinalized",
+          finalized_at as "finalizedAt",
+          finalized_by as "finalizedBy",
+          created_at as "createdAt",
+          updated_at as "updatedAt"
+        FROM games
+        WHERE id = ${gameId}
+        LIMIT 1
+      `);
     return firstRowFromExecute<GameCoreRow>(res);
   }
 
@@ -887,16 +916,27 @@ export async function adminScoringRoutes(app: FastifyInstance) {
       const gameId = parseInt(request.params.gameId, 10);
       const umpire = String(request.body?.umpire ?? '').trim();
       const officialScorer = String(request.body?.officialScorer ?? '').trim();
+      const hasOfficialCols = await gamesTableHasOfficialColumns();
 
-      const [game] = await db.update(games).set({
-        status: 'live',
-        currentInning: 1,
-        currentHalf: 'top',
-        currentOuts: 0,
-        umpire: umpire || null,
-        officialScorer: officialScorer || null,
-        updatedAt: new Date(),
-      }).where(eq(games.id, gameId)).returning();
+      const [game] = await db.update(games).set(
+        hasOfficialCols
+          ? {
+              status: 'live',
+              currentInning: 1,
+              currentHalf: 'top',
+              currentOuts: 0,
+              umpire: umpire || null,
+              officialScorer: officialScorer || null,
+              updatedAt: new Date(),
+            }
+          : {
+              status: 'live',
+              currentInning: 1,
+              currentHalf: 'top',
+              currentOuts: 0,
+              updatedAt: new Date(),
+            },
+      ).where(eq(games.id, gameId)).returning();
 
       if (!game) return reply.status(404).send({ message: 'Game not found' });
 
