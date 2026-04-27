@@ -98,6 +98,7 @@ function normalizeGameEventRow(r: Record<string, unknown>): Record<string, unkno
     strikes: Number(pick(r, 'strikes', 'strikes') ?? 0),
     runnerScoredReasons: pick(r, 'runnerScoredReasons', 'runner_scored_reasons') as string[] | null | undefined,
     errorsOnPlay: toNullableInt(pick(r, 'errorsOnPlay', 'errors_on_play')),
+    errorFielderIds: toNumArray(pick(r, 'errorFielderIds', 'error_fielder_ids')),
     hitType: (pick<string | null>(r, 'hitType', 'hit_type') ?? null) as string | null,
   };
 }

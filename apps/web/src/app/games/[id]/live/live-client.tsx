@@ -8,6 +8,7 @@ import { useApiBase } from '@/lib/api-context';
 import { getStatAbbreviationMeaning } from '@/lib/stat-abbreviations';
 import { aggregatePitchingStatsByPitcher, inningsFromOuts } from '@lbss/shared';
 import { normalizeGameEvents, tryExtractEventArray } from '@/lib/normalize-game-events';
+import { buildPositionMapsByEvent } from '@/lib/position-maps-by-event';
 
 /** Fetch a JSON array from the public proxy; returns null on non-OK or parse errors so callers do not replace state with []. */
 async function fetchPublicJsonArray(url: string): Promise<any[] | null> {
@@ -22,6 +23,19 @@ async function fetchPublicJsonArray(url: string): Promise<any[] | null> {
 }
 
 /** Game events: accept array or `{ events: [...] }`; null on malformed HTTP response. */
+/** Merge repeated names into "Name (n)" segments for box score notes. */
+function mergeCountsByName(items: Array<{ name: string; count: number }>): string {
+  const m = new Map<string, number>();
+  for (const { name, count } of items) {
+    if (count <= 0) continue;
+    const k = name.trim() || 'Unknown';
+    m.set(k, (m.get(k) ?? 0) + count);
+  }
+  return [...m.entries()]
+    .map(([n, c]) => (c > 1 ? `${n} (${c})` : n))
+    .join(', ');
+}
+
 async function fetchPublicGameEvents(gameId: number): Promise<any[] | null> {
   try {
     const r = await fetch(`/api/proxy/public/games/${gameId}/events`, { cache: 'no-store' });
@@ -130,6 +144,7 @@ interface GameEvent {
   strikes: number;
   runnerScoredReasons?: string[] | null;
   errorsOnPlay?: number | null;
+  errorFielderIds?: number[];
   hitType?: string | null;
 }
 
@@ -209,6 +224,20 @@ interface PitchingBoxScore {
   strikeoutsSwinging?: number;
 }
 
+interface FieldingBoxScore {
+  playerId: number;
+  teamId: number;
+  position: number | null;
+  putouts: number;
+  assists: number;
+  errors: number;
+  doublePlays: number;
+  triplePlays: number;
+  passedBalls: number;
+  firstName: string;
+  lastName: string;
+}
+
 interface SeasonContext {
   batting: {
     playerId: number; atBats: number; hits: number; walks: number; homeRuns: number;
@@ -228,12 +257,13 @@ interface LiveGameClientProps {
   initialLineups: LineupEntry[];
   initialBatting: BattingBoxScore[];
   initialPitching: PitchingBoxScore[];
+  initialFielding: FieldingBoxScore[];
   initialSeasonCtx: SeasonContext;
 }
 
 export function LiveGameClient({
   gameId, initialData, initialEvents, initialLineups,
-  initialBatting, initialPitching, initialSeasonCtx,
+  initialBatting, initialPitching, initialFielding, initialSeasonCtx,
 }: LiveGameClientProps) {
   const apiBase = useApiBase();
   const [game, setGame] = useState<GameData | null>(initialData);
@@ -241,6 +271,7 @@ export function LiveGameClient({
   const [lineups, setLineups] = useState<LineupEntry[]>(initialLineups);
   const [battingBox, setBattingBox] = useState<BattingBoxScore[]>(initialBatting);
   const [pitchingBox, setPitchingBox] = useState<PitchingBoxScore[]>(initialPitching);
+  const [fieldingBox, setFieldingBox] = useState<FieldingBoxScore[]>(initialFielding);
   const [seasonCtx, setSeasonCtx] = useState<SeasonContext>(initialSeasonCtx);
   const [loading, setLoading] = useState(false);
   const [tab, setTab] = useState<Tab>('plays');
@@ -268,10 +299,12 @@ export function LiveGameClient({
       fetchPublicGameEvents(gameId),
       fetchPublicJsonArray(`/api/proxy/public/games/${gameId}/boxscore`),
       fetchPublicJsonArray(`/api/proxy/public/games/${gameId}/pitching-boxscore`),
-    ]).then(([evts, box, pbox]) => {
+      fetchPublicJsonArray(`/api/proxy/public/games/${gameId}/fielding-boxscore`),
+    ]).then(([evts, box, pbox, fbox]) => {
       if (evts !== null) setEvents(normalizeGameEvents(evts) as GameEvent[]);
       if (box !== null) setBattingBox(box);
       if (pbox !== null) setPitchingBox(pbox);
+      if (fbox !== null) setFieldingBox(fbox as FieldingBoxScore[]);
     });
   }, [connected, gameId]);
 
@@ -282,10 +315,12 @@ export function LiveGameClient({
       fetchPublicGameEvents(gameId),
       fetchPublicJsonArray(`/api/proxy/public/games/${gameId}/boxscore`),
       fetchPublicJsonArray(`/api/proxy/public/games/${gameId}/pitching-boxscore`),
-    ]).then(([evts, box, pbox]) => {
+      fetchPublicJsonArray(`/api/proxy/public/games/${gameId}/fielding-boxscore`),
+    ]).then(([evts, box, pbox, fbox]) => {
       if (evts !== null) setEvents(normalizeGameEvents(evts) as GameEvent[]);
       if (box !== null) setBattingBox(box);
       if (pbox !== null) setPitchingBox(pbox);
+      if (fbox !== null) setFieldingBox(fbox as FieldingBoxScore[]);
     });
   }, [lastEvent, gameId]);
 
@@ -296,18 +331,20 @@ export function LiveGameClient({
     if (connected && events.length > 0) return;
     const interval = setInterval(async () => {
       try {
-        const [gData, evts, box, pbox] = await Promise.all([
+        const [gData, evts, box, pbox, fbox] = await Promise.all([
           fetch(`/api/proxy/public/games/${gameId}`)
             .then(async r => (r.ok ? r.json() : null))
             .catch(() => null),
           fetchPublicGameEvents(gameId),
           fetchPublicJsonArray(`/api/proxy/public/games/${gameId}/boxscore`),
           fetchPublicJsonArray(`/api/proxy/public/games/${gameId}/pitching-boxscore`),
+          fetchPublicJsonArray(`/api/proxy/public/games/${gameId}/fielding-boxscore`),
         ]);
         if (gData && typeof gData === 'object' && gData.id) setGame(gData);
         if (evts !== null) setEvents(normalizeGameEvents(evts) as GameEvent[]);
         if (box !== null) setBattingBox(box);
         if (pbox !== null) setPitchingBox(pbox);
+        if (fbox !== null) setFieldingBox(fbox as FieldingBoxScore[]);
       } catch {}
     }, 8000);
     return () => clearInterval(interval);
@@ -382,6 +419,25 @@ export function LiveGameClient({
     }
     return { home: homeErrors, away: awayErrors };
   }, [events]);
+
+  const positionMapsByEvent = useMemo(
+    () =>
+      buildPositionMapsByEvent(
+        events.map((e) => ({
+          id: e.id,
+          eventNumber: e.eventNumber,
+          eventType: e.eventType,
+          eventDetail: e.eventDetail ?? null,
+        })),
+        lineups.map((l) => ({
+          playerId: l.playerId,
+          teamId: l.teamId,
+          position: l.position,
+          isActive: l.isActive,
+        })),
+      ),
+    [events, lineups],
+  );
 
   const status = isFinal ? 'final' : game?.status ?? 'scheduled';
 
@@ -734,13 +790,56 @@ export function LiveGameClient({
 
       const fieldingParts: string[] = [];
       const errors = isHomeTeam ? errorCounts.home : errorCounts.away;
-      if (errors > 0) fieldingParts.push(`E: ${errors}`);
+      const fieldingTeamId = isHomeTeam ? game.homeTeamId : game.awayTeamId;
+      const teamFielding = fieldingBox.filter((f) => f.teamId === fieldingTeamId);
+      const errFromBox = teamFielding
+        .filter((f) => (f.errors ?? 0) > 0)
+        .map((f) => ({ name: `${f.firstName?.charAt(0)}. ${f.lastName}`, count: f.errors ?? 0 }));
+      const errFromEvents: Array<{ name: string; count: number }> = [];
+      for (const e of fieldingEvents) {
+        const ids = [...new Set((e.errorFielderIds as number[] | undefined) ?? [])];
+        for (const pid of ids) {
+          const p = lineups.find((l) => l.playerId === pid);
+          errFromEvents.push({
+            name: p ? `${p.firstName?.charAt(0)}. ${p.lastName}` : `#${pid}`,
+            count: 1,
+          });
+        }
+      }
+      if (errFromBox.length > 0) {
+        fieldingParts.push(`E: ${mergeCountsByName(errFromBox)}`);
+      } else if (errFromEvents.length > 0) {
+        fieldingParts.push(`E: ${mergeCountsByName(errFromEvents)}`);
+      } else if (errors > 0) {
+        fieldingParts.push(`E: ${errors}`);
+      }
       const doublePlays = fieldingEvents.filter((event) => event.eventType === 'double_play').length;
       if (doublePlays > 0) fieldingParts.push(`DP: ${doublePlays}`);
       const triplePlays = fieldingEvents.filter((event) => event.eventType === 'triple_play').length;
       if (triplePlays > 0) fieldingParts.push(`TP: ${triplePlays}`);
-      const passedBalls = fieldingEvents.filter((event) => event.eventType === 'passed_ball').length;
-      if (passedBalls > 0) fieldingParts.push(`PB: ${passedBalls}`);
+      const passedBallCount = fieldingEvents.filter((event) => event.eventType === 'passed_ball').length;
+      const pbFromBox = teamFielding
+        .filter((f) => (f.passedBalls ?? 0) > 0)
+        .map((f) => ({ name: `${f.firstName?.charAt(0)}. ${f.lastName}`, count: f.passedBalls ?? 0 }));
+      if (pbFromBox.length > 0) {
+        fieldingParts.push(`PB: ${mergeCountsByName(pbFromBox)}`);
+      } else if (passedBallCount > 0) {
+        const pbPairs: Array<{ name: string; count: number }> = [];
+        for (const e of fieldingEvents) {
+          if (e.eventType !== 'passed_ball') continue;
+          const pmap = positionMapsByEvent.get(e.id)?.get(fieldingTeamId);
+          const cid = pmap?.get(2);
+          if (cid) {
+            const p = lineups.find((l) => l.playerId === cid);
+            pbPairs.push({
+              name: p ? `${p.firstName?.charAt(0)}. ${p.lastName}` : `#${cid}`,
+              count: 1,
+            });
+          }
+        }
+        if (pbPairs.length > 0) fieldingParts.push(`PB: ${mergeCountsByName(pbPairs)}`);
+        else fieldingParts.push(`PB: ${passedBallCount}`);
+      }
 
       const baseRunningParts: string[] = [];
       const stolenBases = withCounts(battingEvents.filter((event) => event.eventType === 'stolen_base').map((event) => ({ name: event.batterName, count: 1 })));
@@ -762,9 +861,16 @@ export function LiveGameClient({
       if (balks.length > 0) pitchingParts.push(`BK: ${balks.join(', ')}`);
       const hitBatters = withCounts(pitchingRows.map((pitcher) => ({ name: `${pitcher.firstName?.charAt(0)}. ${pitcher.lastName}`, count: pitcher.hitBatters ?? 0 })));
       if (hitBatters.length > 0) pitchingParts.push(`HBP: ${hitBatters.join(', ')}`);
-      const pitches = pitchingRows.reduce((sum, pitcher) => sum + (pitcher.pitchesThrown ?? 0), 0);
-      const strikes = pitchingRows.reduce((sum, pitcher) => sum + (pitcher.strikes ?? 0), 0);
-      if (pitches > 0) pitchingParts.push(`P-S: ${pitches}-${strikes}`);
+      const pSegs: string[] = [];
+      for (const pitcher of pitchingRows) {
+        const live = livePitchingMap[pitcher.playerId];
+        const pt = Number(pitcher.pitchesThrown ?? live?.np ?? 0) || 0;
+        if (pt <= 0) continue;
+        const st = Number(pitcher.strikes ?? live?.strikes ?? 0) || 0;
+        const nm = `${pitcher.firstName?.charAt(0)}. ${pitcher.lastName}`;
+        pSegs.push(`${nm} ${pt}-${st}`);
+      }
+      if (pSegs.length > 0) pitchingParts.push(`P-S: ${pSegs.join('; ')}`);
 
       return {
         batting: battingParts,

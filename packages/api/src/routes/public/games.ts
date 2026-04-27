@@ -593,6 +593,8 @@ export async function gamesRoutes(app: FastifyInstance) {
           strikeoutsLooking: playerGamePitching.strikeoutsLooking,
           strikeoutsSwinging: playerGamePitching.strikeoutsSwinging,
           wildPitches: playerGamePitching.wildPitches,
+          balls: playerGamePitching.balls,
+          strikes: playerGamePitching.strikes,
           firstName: players.firstName,
           lastName: players.lastName,
         })
@@ -604,6 +606,37 @@ export async function gamesRoutes(app: FastifyInstance) {
     } catch (err) {
       request.log.error(err);
       return reply.status(500).send({ message: 'Failed to fetch pitching boxscore' });
+    }
+  });
+
+  // GET /:id/fielding-boxscore - fielding stats for this game (errors, PB, etc.)
+  app.get<{ Params: { id: string } }>('/:id/fielding-boxscore', async (request, reply) => {
+    try {
+      const id = parseInt(request.params.id, 10);
+      if (isNaN(id)) return reply.status(400).send({ message: 'Invalid game id' });
+
+      const stats = await db
+        .select({
+          playerId: playerGameFielding.playerId,
+          teamId: playerGameFielding.teamId,
+          position: playerGameFielding.position,
+          putouts: playerGameFielding.putouts,
+          assists: playerGameFielding.assists,
+          errors: playerGameFielding.errors,
+          doublePlays: playerGameFielding.doublePlays,
+          triplePlays: playerGameFielding.triplePlays,
+          passedBalls: playerGameFielding.passedBalls,
+          firstName: players.firstName,
+          lastName: players.lastName,
+        })
+        .from(playerGameFielding)
+        .innerJoin(players, eq(playerGameFielding.playerId, players.id))
+        .where(eq(playerGameFielding.gameId, id));
+
+      return reply.send(stats);
+    } catch (err) {
+      request.log.error(err);
+      return reply.status(500).send({ message: 'Failed to fetch fielding boxscore' });
     }
   });
 

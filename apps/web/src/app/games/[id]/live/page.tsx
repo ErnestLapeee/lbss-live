@@ -14,13 +14,14 @@ export default async function LiveGamePage({ params }: { params: Promise<{ id: s
 
   // Fetch ALL initial data server-side (no cache for live data)
   const opts = { noCache: true };
-  const [initialData, initialEvents, initialLineups, initialBatting, initialPitching, initialSeasonCtx] =
+  const [initialData, initialEvents, initialLineups, initialBatting, initialPitching, initialFielding, initialSeasonCtx] =
     await Promise.all([
       apiFetch(`/api/public/games/${gameId}`, opts).catch(() => null),
       apiFetch(`/api/public/games/${gameId}/events`, opts).catch(() => []),
       apiFetch(`/api/public/games/${gameId}/lineups`, opts).catch(() => []),
       apiFetch(`/api/public/games/${gameId}/boxscore`, opts).catch(() => []),
       apiFetch(`/api/public/games/${gameId}/pitching-boxscore`, opts).catch(() => []),
+      apiFetch(`/api/public/games/${gameId}/fielding-boxscore`, opts).catch(() => []),
       apiFetch(`/api/public/games/${gameId}/season-context`, opts).catch(() => ({ batting: [], pitching: [] })),
     ]);
 
@@ -35,6 +36,7 @@ export default async function LiveGamePage({ params }: { params: Promise<{ id: s
       initialLineups={Array.isArray(initialLineups) ? initialLineups : []}
       initialBatting={Array.isArray(initialBatting) ? initialBatting : []}
       initialPitching={Array.isArray(initialPitching) ? initialPitching : []}
+      initialFielding={Array.isArray(initialFielding) ? initialFielding : []}
       initialSeasonCtx={initialSeasonCtx && typeof initialSeasonCtx === 'object' ? initialSeasonCtx as any : { batting: [], pitching: [] }}
     />
   );
