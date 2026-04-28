@@ -17,6 +17,7 @@ import {
 import { eq, and, sql, inArray, asc } from 'drizzle-orm';
 import { finalizeGame, recomputeSeasonBatting, recomputeSeasonPitching, recomputeSeasonFielding, recomputeStandings } from '../../services/finalize-game.js';
 import { firstRowFromExecute } from '../../lib/pg-result.js';
+import { gamesTableHasOfficialColumns } from '../../lib/games-official-columns.js';
 
 function pgErrorMessage(err: unknown): string {
   if (!err || typeof err !== 'object') return err instanceof Error ? err.message : String(err);
@@ -137,27 +138,61 @@ export async function adminGamesRoutes(app: FastifyInstance) {
         playoffSeriesId = sid;
       }
 
-      const [inserted] = await db
-        .insert(games)
-        .values({
-          leagueId,
-          homeTeamId,
-          awayTeamId,
-          scheduledAt,
-          venue: venue != null && String(venue).trim() !== '' ? String(venue).trim() : null,
-          playoffSeriesId,
-        })
-        .returning({ id: games.id });
+      const venueStr = venue != null && String(venue).trim() !== '' ? String(venue).trim() : null;
 
-      if (!inserted?.id) {
-        request.log.error('insert(games) returned no id');
-        return reply.status(500).send({ message: 'Failed to create game (no row id)' });
+      /** Without migration 0012, `games.umpire` / `official_scorer` are missing; narrow SQL avoids driver/ORM SQL that references them. */
+      const hasOfficialCols = await gamesTableHasOfficialColumns();
+      let newGameId: number;
+      if (hasOfficialCols) {
+        const [inserted] = await db
+          .insert(games)
+          .values({
+            leagueId,
+            homeTeamId,
+            awayTeamId,
+            scheduledAt,
+            venue: venueStr,
+            playoffSeriesId,
+          })
+          .returning({ id: games.id });
+        if (!inserted?.id) {
+          request.log.error('insert(games) returned no id');
+          return reply.status(500).send({ message: 'Failed to create game (no row id)' });
+        }
+        newGameId = inserted.id;
+      } else {
+        const ins = await db.execute(sql`
+          INSERT INTO games (
+            league_id,
+            home_team_id,
+            away_team_id,
+            scheduled_at,
+            venue,
+            playoff_series_id
+          )
+          VALUES (
+            ${leagueId},
+            ${homeTeamId},
+            ${awayTeamId},
+            ${scheduledAt},
+            ${venueStr},
+            ${playoffSeriesId}
+          )
+          RETURNING id
+        `);
+        const row = firstRowFromExecute<{ id: number | string }>(ins);
+        const rawId = row?.id;
+        if (rawId == null) {
+          request.log.error('insert games (legacy columns) returned no id');
+          return reply.status(500).send({ message: 'Failed to create game (no row id)' });
+        }
+        newGameId = Number(rawId);
       }
 
       const [game] = await db
         .select(adminGameListSelect)
         .from(games)
-        .where(eq(games.id, inserted.id))
+        .where(eq(games.id, newGameId))
         .limit(1);
 
       if (!game) {
