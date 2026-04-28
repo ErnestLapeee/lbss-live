@@ -857,12 +857,18 @@ export function LiveGameClient({
       }
 
       const baseRunningParts: string[] = [];
-      const stolenBases = withCounts(battingEvents.filter((event) => event.eventType === 'stolen_base').map((event) => ({ name: event.batterName, count: 1 })));
-      if (stolenBases.length > 0) baseRunningParts.push(`SB: ${stolenBases.join(', ')}`);
-      const caughtStealing = withCounts(battingEvents.filter((event) => event.eventType === 'caught_stealing').map((event) => ({ name: event.batterName, count: 1 })));
-      if (caughtStealing.length > 0) baseRunningParts.push(`CS: ${caughtStealing.join(', ')}`);
-      const pickedOff = withCounts(battingEvents.filter((event) => event.eventType === 'picked_off').map((event) => ({ name: event.batterName, count: 1 })));
-      if (pickedOff.length > 0) baseRunningParts.push(`PO: ${pickedOff.join(', ')}`);
+      const sbItems = battingEvents
+        .filter((event) => event.eventType === 'stolen_base')
+        .map((event) => ({ name: (event.batterName ?? '').trim() || 'Unknown', count: 1 }));
+      if (sbItems.length > 0) baseRunningParts.push(`SB: ${mergeCountsByName(sbItems)}`);
+      const csItems = battingEvents
+        .filter((event) => event.eventType === 'caught_stealing')
+        .map((event) => ({ name: (event.batterName ?? '').trim() || 'Unknown', count: 1 }));
+      if (csItems.length > 0) baseRunningParts.push(`CS: ${mergeCountsByName(csItems)}`);
+      const poItems = battingEvents
+        .filter((event) => event.eventType === 'picked_off')
+        .map((event) => ({ name: (event.batterName ?? '').trim() || 'Unknown', count: 1 }));
+      if (poItems.length > 0) baseRunningParts.push(`PO: ${mergeCountsByName(poItems)}`);
       const defensiveIndifference = battingEvents.filter((event) => event.eventType === 'defensive_indifference').length;
       if (defensiveIndifference > 0) baseRunningParts.push(`DI: ${defensiveIndifference}`);
       const lob = teamLobMap[teamId] ?? 0;
