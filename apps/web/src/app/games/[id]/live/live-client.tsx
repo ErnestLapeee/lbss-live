@@ -686,7 +686,13 @@ export function LiveGameClient({
     if (status === 'final' && finalized.length > 0) {
       return finalized.map(p => {
         const live = livePitchingMap[p.playerId];
-        return { ...p, balls: live?.balls ?? null, strikes: live?.strikes ?? null };
+        if (!live) return { ...p };
+        const b = live.balls;
+        const s = live.strikes;
+        const fromParts = b + s;
+        const pitchesThrown =
+          fromParts > 0 ? fromParts : live.np > 0 ? live.np : p.pitchesThrown ?? null;
+        return { ...p, pitchesThrown, balls: b, strikes: s };
       });
     }
     return Object.entries(livePitchingMap)
@@ -702,7 +708,13 @@ export function LiveGameClient({
     if (status === 'final' && finalized.length > 0) {
       return finalized.map(p => {
         const live = livePitchingMap[p.playerId];
-        return { ...p, balls: live?.balls ?? null, strikes: live?.strikes ?? null };
+        if (!live) return { ...p };
+        const b = live.balls;
+        const s = live.strikes;
+        const fromParts = b + s;
+        const pitchesThrown =
+          fromParts > 0 ? fromParts : live.np > 0 ? live.np : p.pitchesThrown ?? null;
+        return { ...p, pitchesThrown, balls: b, strikes: s };
       });
     }
     return Object.entries(livePitchingMap)
