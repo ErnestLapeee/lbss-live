@@ -78,6 +78,15 @@ function formatScoringMiniPbpLine(evt: GameEvent, game?: GameData | null): strin
 
 const POS_LABELS: Record<number, string> = { 1:'P',2:'C',3:'1B',4:'2B',5:'3B',6:'SS',7:'LF',8:'CF',9:'RF',10:'DH' };
 
+/** Spots for defensive names on the live field preview (viewBox 0 0 400 400); DH (10) has no spot. */
+const FIELD_PREVIEW_XY: Record<number, { x: number; y: number }> = {
+  1: { x: 200, y: 228 }, 2: { x: 200, y: 348 },
+  3: { x: 300, y: 236 }, 4: { x: 250, y: 195 },
+  5: { x: 100, y: 236 }, 6: { x: 150, y: 195 },
+  7: { x: 80, y: 115 }, 8: { x: 200, y: 65 },
+  9: { x: 320, y: 115 },
+};
+
 /** Native `<select>`: solid bg + `color-scheme: dark` so option lists stay readable (Windows/Chrome often default to light popup with invisible text on dark UIs). */
 const ADMIN_SELECT_BASE =
   'rounded border border-white/20 bg-[#152238] text-slate-100 [color-scheme:dark]';
@@ -352,31 +361,67 @@ export function LiveScoringPage() {
   // Event timeline panel
   const [showEventTimeline, setShowEventTimeline] = useState(false);
 
-  // Per-pitcher pitch count derived from events
+  // Per-pitcher pitch count derived from events. When scorer had no P in the lineup, events often have
+  // pitcherId null — infer fielding pitcher per half from active lineup P + pitching-change subs so counts match reality.
   const pitcherPitchCounts = useMemo(() => {
     const counts: Record<number, { total: number; balls: number; strikes: number }> = {};
+    if (!game) return counts;
     const RUNNER_EVENTS = new Set(['stolen_base','caught_stealing','picked_off','wild_pitch','passed_ball','balk','advance','advance_on_error','defensive_indifference','runner_interference','appeal_play','tagged_out','force_out','hit_by_ball','missed_base','left_base_early','left_base_path','offensive_interference','passed_runner','hesitation','double_play','triple_play','end_half_inning','illegal_pitch']);
     const WALK_TYPES = new Set(['walk','intentional_walk']);
-    for (const e of events) {
-      if (!e.pitcherId) continue;
-      if (!counts[e.pitcherId]) counts[e.pitcherId] = { total: 0, balls: 0, strikes: 0 };
+    const activePitcherId = (lineup: LineupEntry[]) =>
+      lineup.find((l) => l.isActive && l.position === 1)?.playerId ?? null;
+    const isTopHalf = (half: string | undefined) => {
+      const h = String(half ?? '').toLowerCase();
+      return h === 'top' || h === 't';
+    };
+
+    let homeP = activePitcherId(homeLineup);
+    let awayP = activePitcherId(awayLineup);
+    const sorted = [...events].sort((a, b) => a.eventNumber - b.eventNumber);
+
+    for (const e of sorted) {
+      if (e.eventType === 'substitution') {
+        try {
+          const d = JSON.parse(e.eventDetail || '{}') as {
+            kind?: string;
+            position?: number;
+            teamId?: number;
+            inPlayerId?: number;
+          };
+          if (d.kind === 'player_change' && d.position === 1 && d.inPlayerId && d.teamId) {
+            if (d.teamId === game.homeTeamId) homeP = d.inPlayerId;
+            else if (d.teamId === game.awayTeamId) awayP = d.inPlayerId;
+          }
+        } catch { /* ignore bad JSON */ }
+        continue;
+      }
+
+      const fieldingP = isTopHalf(e.half) ? homeP : awayP;
+      const pid = e.pitcherId ?? fieldingP;
+      if (!pid) continue;
+
+      if (e.pitcherId) {
+        if (isTopHalf(e.half)) homeP = e.pitcherId;
+        else awayP = e.pitcherId;
+      }
+
+      if (!counts[pid]) counts[pid] = { total: 0, balls: 0, strikes: 0 };
       if (e.eventType === 'pitch') {
-        counts[e.pitcherId].total++;
+        counts[pid].total++;
         const d = (e.eventDetail || '').toLowerCase();
-        if (d === 'ball') counts[e.pitcherId].balls++;
-        else counts[e.pitcherId].strikes++;
+        if (d === 'ball') counts[pid].balls++;
+        else counts[pid].strikes++;
       } else if (!RUNNER_EVENTS.has(e.eventType)) {
-        counts[e.pitcherId].total++;
-        // The result event's final pitch: walks/HBP/CI are balls, everything else is a strike (contact or K)
+        counts[pid].total++;
         if (WALK_TYPES.has(e.eventType) || e.eventType === 'hit_by_pitch' || e.eventType === 'catcher_obstruction' || e.eventType === 'catcher_interference') {
-          counts[e.pitcherId].balls++;
+          counts[pid].balls++;
         } else {
-          counts[e.pitcherId].strikes++;
+          counts[pid].strikes++;
         }
       }
     }
     return counts;
-  }, [events]);
+  }, [events, game, homeLineup, awayLineup]);
 
   const loadState = useCallback(async () => {
     setLoadError(null);
@@ -1974,6 +2019,31 @@ function needsRunnerAdvanceErrorFieldingPrompt(
               </g>
               {/* Home plate */}
               <polygon points="200,307 196,313 200,318 204,313" fill="#ddd" />
+
+              {/* Defensive alignment (pitch step only — same coords as fielding picker) */}
+              {step === 'pitch' &&
+                fieldingLineup
+                  .filter((entry) => entry.position >= 1 && entry.position <= 9)
+                  .map((entry) => {
+                    const spot = FIELD_PREVIEW_XY[entry.position];
+                    if (!spot) return null;
+                    const short = (entry.lastName || '').slice(0, 10).toUpperCase();
+                    if (!short) return null;
+                    return (
+                      <text
+                        key={entry.playerId}
+                        x={spot.x}
+                        y={spot.y}
+                        textAnchor="middle"
+                        fontSize="8"
+                        fill="rgba(230,240,255,0.9)"
+                        fontWeight="700"
+                        style={{ pointerEvents: 'none' }}
+                      >
+                        {short}
+                      </text>
+                    );
+                  })}
 
               {/* ── Runner names next to bases ── */}
               {gameState.bases.second && <text x="200" y="155" textAnchor="middle" fontSize="9" fill="#f97316" fontWeight="bold">{getPlayerShort(gameState.bases.second)}</text>}
