@@ -1061,9 +1061,22 @@ export async function adminScoringRoutes(app: FastifyInstance) {
       const officialScorer = String(request.body?.officialScorer ?? '').trim();
       const hasOfficialCols = await gamesTableHasOfficialColumns();
 
-      const [game] = await db.update(games).set(
-        hasOfficialCols
-          ? {
+      /** Bare `returning()` lists all schema columns; DBs without migration 0012 lack `umpire` / `official_scorer`. */
+      const baseReturning = {
+        id: games.id,
+        status: games.status,
+        currentInning: games.currentInning,
+        currentHalf: games.currentHalf,
+        currentOuts: games.currentOuts,
+        homeScore: games.homeScore,
+        awayScore: games.awayScore,
+        updatedAt: games.updatedAt,
+      } as const;
+
+      const [game] = hasOfficialCols
+        ? await db
+            .update(games)
+            .set({
               status: 'live',
               currentInning: 1,
               currentHalf: 'top',
@@ -1071,15 +1084,24 @@ export async function adminScoringRoutes(app: FastifyInstance) {
               umpire: umpire || null,
               officialScorer: officialScorer || null,
               updatedAt: new Date(),
-            }
-          : {
+            })
+            .where(eq(games.id, gameId))
+            .returning({
+              ...baseReturning,
+              umpire: games.umpire,
+              officialScorer: games.officialScorer,
+            })
+        : await db
+            .update(games)
+            .set({
               status: 'live',
               currentInning: 1,
               currentHalf: 'top',
               currentOuts: 0,
               updatedAt: new Date(),
-            },
-      ).where(eq(games.id, gameId)).returning();
+            })
+            .where(eq(games.id, gameId))
+            .returning(baseReturning);
 
       if (!game) return reply.status(404).send({ message: 'Game not found' });
 
