@@ -279,6 +279,14 @@ export function LiveScoringPage() {
   const [setupUmpire, setSetupUmpire] = useState('');
   const [setupScorer, setSetupScorer] = useState('');
 
+  const [addRosterOpen, setAddRosterOpen] = useState(false);
+  const [addRosterFirst, setAddRosterFirst] = useState('');
+  const [addRosterLast, setAddRosterLast] = useState('');
+  const [addRosterJersey, setAddRosterJersey] = useState('');
+  const [addRosterBats, setAddRosterBats] = useState('');
+  const [addRosterThrows, setAddRosterThrows] = useState('');
+  const [addRosterBusy, setAddRosterBusy] = useState(false);
+
   const [balls, setBalls] = useState(0);
   const [strikes, setStrikes] = useState(0);
   /** Switch hitter (bats=S): which box side for the current PA — required before recording pitches/plays. */
@@ -454,6 +462,39 @@ export function LiveScoringPage() {
   }, [rawIdx, battingSide, gameState?.inning, gameState?.half]);
 
   // ── Setup handlers ──
+  const submitAddRosterPlayer = async () => {
+    if (!game) return;
+    const first = addRosterFirst.trim();
+    const last = addRosterLast.trim();
+    if (!first || !last) {
+      alert('First and last name are required.');
+      return;
+    }
+    const teamId = setupTeam === 'home' ? game.homeTeamId : game.awayTeamId;
+    setAddRosterBusy(true);
+    try {
+      await apiPost(`/admin/scoring/${gameId}/roster/player`, {
+        teamId,
+        firstName: first,
+        lastName: last,
+        jerseyNumber: addRosterJersey.trim() || undefined,
+        bats: addRosterBats.trim() || undefined,
+        throws: addRosterThrows.trim() || undefined,
+      });
+      setAddRosterOpen(false);
+      setAddRosterFirst('');
+      setAddRosterLast('');
+      setAddRosterJersey('');
+      setAddRosterBats('');
+      setAddRosterThrows('');
+      await loadRosters();
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Failed to add player');
+    } finally {
+      setAddRosterBusy(false);
+    }
+  };
+
   const handleSetupSubmit = async () => {
     if (setupHome.length === 0 || setupAway.length === 0) { alert('Both teams need at least 1 player'); return; }
     const homeIds = new Set(setupHome.map((p) => p.playerId));
@@ -1485,6 +1526,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
     const selectedIds = new Set(currentSetup.map(p => p.playerId));
     const opposingSelectedIds = new Set((setupTeam === 'home' ? setupAway : setupHome).map(p => p.playerId));
     return (
+      <>
       <div className="min-h-screen bg-[#0c1220] text-white">
         <div className="bg-[#162038] border-b border-white/10 px-6 py-4 flex items-center justify-between">
           <button onClick={() => navigate('/games')} className="text-sm text-white/50 hover:text-white">← Back</button>
@@ -1521,7 +1563,16 @@ function needsRunnerAdvanceErrorFieldingPrompt(
           </div>
           <div className="grid grid-cols-2 gap-6">
             <div>
-              <h3 className="text-sm font-bold text-white/50 uppercase mb-3">Available</h3>
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                <h3 className="text-sm font-bold text-white/50 uppercase">Available</h3>
+                <button
+                  type="button"
+                  onClick={() => setAddRosterOpen(true)}
+                  className="shrink-0 rounded-lg border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white hover:bg-white/15"
+                >
+                  + New player ({setupTeam === 'home' ? game.homeTeamName : game.awayTeamName})
+                </button>
+              </div>
               <div className="space-y-1">{currentRoster.filter(p => !selectedIds.has(p.playerId) && !opposingSelectedIds.has(p.playerId)).map(p => (
                 <button key={p.playerId} onClick={() => addToSetup(setupTeam, p.playerId)} className="w-full text-left px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-sm flex items-center gap-2">
                   {p.jerseyNumber && <span className="text-white/30 font-mono">#{p.jerseyNumber}</span>}
@@ -1573,6 +1624,90 @@ function needsRunnerAdvanceErrorFieldingPrompt(
           </div>
         </div>
       </div>
+      {addRosterOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" role="dialog" aria-modal="true" aria-labelledby="add-roster-title">
+          <div className="w-full max-w-md rounded-xl border border-white/10 bg-[#162038] p-5 shadow-xl">
+            <h2 id="add-roster-title" className="mb-1 text-lg font-bold text-white">Add player to roster</h2>
+            <p className="mb-4 text-xs text-white/50">
+              Creates the player and registers them for this season on{' '}
+              <span className="text-white/80">{setupTeam === 'home' ? game.homeTeamName : game.awayTeamName}</span>.
+            </p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="block sm:col-span-1">
+                <span className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-white/40">First name *</span>
+                <input
+                  value={addRosterFirst}
+                  onChange={(e) => setAddRosterFirst(e.target.value)}
+                  className="w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none placeholder:text-white/20 focus:border-white/30"
+                  autoComplete="given-name"
+                />
+              </label>
+              <label className="block sm:col-span-1">
+                <span className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-white/40">Last name *</span>
+                <input
+                  value={addRosterLast}
+                  onChange={(e) => setAddRosterLast(e.target.value)}
+                  className="w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none placeholder:text-white/20 focus:border-white/30"
+                  autoComplete="family-name"
+                />
+              </label>
+              <label className="block sm:col-span-2">
+                <span className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-white/40">Jersey # (optional)</span>
+                <input
+                  value={addRosterJersey}
+                  onChange={(e) => setAddRosterJersey(e.target.value)}
+                  className="w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none placeholder:text-white/20 focus:border-white/30"
+                  maxLength={5}
+                />
+              </label>
+              <label className="block sm:col-span-1">
+                <span className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-white/40">Bats</span>
+                <select
+                  value={addRosterBats}
+                  onChange={(e) => setAddRosterBats(e.target.value)}
+                  className="w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none focus:border-white/30"
+                >
+                  <option value="">—</option>
+                  <option value="L">L</option>
+                  <option value="R">R</option>
+                  <option value="S">S</option>
+                </select>
+              </label>
+              <label className="block sm:col-span-1">
+                <span className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-white/40">Throws</span>
+                <select
+                  value={addRosterThrows}
+                  onChange={(e) => setAddRosterThrows(e.target.value)}
+                  className="w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none focus:border-white/30"
+                >
+                  <option value="">—</option>
+                  <option value="L">L</option>
+                  <option value="R">R</option>
+                </select>
+              </label>
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                disabled={addRosterBusy}
+                onClick={() => setAddRosterOpen(false)}
+                className="rounded-lg border border-white/15 px-4 py-2 text-sm font-semibold text-white/80 hover:bg-white/5 disabled:opacity-40"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={addRosterBusy}
+                onClick={() => void submitAddRosterPlayer()}
+                className="rounded-lg bg-green-600 px-4 py-2 text-sm font-bold text-white hover:bg-green-500 disabled:opacity-40"
+              >
+                {addRosterBusy ? 'Saving…' : 'Save & add to list'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      </>
     );
   }
 

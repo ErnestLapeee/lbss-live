@@ -15,6 +15,7 @@ import { getIO } from '../../app.js';
 import { finalizeGame } from '../../services/finalize-game.js';
 import { firstRowFromExecute } from '../../lib/pg-result.js';
 import { gamesTableHasOfficialColumns } from '../../lib/games-official-columns.js';
+import { slugify } from '../../utils/slugify.js';
 import { isBetweenPitchEvent, isKnownEventType } from '@lbss/shared';
 
 /** JSONB array columns — normalize without `as any` on DB rows. */
@@ -720,6 +721,148 @@ export async function adminScoringRoutes(app: FastifyInstance) {
     } catch (err) {
       request.log.error(err);
       return reply.status(500).send({ message: 'Failed to get roster' });
+    }
+  });
+
+  // ── POST /:gameId/roster/player ── Create player + add to this game’s season roster (lineup setup shortcut)
+  app.post<{
+    Params: { gameId: string };
+    Body: {
+      teamId: number;
+      firstName: string;
+      lastName: string;
+      jerseyNumber?: string;
+      bats?: string;
+      throws?: string;
+    };
+  }>('/:gameId/roster/player', async (request, reply) => {
+    try {
+      const gameId = parseInt(request.params.gameId, 10);
+      if (Number.isNaN(gameId)) {
+        return reply.status(400).send({ message: 'Invalid game id' });
+      }
+
+      const game = await getGameCore(gameId);
+      if (!game) return reply.status(404).send({ message: 'Game not found' });
+
+      const body = request.body ?? {};
+      const teamId = Number(body.teamId);
+      if (!Number.isFinite(teamId) || teamId <= 0) {
+        return reply.status(400).send({ message: 'teamId is required' });
+      }
+      if (teamId !== game.homeTeamId && teamId !== game.awayTeamId) {
+        return reply.status(400).send({ message: 'teamId must be the home or away team for this game' });
+      }
+
+      const firstName = String(body.firstName ?? '').trim();
+      const lastName = String(body.lastName ?? '').trim();
+      if (!firstName || !lastName) {
+        return reply.status(400).send({ message: 'firstName and lastName are required' });
+      }
+
+      const jerseyRaw = body.jerseyNumber != null ? String(body.jerseyNumber).trim() : '';
+      const jerseyNumber = jerseyRaw === '' ? null : jerseyRaw.slice(0, 5);
+
+      const batsRaw = body.bats != null ? String(body.bats).trim().toUpperCase() : '';
+      const bats =
+        batsRaw === '' || batsRaw === '-'
+          ? null
+          : batsRaw === 'L' || batsRaw === 'R' || batsRaw === 'S'
+            ? batsRaw
+            : null;
+
+      const throwsRaw = body.throws != null ? String(body.throws).trim().toUpperCase() : '';
+      const throwsHand =
+        throwsRaw === '' || throwsRaw === '-'
+          ? null
+          : throwsRaw === 'L' || throwsRaw === 'R'
+            ? throwsRaw
+            : null;
+
+      const [leagueRow] = await db
+        .select({ seasonId: leagues.seasonId })
+        .from(leagues)
+        .where(eq(leagues.id, game.leagueId))
+        .limit(1);
+
+      const seasonId = leagueRow?.seasonId ?? null;
+      if (seasonId == null) {
+        return reply.status(400).send({ message: 'League has no season; add the player from admin' });
+      }
+
+      const baseSlug = slugify(`${firstName}-${lastName}`) || 'player';
+      let slug = baseSlug;
+      let slugOk = false;
+      for (let n = 0; n < 50; n++) {
+        const candidate = n === 0 ? baseSlug : `${baseSlug}-${n}`;
+        const [taken] = await db
+          .select({ id: players.id })
+          .from(players)
+          .where(eq(players.slug, candidate))
+          .limit(1);
+        if (!taken) {
+          slug = candidate;
+          slugOk = true;
+          break;
+        }
+      }
+      if (!slugOk) {
+        slug = `${baseSlug}-${Date.now()}`;
+      }
+
+      const result = await db.transaction(async (tx) => {
+        const [player] = await tx
+          .insert(players)
+          .values({
+            firstName,
+            lastName,
+            slug,
+            nationality: 'LV',
+            bats,
+            throws: throwsHand,
+          })
+          .returning({ id: players.id });
+
+        if (!player?.id) {
+          throw new Error('PLAYER_INSERT_FAILED');
+        }
+
+        await tx.insert(playerSeasons).values({
+          playerId: player.id,
+          teamId,
+          seasonId,
+          jerseyNumber,
+          position: null,
+        });
+
+        await tx
+          .insert(licenses)
+          .values({
+            playerId: player.id,
+            seasonId,
+            status: 'pending',
+            paymentStatus: 'unpaid',
+          })
+          .onConflictDoNothing();
+
+        return { playerId: player.id };
+      });
+
+      return reply.status(201).send({
+        playerId: result.playerId,
+        teamId,
+        firstName,
+        lastName,
+        jerseyNumber: jerseyNumber ?? undefined,
+        licensePaid: 'unpaid',
+      });
+    } catch (err) {
+      request.log.error(err);
+      const msg = err instanceof Error ? err.message : 'Failed to create roster player';
+      if (msg === 'PLAYER_INSERT_FAILED') {
+        return reply.status(500).send({ message: 'Failed to create player' });
+      }
+      return reply.status(500).send({ message: 'Failed to create roster player' });
     }
   });
 
