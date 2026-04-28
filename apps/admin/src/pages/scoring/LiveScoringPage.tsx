@@ -1784,7 +1784,13 @@ function needsRunnerAdvanceErrorFieldingPrompt(
           {/* Current batter highlight */}
           <div className="bg-[#1a2744] rounded-lg px-3 py-2 mb-3 border border-white/5">
             <div className="text-[9px] text-white/30 font-bold uppercase tracking-wider mb-0.5">At Bat</div>
-            <button onClick={() => { if (currentBatter) { setSubBattingSlot(battingOrderSlot); setStep('sub_offense'); } }}
+            <button onClick={() => {
+              if (!currentBatter) return;
+              setSubTeamId(null);
+              setSubPosition(null);
+              setSubBattingSlot(battingOrderSlot);
+              setStep('sub_offense');
+            }}
               className="text-white font-bold text-sm hover:text-amber-300 transition-colors flex items-center gap-1">
               <span className="text-white/30 text-xs">#{battingOrderSlot}</span>
               {currentBatter ? `${currentBatter.firstName.charAt(0)}. ${currentBatter.lastName}` : <span className="text-red-400/60 italic">(empty slot)</span>}
@@ -1807,18 +1813,28 @@ function needsRunnerAdvanceErrorFieldingPrompt(
             </div>
           )}
 
-          {/* Batting lineup */}
+          {/* Batting lineup — tap a hitter for pinch hitter (same bench list as At Bat / Misc) */}
           <div className="mb-3">
-            <div className="text-[9px] text-white/30 font-bold uppercase tracking-wider px-1 mb-1.5">
+            <div className="text-[9px] text-white/30 font-bold uppercase tracking-wider px-1 mb-0.5">
               {battingSide === 'away' ? game.awayTeamName : game.homeTeamName}
             </div>
+            <div className="text-[8px] text-white/20 px-1 mb-1.5 leading-tight">Tap a name to pinch hit / replace in order</div>
             {Array.from({ length: 9 }, (_, i) => {
               const slot = i + 1;
               const entry = battingLineup.find(l => l.battingOrder === slot);
               const isCurrent = slot === battingOrderSlot;
               return (
-                <div key={slot} onClick={() => { if (entry) { setSubTeamId(battingTeamId ?? null); setSubPosition(entry.position); setStep('sub_defense'); } }}
-                  className={`flex items-center gap-1.5 px-2 py-1 rounded cursor-pointer text-[11px] ${isCurrent ? 'bg-amber-500/15 border border-amber-500/20' : 'hover:bg-white/5'}`}>
+                <div
+                  key={slot}
+                  onClick={() => {
+                    if (!entry) return;
+                    setSubTeamId(null);
+                    setSubPosition(null);
+                    setSubBattingSlot(slot);
+                    setStep('sub_offense');
+                  }}
+                  className={`flex items-center gap-1.5 px-2 py-1 rounded cursor-pointer text-[11px] ${isCurrent ? 'bg-amber-500/15 border border-amber-500/20' : 'hover:bg-white/5'}`}
+                >
                   {isCurrent && <span className="text-amber-400 text-xs">▸</span>}
                   <span className={`font-mono w-3 ${isCurrent ? 'text-amber-400' : 'text-white/25'}`}>{slot}</span>
                   {entry ? (
@@ -2953,22 +2969,27 @@ function needsRunnerAdvanceErrorFieldingPrompt(
               </div>
             )}
 
-            {/* OFFENSIVE SUB (pinch hitter) */}
-            {step === 'sub_offense' && subBattingSlot !== null && (
-              <div className="bg-[#111d30] rounded-lg border border-white/10 p-3 max-h-64 overflow-y-auto">
-                <p className="text-[10px] text-white/40 uppercase font-bold text-center mb-2">
-                  Pinch hit for #{subBattingSlot} — {battingLineup.find(l => l.battingOrder === subBattingSlot)?.lastName ?? ''}
-                </p>
-                <div className="space-y-1">
-                  {availableBattingSubs.map(p => (
-                    <button key={p.playerId} onClick={() => handleOffensiveSub(p.playerId)}
-                      className="w-full text-left px-3 py-2 bg-white/5 hover:bg-white/10 rounded text-xs">{p.firstName.charAt(0)}. {p.lastName}</button>
-                  ))}
-                  {availableBattingSubs.length === 0 && <p className="text-white/30 text-xs text-center py-2">No subs available</p>}
+            {/* OFFENSIVE SUB (pinch hitter) — opened from At Bat, batting-order list, or Misc */}
+            {step === 'sub_offense' && subBattingSlot !== null && (() => {
+              const offenseTeamName = battingTeamId === game.homeTeamId ? game.homeTeamName : game.awayTeamName;
+              const phName = battingLineup.find(l => l.battingOrder === subBattingSlot);
+              return (
+                <div className="bg-[#111d30] rounded-lg border border-white/10 p-3 max-h-64 overflow-y-auto">
+                  <p className="text-[10px] text-white/40 uppercase font-bold text-center mb-1">
+                    {offenseTeamName} · #{subBattingSlot} — {phName ? `${phName.firstName.charAt(0)}. ${phName.lastName}` : 'open slot'}
+                  </p>
+                  <p className="text-[9px] text-white/30 text-center mb-2">Pinch hitter / replace in lineup (bench players below)</p>
+                  <div className="space-y-1">
+                    {availableBattingSubs.map(p => (
+                      <button key={p.playerId} onClick={() => handleOffensiveSub(p.playerId)}
+                        className="w-full text-left px-3 py-2 bg-white/5 hover:bg-white/10 rounded text-xs text-white">{p.firstName.charAt(0)}. {p.lastName}</button>
+                    ))}
+                    {availableBattingSubs.length === 0 && <p className="text-white/30 text-xs text-center py-2">No bench players available</p>}
+                  </div>
+                  <button onClick={cancelWizard} className="w-full mt-2 py-2 text-white/40 text-[10px] font-bold uppercase hover:text-white/60">CANCEL</button>
                 </div>
-                <button onClick={cancelWizard} className="w-full mt-2 py-2 text-white/40 text-[10px] font-bold uppercase hover:text-white/60">CANCEL</button>
-              </div>
-            )}
+              );
+            })()}
 
             {/* MISC - iScore style vertical list */}
             {step === 'misc' && (
@@ -2976,7 +2997,13 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                 <div className="overflow-y-auto divide-y divide-white/5">
                   {[
                     { label: 'Pitching Change', fn: () => { setSubTeamId(fieldingTeamId ?? null); setSubPosition(1); setStep('sub_defense'); } },
-                    { label: 'Pinch Hitter', fn: () => { if (currentBatter) { setSubBattingSlot(battingOrderSlot); setStep('sub_offense'); } } },
+                    { label: 'Pinch Hitter', fn: () => {
+                      if (!currentBatter) return;
+                      setSubTeamId(null);
+                      setSubPosition(null);
+                      setSubBattingSlot(battingOrderSlot);
+                      setStep('sub_offense');
+                    } },
                     { label: 'Balk', fn: () => handleMiscEvent('balk', 'Balk') },
                     { label: 'Illegal Pitch', fn: () => handleMiscEvent('illegal_pitch', 'Illegal pitch') },
                     { label: 'End Half Inning', fn: handleEndHalfInning },
