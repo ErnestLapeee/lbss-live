@@ -76,6 +76,15 @@ function formatScoringMiniPbpLine(evt: GameEvent, game?: GameData | null): strin
 }
 
 const POS_LABELS: Record<number, string> = { 1:'P',2:'C',3:'1B',4:'2B',5:'3B',6:'SS',7:'LF',8:'CF',9:'RF',10:'DH' };
+
+/** Native `<select>`: solid bg + `color-scheme: dark` so option lists stay readable (Windows/Chrome often default to light popup with invisible text on dark UIs). */
+const ADMIN_SELECT_BASE =
+  'rounded border border-white/20 bg-[#152238] text-slate-100 [color-scheme:dark]';
+const ADMIN_SELECT_SM = `${ADMIN_SELECT_BASE} text-[10px] px-1.5 py-1`;
+const ADMIN_SELECT_SM_FLEX = `${ADMIN_SELECT_SM} flex-1 min-w-0`;
+const ADMIN_SELECT_ROW = `${ADMIN_SELECT_SM} mt-0.5 w-full`;
+const ADMIN_SELECT_MD = `${ADMIN_SELECT_BASE} text-sm px-3 py-2 w-full outline-none focus:border-white/35`;
+const ADMIN_SELECT_POS = `${ADMIN_SELECT_BASE} px-2 py-1 text-xs shrink-0`;
 const OUT_EVENTS = ['ground_out','fly_out','line_out','pop_out','strikeout_swinging','strikeout_looking','sacrifice_fly','sacrifice_bunt','bunt_out','infield_fly','dropped_third_strike_out','caught_foul_tip','bunt_foul','hit_by_batted_ball','runner_interference_batter','offensive_interference_batter','batting_out_of_turn','fan_interference','thrown_bat','out_of_box','left_base_path_batter','other_out'];
 
 const SAFE_OUTCOMES_P1 = [
@@ -1613,7 +1622,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                     <span className="text-white/30 font-bold w-6">{idx + 1}</span>
                     <span className={`w-2 h-2 rounded-full shrink-0 ${player?.licensePaid === 'paid' ? 'bg-green-500' : 'bg-red-500'}`} />
                     <span className="flex-1 text-sm">{player ? `${player.firstName.charAt(0)}. ${player.lastName}` : '?'}</span>
-                    <select value={entry.position} onChange={e => updatePosition(setupTeam, entry.playerId, Number(e.target.value))} className="bg-white/10 border border-white/10 rounded px-2 py-1 text-xs" onClick={e => e.stopPropagation()}>
+                    <select value={entry.position} onChange={e => updatePosition(setupTeam, entry.playerId, Number(e.target.value))} className={ADMIN_SELECT_POS} onClick={e => e.stopPropagation()}>
                       {Object.entries(POS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                     </select>
                     <button type="button" onClick={() => removeFromSetup(setupTeam, entry.playerId)} className="text-red-400 text-xs">✕</button>
@@ -1665,7 +1674,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                 <select
                   value={addRosterBats}
                   onChange={(e) => setAddRosterBats(e.target.value)}
-                  className="w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none focus:border-white/30"
+                  className={ADMIN_SELECT_MD}
                 >
                   <option value="">—</option>
                   <option value="L">L</option>
@@ -1678,7 +1687,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                 <select
                   value={addRosterThrows}
                   onChange={(e) => setAddRosterThrows(e.target.value)}
-                  className="w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none focus:border-white/30"
+                  className={ADMIN_SELECT_MD}
                 >
                   <option value="">—</option>
                   <option value="L">L</option>
@@ -3349,14 +3358,14 @@ function EventTimelinePanel({ gameId, events, homeLineup, awayLineup, onClose, o
                       <div className="flex gap-2 text-[10px]">
                         <label className="text-white/40 w-16 shrink-0">Inning:</label>
                         <input type="number" min={1} value={editForm.inning ?? 1} onChange={e => setEditForm(f => ({ ...f, inning: parseInt(e.target.value, 10) || 1 }))} className="w-14 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-[10px]" />
-                        <select value={editForm.half ?? 'top'} onChange={e => setEditForm(f => ({ ...f, half: e.target.value }))} className="flex-1 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-[10px]">
+                        <select value={editForm.half ?? 'top'} onChange={e => setEditForm(f => ({ ...f, half: e.target.value }))} className={ADMIN_SELECT_SM_FLEX}>
                           <option value="top">Top</option>
                           <option value="bot">Bottom</option>
                         </select>
                       </div>
                       <div className="flex gap-2 text-[10px]">
                         <label className="text-white/40 w-16 shrink-0">Type:</label>
-                        <select value={editForm.eventType || ''} onChange={e => setEditForm(f => ({ ...f, eventType: e.target.value }))} className="flex-1 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-[10px]">
+                        <select value={editForm.eventType || ''} onChange={e => setEditForm(f => ({ ...f, eventType: e.target.value }))} className={ADMIN_SELECT_SM_FLEX}>
                           {EVENT_TYPE_OPTIONS.map(t => <option key={t} value={t}>{t.replace(/_/g, ' ')}</option>)}
                         </select>
                       </div>
@@ -3366,7 +3375,7 @@ function EventTimelinePanel({ gameId, events, homeLineup, awayLineup, onClose, o
                       </div>
                       <div className="flex gap-2 text-[10px]">
                         <label className="text-white/40 w-16 shrink-0">Batter:</label>
-                        <select value={editForm.batterId ?? ''} onChange={e => setEditForm(f => ({ ...f, batterId: e.target.value === '' ? null : parseInt(e.target.value, 10) }))} className="flex-1 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-[10px]">
+                        <select value={editForm.batterId ?? ''} onChange={e => setEditForm(f => ({ ...f, batterId: e.target.value === '' ? null : parseInt(e.target.value, 10) }))} className={ADMIN_SELECT_SM_FLEX}>
                           <option value="">—</option>
                           {playerOptions.map(([id, name]) => (
                             <option key={id} value={id}>{name}</option>
@@ -3378,7 +3387,7 @@ function EventTimelinePanel({ gameId, events, homeLineup, awayLineup, onClose, o
                         <select
                           value={editForm.batterSide ?? ''}
                           onChange={e => setEditForm(f => ({ ...f, batterSide: e.target.value === '' ? null : e.target.value }))}
-                          className="flex-1 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-[10px]"
+                          className={ADMIN_SELECT_SM_FLEX}
                         >
                           <option value="">—</option>
                           <option value="L">LHB</option>
@@ -3387,7 +3396,7 @@ function EventTimelinePanel({ gameId, events, homeLineup, awayLineup, onClose, o
                       </div>
                       <div className="flex gap-2 text-[10px]">
                         <label className="text-white/40 w-16 shrink-0">Pitcher:</label>
-                        <select value={editForm.pitcherId ?? ''} onChange={e => setEditForm(f => ({ ...f, pitcherId: e.target.value === '' ? null : parseInt(e.target.value, 10) }))} className="flex-1 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-[10px]">
+                        <select value={editForm.pitcherId ?? ''} onChange={e => setEditForm(f => ({ ...f, pitcherId: e.target.value === '' ? null : parseInt(e.target.value, 10) }))} className={ADMIN_SELECT_SM_FLEX}>
                           <option value="">—</option>
                           {playerOptions.map(([id, name]) => (
                             <option key={id} value={id}>{name}</option>
@@ -3423,7 +3432,7 @@ function EventTimelinePanel({ gameId, events, homeLineup, awayLineup, onClose, o
                         ].map(([field, label]) => (
                           <label key={field} className="text-white/40">
                             {label}
-                            <select value={editForm[field] ?? ''} onChange={e => setEditForm(f => ({ ...f, [field]: e.target.value === '' ? null : parseInt(e.target.value, 10) }))} className="mt-0.5 w-full bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-[10px]">
+                            <select value={editForm[field] ?? ''} onChange={e => setEditForm(f => ({ ...f, [field]: e.target.value === '' ? null : parseInt(e.target.value, 10) }))} className={ADMIN_SELECT_ROW}>
                               <option value="">Empty</option>
                               {playerOptions.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
                             </select>
@@ -3515,7 +3524,7 @@ function EventTimelinePanel({ gameId, events, homeLineup, awayLineup, onClose, o
                                   next[idx] = e.target.value;
                                   setEditForm(f => ({ ...f, runnerScoredReasons: next }));
                                 }}
-                                className="flex-1 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-[10px]"
+                                className={ADMIN_SELECT_SM_FLEX}
                               >
                                 {RUN_SCORE_REASON_OPTIONS.map(o => (
                                   <option key={o.value} value={o.value}>{o.label}</option>
@@ -3613,7 +3622,7 @@ function EventTimelinePanel({ gameId, events, homeLineup, awayLineup, onClose, o
                               <select
                                 value={(statsEdits[`pitching:${p.playerId}`]?.decision ?? p.decision ?? '')}
                                 onChange={(e) => setRowEdit('pitching', p.playerId, { decision: e.target.value || null })}
-                                className="mt-0.5 w-full bg-[#0b1a30] border border-white/10 rounded px-1 py-0.5 text-white"
+                                className={ADMIN_SELECT_ROW}
                               >
                                 <option value="">—</option>
                                 <option value="W">W</option>
