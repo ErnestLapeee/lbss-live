@@ -61,7 +61,7 @@ const wpBetween = aggregatePitchingStatsByPitcher([
   },
 ]);
 assert(wpBetween.get(7)?.runsAllowed === 1, 'WP should charge RA');
-assert(wpBetween.get(7)?.earnedRuns === 0, 'WP run without reasons should be unearned');
+assert(wpBetween.get(7)?.earnedRuns === 1, 'WP run without reasons defaults to earned (no full 9.16 reconstruction)');
 
 const paTwoRunsOneErr = aggregatePitchingStatsByPitcher([
   {
@@ -106,4 +106,19 @@ const wpWithReasons = aggregatePitchingStatsByPitcher([
     errorsOnPlay: 0,
   },
 ]);
-assert(wpWithReasons.get(10)?.earnedRuns === 0, 'WP run with explicit wild_pitch reason should be unearned');
+assert(wpWithReasons.get(10)?.earnedRuns === 1, 'wild_pitch in runnerScoredReasons is descriptive, not automatic unearned');
+
+const pbBetween = aggregatePitchingStatsByPitcher([
+  {
+    eventNumber: 1,
+    eventType: 'passed_ball',
+    inning: 1,
+    half: 'top',
+    pitcherId: 11,
+    runsScored: 1,
+    outsRecorded: 0,
+    runnerScoredReasons: null,
+    errorsOnPlay: 0,
+  },
+]);
+assert(pbBetween.get(11)?.earnedRuns === 0, 'passed_ball without reasons stays unearned (catcher responsibility convention)');

@@ -20,11 +20,13 @@ const WALK_EVENTS = new Set<string>(BASE_ON_BALLS_EVENTS);
 const GROUND_BALL_OUTS = new Set(['ground_out', 'bunt_out']);
 const FLY_BALL_OUTS = new Set(['fly_out', 'line_out', 'pop_out', 'infield_fly', 'foul_out']);
 
-/** Per-run reasons that mark the run as unearned */
+/**
+ * Per-run reasons that mark the run as unearned (scorer / rulebook tags).
+ * Note: `wild_pitch` and `balk` are not listed here — MLB Rule 9.16 does not make those runs
+ * automatically unearned; earned vs unearned follows reconstruction, which we do not model in full.
+ */
 const UNEARNED_REASONS = new Set([
   'passed_ball',
-  'wild_pitch',
-  'balk',
   'advance_on_error',
   'error',
   'defensive_indifference',
@@ -36,15 +38,13 @@ const UNEARNED_REASONS = new Set([
 const ERROR_EVENT_TYPES = new Set(['error', 'sac_bunt_error', 'sac_fly_error']);
 
 /**
- * Between-pitch events where a scored run with no `runnerScoredReasons` is treated as unearned
- * (matches PA logic when each run would be tagged with the same reason).
+ * Between-pitch events where a scored run with no `runnerScoredReasons` is treated as unearned.
+ * WP/balk omitted — same as UNEARNED_REASONS note (not automatic unearned in MLB).
  */
 const NON_PA_UNEARNED_WITHOUT_REASONS = new Set([
-  'wild_pitch',
   'passed_ball',
   'advance_on_error',
   'defensive_indifference',
-  'balk',
 ]);
 
 /**
