@@ -542,12 +542,35 @@ export function LiveGameClient({
     const walkTypes = new Set(['walk', 'intentional_walk']);
     const sacFly = new Set(['sacrifice_fly', 'sac_fly_error']);
     const sacBunt = new Set(['sacrifice_bunt', 'sac_bunt_error']);
+    const runnerActorByEventId = new Map<number, number>();
+    let prevBases = { first: null as number | null, second: null as number | null, third: null as number | null };
+    const getBaseState = (evt: GameEvent) => ({
+      first: evt.runnerFirstId ?? null,
+      second: evt.runnerSecondId ?? null,
+      third: evt.runnerThirdId ?? null,
+    });
+
+    for (const evt of events) {
+      const cur = getBaseState(evt);
+      if (evt.eventType === 'stolen_base') {
+        if (prevBases.first && cur.second === prevBases.first) runnerActorByEventId.set(evt.id, prevBases.first);
+        else if (prevBases.second && cur.third === prevBases.second) runnerActorByEventId.set(evt.id, prevBases.second);
+        else if (prevBases.first && cur.third === prevBases.first) runnerActorByEventId.set(evt.id, prevBases.first);
+      } else if (evt.eventType === 'caught_stealing' || evt.eventType === 'picked_off') {
+        const prevIds = [prevBases.first, prevBases.second, prevBases.third].filter(Boolean) as number[];
+        const curIds = new Set([cur.first, cur.second, cur.third].filter(Boolean) as number[]);
+        const removed = prevIds.find(id => !curIds.has(id));
+        if (removed) runnerActorByEventId.set(evt.id, removed);
+      }
+      prevBases = cur;
+    }
 
     for (const evt of events) {
       if (evt.eventType === 'end_half_inning' || evt.eventType === 'pitch' || evt.eventType === 'adjust_score' || evt.eventType === 'substitution') continue;
       if (RUNNER_EVENT_TYPES.has(evt.eventType)) {
-        if (evt.eventType === 'stolen_base' && evt.batterId) getOrCreate(evt.batterId).sb++;
-        if (evt.eventType === 'caught_stealing' && evt.batterId) getOrCreate(evt.batterId).cs++;
+        const actorId = evt.batterId ?? runnerActorByEventId.get(evt.id);
+        if (evt.eventType === 'stolen_base' && actorId) getOrCreate(actorId).sb++;
+        if (evt.eventType === 'caught_stealing' && actorId) getOrCreate(actorId).cs++;
         if (evt.runnersScored && Array.isArray(evt.runnersScored)) {
           for (const rid of evt.runnersScored) getOrCreate(rid as number).r++;
         }
@@ -670,7 +693,7 @@ export function LiveGameClient({
       .filter(([, v]) => v.teamId === game?.homeTeamId)
       .map(([pid, v]) => {
         const p = lineups.find(l => l.playerId === Number(pid));
-        return { playerId: Number(pid), teamId: v.teamId, inningsPitched: String(v.ip), hits: v.h, runs: v.r, earnedRuns: v.er, walks: v.bb, strikeouts: v.k, homeRuns: v.hr, pitchesThrown: v.np, balls: v.balls, strikes: v.strikes, decision: null, isStarter: true, firstName: p?.firstName || '', lastName: p?.lastName || '' } as PitchingBoxScore;
+        return { playerId: Number(pid), teamId: v.teamId, inningsPitched: String(v.ip), hits: v.h, runs: v.r, earnedRuns: v.er, walks: v.bb, strikeouts: v.k, homeRuns: v.hr, pitchesThrown: v.np, balls: v.balls, strikes: v.strikes, decision: null, isStarter: !!p?.isStarter, firstName: p?.firstName || '', lastName: p?.lastName || '' } as PitchingBoxScore;
       });
   }, [pitchingBox, game, livePitchingMap, lineups, status]);
 
@@ -686,7 +709,7 @@ export function LiveGameClient({
       .filter(([, v]) => v.teamId === game?.awayTeamId)
       .map(([pid, v]) => {
         const p = lineups.find(l => l.playerId === Number(pid));
-        return { playerId: Number(pid), teamId: v.teamId, inningsPitched: String(v.ip), hits: v.h, runs: v.r, earnedRuns: v.er, walks: v.bb, strikeouts: v.k, homeRuns: v.hr, pitchesThrown: v.np, balls: v.balls, strikes: v.strikes, decision: null, isStarter: true, firstName: p?.firstName || '', lastName: p?.lastName || '' } as PitchingBoxScore;
+        return { playerId: Number(pid), teamId: v.teamId, inningsPitched: String(v.ip), hits: v.h, runs: v.r, earnedRuns: v.er, walks: v.bb, strikeouts: v.k, homeRuns: v.hr, pitchesThrown: v.np, balls: v.balls, strikes: v.strikes, decision: null, isStarter: !!p?.isStarter, firstName: p?.firstName || '', lastName: p?.lastName || '' } as PitchingBoxScore;
       });
   }, [pitchingBox, game, livePitchingMap, lineups, status]);
 

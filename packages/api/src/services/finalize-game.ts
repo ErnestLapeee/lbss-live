@@ -305,6 +305,7 @@ export async function finalizeGame(gameId: number, userId?: number, options?: Fi
   for (const entry of lineups) {
     if (!playerTeamMap.has(entry.playerId)) playerTeamMap.set(entry.playerId, entry.teamId);
   }
+  const positionMapsByEvent = buildPositionMapsByEvent(events, lineups);
 
   /* ── Per-game BATTING stats ── */
 
@@ -493,8 +494,19 @@ export async function finalizeGame(gameId: number, userId?: number, options?: Fi
 
   /* ── Per-game PITCHING stats ── */
 
+  const pitcherTeamById = new Map<number, number>();
+  const eventsForPitching = events.map((e) => {
+    const fieldingTeamId = e.half === 'top' ? game.homeTeamId : game.awayTeamId;
+    const inferredPitcherId =
+      e.pitcherId ??
+      positionMapsByEvent.get(e.id)?.get(fieldingTeamId)?.get(1) ??
+      null;
+    if (inferredPitcherId) pitcherTeamById.set(inferredPitcherId, fieldingTeamId);
+    return { ...e, pitcherId: inferredPitcherId };
+  });
+
   const pitcherAgg = aggregatePitchingStatsByPitcher(
-    events.map(e => ({
+    eventsForPitching.map(e => ({
       eventNumber: e.eventNumber,
       eventType: e.eventType,
       inning: e.inning,
@@ -509,14 +521,15 @@ export async function finalizeGame(gameId: number, userId?: number, options?: Fi
     })),
   );
 
-  const pitcherIds = new Set(events.filter(e => e.pitcherId).map(e => e.pitcherId!));
+  const pitcherIds = new Set([...pitcherAgg.keys()]);
 
   for (const pitcherId of pitcherIds) {
     const a = pitcherAgg.get(pitcherId);
     if (!a) continue;
-    const pitcherEvent = events.find((e) => e.pitcherId === pitcherId);
+    const pitcherEvent = eventsForPitching.find((e) => e.pitcherId === pitcherId);
     const teamId =
       playerTeamMap.get(pitcherId) ??
+      pitcherTeamById.get(pitcherId) ??
       (pitcherEvent?.half === 'bot' ? game.awayTeamId : game.homeTeamId);
 
     const outsRecorded = a.outsRecorded;
@@ -601,7 +614,7 @@ export async function finalizeGame(gameId: number, userId?: number, options?: Fi
   }
 
   /* ── Pitcher Win / Loss decisions ── */
-  await assignPitcherDecisions(gameId, game, events, lineups);
+  await assignPitcherDecisions(gameId, game, eventsForPitching, lineups);
 
   /* ── Per-game FIELDING stats ── */
 
@@ -614,8 +627,6 @@ export async function finalizeGame(gameId: number, userId?: number, options?: Fi
   const fielderCSB = new Map<number, number>(); // catcher: stolen bases allowed
   const fielderCCS = new Map<number, number>(); // catcher: caught stealing
   const fielderPickoffs = new Map<number, number>();
-
-  const positionMapsByEvent = buildPositionMapsByEvent(events, lineups);
 
   for (const e of events) {
     let po = (e.putoutFielderIds as number[]) || [];

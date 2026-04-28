@@ -10,7 +10,7 @@ import {
   licenses,
   leagues,
 } from '../../db/schema/index.js';
-import { eq, and, or, asc, desc, max, sql, inArray } from 'drizzle-orm';
+import { eq, and, or, desc, max, sql, inArray } from 'drizzle-orm';
 import { getIO } from '../../app.js';
 import { finalizeGame } from '../../services/finalize-game.js';
 import { firstRowFromExecute } from '../../lib/pg-result.js';
@@ -1343,7 +1343,7 @@ export async function adminScoringRoutes(app: FastifyInstance) {
           eq(gameEvents.gameId, gameId),
           eq(gameEvents.isDeleted, true),
         ))
-        .orderBy(asc(gameEvents.eventNumber))
+        .orderBy(desc(gameEvents.eventNumber))
         .limit(1);
 
       if (!lastDeleted) return reply.status(400).send({ message: 'No events to redo' });
