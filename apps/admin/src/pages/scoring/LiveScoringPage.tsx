@@ -600,6 +600,58 @@ export function LiveScoringPage() {
     finally { setSubmitting(false); }
   };
 
+  /** Temporary pitch hotkeys (B/S/F) — only on main pitch step, not while typing in inputs. */
+  const pitchHotkeyRef = useRef({
+    phase,
+    step,
+    submitting,
+    currentBatter,
+    gameState,
+    switchBatSide,
+    handleBall,
+    handleStrike,
+    handleFoul,
+  });
+  pitchHotkeyRef.current = {
+    phase,
+    step,
+    submitting,
+    currentBatter,
+    gameState,
+    switchBatSide,
+    handleBall,
+    handleStrike,
+    handleFoul,
+  };
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const s = pitchHotkeyRef.current;
+      if (s.phase !== 'scoring' || s.step !== 'pitch' || s.submitting) return;
+      if (!s.currentBatter || !s.gameState) return;
+      if ((s.currentBatter.bats || '').trim().toUpperCase() === 'S' && !s.switchBatSide) return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const el = e.target as HTMLElement | null;
+      if (el) {
+        const tag = el.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable) return;
+      }
+      const k = e.key.length === 1 ? e.key.toLowerCase() : '';
+      if (k === 'b') {
+        e.preventDefault();
+        void s.handleBall();
+      } else if (k === 's') {
+        e.preventDefault();
+        void s.handleStrike();
+      } else if (k === 'f') {
+        e.preventDefault();
+        void s.handleFoul();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
+
   const handleOut = () => {
     if (currentBatter && (currentBatter.bats || '').trim().toUpperCase() === 'S' && !switchBatSide) return;
     setOutSafeTab('out'); setStep('out_type');
