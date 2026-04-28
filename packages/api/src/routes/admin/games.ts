@@ -18,6 +18,29 @@ import { eq, and, sql, inArray, asc } from 'drizzle-orm';
 import { finalizeGame, recomputeSeasonBatting, recomputeSeasonPitching, recomputeSeasonFielding, recomputeStandings } from '../../services/finalize-game.js';
 import { firstRowFromExecute } from '../../lib/pg-result.js';
 
+/** Columns safe for all deployed DBs (avoid RETURNING/select * on newer schema fields before migrations run). */
+const adminGameListSelect = {
+  id: games.id,
+  leagueId: games.leagueId,
+  homeTeamId: games.homeTeamId,
+  awayTeamId: games.awayTeamId,
+  scheduledAt: games.scheduledAt,
+  venue: games.venue,
+  status: games.status,
+  homeScore: games.homeScore,
+  awayScore: games.awayScore,
+  inningsCount: games.inningsCount,
+  currentInning: games.currentInning,
+  currentHalf: games.currentHalf,
+  currentOuts: games.currentOuts,
+  isFinalized: games.isFinalized,
+  finalizedAt: games.finalizedAt,
+  finalizedBy: games.finalizedBy,
+  playoffSeriesId: games.playoffSeriesId,
+  createdAt: games.createdAt,
+  updatedAt: games.updatedAt,
+} as const;
+
 export async function adminGamesRoutes(app: FastifyInstance) {
   async function getSeasonIdForLeague(leagueId: number): Promise<number | null> {
     const seasonResult = await db.execute(
@@ -30,30 +53,6 @@ export async function adminGamesRoutes(app: FastifyInstance) {
   // GET / - list games; optional ?seasonId= filters to leagues in that season
   app.get<{ Querystring: { seasonId?: string } }>('/', async (request, reply) => {
     try {
-      // IMPORTANT: do not `select()` all columns from games, because production DB may lag behind
-      // app schema during deployments/migration rollbacks (e.g. playoff columns). Keep this to core columns.
-      const gameSelect = {
-        id: games.id,
-        leagueId: games.leagueId,
-        homeTeamId: games.homeTeamId,
-        awayTeamId: games.awayTeamId,
-        scheduledAt: games.scheduledAt,
-        venue: games.venue,
-        status: games.status,
-        homeScore: games.homeScore,
-        awayScore: games.awayScore,
-        inningsCount: games.inningsCount,
-        currentInning: games.currentInning,
-        currentHalf: games.currentHalf,
-        currentOuts: games.currentOuts,
-        isFinalized: games.isFinalized,
-        finalizedAt: games.finalizedAt,
-        finalizedBy: games.finalizedBy,
-        playoffSeriesId: games.playoffSeriesId,
-        createdAt: games.createdAt,
-        updatedAt: games.updatedAt,
-      };
-
       const seasonIdStr = request.query?.seasonId;
 
       if (seasonIdStr !== undefined && seasonIdStr !== '') {
@@ -67,14 +66,14 @@ export async function adminGamesRoutes(app: FastifyInstance) {
           return reply.send([]);
         }
         const filtered = await db
-          .select(gameSelect)
+          .select(adminGameListSelect)
           .from(games)
           .where(inArray(games.leagueId, leagueIds))
           .orderBy(asc(games.scheduledAt));
         return reply.send(filtered);
       }
 
-      const result = await db.select(gameSelect).from(games).orderBy(asc(games.scheduledAt));
+      const result = await db.select(adminGameListSelect).from(games).orderBy(asc(games.scheduledAt));
       return reply.send(result);
     } catch (err) {
       request.log.error(err);
@@ -103,7 +102,7 @@ export async function adminGamesRoutes(app: FastifyInstance) {
           .send({ message: 'leagueId, homeTeamId, awayTeamId, scheduledAt required' });
       }
 
-      const [game] = await db
+      const [inserted] = await db
         .insert(games)
         .values({
           leagueId,
@@ -113,7 +112,13 @@ export async function adminGamesRoutes(app: FastifyInstance) {
           venue: venue ?? null,
           playoffSeriesId: playoffSeriesId ?? null,
         })
-        .returning();
+        .returning({ id: games.id });
+
+      const [game] = await db
+        .select(adminGameListSelect)
+        .from(games)
+        .where(eq(games.id, inserted.id))
+        .limit(1);
 
       return reply.status(201).send(game);
     } catch (err) {
@@ -197,15 +202,21 @@ export async function adminGamesRoutes(app: FastifyInstance) {
       if (body.status !== undefined) updateData.status = body.status;
       if (body.playoffSeriesId !== undefined) updateData.playoffSeriesId = body.playoffSeriesId;
 
-      const [game] = await db
+      const [updated] = await db
         .update(games)
         .set({ ...updateData, updatedAt: new Date() })
         .where(eq(games.id, id))
-        .returning();
+        .returning({ id: games.id });
 
-      if (!game) {
+      if (!updated) {
         return reply.status(404).send({ message: 'Game not found' });
       }
+
+      const [game] = await db
+        .select(adminGameListSelect)
+        .from(games)
+        .where(eq(games.id, id))
+        .limit(1);
 
       return reply.send(game);
     } catch (err) {
@@ -223,7 +234,7 @@ export async function adminGamesRoutes(app: FastifyInstance) {
       }
 
       const [game] = await db
-        .select()
+        .select(adminGameListSelect)
         .from(games)
         .where(eq(games.id, id))
         .limit(1);
@@ -321,7 +332,7 @@ export async function adminGamesRoutes(app: FastifyInstance) {
 
       const body = request.body ?? {};
 
-      const [game] = await db.select().from(games).where(eq(games.id, id)).limit(1);
+      const [game] = await db.select(adminGameListSelect).from(games).where(eq(games.id, id)).limit(1);
       if (!game) return reply.status(404).send({ message: 'Game not found' });
 
       if (kind === 'batting') {
