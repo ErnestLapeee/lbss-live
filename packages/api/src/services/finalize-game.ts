@@ -43,6 +43,15 @@ const SACRIFICE_BUNT_EVENTS = new Set(['sacrifice_bunt', 'sac_bunt_error']);
 const GROUND_BALL_OUTS = new Set(['ground_out', 'bunt_out']);
 const FLY_BALL_OUTS = new Set(['fly_out', 'line_out', 'pop_out', 'infield_fly']);
 
+/** Third strike caught by catcher — credit PO(2) when scorer did not enter fielding IDs / sequence. */
+const CATCHER_PUTOUT_STRIKEOUT_TYPES = new Set([
+  'strikeout',
+  'strikeout_swinging',
+  'strikeout_looking',
+  'caught_foul_tip',
+  'bunt_foul',
+]);
+
 /** Avoid `select *` on `games`: DBs without migration 0012 have no `umpire` / `official_scorer`. */
 const finalizeGameRowSelect = {
   id: games.id,
@@ -657,6 +666,17 @@ export async function finalizeGame(gameId: number, userId?: number, options?: Fi
             .filter((pid): pid is number => pid !== undefined);
         }
       }
+    }
+
+    // Strikeout with an out but no putout recorded: catcher gets the putout (Rule 9.16).
+    // Omit dropped-third / WP third-strike types where the out is often at first, not 2.
+    if (
+      po.length === 0 &&
+      (e.outsRecorded ?? 0) >= 1 &&
+      CATCHER_PUTOUT_STRIKEOUT_TYPES.has(e.eventType)
+    ) {
+      const catcherId = posMap.get(2);
+      if (catcherId) po = [catcherId];
     }
 
     po = [...new Set(po)];
