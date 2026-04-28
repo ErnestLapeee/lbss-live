@@ -527,6 +527,11 @@ export async function finalizeGame(gameId: number, userId?: number, options?: Fi
     return { ...e, pitcherId: inferredPitcherId };
   });
 
+  const pitcherIdByEventId = new Map<number, number | null>();
+  for (const e of eventsForPitching) {
+    if (e.id != null) pitcherIdByEventId.set(e.id, e.pitcherId ?? null);
+  }
+
   const pitcherAgg = aggregatePitchingStatsByPitcher(
     eventsForPitching.map(e => ({
       eventNumber: e.eventNumber,
@@ -577,13 +582,8 @@ export async function finalizeGame(gameId: number, userId?: number, options?: Fi
     const pStrikeoutsSwinging = a.strikeoutsSwinging;
 
     const ip = inningsFromOuts(outsRecorded);
-    const ipNum = Math.floor(outsRecorded / 3) + (outsRecorded % 3) / 3;
 
     const isStarter = lineups.some(l => l.playerId === pitcherId && l.isStarter && l.position === 1);
-    const isCompleteGame = outsRecorded >= 27;
-    const qualityStart = isStarter && ipNum >= 6 && earnedRuns <= 3 ? 1 : 0;
-    const shutout = isCompleteGame && earnedRuns === 0 ? 1 : 0;
-    const completeGames = isCompleteGame ? 1 : 0;
     const gameScoreVal = 50 + outsRecorded - 2 * (hitsAllowed + walksAllowed) - earnedRuns + pStrikeouts;
 
     await db
@@ -605,9 +605,9 @@ export async function finalizeGame(gameId: number, userId?: number, options?: Fi
         groundOuts: pGroundOuts, flyOuts: pFlyOuts,
         strikeoutsLooking: pStrikeoutsLooking,
         strikeoutsSwinging: pStrikeoutsSwinging,
-        qualityStarts: qualityStart,
-        shutouts: shutout,
-        completeGames,
+        qualityStarts: 0,
+        shutouts: 0,
+        completeGames: 0,
         gameScore: Math.max(0, Math.round(gameScoreVal)),
       })
       .onConflictDoUpdate({
@@ -627,9 +627,9 @@ export async function finalizeGame(gameId: number, userId?: number, options?: Fi
           groundOuts: pGroundOuts, flyOuts: pFlyOuts,
           strikeoutsLooking: pStrikeoutsLooking,
           strikeoutsSwinging: pStrikeoutsSwinging,
-          qualityStarts: qualityStart,
-          shutouts: shutout,
-          completeGames,
+          qualityStarts: 0,
+          shutouts: 0,
+          completeGames: 0,
           gameScore: Math.max(0, Math.round(gameScoreVal)),
         },
       });
@@ -740,9 +740,11 @@ export async function finalizeGame(gameId: number, userId?: number, options?: Fi
       if (catcherId) fielderCCS.set(catcherId, (fielderCCS.get(catcherId) || 0) + 1);
     }
 
-    // Pickoffs (credit pitcher or whoever is credited)
+    // Pickoffs (credit pitcher — same inference as pitching stats when event omits pitcherId)
     if (t === 'picked_off') {
-      if (e.pitcherId) fielderPickoffs.set(e.pitcherId, (fielderPickoffs.get(e.pitcherId) || 0) + 1);
+      const pickPid =
+        (e.id != null ? pitcherIdByEventId.get(e.id) : undefined) ?? e.pitcherId ?? null;
+      if (pickPid) fielderPickoffs.set(pickPid, (fielderPickoffs.get(pickPid) || 0) + 1);
     }
   }
 

@@ -21,9 +21,58 @@ const GROUND_BALL_OUTS = new Set(['ground_out', 'bunt_out']);
 const FLY_BALL_OUTS = new Set(['fly_out', 'line_out', 'pop_out', 'infield_fly', 'foul_out']);
 
 /** Per-run reasons that mark the run as unearned */
-const UNEARNED_REASONS = new Set(['passed_ball', 'advance_on_error', 'error', 'defensive_indifference', 'obstruction', 'catcher_obstruction', 'catcher_interference']);
+const UNEARNED_REASONS = new Set([
+  'passed_ball',
+  'wild_pitch',
+  'balk',
+  'advance_on_error',
+  'error',
+  'defensive_indifference',
+  'obstruction',
+  'catcher_obstruction',
+  'catcher_interference',
+]);
 
 const ERROR_EVENT_TYPES = new Set(['error', 'sac_bunt_error', 'sac_fly_error']);
+
+/**
+ * Between-pitch events where a scored run with no `runnerScoredReasons` is treated as unearned
+ * (matches PA logic when each run would be tagged with the same reason).
+ */
+const NON_PA_UNEARNED_WITHOUT_REASONS = new Set([
+  'wild_pitch',
+  'passed_ball',
+  'advance_on_error',
+  'defensive_indifference',
+  'balk',
+]);
+
+/**
+ * Earned runs credited on one event. When reasons are missing, at most one unearned run per
+ * `errorsOnPlay` is assumed (avoids negative ER when errors > runs).
+ */
+function earnedRunsFromPlay(
+  runsScored: number,
+  runnerScoredReasons: string[] | null | undefined,
+  errorsOnPlay: number | null | undefined,
+  ctx: { isPlateAppearance: boolean; eventType: string },
+): number {
+  if (runsScored <= 0) return 0;
+  const reasons = runnerScoredReasons || [];
+  if (reasons.length > 0) {
+    let earned = 0;
+    for (let i = 0; i < runsScored; i++) {
+      const reason = reasons[i] || 'on_play';
+      if (!UNEARNED_REASONS.has(reason)) earned++;
+    }
+    return earned;
+  }
+
+  if (!ctx.isPlateAppearance && NON_PA_UNEARNED_WITHOUT_REASONS.has(ctx.eventType)) return 0;
+
+  const errs = errorsOnPlay ?? 0;
+  return Math.max(0, runsScored - Math.min(runsScored, errs));
+}
 
 export interface PitchingEventInput {
   eventNumber: number;
@@ -157,10 +206,12 @@ export function aggregatePitchingStatsByPitcher(events: PitchingEventInput[]): M
         if (t === 'balk') a.balks++;
         if (t === 'wild_pitch') a.wildPitches++;
         a.outsRecorded += e.outsRecorded ?? 0;
-        a.runsAllowed += e.runsScored ?? 0;
-        if (t !== 'passed_ball' && t !== 'advance_on_error') {
-          a.earnedRuns += e.runsScored ?? 0;
-        }
+        const runs = e.runsScored ?? 0;
+        a.runsAllowed += runs;
+        a.earnedRuns += earnedRunsFromPlay(runs, e.runnerScoredReasons, e.errorsOnPlay, {
+          isPlateAppearance: false,
+          eventType: t,
+        });
         continue;
       }
 
@@ -189,24 +240,12 @@ export function aggregatePitchingStatsByPitcher(events: PitchingEventInput[]): M
       if (inningExtended || ERROR_EVENT_TYPES.has(t)) {
         // unearned — runs already in runsAllowed
       } else {
-        const reasons = (e.runnerScoredReasons as string[]) || [];
-        let earnedFromPlay = 0;
-        let wpCountFromPlay = 0;
-
-        if (reasons.length > 0) {
-          for (let i = 0; i < runsScoredOnPlay; i++) {
-            const reason = reasons[i] || 'on_play';
-            if (UNEARNED_REASONS.has(reason)) continue;
-            earnedFromPlay++;
-            if (reason === 'wild_pitch') wpCountFromPlay++;
-          }
-        } else if (runsScoredOnPlay > 0) {
-          const errs = e.errorsOnPlay ?? 0;
-          earnedFromPlay = Math.max(0, runsScoredOnPlay - errs);
-        }
-
-        a.earnedRuns += earnedFromPlay;
-        a.wildPitches += wpCountFromPlay;
+        a.earnedRuns += earnedRunsFromPlay(
+          runsScoredOnPlay,
+          e.runnerScoredReasons as string[] | null,
+          e.errorsOnPlay,
+          { isPlateAppearance: true, eventType: t },
+        );
       }
 
       if (HIT_EVENTS.has(t)) a.hitsAllowed++;

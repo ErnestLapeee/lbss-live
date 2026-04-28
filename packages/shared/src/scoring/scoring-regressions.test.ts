@@ -45,3 +45,65 @@ assert(countSplits.counts.find((line) => line.count === '3-0')?.walks === 1, 'be
 assert(countSplits.reachedCounts.find((line) => line.count === '0-0')?.plateAppearances === 2, '0-0 reached count should include all PAs');
 assert(countSplits.reachedCounts.find((line) => line.count === '1-0')?.walks === 1, 'walk should count as the final result after reaching 1-0');
 assert(countSplits.reachedCounts.find((line) => line.count === '3-0')?.walks === 1, 'walk should count as the final result after reaching 3-0');
+
+// ── Pitching ER parity (non-PA wild pitch vs PA reasons; errorsOnPlay cap) ──
+const wpBetween = aggregatePitchingStatsByPitcher([
+  {
+    eventNumber: 1,
+    eventType: 'wild_pitch',
+    inning: 1,
+    half: 'top',
+    pitcherId: 7,
+    runsScored: 1,
+    outsRecorded: 0,
+    runnerScoredReasons: null,
+    errorsOnPlay: 0,
+  },
+]);
+assert(wpBetween.get(7)?.runsAllowed === 1, 'WP should charge RA');
+assert(wpBetween.get(7)?.earnedRuns === 0, 'WP run without reasons should be unearned');
+
+const paTwoRunsOneErr = aggregatePitchingStatsByPitcher([
+  {
+    eventNumber: 1,
+    eventType: 'single',
+    inning: 1,
+    half: 'top',
+    pitcherId: 8,
+    runsScored: 2,
+    outsRecorded: 0,
+    runnerScoredReasons: null,
+    errorsOnPlay: 1,
+  },
+]);
+assert(paTwoRunsOneErr.get(8)?.earnedRuns === 1, 'two runs one error no reasons should credit one ER');
+
+const oneRunTwoErrors = aggregatePitchingStatsByPitcher([
+  {
+    eventNumber: 1,
+    eventType: 'single',
+    inning: 1,
+    half: 'top',
+    pitcherId: 9,
+    runsScored: 1,
+    outsRecorded: 0,
+    runnerScoredReasons: null,
+    errorsOnPlay: 2,
+  },
+]);
+assert(oneRunTwoErrors.get(9)?.earnedRuns === 0, 'errors cannot exceed runs when inferring ER');
+
+const wpWithReasons = aggregatePitchingStatsByPitcher([
+  {
+    eventNumber: 1,
+    eventType: 'wild_pitch',
+    inning: 2,
+    half: 'top',
+    pitcherId: 10,
+    runsScored: 1,
+    outsRecorded: 0,
+    runnerScoredReasons: ['wild_pitch'],
+    errorsOnPlay: 0,
+  },
+]);
+assert(wpWithReasons.get(10)?.earnedRuns === 0, 'WP run with explicit wild_pitch reason should be unearned');
