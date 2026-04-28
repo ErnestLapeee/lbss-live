@@ -43,6 +43,25 @@ const SACRIFICE_BUNT_EVENTS = new Set(['sacrifice_bunt', 'sac_bunt_error']);
 const GROUND_BALL_OUTS = new Set(['ground_out', 'bunt_out']);
 const FLY_BALL_OUTS = new Set(['fly_out', 'line_out', 'pop_out', 'infield_fly']);
 
+/** Avoid `select *` on `games`: DBs without migration 0012 have no `umpire` / `official_scorer`. */
+const finalizeGameRowSelect = {
+  id: games.id,
+  leagueId: games.leagueId,
+  homeTeamId: games.homeTeamId,
+  awayTeamId: games.awayTeamId,
+  status: games.status,
+  homeScore: games.homeScore,
+  awayScore: games.awayScore,
+  isFinalized: games.isFinalized,
+} as const;
+
+const standingsFinalGameSelect = {
+  homeTeamId: games.homeTeamId,
+  awayTeamId: games.awayTeamId,
+  homeScore: games.homeScore,
+  awayScore: games.awayScore,
+} as const;
+
 function isPlateAppearance(t: string): boolean {
   return isPlateAppearanceEvent(t);
 }
@@ -258,7 +277,11 @@ function scoreDeltasFromEvent(e: any): { home: number; away: number } {
 export type FinalizeGameOptions = { recompute?: boolean };
 
 export async function finalizeGame(gameId: number, userId?: number, options?: FinalizeGameOptions) {
-  const [game] = await db.select().from(games).where(eq(games.id, gameId)).limit(1);
+  const [game] = await db
+    .select(finalizeGameRowSelect)
+    .from(games)
+    .where(eq(games.id, gameId))
+    .limit(1);
   if (!game) throw new Error('Game not found');
   if (game.isFinalized && !options?.recompute) throw new Error('Game already finalized');
 
@@ -1332,7 +1355,7 @@ export async function recomputeSeasonFielding(seasonId: number) {
 
 export async function recomputeStandings(leagueId: number) {
   const finalGames = await db
-    .select()
+    .select(standingsFinalGameSelect)
     .from(games)
     .where(and(eq(games.leagueId, leagueId), eq(games.isFinalized, true)));
 
