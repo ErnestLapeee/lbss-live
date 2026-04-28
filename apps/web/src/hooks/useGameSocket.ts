@@ -25,6 +25,7 @@ interface GameUpdatePayload {
     eventDetail?: string;
   };
   status?: string;
+  lineupAdjusted?: boolean;
 }
 
 interface GameFinalPayload {
@@ -39,6 +40,7 @@ export function useGameSocket(gameId: number | null, apiUrl: string) {
   const [connected, setConnected] = useState(false);
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [lastEvent, setLastEvent] = useState<GameUpdatePayload['event'] | null>(null);
+  const [updateSeq, setUpdateSeq] = useState(0);
   const [isFinal, setIsFinal] = useState(false);
   const [viewerCount, setViewerCount] = useState(0);
 
@@ -60,6 +62,7 @@ export function useGameSocket(gameId: number | null, apiUrl: string) {
     });
 
     socket.on('game:update', (data: GameUpdatePayload) => {
+      setUpdateSeq((seq) => seq + 1);
       if (data.state) setGameState(data.state);
       if (data.event) setLastEvent(data.event);
     });
@@ -90,5 +93,5 @@ export function useGameSocket(gameId: number | null, apiUrl: string) {
     return () => disconnect();
   }, [connect, disconnect]);
 
-  return { connected, gameState, lastEvent, isFinal, viewerCount, setGameState };
+  return { connected, gameState, lastEvent, updateSeq, isFinal, viewerCount, setGameState };
 }

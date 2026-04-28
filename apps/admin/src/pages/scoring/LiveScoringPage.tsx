@@ -78,15 +78,6 @@ function formatScoringMiniPbpLine(evt: GameEvent, game?: GameData | null): strin
 
 const POS_LABELS: Record<number, string> = { 1:'P',2:'C',3:'1B',4:'2B',5:'3B',6:'SS',7:'LF',8:'CF',9:'RF',10:'DH' };
 
-/** Spots for defensive names on the live field preview (viewBox 0 0 400 400); DH (10) has no spot. */
-const FIELD_PREVIEW_XY: Record<number, { x: number; y: number }> = {
-  1: { x: 200, y: 228 }, 2: { x: 200, y: 348 },
-  3: { x: 300, y: 236 }, 4: { x: 250, y: 195 },
-  5: { x: 100, y: 236 }, 6: { x: 150, y: 195 },
-  7: { x: 80, y: 115 }, 8: { x: 200, y: 65 },
-  9: { x: 320, y: 115 },
-};
-
 /** Native `<select>`: solid bg + `color-scheme: dark` so option lists stay readable (Windows/Chrome often default to light popup with invisible text on dark UIs). */
 const ADMIN_SELECT_BASE =
   'rounded border border-white/20 bg-[#152238] text-slate-100 [color-scheme:dark]';
@@ -2019,31 +2010,6 @@ function needsRunnerAdvanceErrorFieldingPrompt(
               </g>
               {/* Home plate */}
               <polygon points="200,307 196,313 200,318 204,313" fill="#ddd" />
-
-              {/* Defensive alignment (pitch step only — same coords as fielding picker) */}
-              {step === 'pitch' &&
-                fieldingLineup
-                  .filter((entry) => entry.position >= 1 && entry.position <= 9)
-                  .map((entry) => {
-                    const spot = FIELD_PREVIEW_XY[entry.position];
-                    if (!spot) return null;
-                    const short = (entry.lastName || '').slice(0, 10).toUpperCase();
-                    if (!short) return null;
-                    return (
-                      <text
-                        key={entry.playerId}
-                        x={spot.x}
-                        y={spot.y}
-                        textAnchor="middle"
-                        fontSize="8"
-                        fill="rgba(230,240,255,0.9)"
-                        fontWeight="700"
-                        style={{ pointerEvents: 'none' }}
-                      >
-                        {short}
-                      </text>
-                    );
-                  })}
 
               {/* ── Runner names next to bases ── */}
               {gameState.bases.second && <text x="200" y="155" textAnchor="middle" fontSize="9" fill="#f97316" fontWeight="bold">{getPlayerShort(gameState.bases.second)}</text>}

@@ -277,7 +277,7 @@ export function LiveGameClient({
   const [tab, setTab] = useState<Tab>('plays');
   const [playMode, setPlayMode] = useState<'compact' | 'expanded'>('compact');
   const [openPitchCards, setOpenPitchCards] = useState<Record<string, boolean>>({});
-  const { connected, gameState, lastEvent, isFinal, viewerCount } = useGameSocket(gameId, apiBase);
+  const { connected, gameState, updateSeq, isFinal, viewerCount } = useGameSocket(gameId, apiBase);
 
   /** Refetch only when SSR could not provide events; live updates still arrive via socket/polling below. */
   useEffect(() => {
@@ -297,32 +297,36 @@ export function LiveGameClient({
     if (!connected) return;
     Promise.all([
       fetchPublicGameEvents(gameId),
+      fetchPublicJsonArray(`/api/proxy/public/games/${gameId}/lineups`),
       fetchPublicJsonArray(`/api/proxy/public/games/${gameId}/boxscore`),
       fetchPublicJsonArray(`/api/proxy/public/games/${gameId}/pitching-boxscore`),
       fetchPublicJsonArray(`/api/proxy/public/games/${gameId}/fielding-boxscore`),
-    ]).then(([evts, box, pbox, fbox]) => {
+    ]).then(([evts, lineupRows, box, pbox, fbox]) => {
       if (evts !== null) setEvents(normalizeGameEvents(evts) as GameEvent[]);
+      if (lineupRows !== null) setLineups(lineupRows as LineupEntry[]);
       if (box !== null) setBattingBox(box);
       if (pbox !== null) setPitchingBox(pbox);
       if (fbox !== null) setFieldingBox(fbox as FieldingBoxScore[]);
     });
   }, [connected, gameId]);
 
-  // Re-fetch when new event arrives via WebSocket
+  // Re-fetch when the API broadcasts a game update (new event, lineup correction, score adjustment, etc.).
   useEffect(() => {
-    if (!lastEvent) return;
+    if (updateSeq === 0) return;
     Promise.all([
       fetchPublicGameEvents(gameId),
+      fetchPublicJsonArray(`/api/proxy/public/games/${gameId}/lineups`),
       fetchPublicJsonArray(`/api/proxy/public/games/${gameId}/boxscore`),
       fetchPublicJsonArray(`/api/proxy/public/games/${gameId}/pitching-boxscore`),
       fetchPublicJsonArray(`/api/proxy/public/games/${gameId}/fielding-boxscore`),
-    ]).then(([evts, box, pbox, fbox]) => {
+    ]).then(([evts, lineupRows, box, pbox, fbox]) => {
       if (evts !== null) setEvents(normalizeGameEvents(evts) as GameEvent[]);
+      if (lineupRows !== null) setLineups(lineupRows as LineupEntry[]);
       if (box !== null) setBattingBox(box);
       if (pbox !== null) setPitchingBox(pbox);
       if (fbox !== null) setFieldingBox(fbox as FieldingBoxScore[]);
     });
-  }, [lastEvent, gameId]);
+  }, [updateSeq, gameId]);
 
   // Polling: live games when disconnected, OR still no events while connected (recover stuck empty PBP)
   useEffect(() => {
@@ -331,17 +335,19 @@ export function LiveGameClient({
     if (connected && events.length > 0) return;
     const interval = setInterval(async () => {
       try {
-        const [gData, evts, box, pbox, fbox] = await Promise.all([
+        const [gData, evts, lineupRows, box, pbox, fbox] = await Promise.all([
           fetch(`/api/proxy/public/games/${gameId}`)
             .then(async r => (r.ok ? r.json() : null))
             .catch(() => null),
           fetchPublicGameEvents(gameId),
+          fetchPublicJsonArray(`/api/proxy/public/games/${gameId}/lineups`),
           fetchPublicJsonArray(`/api/proxy/public/games/${gameId}/boxscore`),
           fetchPublicJsonArray(`/api/proxy/public/games/${gameId}/pitching-boxscore`),
           fetchPublicJsonArray(`/api/proxy/public/games/${gameId}/fielding-boxscore`),
         ]);
         if (gData && typeof gData === 'object' && gData.id) setGame(gData);
         if (evts !== null) setEvents(normalizeGameEvents(evts) as GameEvent[]);
+        if (lineupRows !== null) setLineups(lineupRows as LineupEntry[]);
         if (box !== null) setBattingBox(box);
         if (pbox !== null) setPitchingBox(pbox);
         if (fbox !== null) setFieldingBox(fbox as FieldingBoxScore[]);
@@ -606,8 +612,17 @@ export function LiveGameClient({
 
   // Build live pitching stats from events (same R/ER rules as finalizeGame — @lbss/shared)
   const livePitchingMap = useMemo(() => {
+    const pitcherTeamById = new Map<number, number>();
+    const eventsWithPitchers = events.map(e => {
+      const fieldingTeamId = e.half === 'top' ? game?.homeTeamId : game?.awayTeamId;
+      const inferredPitcherId =
+        e.pitcherId ??
+        (fieldingTeamId != null ? positionMapsByEvent.get(e.id)?.get(fieldingTeamId)?.get(1) ?? null : null);
+      if (inferredPitcherId && fieldingTeamId != null) pitcherTeamById.set(inferredPitcherId, fieldingTeamId);
+      return { ...e, pitcherId: inferredPitcherId };
+    });
     const agg = aggregatePitchingStatsByPitcher(
-      events.map(e => ({
+      eventsWithPitchers.map(e => ({
         eventNumber: e.eventNumber,
         eventType: e.eventType,
         inning: e.inning,
@@ -637,15 +652,15 @@ export function LiveGameClient({
         np: a.pitchesThrown,
         balls: a.balls,
         strikes: a.strikes,
-        teamId: pLineup?.teamId ?? 0,
+        teamId: pLineup?.teamId ?? pitcherTeamById.get(pid) ?? 0,
       };
     }
     return map;
-  }, [events, lineups]);
+  }, [events, game, lineups, positionMapsByEvent]);
 
   const homePitching = useMemo(() => {
     const finalized = pitchingBox.filter(p => p.teamId === game?.homeTeamId);
-    if (finalized.length > 0) {
+    if (status === 'final' && finalized.length > 0) {
       return finalized.map(p => {
         const live = livePitchingMap[p.playerId];
         return { ...p, balls: live?.balls ?? null, strikes: live?.strikes ?? null };
@@ -657,11 +672,11 @@ export function LiveGameClient({
         const p = lineups.find(l => l.playerId === Number(pid));
         return { playerId: Number(pid), teamId: v.teamId, inningsPitched: String(v.ip), hits: v.h, runs: v.r, earnedRuns: v.er, walks: v.bb, strikeouts: v.k, homeRuns: v.hr, pitchesThrown: v.np, balls: v.balls, strikes: v.strikes, decision: null, isStarter: true, firstName: p?.firstName || '', lastName: p?.lastName || '' } as PitchingBoxScore;
       });
-  }, [pitchingBox, game, livePitchingMap, lineups]);
+  }, [pitchingBox, game, livePitchingMap, lineups, status]);
 
   const awayPitching = useMemo(() => {
     const finalized = pitchingBox.filter(p => p.teamId === game?.awayTeamId);
-    if (finalized.length > 0) {
+    if (status === 'final' && finalized.length > 0) {
       return finalized.map(p => {
         const live = livePitchingMap[p.playerId];
         return { ...p, balls: live?.balls ?? null, strikes: live?.strikes ?? null };
@@ -673,7 +688,7 @@ export function LiveGameClient({
         const p = lineups.find(l => l.playerId === Number(pid));
         return { playerId: Number(pid), teamId: v.teamId, inningsPitched: String(v.ip), hits: v.h, runs: v.r, earnedRuns: v.er, walks: v.bb, strikeouts: v.k, homeRuns: v.hr, pitchesThrown: v.np, balls: v.balls, strikes: v.strikes, decision: null, isStarter: true, firstName: p?.firstName || '', lastName: p?.lastName || '' } as PitchingBoxScore;
       });
-  }, [pitchingBox, game, livePitchingMap, lineups]);
+  }, [pitchingBox, game, livePitchingMap, lineups, status]);
 
   const homeBatting = useMemo(() =>
     battingBox.filter(b => b.teamId === game?.homeTeamId), [battingBox, game]);
