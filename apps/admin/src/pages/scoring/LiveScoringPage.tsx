@@ -5,6 +5,7 @@ import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
 /* ── Types ── */
 interface Player { playerId: number; firstName: string; lastName: string; jerseyNumber?: string; teamId: number; licensePaid?: string | null }
 interface LineupEntry { id: number; playerId: number; battingOrder: number; position: number; isActive: boolean; isStarter: boolean; firstName: string; lastName: string; teamId: number; bats?: string | null }
+interface LineupAdjustRow { playerId: number; battingOrder: number; position: number; firstName: string; lastName: string }
 interface GameState { inning: number; half: 'top' | 'bot'; outs: number; homeScore: number; awayScore: number; bases: { first: number | null; second: number | null; third: number | null }; homeLineScore: number[]; awayLineScore: number[]; eventCount: number; balls: number; strikes: number }
 interface GameEvent { id: number; eventNumber: number; eventType: string; batterId?: number; batterSide?: string | null; pitcherId?: number; inning: number; half: string; balls?: number; strikes?: number; runsScored?: number; rbi?: number; outsRecorded?: number; errorsOnPlay?: number; eventDetail?: string; fieldingSequence?: string; putoutFielderIds?: number[]; assistFielderIds?: number[]; errorFielderIds?: number[]; pitchCount?: number | null; pitchSequence?: string | null; hitLocationX?: string | null; hitLocationY?: string | null; hitType?: string | null; hitHardness?: string | null; runnerFirstId?: number | null; runnerSecondId?: number | null; runnerThirdId?: number | null; runnersScored?: number[] }
 interface GameData { id: number; status: string; homeTeamId: number; awayTeamId: number; homeTeamName: string; awayTeamName: string; isFinalized: boolean; umpire?: string | null; officialScorer?: string | null }
@@ -295,6 +296,12 @@ export function LiveScoringPage() {
   const [addRosterBats, setAddRosterBats] = useState('');
   const [addRosterThrows, setAddRosterThrows] = useState('');
   const [addRosterBusy, setAddRosterBusy] = useState(false);
+
+  const [lineupAdjustOpen, setLineupAdjustOpen] = useState(false);
+  const [lineupAdjustTeam, setLineupAdjustTeam] = useState<'home' | 'away'>('away');
+  const [lineupAdjustHome, setLineupAdjustHome] = useState<LineupAdjustRow[]>([]);
+  const [lineupAdjustAway, setLineupAdjustAway] = useState<LineupAdjustRow[]>([]);
+  const [lineupAdjustBusy, setLineupAdjustBusy] = useState(false);
 
   const [balls, setBalls] = useState(0);
   const [strikes, setStrikes] = useState(0);
@@ -1502,6 +1509,48 @@ function needsRunnerAdvanceErrorFieldingPrompt(
     } catch (err: any) { alert(err.message || 'Failed'); } finally { setSubmitting(false); }
   };
   const cancelWizard = () => { setStep('pitch'); setSelectedEvent(null); setFieldingPositions([]); setRunnerQuestions([]); setCurrentRunnerIdx(0); setActiveRunnerBase(null); setRunnerActionType(null); setRunnerActionDest(null); setRunnerActionOutType(null); setRunnerActionFielding([]); setSubPosition(null); setSubTeamId(null); setSubBattingSlot(null); setPendingPositionChanges([]); setRunnerOutSafeTab('safe'); setRunnerSafeDest(null); setHitLocationX(null); setHitLocationY(null); setHitType(null); setHitHardness(null); setBetweenPitchEvent(null); setBetweenPitchInitiatorRunnerId(null); setOutSafeMorePage(false); setRunnerOutPendingType(null); setRunnerOutFielding([]); setRunnerAdvanceErrorPending(null); setRunnerAdvanceErrorFielding([]); };
+
+  const openLineupAdjust = () => {
+    if (!game) return;
+    const toRows = (lineup: LineupEntry[]): LineupAdjustRow[] =>
+      [...lineup]
+        .filter((l) => l.isActive)
+        .sort((a, b) => a.battingOrder - b.battingOrder)
+        .map((l) => ({
+          playerId: l.playerId,
+          battingOrder: l.battingOrder,
+          position: l.position,
+          firstName: l.firstName,
+          lastName: l.lastName,
+        }));
+    setLineupAdjustHome(toRows(homeLineup));
+    setLineupAdjustAway(toRows(awayLineup));
+    setLineupAdjustTeam('away');
+    setLineupAdjustOpen(true);
+    cancelWizard();
+  };
+
+  const updateLineupAdjustRow = (side: 'home' | 'away', playerId: number, patch: Partial<Pick<LineupAdjustRow, 'battingOrder' | 'position'>>) => {
+    const setter = side === 'home' ? setLineupAdjustHome : setLineupAdjustAway;
+    setter((rows) => rows.map((r) => (r.playerId === playerId ? { ...r, ...patch } : r)));
+  };
+
+  const submitLineupAdjust = async () => {
+    setLineupAdjustBusy(true);
+    try {
+      await apiPut(`/admin/scoring/${gameId}/active-lineup`, {
+        home: lineupAdjustHome.map(({ playerId, battingOrder, position }) => ({ playerId, battingOrder, position })),
+        away: lineupAdjustAway.map(({ playerId, battingOrder, position }) => ({ playerId, battingOrder, position })),
+      });
+      setLineupAdjustOpen(false);
+      await loadState();
+      await loadRosters();
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Failed to save lineup');
+    } finally {
+      setLineupAdjustBusy(false);
+    }
+  };
 
   if (!gameIdStr || Number.isNaN(gameId) || gameId <= 0) {
     return (
@@ -3008,6 +3057,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                     { label: 'Illegal Pitch', fn: () => handleMiscEvent('illegal_pitch', 'Illegal pitch') },
                     { label: 'End Half Inning', fn: handleEndHalfInning },
                     { label: 'Adjust Score', fn: openAdjustScore },
+                    { label: 'Adjust starting lineups', fn: openLineupAdjust },
                     { label: 'End Game', fn: handleFinalize },
                   ].map(item => (
                     <button key={item.label} onClick={item.fn}
@@ -3112,6 +3162,92 @@ function needsRunnerAdvanceErrorFieldingPrompt(
           onClose={() => setShowEventTimeline(false)}
           onRefresh={async () => { await loadState(); cancelWizard(); }}
         />
+      )}
+
+      {lineupAdjustOpen && game && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-3" role="dialog" aria-modal="true" aria-labelledby="lineup-adjust-title">
+          <div className="w-full max-w-lg max-h-[min(90vh,640px)] overflow-y-auto rounded-xl border border-white/10 bg-[#0f1a2a] p-4 shadow-xl">
+            <h2 id="lineup-adjust-title" className="text-center text-sm font-bold uppercase tracking-wider text-white mb-1">
+              Adjust active lineups
+            </h2>
+            <p className="text-[10px] text-center text-white/45 mb-3 leading-snug">
+              Fix batting order and fielding roles for <span className="text-white/70">who is currently active</span> (e.g. only one DH, pitcher at P).
+              Does not remove pinch subs — same players, corrected positions/orders.
+            </p>
+            <div className="flex gap-1 mb-3">
+              {(['away', 'home'] as const).map((side) => (
+                <button
+                  key={side}
+                  type="button"
+                  onClick={() => setLineupAdjustTeam(side)}
+                  className={`flex-1 rounded-lg py-2 text-[10px] font-bold uppercase ${
+                    lineupAdjustTeam === side ? 'bg-accent text-white' : 'bg-white/10 text-white/50 hover:text-white/80'
+                  }`}
+                >
+                  {side === 'away' ? game.awayTeamName : game.homeTeamName}
+                </button>
+              ))}
+            </div>
+            <div className="space-y-2 mb-4">
+              {(lineupAdjustTeam === 'home' ? lineupAdjustHome : lineupAdjustAway).map((row) => (
+                <div key={row.playerId} className="flex flex-wrap items-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] px-2 py-2">
+                  <span className="text-[10px] text-white/40 w-24 shrink-0 truncate" title={`${row.firstName} ${row.lastName}`}>
+                    {row.firstName.charAt(0)}. {row.lastName}
+                  </span>
+                  <label className="flex items-center gap-1 text-[10px] text-white/40">
+                    BO
+                    <input
+                      type="number"
+                      min={1}
+                      max={10}
+                      value={row.battingOrder}
+                      onChange={(e) =>
+                        updateLineupAdjustRow(lineupAdjustTeam, row.playerId, {
+                          battingOrder: Math.min(10, Math.max(1, parseInt(e.target.value, 10) || 1)),
+                        })
+                      }
+                      className="w-11 rounded border border-white/15 bg-[#152238] px-1 py-0.5 text-[11px] text-slate-100 [color-scheme:dark]"
+                    />
+                  </label>
+                  <label className="flex items-center gap-1 text-[10px] text-white/40 flex-1 min-w-[100px]">
+                    Pos
+                    <select
+                      value={row.position}
+                      onChange={(e) =>
+                        updateLineupAdjustRow(lineupAdjustTeam, row.playerId, { position: Number(e.target.value) })
+                      }
+                      className={`${ADMIN_SELECT_SM} flex-1 min-w-0`}
+                    >
+                      {Object.entries(POS_LABELS).map(([k, v]) => (
+                        <option key={k} value={k}>
+                          {v}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                disabled={lineupAdjustBusy}
+                onClick={() => setLineupAdjustOpen(false)}
+                className="flex-1 rounded-lg border border-white/15 py-2 text-[11px] font-bold uppercase text-white/70 hover:bg-white/5 disabled:opacity-40"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={lineupAdjustBusy}
+                onClick={() => void submitLineupAdjust()}
+                className="flex-1 rounded-lg bg-green-600 py-2 text-[11px] font-bold uppercase text-white hover:bg-green-500 disabled:opacity-40"
+              >
+                {lineupAdjustBusy ? 'Saving…' : 'Save both teams'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -1998,6 +1998,155 @@ export async function adminScoringRoutes(app: FastifyInstance) {
     }
   });
 
+  // ── PUT /:gameId/active-lineup ── Fix batting order / fielding positions for active players (no row delete — keeps sub history)
+  app.put<{
+    Params: { gameId: string };
+    Body: {
+      home: Array<{ playerId: number; battingOrder: number; position: number }>;
+      away: Array<{ playerId: number; battingOrder: number; position: number }>;
+    };
+  }>('/:gameId/active-lineup', async (request, reply) => {
+    try {
+      const gameId = parseInt(request.params.gameId, 10);
+      if (Number.isNaN(gameId)) {
+        return reply.status(400).send({ message: 'Invalid game id' });
+      }
+
+      const [game] = await db
+        .select({
+          status: games.status,
+          isFinalized: games.isFinalized,
+          homeTeamId: games.homeTeamId,
+          awayTeamId: games.awayTeamId,
+        })
+        .from(games)
+        .where(eq(games.id, gameId))
+        .limit(1);
+      if (!game) return reply.status(404).send({ message: 'Game not found' });
+      if (game.isFinalized) {
+        return reply.status(400).send({ message: 'Cannot change lineup after the game is finalized' });
+      }
+      if (game.status !== 'live' && game.status !== 'suspended') {
+        return reply
+          .status(400)
+          .send({ message: 'Active lineup can only be edited while the game is live or suspended' });
+      }
+
+      const body = request.body ?? {};
+      const homeRows = Array.isArray(body.home) ? body.home : [];
+      const awayRows = Array.isArray(body.away) ? body.away : [];
+
+      function validateSide(
+        label: string,
+        rows: Array<{ playerId: number; battingOrder: number; position: number }>,
+      ): string | null {
+        if (rows.length === 0) return `${label}: lineup cannot be empty`;
+        const pids = rows.map((r) => Number(r.playerId)).filter((n) => Number.isFinite(n) && n > 0);
+        if (pids.length !== rows.length) return `${label}: invalid playerId`;
+        if (new Set(pids).size !== pids.length) return `${label}: duplicate player in payload`;
+        const bo = rows.map((r) => Number(r.battingOrder));
+        if (bo.some((b) => !Number.isInteger(b) || b < 1 || b > 10)) {
+          return `${label}: batting order must be integers 1–10`;
+        }
+        if (new Set(bo).size !== bo.length) return `${label}: duplicate batting order`;
+        const pos = rows.map((r) => Number(r.position));
+        if (pos.some((p) => !Number.isInteger(p) || p < 1 || p > 10)) {
+          return `${label}: position must be integers 1–10`;
+        }
+        if (new Set(pos).size !== pos.length) {
+          return `${label}: each defensive position (P,C,IF,OF,DH) must be unique — fix duplicate roles (e.g. multiple DH)`;
+        }
+        return null;
+      }
+
+      const errH = validateSide('Home', homeRows);
+      if (errH) return reply.status(400).send({ message: errH });
+      const errA = validateSide('Away', awayRows);
+      if (errA) return reply.status(400).send({ message: errA });
+
+      const activeHome = await db
+        .select({ playerId: gameLineups.playerId })
+        .from(gameLineups)
+        .where(
+          and(
+            eq(gameLineups.gameId, gameId),
+            eq(gameLineups.teamId, game.homeTeamId),
+            eq(gameLineups.isActive, true),
+          ),
+        );
+      const activeAway = await db
+        .select({ playerId: gameLineups.playerId })
+        .from(gameLineups)
+        .where(
+          and(
+            eq(gameLineups.gameId, gameId),
+            eq(gameLineups.teamId, game.awayTeamId),
+            eq(gameLineups.isActive, true),
+          ),
+        );
+
+      const homeIds = new Set(activeHome.map((r) => r.playerId));
+      const awayIds = new Set(activeAway.map((r) => r.playerId));
+      const bodyHomeIds = new Set(homeRows.map((r) => r.playerId));
+      const bodyAwayIds = new Set(awayRows.map((r) => r.playerId));
+
+      if (homeIds.size !== bodyHomeIds.size || ![...homeIds].every((id) => bodyHomeIds.has(id))) {
+        return reply.status(400).send({
+          message: 'Home payload must list exactly the same active players as the current lineup',
+        });
+      }
+      if (awayIds.size !== bodyAwayIds.size || ![...awayIds].every((id) => bodyAwayIds.has(id))) {
+        return reply.status(400).send({
+          message: 'Away payload must list exactly the same active players as the current lineup',
+        });
+      }
+
+      await db.transaction(async (tx) => {
+        for (const row of homeRows) {
+          await tx
+            .update(gameLineups)
+            .set({
+              battingOrder: row.battingOrder,
+              position: row.position,
+            })
+            .where(
+              and(
+                eq(gameLineups.gameId, gameId),
+                eq(gameLineups.teamId, game.homeTeamId),
+                eq(gameLineups.playerId, row.playerId),
+                eq(gameLineups.isActive, true),
+              ),
+            );
+        }
+        for (const row of awayRows) {
+          await tx
+            .update(gameLineups)
+            .set({
+              battingOrder: row.battingOrder,
+              position: row.position,
+            })
+            .where(
+              and(
+                eq(gameLineups.gameId, gameId),
+                eq(gameLineups.teamId, game.awayTeamId),
+                eq(gameLineups.playerId, row.playerId),
+                eq(gameLineups.isActive, true),
+              ),
+            );
+        }
+      });
+
+      try {
+        getIO().to(`game:${gameId}`).emit('game:update', { lineupAdjusted: true });
+      } catch {}
+
+      return reply.send({ success: true });
+    } catch (err) {
+      request.log.error(err);
+      return reply.status(500).send({ message: 'Failed to update active lineup' });
+    }
+  });
+
   // ── POST /:gameId/finalize ── Finalize the game
   app.post<{ Params: { gameId: string } }>('/:gameId/finalize', async (request, reply) => {
     try {
