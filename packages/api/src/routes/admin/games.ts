@@ -18,6 +18,15 @@ import { eq, and, sql, inArray, asc } from 'drizzle-orm';
 import { finalizeGame, recomputeSeasonBatting, recomputeSeasonPitching, recomputeSeasonFielding, recomputeStandings } from '../../services/finalize-game.js';
 import { firstRowFromExecute } from '../../lib/pg-result.js';
 
+function pgErrorMessage(err: unknown): string {
+  if (!err || typeof err !== 'object') return err instanceof Error ? err.message : String(err);
+  const e = err as Record<string, unknown>;
+  const cause = e.cause as Record<string, unknown> | undefined;
+  const code = e.code ?? cause?.code;
+  const msg = (e.message as string) || (cause?.message as string) || 'Database error';
+  return code != null ? `${msg} (${String(code)})` : msg;
+}
+
 /** Columns safe for all deployed DBs (avoid RETURNING/select * on newer schema fields before migrations run). */
 const adminGameListSelect = {
   id: games.id,
@@ -93,13 +102,39 @@ export async function adminGamesRoutes(app: FastifyInstance) {
     };
   }>('/', async (request, reply) => {
     try {
-      const { leagueId, homeTeamId, awayTeamId, scheduledAt, venue, playoffSeriesId } =
-        request.body ?? {};
+      const body = request.body ?? {};
+      const leagueId = Number(body.leagueId);
+      const homeTeamId = Number(body.homeTeamId);
+      const awayTeamId = Number(body.awayTeamId);
+      const scheduledAtRaw = body.scheduledAt;
+      const venue = body.venue;
+      const playoffRaw = body.playoffSeriesId;
 
-      if (!leagueId || !homeTeamId || !awayTeamId || !scheduledAt) {
-        return reply
-          .status(400)
-          .send({ message: 'leagueId, homeTeamId, awayTeamId, scheduledAt required' });
+      if (
+        !Number.isFinite(leagueId) ||
+        !Number.isFinite(homeTeamId) ||
+        !Number.isFinite(awayTeamId) ||
+        leagueId <= 0 ||
+        homeTeamId <= 0 ||
+        awayTeamId <= 0
+      ) {
+        return reply.status(400).send({ message: 'Valid leagueId, homeTeamId, and awayTeamId are required' });
+      }
+      if (scheduledAtRaw == null || String(scheduledAtRaw).trim() === '') {
+        return reply.status(400).send({ message: 'scheduledAt is required' });
+      }
+      const scheduledAt = new Date(String(scheduledAtRaw));
+      if (Number.isNaN(scheduledAt.getTime())) {
+        return reply.status(400).send({ message: 'Invalid scheduledAt' });
+      }
+
+      let playoffSeriesId: number | null = null;
+      if (playoffRaw != null && String(playoffRaw).trim() !== '') {
+        const sid = Number(playoffRaw);
+        if (!Number.isFinite(sid) || sid <= 0) {
+          return reply.status(400).send({ message: 'Invalid playoffSeriesId' });
+        }
+        playoffSeriesId = sid;
       }
 
       const [inserted] = await db
@@ -108,11 +143,16 @@ export async function adminGamesRoutes(app: FastifyInstance) {
           leagueId,
           homeTeamId,
           awayTeamId,
-          scheduledAt: new Date(scheduledAt),
-          venue: venue ?? null,
-          playoffSeriesId: playoffSeriesId ?? null,
+          scheduledAt,
+          venue: venue != null && String(venue).trim() !== '' ? String(venue).trim() : null,
+          playoffSeriesId,
         })
         .returning({ id: games.id });
+
+      if (!inserted?.id) {
+        request.log.error('insert(games) returned no id');
+        return reply.status(500).send({ message: 'Failed to create game (no row id)' });
+      }
 
       const [game] = await db
         .select(adminGameListSelect)
@@ -120,10 +160,14 @@ export async function adminGamesRoutes(app: FastifyInstance) {
         .where(eq(games.id, inserted.id))
         .limit(1);
 
+      if (!game) {
+        return reply.status(500).send({ message: 'Failed to load game after create' });
+      }
+
       return reply.status(201).send(game);
     } catch (err) {
       request.log.error(err);
-      return reply.status(500).send({ message: 'Failed to create game' });
+      return reply.status(500).send({ message: `Failed to create game: ${pgErrorMessage(err)}` });
     }
   });
 
