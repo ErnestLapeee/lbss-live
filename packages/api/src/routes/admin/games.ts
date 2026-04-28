@@ -139,6 +139,8 @@ export async function adminGamesRoutes(app: FastifyInstance) {
       }
 
       const venueStr = venue != null && String(venue).trim() !== '' ? String(venue).trim() : null;
+      /** Raw `sql\`...\`` placeholders must not be `Date` instances (postgres.js expects string/Buffer). */
+      const scheduledAtIso = scheduledAt.toISOString();
 
       /** Without migration 0012, `games.umpire` / `official_scorer` are missing; narrow SQL avoids driver/ORM SQL that references them. */
       const hasOfficialCols = await gamesTableHasOfficialColumns();
@@ -174,7 +176,7 @@ export async function adminGamesRoutes(app: FastifyInstance) {
             ${leagueId},
             ${homeTeamId},
             ${awayTeamId},
-            ${scheduledAt},
+            ${scheduledAtIso},
             ${venueStr},
             ${playoffSeriesId}
           )
