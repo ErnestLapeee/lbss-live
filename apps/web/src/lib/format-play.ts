@@ -65,14 +65,15 @@ export interface PlayInput {
   eventDetail?: string | null;
   balls?: number;
   strikes?: number;
-  /** Inning half (`top` = visiting team batting). Used to label substitutions when `subKind` is missing. */
+  /** Inning half (`top` = visiting team batting). */
   half?: string | null;
 }
 
-/** Optional context for `formatPlayByPlay` (outs + team ids for substitution inference). */
+/** Optional context for `formatPlayByPlay`. */
 export interface FormatPlayContext {
   outsBefore?: number;
   outsAfter?: number;
+  /** Kept for caller compatibility; substitution labels are intentionally neutral now. */
   homeTeamId?: number;
   awayTeamId?: number;
 }
@@ -166,33 +167,6 @@ function isAutomaticOutEmptySlot(detail: string | null | undefined): boolean {
   return String(detail || '').toLowerCase() === 'automatic_out_empty_slot';
 }
 
-function battingTeamIdFromHalf(
-  half: string | null | undefined,
-  homeTeamId?: number,
-  awayTeamId?: number,
-): number | null {
-  if (homeTeamId == null || awayTeamId == null) return null;
-  const h = String(half ?? '').toLowerCase();
-  if (h === 'top' || h === 't') return awayTeamId;
-  if (h === 'bottom' || h === 'bot' || h === 'b') return homeTeamId;
-  return null;
-}
-
-/** Resolve offensive vs defensive when `subKind` was not stored (older games). */
-function effectiveSubstitutionKind(
-  detail: { subKind?: string; teamId?: number },
-  playHalf: string | null | undefined,
-  homeTeamId?: number,
-  awayTeamId?: number,
-): 'offensive' | 'defensive' | null {
-  if (detail.subKind === 'offensive' || detail.subKind === 'defensive') {
-    return detail.subKind;
-  }
-  const batTeam = battingTeamIdFromHalf(playHalf, homeTeamId, awayTeamId);
-  if (detail.teamId == null || batTeam == null) return null;
-  return detail.teamId === batTeam ? 'offensive' : 'defensive';
-}
-
 // ── The formatter ──────────────────────────────────────────────────
 export function formatPlayByPlay(
   play: PlayInput,
@@ -249,18 +223,8 @@ export function formatPlayByPlay(
       const role = detail.position ? ` (${pos})` : '';
       const outN = lastName(detail.outName);
       const inN = lastName(detail.inName);
-      const kind = effectiveSubstitutionKind(
-        detail,
-        play.half,
-        context?.homeTeamId,
-        context?.awayTeamId,
-      );
       if (detail.position === 1) {
         title = `Pitching change: ${inN} replaces ${outN}${role}`;
-      } else if (kind === 'offensive') {
-        title = `Pinch hitter: ${inN} replaces ${outN}${role}`;
-      } else if (kind === 'defensive') {
-        title = `Defensive substitution: ${inN} replaces ${outN}${role}`;
       } else {
         title = `Substitution: ${inN} replaces ${outN}${role}`;
       }
@@ -447,6 +411,16 @@ export function formatPlayByPlay(
 
     switch (play.eventType) {
       case 'stolen_base':
+        if (movementSuffix) {
+          title = `${label}. ${capitalize(movementSuffix)}`;
+        } else if (scored.length > 0) {
+          title = `${label}. ${scoredPhrase(scored)}`;
+        } else if (runner && runner !== 'Unknown') {
+          title = `${runner} steals a base`;
+        } else {
+          title = label;
+        }
+        break;
       case 'wild_pitch':
       case 'passed_ball':
       case 'balk':

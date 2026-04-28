@@ -11,13 +11,6 @@ interface GameEvent { id: number; eventNumber: number; eventType: string; batter
 interface GameData { id: number; status: string; homeTeamId: number; awayTeamId: number; homeTeamName: string; awayTeamName: string; isFinalized: boolean; umpire?: string | null; officialScorer?: string | null }
 type PositionChangeDraft = { playerId: number; oldPosition: number; newPosition: number };
 
-function battingTeamIdFromHalf(half: string | undefined, homeTeamId: number, awayTeamId: number): number | null {
-  const h = String(half ?? '').toLowerCase();
-  if (h === 'top' || h === 't') return awayTeamId;
-  if (h === 'bottom' || h === 'bot' || h === 'b') return homeTeamId;
-  return null;
-}
-
 function formatScoringMiniPbpLine(evt: GameEvent, game?: GameData | null): string {
   if (String(evt.eventDetail || '').toLowerCase() === 'automatic_out_empty_slot') {
     return 'Automatic out (empty lineup slot)';
@@ -37,8 +30,6 @@ function formatScoringMiniPbpLine(evt: GameEvent, game?: GameData | null): strin
     try {
       const d = JSON.parse(evt.eventDetail || '{}') as {
         kind?: string;
-        subKind?: string;
-        teamId?: number;
         outName?: string;
         inName?: string;
         position?: number;
@@ -57,17 +48,7 @@ function formatScoringMiniPbpLine(evt: GameEvent, game?: GameData | null): strin
       if (d.kind === 'player_change' || d.outName != null || d.inName != null) {
         const pos = d.position === 1 ? 'P' : (d.position != null ? (POS_LABELS[d.position] ?? `#${d.position}`) : '');
         const role = pos ? ` (${pos})` : '';
-        let effective: 'offensive' | 'defensive' | null = null;
-        if (d.subKind === 'offensive' || d.subKind === 'defensive') effective = d.subKind;
-        else if (game && d.teamId != null) {
-          const bat = battingTeamIdFromHalf(evt.half, game.homeTeamId, game.awayTeamId);
-          if (bat != null) effective = d.teamId === bat ? 'offensive' : 'defensive';
-        }
-        let prefix: string;
-        if (d.position === 1) prefix = 'Pitching change';
-        else if (effective === 'offensive') prefix = 'Pinch hitter';
-        else if (effective === 'defensive') prefix = 'Defensive substitution';
-        else prefix = 'Substitution';
+        const prefix = d.position === 1 ? 'Pitching change' : 'Substitution';
         return `${prefix}: ${d.inName ?? '?'} replaces ${d.outName ?? '?'}${role}`;
       }
     } catch { /* fall through */ }
@@ -2942,7 +2923,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
               return null;
             })()}
 
-            {/* DEFENSIVE SUB / POSITION SWAP */}
+            {/* PLAYER SUB / POSITION SWAP */}
             {step === 'sub_defense' && subPosition !== null && (() => {
               const currentPlayer = draftFieldingLineup.find(l => l.position === subPosition);
               const changeTeamName = defensiveChangeTeamId === game.homeTeamId ? game.homeTeamName : game.awayTeamName;
@@ -2955,7 +2936,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                     <button onClick={() => setStep('swap_position')}
                       className="flex-1 py-2 bg-blue-900/40 hover:bg-blue-800/40 text-white text-[10px] font-bold rounded uppercase">Arrange Positions</button>
                     <button onClick={() => setStep('sub_defense')}
-                      className="flex-1 py-2 bg-white/10 text-white/60 text-[10px] font-bold rounded uppercase">Sub from Bench</button>
+                      className="flex-1 py-2 bg-white/10 text-white/60 text-[10px] font-bold rounded uppercase">Replace Player</button>
                   </div>
                   {pendingPositionChanges.length > 0 && (
                     <div className="mb-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2">
@@ -3063,7 +3044,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                   <p className="text-[10px] text-white/40 uppercase font-bold text-center mb-1">
                     {offenseTeamName} · #{subBattingSlot} — {phName ? `${phName.firstName.charAt(0)}. ${phName.lastName}` : 'open slot'}
                   </p>
-                  <p className="text-[9px] text-white/30 text-center mb-2">Pinch hitter / replace in lineup (bench players below)</p>
+                  <p className="text-[9px] text-white/30 text-center mb-2">Choose who comes in for this lineup spot</p>
                   <div className="space-y-1">
                     {availableBattingSubs.map(p => (
                       <button key={p.playerId} onClick={() => handleOffensiveSub(p.playerId)}

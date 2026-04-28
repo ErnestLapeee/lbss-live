@@ -389,27 +389,27 @@ describe('Substitution', () => {
     expect(result.title).toBe('Pitching change: In Player replaces Out Player (P)');
   });
 
-  it('labels explicit offensive subKind', () => {
+  it('labels explicit offensive subKind as a plain substitution', () => {
     const result = formatPlayByPlay(
       make({
         eventType: 'substitution',
         eventDetail: playerChangeDetail({ subKind: 'offensive' }),
       }),
     );
-    expect(result.title).toBe('Pinch hitter: In Player replaces Out Player (1B)');
+    expect(result.title).toBe('Substitution: In Player replaces Out Player (1B)');
   });
 
-  it('labels explicit defensive subKind', () => {
+  it('labels explicit defensive subKind as a plain substitution', () => {
     const result = formatPlayByPlay(
       make({
         eventType: 'substitution',
         eventDetail: playerChangeDetail({ subKind: 'defensive' }),
       }),
     );
-    expect(result.title).toBe('Defensive substitution: In Player replaces Out Player (1B)');
+    expect(result.title).toBe('Substitution: In Player replaces Out Player (1B)');
   });
 
-  it('infers pinch hitter when batting team matches detail.teamId', () => {
+  it('does not infer pinch hitter from team context', () => {
     const result = formatPlayByPlay(
       make({
         eventType: 'substitution',
@@ -418,10 +418,10 @@ describe('Substitution', () => {
       }),
       { homeTeamId: 1, awayTeamId: 5 },
     );
-    expect(result.title).toBe('Pinch hitter: In Player replaces Out Player (1B)');
+    expect(result.title).toBe('Substitution: In Player replaces Out Player (1B)');
   });
 
-  it('infers defensive substitution when fielding team matches detail.teamId', () => {
+  it('does not infer defensive substitution from team context', () => {
     const result = formatPlayByPlay(
       make({
         eventType: 'substitution',
@@ -430,7 +430,7 @@ describe('Substitution', () => {
       }),
       { homeTeamId: 1, awayTeamId: 5 },
     );
-    expect(result.title).toBe('Defensive substitution: In Player replaces Out Player (1B)');
+    expect(result.title).toBe('Substitution: In Player replaces Out Player (1B)');
   });
 
   it('falls back when team context is missing', () => {
