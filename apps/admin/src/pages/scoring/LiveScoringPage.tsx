@@ -451,7 +451,10 @@ export function LiveScoringPage() {
   const fieldingLineup = (fieldingTeamId === game?.homeTeamId ? homeLineup : awayLineup)
     .filter(l => l.isActive).sort((a, b) => a.battingOrder - b.battingOrder);
   const defensiveChangeTeamId = subTeamId ?? fieldingTeamId;
+  const offensiveChangeTeamId = subTeamId ?? battingTeamId;
   const defensiveChangeLineup = (defensiveChangeTeamId === game?.homeTeamId ? homeLineup : awayLineup)
+    .filter(l => l.isActive).sort((a, b) => a.battingOrder - b.battingOrder);
+  const offensiveChangeLineup = (offensiveChangeTeamId === game?.homeTeamId ? homeLineup : awayLineup)
     .filter(l => l.isActive).sort((a, b) => a.battingOrder - b.battingOrder);
   const draftFieldingLineup = useMemo(() => {
     if (pendingPositionChanges.length === 0) return defensiveChangeLineup;
@@ -1175,7 +1178,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
 
   const handleOffensiveSub = async (newPlayerId: number) => {
     if (!game || subBattingSlot === null) return;
-    const outPlayer = battingLineup.find(l => l.battingOrder === subBattingSlot);
+    const outPlayer = offensiveChangeLineup.find(l => l.battingOrder === subBattingSlot);
     if (!outPlayer) return;
     try {
       await apiPut(`/admin/scoring/${gameId}/substitute`, {
@@ -1184,7 +1187,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
         inning: gameState?.inning ?? 1, half: gameState?.half ?? 'top',
         subKind: 'offensive',
       });
-      setSubBattingSlot(null); setStep('pitch');
+      setSubBattingSlot(null); setSubTeamId(null); setStep('pitch');
       await loadState(); await loadRosters();
     } catch (err: any) { alert(err.message || 'Sub failed'); }
   };
@@ -1790,14 +1793,17 @@ function needsRunnerAdvanceErrorFieldingPrompt(
   if (!gameState) return null;
 
   // Roster for subs (players not in current lineup)
-  const fieldingTeamRoster = fieldingTeamId === game.homeTeamId ? homeRoster : awayRoster;
-  const battingTeamRoster = battingTeamId === game.homeTeamId ? homeRoster : awayRoster;
-  const activeFieldingIds = new Set(fieldingLineup.map(l => l.playerId));
-  const activeBattingIds = new Set(battingLineup.map(l => l.playerId));
   const defensiveChangeTeamRoster = defensiveChangeTeamId === game.homeTeamId ? homeRoster : awayRoster;
   const activeDefensiveChangeIds = new Set(defensiveChangeLineup.map(l => l.playerId));
+  const offensiveChangeTeamRoster = offensiveChangeTeamId === game.homeTeamId ? homeRoster : awayRoster;
+  const activeOffensiveChangeIds = new Set(offensiveChangeLineup.map(l => l.playerId));
   const availableFieldingSubs = defensiveChangeTeamRoster.filter(p => !activeDefensiveChangeIds.has(p.playerId));
-  const availableBattingSubs = battingTeamRoster.filter(p => !activeBattingIds.has(p.playerId));
+  const availableBattingSubs = offensiveChangeTeamRoster.filter(p => !activeOffensiveChangeIds.has(p.playerId));
+  const setSubEditTeam = (teamId: number) => {
+    if (subTeamId === teamId) return;
+    setSubTeamId(teamId);
+    setPendingPositionChanges([]);
+  };
 
   const getCurrentPitcherPitches = (pid: number) => pitcherPitchCounts[pid]?.total ?? 0;
   const getCurrentPitcherBalls = (pid: number) => pitcherPitchCounts[pid]?.balls ?? 0;
@@ -1852,7 +1858,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
             <div className="text-[9px] text-white/30 font-bold uppercase tracking-wider mb-0.5">At Bat</div>
             <button onClick={() => {
               if (!currentBatter) return;
-              setSubTeamId(null);
+              setSubTeamId(battingTeamId ?? null);
               setSubPosition(null);
               setSubBattingSlot(battingOrderSlot);
               setStep('sub_offense');
@@ -1879,12 +1885,12 @@ function needsRunnerAdvanceErrorFieldingPrompt(
             </div>
           )}
 
-          {/* Batting lineup — tap a hitter for pinch hitter (same bench list as At Bat / Misc) */}
+          {/* Batting lineup — tap a hitter to replace that batting-order slot */}
           <div className="mb-3">
             <div className="text-[9px] text-white/30 font-bold uppercase tracking-wider px-1 mb-0.5">
               {battingSide === 'away' ? game.awayTeamName : game.homeTeamName}
             </div>
-            <div className="text-[8px] text-white/20 px-1 mb-1.5 leading-tight">Tap a name to pinch hit / replace in order</div>
+            <div className="text-[8px] text-white/20 px-1 mb-1.5 leading-tight">Tap a name to replace that batting-order slot</div>
             {Array.from({ length: 9 }, (_, i) => {
               const slot = i + 1;
               const entry = battingLineup.find(l => l.battingOrder === slot);
@@ -1894,7 +1900,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                   key={slot}
                   onClick={() => {
                     if (!entry) return;
-                    setSubTeamId(null);
+                    setSubTeamId(battingTeamId ?? null);
                     setSubPosition(null);
                     setSubBattingSlot(slot);
                     setStep('sub_offense');
@@ -2932,6 +2938,23 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                   <p className="text-[10px] text-white/40 uppercase font-bold text-center mb-2">
                     {changeTeamName} · {POS_LABELS[subPosition]} — {currentPlayer?.lastName ?? ''}
                   </p>
+                  <div className="mb-2 grid grid-cols-2 gap-1">
+                    {[
+                      { id: game.awayTeamId, label: game.awayTeamName },
+                      { id: game.homeTeamId, label: game.homeTeamName },
+                    ].map(team => (
+                      <button
+                        key={team.id}
+                        type="button"
+                        onClick={() => setSubEditTeam(team.id)}
+                        className={`rounded px-2 py-1.5 text-[9px] font-bold uppercase transition-colors ${
+                          defensiveChangeTeamId === team.id ? 'bg-amber-500/20 text-amber-200' : 'bg-white/5 text-white/45 hover:bg-white/10 hover:text-white/70'
+                        }`}
+                      >
+                        {team.label}
+                      </button>
+                    ))}
+                  </div>
                   <div className="flex gap-1 mb-2">
                     <button onClick={() => setStep('swap_position')}
                       className="flex-1 py-2 bg-blue-900/40 hover:bg-blue-800/40 text-white text-[10px] font-bold rounded uppercase">Arrange Positions</button>
@@ -2980,6 +3003,23 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                   <p className="text-[10px] text-white/40 uppercase font-bold text-center mb-1">
                     {changeTeamName}: move {currentPlayer?.lastName ?? ''} ({POS_LABELS[subPosition]}) to:
                   </p>
+                  <div className="mb-2 grid grid-cols-2 gap-1">
+                    {[
+                      { id: game.awayTeamId, label: game.awayTeamName },
+                      { id: game.homeTeamId, label: game.homeTeamName },
+                    ].map(team => (
+                      <button
+                        key={team.id}
+                        type="button"
+                        onClick={() => setSubEditTeam(team.id)}
+                        className={`rounded px-2 py-1.5 text-[9px] font-bold uppercase transition-colors ${
+                          defensiveChangeTeamId === team.id ? 'bg-amber-500/20 text-amber-200' : 'bg-white/5 text-white/45 hover:bg-white/10 hover:text-white/70'
+                        }`}
+                      >
+                        {team.label}
+                      </button>
+                    ))}
+                  </div>
                   <div className="mb-2 grid grid-cols-3 gap-1">
                     {[...draftFieldingLineup].sort((a, b) => a.position - b.position).map(entry => (
                       <button key={entry.playerId} onClick={() => setSubPosition(entry.position)}
@@ -3022,6 +3062,23 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                 <p className="text-[10px] text-white/40 uppercase font-bold text-center mb-2">
                   {defensiveChangeTeamId === game.homeTeamId ? game.homeTeamName : game.awayTeamName} defense
                 </p>
+                <div className="mb-2 grid grid-cols-2 gap-1">
+                  {[
+                    { id: game.awayTeamId, label: game.awayTeamName },
+                    { id: game.homeTeamId, label: game.homeTeamName },
+                  ].map(team => (
+                    <button
+                      key={team.id}
+                      type="button"
+                      onClick={() => setSubEditTeam(team.id)}
+                      className={`rounded px-2 py-1.5 text-[9px] font-bold uppercase transition-colors ${
+                        defensiveChangeTeamId === team.id ? 'bg-amber-500/20 text-amber-200' : 'bg-white/5 text-white/45 hover:bg-white/10 hover:text-white/70'
+                      }`}
+                    >
+                      {team.label}
+                    </button>
+                  ))}
+                </div>
                 <div className="space-y-1">
                   {draftFieldingLineup.map(entry => (
                     <button key={entry.playerId} onClick={() => { setSubPosition(entry.position); setStep('swap_position'); }}
@@ -3035,15 +3092,55 @@ function needsRunnerAdvanceErrorFieldingPrompt(
               </div>
             )}
 
-            {/* OFFENSIVE SUB (pinch hitter) — opened from At Bat, batting-order list, or Misc */}
+            {/* LINEUP REPLACEMENT — opened from At Bat, batting-order list, or Misc */}
             {step === 'sub_offense' && subBattingSlot !== null && (() => {
-              const offenseTeamName = battingTeamId === game.homeTeamId ? game.homeTeamName : game.awayTeamName;
-              const phName = battingLineup.find(l => l.battingOrder === subBattingSlot);
+              const offenseTeamName = offensiveChangeTeamId === game.homeTeamId ? game.homeTeamName : game.awayTeamName;
+              const phName = offensiveChangeLineup.find(l => l.battingOrder === subBattingSlot);
               return (
                 <div className="bg-[#111d30] rounded-lg border border-white/10 p-3 max-h-64 overflow-y-auto">
                   <p className="text-[10px] text-white/40 uppercase font-bold text-center mb-1">
                     {offenseTeamName} · #{subBattingSlot} — {phName ? `${phName.firstName.charAt(0)}. ${phName.lastName}` : 'open slot'}
                   </p>
+                  <div className="mb-2 grid grid-cols-2 gap-1">
+                    {[
+                      { id: game.awayTeamId, label: game.awayTeamName },
+                      { id: game.homeTeamId, label: game.homeTeamName },
+                    ].map(team => (
+                      <button
+                        key={team.id}
+                        type="button"
+                        onClick={() => setSubEditTeam(team.id)}
+                        className={`rounded px-2 py-1.5 text-[9px] font-bold uppercase transition-colors ${
+                          offensiveChangeTeamId === team.id ? 'bg-amber-500/20 text-amber-200' : 'bg-white/5 text-white/45 hover:bg-white/10 hover:text-white/70'
+                        }`}
+                      >
+                        {team.label}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="mb-2 grid grid-cols-3 gap-1">
+                    {Array.from({ length: 9 }, (_, i) => {
+                      const slot = i + 1;
+                      const entry = offensiveChangeLineup.find(l => l.battingOrder === slot);
+                      return (
+                        <button
+                          key={slot}
+                          type="button"
+                          onClick={() => entry && setSubBattingSlot(slot)}
+                          disabled={!entry}
+                          className={`rounded px-1 py-1.5 text-[9px] transition-colors ${
+                            subBattingSlot === slot
+                              ? 'bg-amber-500/20 text-amber-200'
+                              : entry
+                                ? 'bg-white/5 text-white/55 hover:bg-white/10 hover:text-white/80'
+                                : 'bg-white/[0.03] text-white/15'
+                          }`}
+                        >
+                          <span className="font-bold">#{slot}</span> {entry ? entry.lastName : 'empty'}
+                        </button>
+                      );
+                    })}
+                  </div>
                   <p className="text-[9px] text-white/30 text-center mb-2">Choose who comes in for this lineup spot</p>
                   <div className="space-y-1">
                     {availableBattingSubs.map(p => (
@@ -3063,9 +3160,9 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                 <div className="overflow-y-auto divide-y divide-white/5">
                   {[
                     { label: 'Pitching Change', fn: () => { setSubTeamId(fieldingTeamId ?? null); setSubPosition(1); setStep('sub_defense'); } },
-                    { label: 'Pinch Hitter', fn: () => {
+                    { label: 'Replace Lineup Player', fn: () => {
                       if (!currentBatter) return;
-                      setSubTeamId(null);
+                      setSubTeamId(battingTeamId ?? null);
                       setSubPosition(null);
                       setSubBattingSlot(battingOrderSlot);
                       setStep('sub_offense');
