@@ -18,7 +18,7 @@ const STRIKEOUT_EVENTS = new Set<string>(SHARED_STRIKEOUT_EVENTS);
 const WALK_EVENTS = new Set<string>(BASE_ON_BALLS_EVENTS);
 
 const GROUND_BALL_OUTS = new Set(['ground_out', 'bunt_out']);
-const FLY_BALL_OUTS = new Set(['fly_out', 'line_out', 'pop_out', 'infield_fly']);
+const FLY_BALL_OUTS = new Set(['fly_out', 'line_out', 'pop_out', 'infield_fly', 'foul_out']);
 
 /** Per-run reasons that mark the run as unearned */
 const UNEARNED_REASONS = new Set(['passed_ball', 'advance_on_error', 'error', 'defensive_indifference', 'obstruction', 'catcher_obstruction', 'catcher_interference']);

@@ -41,7 +41,7 @@ const OUT_BATTED_EVENTS = new Set([
 const SACRIFICE_FLY_EVENTS = new Set(['sacrifice_fly', 'sac_fly_error']);
 const SACRIFICE_BUNT_EVENTS = new Set(['sacrifice_bunt', 'sac_bunt_error']);
 const GROUND_BALL_OUTS = new Set(['ground_out', 'bunt_out']);
-const FLY_BALL_OUTS = new Set(['fly_out', 'line_out', 'pop_out', 'infield_fly']);
+const FLY_BALL_OUTS = new Set(['fly_out', 'line_out', 'pop_out', 'infield_fly', 'foul_out']);
 
 /** Third strike caught by catcher — credit PO(2) when scorer did not enter fielding IDs / sequence. */
 const CATCHER_PUTOUT_STRIKEOUT_TYPES = new Set([
@@ -260,6 +260,19 @@ function buildPositionMapsByEvent(events: any[], lineups: any[]): Map<number, Ev
   }
 
   return byEventId;
+}
+
+/** Positions charged with an error from one scorebook segment ("E6", "E56"). */
+function errorPositionsFromSegment(seg: string): number[] {
+  const s = seg.trim();
+  if (!s.startsWith('E')) return [];
+  const tail = s.slice(1).replace(/\D/g, '');
+  const positions: number[] = [];
+  for (const ch of tail) {
+    const p = Number(ch);
+    if (!isNaN(p) && p >= 1 && p <= 9) positions.push(p);
+  }
+  return positions;
 }
 
 function scoreDeltasFromEvent(e: any): { home: number; away: number } {
@@ -648,23 +661,31 @@ export async function finalizeGame(gameId: number, userId?: number, options?: Fi
 
     // Fallback: if no player IDs but fieldingSequence exists, parse it
     if (e.fieldingSequence) {
-      const seqStr = e.fieldingSequence;
-      const isErrorSeq = seqStr.startsWith('E');
-      if (isErrorSeq && err.length === 0) {
-        // Error fielding: "E6" or "E4" → map position to player ID
-        const positions = seqStr.replace(/^E/, '').split('').map(Number).filter(n => !isNaN(n) && n >= 1 && n <= 9);
-        err = positions.map(p => posMap.get(p)).filter((pid): pid is number => pid !== undefined);
-      } else if (!isErrorSeq && po.length === 0 && ast.length === 0) {
-        // Convention: last position = putout, others = assists
-        const positions = seqStr.split('-').map(Number).filter(n => !isNaN(n) && n >= 1 && n <= 9);
-        if (positions.length > 0) {
-          const lastPos = positions[positions.length - 1];
-          const putoutPid = posMap.get(lastPos);
-          if (putoutPid) po = [putoutPid];
-          ast = positions.slice(0, -1)
-            .map(p => posMap.get(p))
-            .filter((pid): pid is number => pid !== undefined);
+      const segments = e.fieldingSequence.trim().split('-').map((s: string) => s.trim()).filter(Boolean);
+      const hasErrorSegment = segments.some(s => s.startsWith('E'));
+
+      if (err.length === 0) {
+        const errorPositions: number[] = [];
+        for (const seg of segments) errorPositions.push(...errorPositionsFromSegment(seg));
+        if (errorPositions.length > 0) {
+          err = errorPositions.map(p => posMap.get(p)).filter((pid): pid is number => pid !== undefined);
         }
+      }
+
+      // Convention: last numeric position = putout, earlier = assists (e.g. "6-3").
+      // Do not infer PO/A from a numeric-only trail when an E* segment is present (e.g. "5-E3").
+      const numericPositions = segments
+        .filter(seg => /^\d+$/.test(seg))
+        .map(seg => Number(seg))
+        .filter(n => !isNaN(n) && n >= 1 && n <= 9);
+      if (!hasErrorSegment && numericPositions.length > 0 && po.length === 0 && ast.length === 0) {
+        const lastPos = numericPositions[numericPositions.length - 1];
+        const putoutPid = posMap.get(lastPos);
+        if (putoutPid) po = [putoutPid];
+        ast = numericPositions
+          .slice(0, -1)
+          .map(p => posMap.get(p))
+          .filter((pid): pid is number => pid !== undefined);
       }
     }
 
