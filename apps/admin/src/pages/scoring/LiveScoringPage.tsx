@@ -448,8 +448,15 @@ export function LiveScoringPage() {
   const fieldingTeamId = gameState?.half === 'top' ? game?.homeTeamId : game?.awayTeamId;
   const battingLineup = (battingTeamId === game?.homeTeamId ? homeLineup : awayLineup)
     .filter(l => l.isActive).sort((a, b) => a.battingOrder - b.battingOrder);
-  const fieldingLineup = (fieldingTeamId === game?.homeTeamId ? homeLineup : awayLineup)
-    .filter(l => l.isActive).sort((a, b) => a.battingOrder - b.battingOrder);
+  const fieldingLineupActive = useMemo(
+    () => (fieldingTeamId === game?.homeTeamId ? homeLineup : awayLineup).filter(l => l.isActive),
+    [homeLineup, awayLineup, fieldingTeamId, game?.homeTeamId],
+  );
+  /** Field positions P→DH for sidebar (immutable sort — avoids mutating derived arrays during render). */
+  const fieldingLineupByPosition = useMemo(
+    () => [...fieldingLineupActive].sort((a, b) => a.position - b.position),
+    [fieldingLineupActive],
+  );
   const defensiveChangeTeamId = subTeamId ?? fieldingTeamId;
   const offensiveChangeTeamId = subTeamId ?? battingTeamId;
   const defensiveChangeLineup = (defensiveChangeTeamId === game?.homeTeamId ? homeLineup : awayLineup)
@@ -464,7 +471,7 @@ export function LiveScoringPage() {
       position: nextByPlayerId.get(entry.playerId) ?? entry.position,
     }));
   }, [defensiveChangeLineup, pendingPositionChanges]);
-  const currentPitcher = fieldingLineup.find(l => l.position === 1);
+  const currentPitcher = fieldingLineupActive.find(l => l.position === 1);
 
   const battingSide = gameState?.half === 'top' ? 'away' : 'home';
   const rawIdx = derivedBatterIdx[battingSide] || 0;
@@ -965,7 +972,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
       const errorFielderIds: number[] = [];
       const addFieldingCredits = (positions: number[]) => {
         for (let i = 0; i < positions.length; i++) {
-          const fielder = fieldingLineup.find(l => l.position === positions[i]);
+          const fielder = fieldingLineupActive.find(l => l.position === positions[i]);
           if (!fielder) continue;
           if (i === positions.length - 1) putoutFielderIds.push(fielder.playerId);
           else assistFielderIds.push(fielder.playerId);
@@ -981,7 +988,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
           const eStr = r.advanceErrorFielding?.length ? ` E${r.advanceErrorFielding.join('')}` : '';
           if (r.advanceErrorFielding?.length) {
             for (const posNum of r.advanceErrorFielding) {
-              const fielder = fieldingLineup.find(l => l.position === posNum);
+              const fielder = fieldingLineupActive.find(l => l.position === posNum);
               if (fielder) errorFielderIds.push(fielder.playerId);
             }
           }
@@ -1086,12 +1093,12 @@ function needsRunnerAdvanceErrorFieldingPrompt(
       if (fld.length > 0) {
         if (isErrorAction) {
           for (const posNum of fld) {
-            const fielder = fieldingLineup.find(l => l.position === posNum);
+            const fielder = fieldingLineupActive.find(l => l.position === posNum);
             if (fielder) errorFielderIds.push(fielder.playerId);
           }
         } else {
           for (let i = 0; i < fld.length; i++) {
-            const fielder = fieldingLineup.find(l => l.position === fld[i]);
+            const fielder = fieldingLineupActive.find(l => l.position === fld[i]);
             if (fielder) {
               if (i === fld.length - 1) putoutFielderIds.push(fielder.playerId);
               else assistFielderIds.push(fielder.playerId);
@@ -1291,14 +1298,14 @@ function needsRunnerAdvanceErrorFieldingPrompt(
         if (isErrorPlay) {
           // For error events: all positions are error fielders
           for (const posNum of fielding) {
-            const fielder = fieldingLineup.find(l => l.position === posNum);
+            const fielder = fieldingLineupActive.find(l => l.position === posNum);
             if (fielder) errorFielderIds.push(fielder.playerId);
           }
         } else {
           // Convention: last position in sequence = putout, all others = assists
           for (let i = 0; i < fielding.length; i++) {
             const posNum = fielding[i];
-            const fielder = fieldingLineup.find(l => l.position === posNum);
+            const fielder = fieldingLineupActive.find(l => l.position === posNum);
             if (fielder) {
               if (i === fielding.length - 1) putoutFielderIds.push(fielder.playerId);
               else assistFielderIds.push(fielder.playerId);
@@ -1310,7 +1317,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
       for (const r of runners) {
         if (r.outcome !== 'out' || !r.fielding?.length) continue;
         for (let i = 0; i < r.fielding.length; i++) {
-          const fielder = fieldingLineup.find(l => l.position === r.fielding![i]);
+          const fielder = fieldingLineupActive.find(l => l.position === r.fielding![i]);
           if (!fielder) continue;
           if (i === r.fielding.length - 1) putoutFielderIds.push(fielder.playerId);
           else assistFielderIds.push(fielder.playerId);
@@ -1321,7 +1328,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
       for (const r of runners) {
         if (r.outcome === 'safe' && r.advanceErrorFielding && r.advanceErrorFielding.length > 0) {
           for (const posNum of r.advanceErrorFielding) {
-            const fielder = fieldingLineup.find(l => l.position === posNum);
+            const fielder = fieldingLineupActive.find(l => l.position === posNum);
             if (fielder) errorFielderIds.push(fielder.playerId);
           }
         }
@@ -1925,8 +1932,8 @@ function needsRunnerAdvanceErrorFieldingPrompt(
             <div className="text-[9px] text-white/30 font-bold uppercase tracking-wider px-1 mb-1.5">
               {battingSide === 'away' ? game.homeTeamName : game.awayTeamName}
             </div>
-            {fieldingLineup.sort((a, b) => a.position - b.position).map(entry => (
-              <div key={entry.playerId} onClick={() => { setSubTeamId(fieldingTeamId ?? null); setSubPosition(entry.position); setStep('sub_defense'); }}
+            {fieldingLineupByPosition.map(entry => (
+              <div key={entry.id} onClick={() => { setSubTeamId(fieldingTeamId ?? null); setSubPosition(entry.position); setStep('sub_defense'); }}
                 className="flex items-center gap-1.5 px-2 py-0.5 text-[11px] text-white/40 hover:bg-white/5 rounded cursor-pointer">
                 <span className="text-white/25 font-mono w-5 text-right">{POS_LABELS[entry.position]}</span>
                 <span className="flex-1 truncate">{entry.firstName.charAt(0)}. {entry.lastName}</span>
@@ -2399,7 +2406,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                   <div className="p-3">
                     <div className="grid grid-cols-3 gap-2">
                       {POS_GRID.map(p => {
-                        const fielder = fieldingLineup.find(l => l.position === p.pos);
+                        const fielder = fieldingLineupActive.find(l => l.position === p.pos);
                         return (
                           <button key={p.pos} type="button" onClick={() => setRunnerAdvanceErrorFielding([...runnerAdvanceErrorFielding, p.pos])}
                             className="py-3 bg-white/5 hover:bg-white/10 border border-white/10 text-white text-xs font-bold rounded-lg transition-colors">
@@ -2508,7 +2515,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                     <div className="p-3">
                       <div className="grid grid-cols-3 gap-2">
                         {POS_GRID.map(p => {
-                          const fielder = fieldingLineup.find(l => l.position === p.pos);
+                          const fielder = fieldingLineupActive.find(l => l.position === p.pos);
                           return (
                             <button key={p.pos} onClick={() => setRunnerOutFielding([...runnerOutFielding, p.pos])}
                               className="py-3 bg-white/5 hover:bg-white/10 border border-white/10 text-white text-xs font-bold rounded-lg transition-colors">
@@ -2809,7 +2816,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                       <div className="p-3">
                         <div className="grid grid-cols-3 gap-2">
                           {POS_GRID.map(p => {
-                            const fielder = fieldingLineup.find(l => l.position === p.pos);
+                            const fielder = fieldingLineupActive.find(l => l.position === p.pos);
                             return (
                               <button key={p.pos} onClick={() => setRunnerActionFielding([...runnerActionFielding, p.pos])}
                                 className="py-3 bg-white/5 hover:bg-white/10 border border-white/10 text-white text-xs font-bold rounded-lg transition-colors">
@@ -2894,7 +2901,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                     <div className="p-3">
                       <div className="grid grid-cols-3 gap-2">
                         {POS_GRID.map(p => {
-                          const fielder = fieldingLineup.find(l => l.position === p.pos);
+                          const fielder = fieldingLineupActive.find(l => l.position === p.pos);
                           return (
                             <button key={p.pos} onClick={() => setRunnerActionFielding([...runnerActionFielding, p.pos])}
                               className="py-3 bg-white/5 hover:bg-white/10 border border-white/10 text-white text-xs font-bold rounded-lg transition-colors">
