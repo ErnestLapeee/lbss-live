@@ -11,6 +11,19 @@ interface GameEvent { id: number; eventNumber: number; eventType: string; batter
 interface GameData { id: number; status: string; homeTeamId: number; awayTeamId: number; homeTeamName: string; awayTeamName: string; isFinalized: boolean; umpire?: string | null; officialScorer?: string | null }
 type PositionChangeDraft = { playerId: number; oldPosition: number; newPosition: number };
 
+interface LineupHintsEntry { pa: number; positions: number[] }
+
+/** Prefer primary defensive positions by season innings; skip slots already taken in this lineup draft. */
+function pickLineupFieldingPosition(preferred: number[] | undefined, used: Set<number>): number {
+  for (const pos of preferred ?? []) {
+    if (Number.isInteger(pos) && pos >= 1 && pos <= 10 && !used.has(pos)) return pos;
+  }
+  for (let p = 1; p <= 10; p++) {
+    if (!used.has(p)) return p;
+  }
+  return 1;
+}
+
 /** Apply batting order / position edits from "Adjust active lineups" before refetch completes. */
 function patchLineupBoPos(
   prev: LineupEntry[],
@@ -290,6 +303,10 @@ export function LiveScoringPage() {
   const [addRosterBats, setAddRosterBats] = useState('');
   const [addRosterThrows, setAddRosterThrows] = useState('');
   const [addRosterBusy, setAddRosterBusy] = useState(false);
+
+  /** Season PA + defensive position ranks for lineup entry (from API). */
+  const [lineupHintsHome, setLineupHintsHome] = useState<Record<number, LineupHintsEntry>>({});
+  const [lineupHintsAway, setLineupHintsAway] = useState<Record<number, LineupHintsEntry>>({});
 
   const [lineupAdjustOpen, setLineupAdjustOpen] = useState(false);
   const [lineupAdjustTeam, setLineupAdjustTeam] = useState<'home' | 'away'>('away');
@@ -578,8 +595,10 @@ export function LiveScoringPage() {
   };
   const addToSetup = (side: 'home' | 'away', pid: number) => {
     const list = side === 'home' ? setupHome : setupAway;
-    if (list.find(p => p.playerId === pid)) return;
-    const pos = list.length === 0 ? 1 : Math.min(list.length + 1, 10);
+    if (list.find((p) => p.playerId === pid)) return;
+    const hintsMap = side === 'home' ? lineupHintsHome : lineupHintsAway;
+    const used = new Set(list.map((p) => p.position));
+    const pos = pickLineupFieldingPosition(hintsMap[pid]?.positions, used);
     if (side === 'home') setSetupHome([...list, { playerId: pid, position: pos }]);
     else setSetupAway([...list, { playerId: pid, position: pos }]);
   };
@@ -639,6 +658,42 @@ export function LiveScoringPage() {
       await fetchAndApplySeasonLineup('home');
     })();
   }, [phase, game, gameId, homeRoster.length, awayRoster.length, fetchAndApplySeasonLineup]);
+
+  useEffect(() => {
+    if (phase !== 'setup' || !game) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const [h, a] = await Promise.all([
+          apiGet(`/admin/scoring/${gameId}/lineup-hints/${game.homeTeamId}`) as Promise<{ players: Record<string, LineupHintsEntry> }>,
+          apiGet(`/admin/scoring/${gameId}/lineup-hints/${game.awayTeamId}`) as Promise<{ players: Record<string, LineupHintsEntry> }>,
+        ]);
+        if (cancelled) return;
+        const normalize = (raw: Record<string, LineupHintsEntry>) => {
+          const out: Record<number, LineupHintsEntry> = {};
+          for (const [k, v] of Object.entries(raw ?? {})) {
+            out[Number(k)] = {
+              pa: Math.max(0, Number(v.pa) || 0),
+              positions: Array.isArray(v.positions)
+                ? v.positions.filter((n) => Number.isInteger(n) && n >= 1 && n <= 10)
+                : [],
+            };
+          }
+          return out;
+        };
+        setLineupHintsHome(normalize(h.players ?? {}));
+        setLineupHintsAway(normalize(a.players ?? {}));
+      } catch {
+        if (!cancelled) {
+          setLineupHintsHome({});
+          setLineupHintsAway({});
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [phase, gameId, game?.homeTeamId, game?.awayTeamId, homeRoster.length, awayRoster.length]);
 
   // Sync local count from server state
   useEffect(() => {
@@ -1629,8 +1684,15 @@ function needsRunnerAdvanceErrorFieldingPrompt(
   if (phase === 'setup') {
     const currentRoster = setupTeam === 'home' ? homeRoster : awayRoster;
     const currentSetup = setupTeam === 'home' ? setupHome : setupAway;
-    const selectedIds = new Set(currentSetup.map(p => p.playerId));
     const opposingSelectedIds = new Set((setupTeam === 'home' ? setupAway : setupHome).map(p => p.playerId));
+    const hintsMap = setupTeam === 'home' ? lineupHintsHome : lineupHintsAway;
+    const rosterPool = currentRoster.filter((p) => !opposingSelectedIds.has(p.playerId));
+    const sortedRosterPool = [...rosterPool].sort((a, b) => {
+      const paA = hintsMap[a.playerId]?.pa ?? 0;
+      const paB = hintsMap[b.playerId]?.pa ?? 0;
+      if (paB !== paA) return paB - paA;
+      return `${a.lastName} ${a.firstName}`.localeCompare(`${b.lastName} ${b.firstName}`);
+    });
     return (
       <>
       <div className="min-h-screen bg-[#0c1220] text-white">
@@ -1667,10 +1729,79 @@ function needsRunnerAdvanceErrorFieldingPrompt(
               </button>
             ))}
           </div>
-          <div className="grid grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <div className="rounded-xl border border-white/10 bg-[#0f1829] p-4">
+              <div className="mb-3 border-b border-white/10 pb-3">
+                <h3 className="text-base font-bold text-white tracking-wide">Batting order</h3>
+                <p className="text-[11px] text-white/45 mt-1">Slots 1–9 · drag rows to reorder</p>
+              </div>
+              <div className="space-y-1 min-h-[100px]">
+                {currentSetup.map((entry, idx) => {
+                  const player = currentRoster.find((pr) => pr.playerId === entry.playerId);
+                  return (
+                    <div
+                      key={entry.playerId}
+                      draggable
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData('text/plain', String(idx));
+                        e.dataTransfer.effectAllowed = 'move';
+                        setSetupDragFrom(idx);
+                      }}
+                      onDragEnd={() => setSetupDragFrom(null)}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        e.dataTransfer.dropEffect = 'move';
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        const fromStr = e.dataTransfer.getData('text/plain');
+                        const from = parseInt(fromStr, 10);
+                        if (Number.isNaN(from) || from === idx) return;
+                        moveSetup(setupTeam, from, idx);
+                        setSetupDragFrom(null);
+                      }}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.06] border cursor-grab active:cursor-grabbing select-none ${
+                        setupDragFrom === idx ? 'opacity-50 border-amber-500/50' : 'border-white/[0.07] hover:border-white/15'
+                      }`}
+                    >
+                      <span className="text-white/40 text-lg leading-none" aria-hidden>⋮⋮</span>
+                      <span className="text-white font-bold text-sm tabular-nums w-7 shrink-0 text-center rounded bg-black/25 py-0.5">{idx + 1}</span>
+                      <span className={`w-2 h-2 rounded-full shrink-0 ${player?.licensePaid === 'paid' ? 'bg-green-500' : 'bg-red-500'}`} />
+                      <span className="flex-1 text-sm font-medium">{player ? `${player.firstName.charAt(0)}. ${player.lastName}` : '?'}</span>
+                      <select
+                        value={entry.position}
+                        onChange={(e) => updatePosition(setupTeam, entry.playerId, Number(e.target.value))}
+                        className={ADMIN_SELECT_POS}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {Object.entries(POS_LABELS).map(([k, v]) => (
+                          <option key={k} value={k}>
+                            {v}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => removeFromSetup(setupTeam, entry.playerId)}
+                        className="text-red-400 text-xs shrink-0 px-1"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  );
+                })}
+                {currentSetup.length === 0 && (
+                  <p className="text-xs text-white/35 py-8 text-center border border-dashed border-white/10 rounded-lg">Add players from the roster list →</p>
+                )}
+              </div>
+            </div>
+
             <div>
               <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-                <h3 className="text-sm font-bold text-white/50 uppercase">Available</h3>
+                <div>
+                  <h3 className="text-base font-bold text-white tracking-wide">Available</h3>
+                  <p className="text-[11px] text-white/45 mt-0.5">Sorted by season PA · full roster for this team</p>
+                </div>
                 <button
                   type="button"
                   onClick={() => setAddRosterOpen(true)}
@@ -1679,53 +1810,48 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                   + New player ({setupTeam === 'home' ? game.homeTeamName : game.awayTeamName})
                 </button>
               </div>
-              <div className="space-y-1">{currentRoster.filter(p => !selectedIds.has(p.playerId) && !opposingSelectedIds.has(p.playerId)).map(p => (
-                <button key={p.playerId} onClick={() => addToSetup(setupTeam, p.playerId)} className="w-full text-left px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-sm flex items-center gap-2">
-                  {p.jerseyNumber && <span className="text-white/30 font-mono">#{p.jerseyNumber}</span>}
-                  <span className="flex-1">{p.firstName.charAt(0)}. {p.lastName}</span>
-                  <span className={`w-2 h-2 rounded-full shrink-0 ${p.licensePaid === 'paid' ? 'bg-green-500' : 'bg-red-500'}`} title={p.licensePaid === 'paid' ? 'License paid' : 'License unpaid'} />
-                </button>
-              ))}</div>
-            </div>
-            <div>
-              <h3 className="text-sm font-bold text-white/50 uppercase mb-3">Batting Order</h3>
-              <div className="space-y-1">{currentSetup.map((entry, idx) => {
-                const player = currentRoster.find(p => p.playerId === entry.playerId);
-                return (
-                  <div
-                    key={entry.playerId}
-                    draggable
-                    onDragStart={(e) => {
-                      e.dataTransfer.setData('text/plain', String(idx));
-                      e.dataTransfer.effectAllowed = 'move';
-                      setSetupDragFrom(idx);
-                    }}
-                    onDragEnd={() => setSetupDragFrom(null)}
-                    onDragOver={(e) => {
-                      e.preventDefault();
-                      e.dataTransfer.dropEffect = 'move';
-                    }}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      const fromStr = e.dataTransfer.getData('text/plain');
-                      const from = parseInt(fromStr, 10);
-                      if (Number.isNaN(from) || from === idx) return;
-                      moveSetup(setupTeam, from, idx);
-                      setSetupDragFrom(null);
-                    }}
-                    className={`flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5 border border-transparent cursor-grab active:cursor-grabbing select-none ${setupDragFrom === idx ? 'opacity-50 border-amber-500/40' : 'hover:border-white/10'}`}
-                  >
-                    <span className="text-white/40 text-lg leading-none" aria-hidden>⋮⋮</span>
-                    <span className="text-white/30 font-bold w-6">{idx + 1}</span>
-                    <span className={`w-2 h-2 rounded-full shrink-0 ${player?.licensePaid === 'paid' ? 'bg-green-500' : 'bg-red-500'}`} />
-                    <span className="flex-1 text-sm">{player ? `${player.firstName.charAt(0)}. ${player.lastName}` : '?'}</span>
-                    <select value={entry.position} onChange={e => updatePosition(setupTeam, entry.playerId, Number(e.target.value))} className={ADMIN_SELECT_POS} onClick={e => e.stopPropagation()}>
-                      {Object.entries(POS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                    </select>
-                    <button type="button" onClick={() => removeFromSetup(setupTeam, entry.playerId)} className="text-red-400 text-xs">✕</button>
-                  </div>
-                );
-              })}</div>
+              <div className="space-y-1 max-h-[min(60vh,560px)] overflow-y-auto pr-1">
+                {sortedRosterPool.map((p) => {
+                  const slotIdx = currentSetup.findIndex((e) => e.playerId === p.playerId);
+                  const inLineup = slotIdx >= 0;
+                  const pa = hintsMap[p.playerId]?.pa ?? 0;
+                  return (
+                    <div
+                      key={p.playerId}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm border ${
+                        inLineup ? 'bg-emerald-950/35 border-emerald-700/25' : 'bg-white/5 border-transparent hover:bg-white/10'
+                      }`}
+                    >
+                      {p.jerseyNumber && <span className="text-white/30 font-mono text-xs shrink-0">#{p.jerseyNumber}</span>}
+                      <span className="flex-1 min-w-0 truncate">{p.firstName.charAt(0)}. {p.lastName}</span>
+                      <span className="tabular-nums text-[11px] text-white/50 w-9 text-right shrink-0" title="Plate appearances (this season)">
+                        {pa}
+                      </span>
+                      <span className={`w-2 h-2 rounded-full shrink-0 ${p.licensePaid === 'paid' ? 'bg-green-500' : 'bg-red-500'}`} />
+                      {inLineup ? (
+                        <>
+                          <span className="text-[10px] font-bold text-emerald-400/95 uppercase w-11 text-center shrink-0">Bat {slotIdx + 1}</span>
+                          <button
+                            type="button"
+                            onClick={() => removeFromSetup(setupTeam, p.playerId)}
+                            className="text-[11px] font-semibold text-red-400 hover:text-red-300 shrink-0 px-1"
+                          >
+                            Remove
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => addToSetup(setupTeam, p.playerId)}
+                          className="text-[11px] font-bold uppercase text-accent shrink-0 px-2 py-1 rounded hover:bg-white/10"
+                        >
+                          Add
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
         </div>

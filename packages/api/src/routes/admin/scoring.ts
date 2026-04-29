@@ -9,6 +9,8 @@ import {
   teams,
   licenses,
   leagues,
+  playerSeasonBatting,
+  playerGameFielding,
 } from '../../db/schema/index.js';
 import { eq, and, or, desc, max, sql, inArray } from 'drizzle-orm';
 import { getIO } from '../../app.js';
@@ -967,6 +969,101 @@ export async function adminScoringRoutes(app: FastifyInstance) {
       } catch (err) {
         request.log.error(err);
         return reply.status(500).send({ message: 'Failed to compute most common lineup' });
+      }
+    },
+  );
+
+  // ── GET /:gameId/lineup-hints/:teamId — Season PA + defensive position usage (for lineup entry)
+  app.get<{ Params: { gameId: string; teamId: string } }>(
+    '/:gameId/lineup-hints/:teamId',
+    async (request, reply) => {
+      try {
+        const gameId = parseInt(request.params.gameId, 10);
+        const teamId = parseInt(request.params.teamId, 10);
+        if (Number.isNaN(gameId) || Number.isNaN(teamId)) {
+          return reply.status(400).send({ message: 'Invalid game or team id' });
+        }
+
+        const game = await getGameCore(gameId);
+        if (!game) return reply.status(404).send({ message: 'Game not found' });
+
+        const [leagueRow] = await db
+          .select({ seasonId: leagues.seasonId })
+          .from(leagues)
+          .where(eq(leagues.id, game.leagueId))
+          .limit(1);
+        const seasonId = leagueRow?.seasonId ?? null;
+        if (seasonId == null) {
+          return reply.send({ players: {} });
+        }
+
+        const paRows = await db
+          .select({
+            playerId: playerSeasonBatting.playerId,
+            plateAppearances: playerSeasonBatting.plateAppearances,
+          })
+          .from(playerSeasonBatting)
+          .where(
+            and(eq(playerSeasonBatting.seasonId, seasonId), eq(playerSeasonBatting.teamId, teamId)),
+          );
+
+        const posRows = await db
+          .select({
+            playerId: playerGameFielding.playerId,
+            position: playerGameFielding.position,
+            innings: sql<string>`coalesce(sum(${playerGameFielding.innings}::numeric), 0)::text`.as('innings'),
+          })
+          .from(playerGameFielding)
+          .innerJoin(games, eq(playerGameFielding.gameId, games.id))
+          .innerJoin(leagues, eq(games.leagueId, leagues.id))
+          .where(
+            and(
+              eq(leagues.seasonId, seasonId),
+              eq(playerGameFielding.teamId, teamId),
+              eq(games.isFinalized, true),
+              sql`${playerGameFielding.position} is not null`,
+            ),
+          )
+          .groupBy(playerGameFielding.playerId, playerGameFielding.position);
+
+        const byPlayer = new Map<
+          number,
+          { pa: number; positionInnings: Array<{ position: number; innings: number }> }
+        >();
+
+        for (const r of paRows) {
+          const pid = r.playerId;
+          const cur = byPlayer.get(pid) ?? { pa: 0, positionInnings: [] };
+          cur.pa = Math.max(0, Number(r.plateAppearances) || 0);
+          byPlayer.set(pid, cur);
+        }
+
+        for (const r of posRows) {
+          const pos = Number(r.position);
+          if (!Number.isInteger(pos) || pos < 1 || pos > 10) continue;
+          const inn = parseFloat(r.innings || '0') || 0;
+          const cur = byPlayer.get(r.playerId) ?? { pa: 0, positionInnings: [] };
+          cur.positionInnings.push({ position: pos, innings: inn });
+          byPlayer.set(r.playerId, cur);
+        }
+
+        const players: Record<string, { pa: number; positions: number[] }> = {};
+        for (const [playerId, v] of byPlayer) {
+          v.positionInnings.sort((a, b) => b.innings - a.innings);
+          const seen = new Set<number>();
+          const positions: number[] = [];
+          for (const { position: p } of v.positionInnings) {
+            if (seen.has(p)) continue;
+            seen.add(p);
+            positions.push(p);
+          }
+          players[String(playerId)] = { pa: v.pa, positions };
+        }
+
+        return reply.send({ players });
+      } catch (err) {
+        request.log.error(err);
+        return reply.status(500).send({ message: 'Failed to load lineup hints' });
       }
     },
   );
