@@ -1654,9 +1654,13 @@ function needsRunnerAdvanceErrorFieldingPrompt(
     const availablePlayers = currentRoster.filter(
       (p) => !selectedIds.has(p.playerId) && !opposingSelectedIds.has(p.playerId),
     );
-    const availableSorted = [...availablePlayers].sort((a, b) =>
-      `${a.lastName} ${a.firstName}`.localeCompare(`${b.lastName} ${b.firstName}`),
-    );
+    const hintsMap = setupTeam === 'home' ? lineupHintsHome : lineupHintsAway;
+    const availableSorted = [...availablePlayers].sort((a, b) => {
+      const paA = hintsMap[a.playerId]?.pa ?? 0;
+      const paB = hintsMap[b.playerId]?.pa ?? 0;
+      if (paB !== paA) return paB - paA;
+      return `${a.lastName} ${a.firstName}`.localeCompare(`${b.lastName} ${b.firstName}`);
+    });
     return (
       <>
       <div className="min-h-screen bg-[#0c1220] text-white">
