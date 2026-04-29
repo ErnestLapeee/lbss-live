@@ -11,6 +11,19 @@ interface GameEvent { id: number; eventNumber: number; eventType: string; batter
 interface GameData { id: number; status: string; homeTeamId: number; awayTeamId: number; homeTeamName: string; awayTeamName: string; isFinalized: boolean; umpire?: string | null; officialScorer?: string | null }
 type PositionChangeDraft = { playerId: number; oldPosition: number; newPosition: number };
 
+/** Apply batting order / position edits from "Adjust active lineups" before refetch completes. */
+function patchLineupBoPos(
+  prev: LineupEntry[],
+  rows: Array<{ playerId: number; battingOrder: number; position: number }>,
+): LineupEntry[] {
+  const byPid = new Map(rows.map((r) => [r.playerId, r]));
+  return prev.map((entry) => {
+    const r = byPid.get(entry.playerId);
+    if (!r) return entry;
+    return { ...entry, battingOrder: r.battingOrder, position: r.position };
+  });
+}
+
 function formatScoringMiniPbpLine(evt: GameEvent, game?: GameData | null): string {
   if (String(evt.eventDetail || '').toLowerCase() === 'automatic_out_empty_slot') {
     return 'Automatic out (empty lineup slot)';
@@ -452,9 +465,12 @@ export function LiveScoringPage() {
     () => (fieldingTeamId === game?.homeTeamId ? homeLineup : awayLineup).filter(l => l.isActive),
     [homeLineup, awayLineup, fieldingTeamId, game?.homeTeamId],
   );
-  /** Field positions P→DH for sidebar (immutable sort — avoids mutating derived arrays during render). */
-  const fieldingLineupByPosition = useMemo(
-    () => [...fieldingLineupActive].sort((a, b) => a.position - b.position),
+  /** Defensive panel: same row order as "Adjust active lineups" (batting order 1–9), not P→RF sort. */
+  const fieldingLineupForSidebar = useMemo(
+    () =>
+      [...fieldingLineupActive].sort((a, b) =>
+        a.battingOrder !== b.battingOrder ? a.battingOrder - b.battingOrder : a.position - b.position,
+      ),
     [fieldingLineupActive],
   );
   const defensiveChangeTeamId = subTeamId ?? fieldingTeamId;
@@ -1565,10 +1581,14 @@ function needsRunnerAdvanceErrorFieldingPrompt(
   const submitLineupAdjust = async () => {
     setLineupAdjustBusy(true);
     try {
+      const homePayload = lineupAdjustHome.map(({ playerId, battingOrder, position }) => ({ playerId, battingOrder, position }));
+      const awayPayload = lineupAdjustAway.map(({ playerId, battingOrder, position }) => ({ playerId, battingOrder, position }));
       await apiPut(`/admin/scoring/${gameId}/active-lineup`, {
-        home: lineupAdjustHome.map(({ playerId, battingOrder, position }) => ({ playerId, battingOrder, position })),
-        away: lineupAdjustAway.map(({ playerId, battingOrder, position }) => ({ playerId, battingOrder, position })),
+        home: homePayload,
+        away: awayPayload,
       });
+      setHomeLineup((prev) => patchLineupBoPos(prev, homePayload));
+      setAwayLineup((prev) => patchLineupBoPos(prev, awayPayload));
       setLineupAdjustOpen(false);
       await loadState();
       await loadRosters();
@@ -1932,7 +1952,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
             <div className="text-[9px] text-white/30 font-bold uppercase tracking-wider px-1 mb-1.5">
               {battingSide === 'away' ? game.homeTeamName : game.awayTeamName}
             </div>
-            {fieldingLineupByPosition.map(entry => (
+            {fieldingLineupForSidebar.map(entry => (
               <div key={entry.id} onClick={() => { setSubTeamId(fieldingTeamId ?? null); setSubPosition(entry.position); setStep('sub_defense'); }}
                 className="flex items-center gap-1.5 px-2 py-0.5 text-[11px] text-white/40 hover:bg-white/5 rounded cursor-pointer">
                 <span className="text-white/25 font-mono w-5 text-right">{POS_LABELS[entry.position]}</span>
