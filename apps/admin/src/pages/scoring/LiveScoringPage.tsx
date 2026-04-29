@@ -436,12 +436,13 @@ export function LiveScoringPage() {
   }, [game?.id]);
 
   // Derive current batter position from events (computed during render, always in sync)
+  /** Events that do not advance the batting-order cursor (no new PA slot). */
   const NON_AB_EVENTS = useMemo(() => new Set([
     'pitch', 'stolen_base', 'caught_stealing', 'picked_off', 'wild_pitch', 'passed_ball',
     'balk', 'advance', 'advance_on_error', 'defensive_indifference',
     'runner_interference', 'appeal_play', 'tagged_out', 'force_out',
     'hit_by_ball', 'missed_base', 'left_base_early', 'left_base_path',
-    'offensive_interference', 'passed_runner', 'hesitation', 'double_play', 'triple_play',
+    'offensive_interference', 'passed_runner', 'hesitation',
     'end_half_inning', 'adjust_score', 'illegal_pitch', 'substitution',
   ]), []);
 
