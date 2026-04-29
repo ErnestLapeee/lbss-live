@@ -9,7 +9,6 @@ import { getStatAbbreviationMeaning } from '@/lib/stat-abbreviations';
 import { aggregatePitchingStatsByPitcher, inningsFromOuts } from '@lbss/shared';
 import { normalizeGameEvents, tryExtractEventArray } from '@/lib/normalize-game-events';
 import { buildPositionMapsByEvent } from '@/lib/position-maps-by-event';
-import { MiniHitLocation } from '@/components/stats/mini-hit-location';
 
 /** Fetch a JSON array from the public proxy; returns null on non-OK or parse errors so callers do not replace state with []. */
 async function fetchPublicJsonArray(url: string): Promise<any[] | null> {
@@ -1717,9 +1716,6 @@ export function LiveGameClient({
                             const isCompact = playMode === 'compact';
                             const isSystemRow = result?.eventType === 'substitution' || result?.eventType === 'adjust_score';
                             const isCompactSystemRow = isCompact && isSystemRow;
-                            const hx = result?.hitLocationX != null ? Number(result.hitLocationX) : NaN;
-                            const hy = result?.hitLocationY != null ? Number(result.hitLocationY) : NaN;
-                            const showMiniHit = Boolean(result) && Number.isFinite(hx) && Number.isFinite(hy);
                             const metaParts = [
                               !isSystemRow && displayedPitchCount > 0 ? `${displayedPitchCount} pitch${displayedPitchCount === 1 ? '' : 'es'}` : null,
                               !isSystemRow ? formatted?.subtitle || null : null,
@@ -1755,9 +1751,6 @@ export function LiveGameClient({
                                   </div>
                                   {!isCompactSystemRow && (
                                   <div className={`flex shrink-0 ${isCompact ? 'items-center gap-1 pt-0' : 'flex-col items-end gap-1.5 pt-0.5'}`}>
-                                    {showMiniHit && (
-                                      <MiniHitLocation hitLocationX={hx} hitLocationY={hy} />
-                                    )}
                                     <BaseDiamond first={bases.first} second={bases.second} third={bases.third} compact={isCompact} />
                                     <OutsIndicator outs={outsAfter} compact={isCompact} />
                                   </div>
