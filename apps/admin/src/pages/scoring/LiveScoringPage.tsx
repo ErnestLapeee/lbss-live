@@ -307,6 +307,7 @@ export function LiveScoringPage() {
   /** Season PA + defensive position ranks for lineup entry (from API). */
   const [lineupHintsHome, setLineupHintsHome] = useState<Record<number, LineupHintsEntry>>({});
   const [lineupHintsAway, setLineupHintsAway] = useState<Record<number, LineupHintsEntry>>({});
+  const [loadUsualLineupBusy, setLoadUsualLineupBusy] = useState(false);
 
   const [lineupAdjustOpen, setLineupAdjustOpen] = useState(false);
   const [lineupAdjustTeam, setLineupAdjustTeam] = useState<'home' | 'away'>('away');
@@ -643,21 +644,24 @@ export function LiveScoringPage() {
     return 'ok';
   }, [game, gameId, homeRoster, awayRoster]);
 
-  const setupAutoFilledRef = useRef(false);
-  useEffect(() => {
-    setupAutoFilledRef.current = false;
-  }, [gameId]);
-
-  useEffect(() => {
-    if (phase !== 'setup' || !game) return;
-    if (homeRoster.length === 0 || awayRoster.length === 0) return;
-    if (setupAutoFilledRef.current) return;
-    setupAutoFilledRef.current = true;
-    void (async () => {
-      await fetchAndApplySeasonLineup('away');
-      await fetchAndApplySeasonLineup('home');
-    })();
-  }, [phase, game, gameId, homeRoster.length, awayRoster.length, fetchAndApplySeasonLineup]);
+  const loadUsualLineupForCurrentTeam = useCallback(async () => {
+    if (!game) return;
+    setLoadUsualLineupBusy(true);
+    try {
+      const r = await fetchAndApplySeasonLineup(setupTeam);
+      if (r === 'empty') {
+        alert(
+          'No usual lineup found yet — past games need nine-player starter rows this season.',
+        );
+      } else if (r === 'roster') {
+        alert('The usual lineup does not match players on the current roster.');
+      }
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : 'Failed to load usual lineup');
+    } finally {
+      setLoadUsualLineupBusy(false);
+    }
+  }, [game, setupTeam, fetchAndApplySeasonLineup]);
 
   useEffect(() => {
     if (phase !== 'setup' || !game) return;
@@ -1730,6 +1734,74 @@ function needsRunnerAdvanceErrorFieldingPrompt(
             ))}
           </div>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <div>
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                <div>
+                  <h3 className="text-base font-bold text-white tracking-wide">Available</h3>
+                  <p className="text-[11px] text-white/45 mt-0.5">Sorted by season PA · full roster for this team</p>
+                </div>
+                <div className="flex flex-wrap items-center justify-end gap-1.5">
+                  <button
+                    type="button"
+                    disabled={loadUsualLineupBusy}
+                    onClick={() => void loadUsualLineupForCurrentTeam()}
+                    className="shrink-0 rounded-lg border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white hover:bg-white/15 disabled:opacity-40"
+                  >
+                    {loadUsualLineupBusy ? 'Loading…' : 'Load usual lineup'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAddRosterOpen(true)}
+                    className="shrink-0 rounded-lg border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white hover:bg-white/15"
+                  >
+                    + New player ({setupTeam === 'home' ? game.homeTeamName : game.awayTeamName})
+                  </button>
+                </div>
+              </div>
+              <div className="space-y-1 max-h-[min(60vh,560px)] overflow-y-auto pr-1">
+                {sortedRosterPool.map((p) => {
+                  const slotIdx = currentSetup.findIndex((e) => e.playerId === p.playerId);
+                  const inLineup = slotIdx >= 0;
+                  const pa = hintsMap[p.playerId]?.pa ?? 0;
+                  return (
+                    <div
+                      key={p.playerId}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm border ${
+                        inLineup ? 'bg-emerald-950/35 border-emerald-700/25' : 'bg-white/5 border-transparent hover:bg-white/10'
+                      }`}
+                    >
+                      {p.jerseyNumber && <span className="text-white/30 font-mono text-xs shrink-0">#{p.jerseyNumber}</span>}
+                      <span className="flex-1 min-w-0 truncate">{p.firstName.charAt(0)}. {p.lastName}</span>
+                      <span className="tabular-nums text-[11px] text-white/50 w-9 text-right shrink-0" title="Plate appearances (this season)">
+                        {pa}
+                      </span>
+                      <span className={`w-2 h-2 rounded-full shrink-0 ${p.licensePaid === 'paid' ? 'bg-green-500' : 'bg-red-500'}`} />
+                      {inLineup ? (
+                        <>
+                          <span className="text-[10px] font-bold text-emerald-400/95 uppercase w-11 text-center shrink-0">Bat {slotIdx + 1}</span>
+                          <button
+                            type="button"
+                            onClick={() => removeFromSetup(setupTeam, p.playerId)}
+                            className="text-[11px] font-semibold text-red-400 hover:text-red-300 shrink-0 px-1"
+                          >
+                            Remove
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => addToSetup(setupTeam, p.playerId)}
+                          className="text-[11px] font-bold uppercase text-accent shrink-0 px-2 py-1 rounded hover:bg-white/10"
+                        >
+                          Add
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
             <div className="rounded-xl border border-white/10 bg-[#0f1829] p-4">
               <div className="mb-3 border-b border-white/10 pb-3">
                 <h3 className="text-base font-bold text-white tracking-wide">Batting order</h3>
@@ -1791,66 +1863,10 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                   );
                 })}
                 {currentSetup.length === 0 && (
-                  <p className="text-xs text-white/35 py-8 text-center border border-dashed border-white/10 rounded-lg">Add players from the roster list →</p>
+                  <p className="text-xs text-white/35 py-8 text-center border border-dashed border-white/10 rounded-lg">
+                    ← Add players from the roster list
+                  </p>
                 )}
-              </div>
-            </div>
-
-            <div>
-              <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-                <div>
-                  <h3 className="text-base font-bold text-white tracking-wide">Available</h3>
-                  <p className="text-[11px] text-white/45 mt-0.5">Sorted by season PA · full roster for this team</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setAddRosterOpen(true)}
-                  className="shrink-0 rounded-lg border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white hover:bg-white/15"
-                >
-                  + New player ({setupTeam === 'home' ? game.homeTeamName : game.awayTeamName})
-                </button>
-              </div>
-              <div className="space-y-1 max-h-[min(60vh,560px)] overflow-y-auto pr-1">
-                {sortedRosterPool.map((p) => {
-                  const slotIdx = currentSetup.findIndex((e) => e.playerId === p.playerId);
-                  const inLineup = slotIdx >= 0;
-                  const pa = hintsMap[p.playerId]?.pa ?? 0;
-                  return (
-                    <div
-                      key={p.playerId}
-                      className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm border ${
-                        inLineup ? 'bg-emerald-950/35 border-emerald-700/25' : 'bg-white/5 border-transparent hover:bg-white/10'
-                      }`}
-                    >
-                      {p.jerseyNumber && <span className="text-white/30 font-mono text-xs shrink-0">#{p.jerseyNumber}</span>}
-                      <span className="flex-1 min-w-0 truncate">{p.firstName.charAt(0)}. {p.lastName}</span>
-                      <span className="tabular-nums text-[11px] text-white/50 w-9 text-right shrink-0" title="Plate appearances (this season)">
-                        {pa}
-                      </span>
-                      <span className={`w-2 h-2 rounded-full shrink-0 ${p.licensePaid === 'paid' ? 'bg-green-500' : 'bg-red-500'}`} />
-                      {inLineup ? (
-                        <>
-                          <span className="text-[10px] font-bold text-emerald-400/95 uppercase w-11 text-center shrink-0">Bat {slotIdx + 1}</span>
-                          <button
-                            type="button"
-                            onClick={() => removeFromSetup(setupTeam, p.playerId)}
-                            className="text-[11px] font-semibold text-red-400 hover:text-red-300 shrink-0 px-1"
-                          >
-                            Remove
-                          </button>
-                        </>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => addToSetup(setupTeam, p.playerId)}
-                          className="text-[11px] font-bold uppercase text-accent shrink-0 px-2 py-1 rounded hover:bg-white/10"
-                        >
-                          Add
-                        </button>
-                      )}
-                    </div>
-                  );
-                })}
               </div>
             </div>
           </div>
