@@ -85,6 +85,7 @@ interface PitchingStat {
   h9?: string | null;
   fip?: string | null;
   babip?: string | null;
+  opponentAvg?: string | null;
   balls?: number;
   strikes?: number;
   strikePercentage?: string | null;
@@ -291,6 +292,7 @@ const PITCHING_COLUMNS: Column[] = [
   { key: 'whip', label: 'WHIP', align: 'right', highlight: true },
   { key: 'fip', label: 'FIP', align: 'right' },
   { key: 'babip', label: 'BABIP', align: 'right' },
+  { key: 'opponentAvg', label: 'OBA', align: 'right' },
 ];
 
 const PITCHING_CONTACT_COLUMNS: Column[] = [
@@ -719,12 +721,6 @@ export function StatsClient({
             </div>
           )}
           <Link
-            href="/stats/legend"
-            className="text-sm font-medium text-accent hover:text-accent-light transition-colors"
-          >
-            Legend
-          </Link>
-          <Link
             href="/stats/hit-locations"
             className="text-sm font-medium text-accent hover:text-accent-light transition-colors"
           >
@@ -1053,7 +1049,7 @@ function sortData<T extends { firstName: string; lastName: string; teamName: str
         aVal = parseBaseballInnings(aVal);
         bVal = parseBaseballInnings(bVal);
       } else {
-        const ratePitchKeys = new Set(['era', 'whip', 'fip', 'k9', 'bb9', 'h9', 'babip', 'walkRate']);
+        const ratePitchKeys = new Set(['era', 'whip', 'fip', 'k9', 'bb9', 'h9', 'babip', 'walkRate', 'opponentAvg']);
         const rateBatKeys = new Set(['battingAvg', 'onBasePct', 'sluggingPct', 'ops', 'babip']);
         const ipA = parseBaseballInnings((a as any).inningsPitched);
         const ipB = parseBaseballInnings((b as any).inningsPitched);

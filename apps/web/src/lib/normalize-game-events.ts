@@ -100,7 +100,16 @@ function normalizeGameEventRow(r: Record<string, unknown>): Record<string, unkno
     errorsOnPlay: toNullableInt(pick(r, 'errorsOnPlay', 'errors_on_play')),
     errorFielderIds: toNumArray(pick(r, 'errorFielderIds', 'error_fielder_ids')),
     hitType: (pick<string | null>(r, 'hitType', 'hit_type') ?? null) as string | null,
+    hitLocationX: toNullableFloat(pick(r, 'hitLocationX', 'hit_location_x')),
+    hitLocationY: toNullableFloat(pick(r, 'hitLocationY', 'hit_location_y')),
+    hitHardness: (pick<string | null>(r, 'hitHardness', 'hit_hardness') ?? null) as string | null,
   };
+}
+
+function toNullableFloat(v: unknown): number | null {
+  if (v === undefined || v === null || v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
 }
 
 function toNullableInt(v: unknown): number | null {

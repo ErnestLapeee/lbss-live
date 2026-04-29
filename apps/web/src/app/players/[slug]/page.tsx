@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { apiFetch } from '@/lib/api';
 import { notFound } from 'next/navigation';
+import { derivePrimaryPositionLabel } from '@/lib/derive-primary-position';
 import { PlayerProfileClient } from './player-profile-client';
 
 type Props = { params: Promise<{ slug: string }> };
@@ -36,7 +37,15 @@ export default async function PlayerProfilePage({ params }: Props) {
   } catch {}
   battingStats = Array.isArray(battingStats) ? battingStats : [];
 
+  let fieldingByPos: { position: number; games: number }[] = [];
+  try {
+    const fbp = await apiFetch(`/api/public/players/${slug}/fielding-by-position`);
+    fieldingByPos = Array.isArray(fbp) ? fbp : [];
+  } catch {}
+  const primaryPositionLabel = derivePrimaryPositionLabel(fieldingByPos);
+
   const infoPills = [
+    primaryPositionLabel && `Position: ${primaryPositionLabel}`,
     player.nationality,
     player.bats && `B: ${player.bats}`,
     player.throws && `T: ${player.throws}`,

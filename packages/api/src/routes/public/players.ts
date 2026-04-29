@@ -16,19 +16,25 @@ import {
 } from '../../db/schema/index.js';
 import { eq, and, desc, sql, isNotNull } from 'drizzle-orm';
 import { rowsFromExecute } from '../../lib/pg-result.js';
+import { formatOpponentBattingAvgPitch } from '../../lib/opponent-batting-avg.js';
 
 /** Same abbreviations as team roster / modal (1–10). */
 const FIELDING_POS_LABELS: Record<number, string> = {
   1: 'P', 2: 'C', 3: '1B', 4: '2B', 5: '3B', 6: 'SS', 7: 'LF', 8: 'CF', 9: 'RF', 10: 'DH',
 };
 
-/** Primary / secondary position from games played at each spot (60% rule for slash). */
+/** Primary / secondary position from games played; **UTL** when usage is spread across 3+ roles. */
 function fieldingPositionLabel(
   entries: { position: number; games: number }[],
 ): string | null {
   const valid = entries.filter((e) => e.games > 0);
   if (valid.length === 0) return null;
   const sorted = [...valid].sort((a, b) => b.games - a.games);
+  const total = sorted.reduce((s, e) => s + e.games, 0);
+  if (total <= 0) return null;
+  const topShare = sorted[0]!.games / total;
+  const qualCount = sorted.filter((e) => e.games / total >= 0.12).length;
+  if (topShare <= 0.65 && qualCount >= 3) return 'UTL';
   const top = sorted[0]!;
   const second = sorted[1];
   const topLabel = FIELDING_POS_LABELS[top.position] || String(top.position);
@@ -388,7 +394,14 @@ export async function playersRoutes(app: FastifyInstance) {
             .where(and(eq(playerSeasonPitching.playerId, player.id), eq(playerSeasonPitching.seasonId, seasonIdNum)))
             .orderBy(desc(seasons.year)));
 
-      if (!isAllTime) return reply.send(stats);
+      if (!isAllTime) {
+        return reply.send(
+          stats.map((r: Record<string, unknown>) => ({
+            ...r,
+            opponentAvg: formatOpponentBattingAvgPitch(r),
+          })),
+        );
+      }
 
       let playoffRows: any[] = [];
       if (await gamesHavePlayoffSeriesId()) playoffRows = await db.select({
@@ -456,7 +469,12 @@ export async function playersRoutes(app: FastifyInstance) {
         return aPo - bPo;
       });
 
-      return reply.send(merged);
+      return reply.send(
+        merged.map((r: Record<string, unknown>) => ({
+          ...r,
+          opponentAvg: formatOpponentBattingAvgPitch(r),
+        })),
+      );
     } catch (err) {
       request.log.error(err);
       return reply.status(500).send({ message: 'Failed to fetch pitching stats' });

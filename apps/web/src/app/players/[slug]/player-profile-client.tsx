@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { SprayChart } from '@/components/stats/spray-chart';
 import { TeamMark } from '@/components/ui/team-mark';
 import { getStatAbbreviationMeaning } from '@/lib/stat-abbreviations';
+import { POS_LABELS } from '@/lib/derive-primary-position';
 
 
 interface Season {
@@ -163,7 +164,9 @@ const sumPitchingRows = (rows: any[]) => {
   const hr = acc.homeRunsAllowed || 0;
   const hb = acc.hitBatters || 0;
   const bf = acc.battersFaced || 0;
+  const ibb = acc.intentionalWalks || 0;
   const babipDenom = bf - k - hr - bb - hb;
+  const oppAb = bf - bb - ibb - hb;
   return {
     ...acc,
     inningsPitched: outsToIp(outs),
@@ -173,6 +176,7 @@ const sumPitchingRows = (rows: any[]) => {
     k9: ip > 0 ? ((k / ip) * 9).toFixed(1) : null,
     bb9: ip > 0 ? ((bb / ip) * 9).toFixed(1) : null,
     babip: babipDenom > 0 ? ((h - hr) / babipDenom).toFixed(3) : null,
+    opponentAvg: oppAb > 0 ? (h / oppAb).toFixed(3).replace(/^0/, '') : null,
   };
 };
 
@@ -213,16 +217,19 @@ function gameBattingSlashLine(g: Record<string, unknown>) {
 function gamePitchingRates(g: Record<string, unknown>) {
   const ipOuts = ipToOuts(gv(g, 'innings_pitched', 'inningsPitched'));
   const ip = ipOuts / 3;
-  if (ip <= 0) {
-    return { era: '—', whip: '—', fip: '—', k9: '—', bb9: '—', h9: '—', babip: '—' };
-  }
   const h = Number(gv(g, 'hits_allowed', 'hitsAllowed') ?? 0);
-  const er = Number(gv(g, 'earned_runs', 'earnedRuns') ?? 0);
   const bb = Number(gv(g, 'walks_allowed', 'walksAllowed') ?? 0);
-  const k = Number(gv(g, 'strikeouts', 'strikeouts') ?? 0);
-  const hr = Number(gv(g, 'home_runs_allowed', 'homeRunsAllowed') ?? 0);
+  const ibb = Number(gv(g, 'intentional_walks', 'intentionalWalks') ?? 0);
   const hb = Number(gv(g, 'hit_batters', 'hitBatters') ?? 0);
   const bf = Number(gv(g, 'batters_faced', 'battersFaced') ?? 0);
+  const oppAb = bf - bb - ibb - hb;
+  const obaFmt = oppAb > 0 ? (h / oppAb).toFixed(3).replace(/^0/, '') : '—';
+  if (ip <= 0) {
+    return { era: '—', whip: '—', fip: '—', k9: '—', bb9: '—', h9: '—', babip: '—', oba: '—' };
+  }
+  const er = Number(gv(g, 'earned_runs', 'earnedRuns') ?? 0);
+  const k = Number(gv(g, 'strikeouts', 'strikeouts') ?? 0);
+  const hr = Number(gv(g, 'home_runs_allowed', 'homeRunsAllowed') ?? 0);
   const era = ((er / ip) * 9).toFixed(2);
   const whip = ((bb + h) / ip).toFixed(2);
   const fip = (3.1 + (13 * hr + 3 * bb - 2 * k) / ip).toFixed(2);
@@ -231,7 +238,7 @@ function gamePitchingRates(g: Record<string, unknown>) {
   const h9 = ((h / ip) * 9).toFixed(1);
   const babipDenom = bf - k - hr - bb - hb;
   const babip = babipDenom > 0 ? ((h - hr) / babipDenom).toFixed(3) : '—';
-  return { era, whip, fip, k9, bb9, h9, babip };
+  return { era, whip, fip, k9, bb9, h9, babip, oba: obaFmt };
 }
 
 const sumFieldingRows = (rows: any[]) => {
@@ -252,10 +259,6 @@ const sumFieldingRows = (rows: any[]) => {
     innings,
     fieldingPct: fp,
   };
-};
-
-const POS_LABELS: Record<number, string> = {
-  1: 'P', 2: 'C', 3: '1B', 4: '2B', 5: '3B', 6: 'SS', 7: 'LF', 8: 'CF', 9: 'RF',
 };
 
 const COUNT_SPLIT_ROWS = [
@@ -657,9 +660,6 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
                     </tbody>
                   </table>
                 </div>
-                <p className="mt-2 text-[11px] text-text-faint">
-                  Rows show the final PA outcome after the plate appearance reached that count. 0-0 includes every PA.
-                </p>
               </div>
             </div>
           )}
@@ -680,7 +680,7 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
               <table className="w-full min-w-[1760px] text-sm">
                 <thead>
                   <tr className="border-b border-border bg-surface-alt">
-                    {['Season', 'Team', 'G', 'GS', 'W', 'L', 'SV', 'HLD', 'SVO', 'BS', 'IP', 'BF', 'H', 'R', 'ER', 'BB', 'IBB', 'SO', 'K-L', 'K-S', 'HR', 'HBP', 'WP', 'BK', 'FPS%', 'IR', 'IRS', 'GO', 'AO', 'ERA', 'WHIP', 'FIP', 'K/9', 'BB/9', 'H/9', 'BABIP'].map(col => (
+                    {['Season', 'Team', 'G', 'GS', 'W', 'L', 'SV', 'HLD', 'SVO', 'BS', 'IP', 'BF', 'H', 'R', 'ER', 'BB', 'IBB', 'SO', 'K-L', 'K-S', 'HR', 'HBP', 'WP', 'BK', 'FPS%', 'IR', 'IRS', 'GO', 'AO', 'ERA', 'WHIP', 'FIP', 'K/9', 'BB/9', 'H/9', 'OBA', 'BABIP'].map(col => (
                       <th title={getStatAbbreviationMeaning(col) ?? undefined} key={col} className={`px-2 py-2.5 text-[10px] font-bold uppercase tracking-wider text-text-faint whitespace-nowrap ${col === 'Season' || col === 'Team' ? 'text-left' : 'text-right'}`}>
                         {col}
                       </th>
@@ -732,6 +732,7 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
                       <td className="px-2 py-2 text-right font-mono text-xs">{s.k9 != null ? Number(s.k9).toFixed(1) : '—'}</td>
                       <td className="px-2 py-2 text-right font-mono text-xs">{s.bb9 != null ? Number(s.bb9).toFixed(1) : '—'}</td>
                       <td className="px-2 py-2 text-right font-mono text-xs">{s.h9 != null ? Number(s.h9).toFixed(1) : '—'}</td>
+                      <td className="px-2 py-2 text-right font-mono text-xs">{fmtRate(s.opponentAvg)}</td>
                       <td className="px-2 py-2 text-right font-mono text-xs">{fmtRate(s.babip)}</td>
                     </tr>
                   ))}
@@ -779,6 +780,7 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
                         <td className="px-2 py-2 text-right font-mono text-xs font-bold">
                           {total.inningsPitched && Number(total.inningsPitched) > 0 ? ((n(total.hitsAllowed) / (ipToOuts(total.inningsPitched) / 3)) * 9).toFixed(1) : '—'}
                         </td>
+                        <td className="px-2 py-2 text-right font-mono text-xs font-bold">{fmtRate(total.opponentAvg)}</td>
                         <td className="px-2 py-2 text-right font-mono text-xs font-bold">{fmtRate(total.babip)}</td>
                       </tr>
                     );
@@ -943,9 +945,6 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
                   </table>
                 </div>
               </div>
-              <p className="mt-2 text-[11px] text-text-faint">
-                Count rows show opponent batting results from that count.
-              </p>
             </div>
           )}
         </div>
@@ -1189,7 +1188,7 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
                           {[
                             'Date', 'Opp', 'Dec', 'GS', 'IP', 'BF', 'H', 'R', 'ER', 'BB', 'IBB', 'SO', 'K-L', 'K-S',
                             'HR', 'HBP', 'WP', 'BK', 'PIT', 'FPS%', 'HLD', 'SVO', 'BS', 'IR', 'IRS', 'GO', 'AO',
-                            'ERA', 'WHIP', 'FIP', 'K/9', 'BB/9', 'H/9', 'BABIP',
+                            'ERA', 'WHIP', 'FIP', 'K/9', 'BB/9', 'H/9', 'OBA', 'BABIP',
                           ].map(col => (
                             <th
                               key={col}
@@ -1252,6 +1251,7 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
                               <td className="px-2 py-1.5 text-right font-mono text-xs">{pr.k9}</td>
                               <td className="px-2 py-1.5 text-right font-mono text-xs">{pr.bb9}</td>
                               <td className="px-2 py-1.5 text-right font-mono text-xs">{pr.h9}</td>
+                              <td className="px-2 py-1.5 text-right font-mono text-xs">{pr.oba}</td>
                               <td className="px-2 py-1.5 text-right font-mono text-xs">{pr.babip}</td>
                             </tr>
                           );

@@ -19,6 +19,7 @@ import { rowsFromExecute } from '../../lib/pg-result.js';
 import { seasonWithPlayoffDefaults } from '../../lib/season-playoff-response.js';
 import { getSeasonsColumnFlagsCached } from '../../lib/seasons-playoff-columns-cache.js';
 import { parseIncludePlayoffsAllTime, sqlAllTimeSeasonWhere } from '../../lib/all-time-stats.js';
+import { formatOpponentBattingAvgPitch } from '../../lib/opponent-batting-avg.js';
 
 const ALL_TIME = 'all';
 
@@ -795,7 +796,15 @@ export async function statsRoutes(app: FastifyInstance) {
           const fpStrikes = Number(row.firstPitchStrikes ?? 0);
           const fpTotal = Number(row.firstPitchTotal ?? 0);
           const firstPitchStrikePct = fpTotal > 0 ? ((fpStrikes / fpTotal) * 100).toFixed(1) : null;
-          return { ...row, balls, strikes, goAo: ao > 0 ? (go / ao).toFixed(2) : null, strikePercentage: strikePct, firstPitchStrikePct };
+          return {
+            ...row,
+            balls,
+            strikes,
+            goAo: ao > 0 ? (go / ao).toFixed(2) : null,
+            strikePercentage: strikePct,
+            firstPitchStrikePct,
+            opponentAvg: formatOpponentBattingAvgPitch(row as Record<string, unknown>),
+          };
         });
         return reply.send(withGoAo);
       }
@@ -969,6 +978,7 @@ export async function statsRoutes(app: FastifyInstance) {
           h9: rates.h9,
           babip: rates.babip,
           goAo: Number(r.fly_outs ?? 0) > 0 ? (Number(r.ground_outs ?? 0) / Number(r.fly_outs ?? 0)).toFixed(2) : null,
+          opponentAvg: formatOpponentBattingAvgPitch(r as Record<string, unknown>),
         };
       }) : [];
       return reply.send(result);

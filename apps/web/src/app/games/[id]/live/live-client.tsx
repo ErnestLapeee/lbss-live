@@ -9,6 +9,7 @@ import { getStatAbbreviationMeaning } from '@/lib/stat-abbreviations';
 import { aggregatePitchingStatsByPitcher, inningsFromOuts } from '@lbss/shared';
 import { normalizeGameEvents, tryExtractEventArray } from '@/lib/normalize-game-events';
 import { buildPositionMapsByEvent } from '@/lib/position-maps-by-event';
+import { MiniHitLocation } from '@/components/stats/mini-hit-location';
 
 /** Fetch a JSON array from the public proxy; returns null on non-OK or parse errors so callers do not replace state with []. */
 async function fetchPublicJsonArray(url: string): Promise<any[] | null> {
@@ -23,18 +24,6 @@ async function fetchPublicJsonArray(url: string): Promise<any[] | null> {
 }
 
 /** Game events: accept array or `{ events: [...] }`; null on malformed HTTP response. */
-/** Merge repeated names into "Name (n)" segments for box score notes. */
-function mergeCountsByName(items: Array<{ name: string; count: number }>): string {
-  const m = new Map<string, number>();
-  for (const { name, count } of items) {
-    if (count <= 0) continue;
-    const k = name.trim() || 'Unknown';
-    m.set(k, (m.get(k) ?? 0) + count);
-  }
-  return [...m.entries()]
-    .map(([n, c]) => (c > 1 ? `${n} (${c})` : n))
-    .join(', ');
-}
 
 async function fetchPublicGameEvents(gameId: number): Promise<any[] | null> {
   try {
@@ -146,6 +135,9 @@ interface GameEvent {
   errorsOnPlay?: number | null;
   errorFielderIds?: number[];
   hitType?: string | null;
+  hitLocationX?: number | null;
+  hitLocationY?: number | null;
+  hitHardness?: string | null;
 }
 
 interface LineupEntry {
@@ -780,24 +772,6 @@ export function LiveGameClient({
     return { tag: 'PLAY', cls: 'text-slate-600' };
   };
 
-  const teamLobMap = useMemo(() => {
-    const map: Record<number, number> = {};
-    if (!game) return map;
-    const filtered = events
-      .filter(e => e.eventType !== 'pitch' && e.eventType !== 'end_half_inning' && e.eventType !== 'adjust_score' && e.eventType !== 'substitution')
-      .sort((a, b) => a.eventNumber - b.eventNumber);
-    let outs = 0;
-    for (const evt of filtered) {
-      outs += evt.outsRecorded ?? 0;
-      if (outs < 3) continue;
-      const battingTeamId = evt.half === 'top' ? game.awayTeamId : game.homeTeamId;
-      const lobThisHalf = [evt.runnerFirstId, evt.runnerSecondId, evt.runnerThirdId].filter(Boolean).length;
-      map[battingTeamId] = (map[battingTeamId] ?? 0) + lobThisHalf;
-      outs = 0;
-    }
-    return map;
-  }, [events, game]);
-
   const renderBattingTable = (teamName: string, lineup: LineupEntry[], batting: BattingBoxScore[]) => {
     const battingMap: Record<number, BattingBoxScore> = {};
     for (const b of batting) battingMap[b.playerId] = b;
@@ -806,141 +780,6 @@ export function LiveGameClient({
       playerId: b.playerId, teamId: b.teamId, battingOrder: 0, position: 0,
       isStarter: true, isActive: true, firstName: b.firstName, lastName: b.lastName,
     }));
-    const teamId = rows[0]?.teamId ?? batting[0]?.teamId ?? 0;
-
-    const shortName = (p: LineupEntry) => `${p.firstName?.charAt(0)}. ${p.lastName}`;
-    const notes = (() => {
-      const collectNames = (predicate: (box: BattingBoxScore | undefined, live: typeof liveBattingMap[number] | undefined) => boolean) =>
-        rows
-          .filter(p => predicate(battingMap[p.playerId], liveBattingMap[p.playerId]))
-          .map(shortName);
-      const withCounts = (items: Array<{ name: string | null; count: number }>) =>
-        items
-          .filter((item) => item.count > 0)
-          .map((item) => `${item.name || 'Unknown'}${item.count > 1 ? ` (${item.count})` : ''}`);
-      const battingParts: string[] = [];
-      const doublesNames = collectNames((box) => (box?.doubles ?? 0) > 0);
-      if (doublesNames.length > 0) battingParts.push(`2B: ${doublesNames.join(', ')}`);
-      const triplesNames = collectNames((box) => (box?.triples ?? 0) > 0);
-      if (triplesNames.length > 0) battingParts.push(`3B: ${triplesNames.join(', ')}`);
-      const hrNames = collectNames((box, live) => (box?.homeRuns ?? live?.hr ?? 0) > 0);
-      if (hrNames.length > 0) battingParts.push(`HR: ${hrNames.join(', ')}`);
-      const sfNames = collectNames((box, live) => (box?.sacrificeFlies ?? live?.sf ?? 0) > 0);
-      if (sfNames.length > 0) battingParts.push(`SF: ${sfNames.join(', ')}`);
-      const shNames = collectNames((box) => (box?.sacrificeBunts ?? 0) > 0);
-      if (shNames.length > 0) battingParts.push(`SH: ${shNames.join(', ')}`);
-      const gdpNames = collectNames((box) => (box?.groundedIntoDoublePlays ?? 0) > 0);
-      if (gdpNames.length > 0) battingParts.push(`GDP: ${gdpNames.join(', ')}`);
-
-      const isHomeTeam = teamId === game.homeTeamId;
-      const battingHalf = isHomeTeam ? 'bot' : 'top';
-      const fieldingHalf = isHomeTeam ? 'top' : 'bot';
-      const battingEvents = events.filter((event) => event.half === battingHalf);
-      const fieldingEvents = events.filter((event) => event.half === fieldingHalf);
-
-      const fieldingParts: string[] = [];
-      const errors = isHomeTeam ? errorCounts.home : errorCounts.away;
-      const fieldingTeamId = isHomeTeam ? game.homeTeamId : game.awayTeamId;
-      const teamFielding = fieldingBox.filter((f) => f.teamId === fieldingTeamId);
-      const errFromBox = teamFielding
-        .filter((f) => (f.errors ?? 0) > 0)
-        .map((f) => ({ name: `${f.firstName?.charAt(0)}. ${f.lastName}`, count: f.errors ?? 0 }));
-      const errFromEvents: Array<{ name: string; count: number }> = [];
-      for (const e of fieldingEvents) {
-        const ids = [...new Set((e.errorFielderIds as number[] | undefined) ?? [])];
-        for (const pid of ids) {
-          const p = lineups.find((l) => l.playerId === pid);
-          errFromEvents.push({
-            name: p ? `${p.firstName?.charAt(0)}. ${p.lastName}` : `#${pid}`,
-            count: 1,
-          });
-        }
-      }
-      if (errFromBox.length > 0) {
-        fieldingParts.push(`E: ${mergeCountsByName(errFromBox)}`);
-      } else if (errFromEvents.length > 0) {
-        fieldingParts.push(`E: ${mergeCountsByName(errFromEvents)}`);
-      } else if (errors > 0) {
-        fieldingParts.push(`E: ${errors}`);
-      }
-      const doublePlays = fieldingEvents.filter((event) => event.eventType === 'double_play').length;
-      if (doublePlays > 0) fieldingParts.push(`DP: ${doublePlays}`);
-      const triplePlays = fieldingEvents.filter((event) => event.eventType === 'triple_play').length;
-      if (triplePlays > 0) fieldingParts.push(`TP: ${triplePlays}`);
-      const passedBallCount = fieldingEvents.filter((event) => event.eventType === 'passed_ball').length;
-      const pbFromBox = teamFielding
-        .filter((f) => (f.passedBalls ?? 0) > 0)
-        .map((f) => ({ name: `${f.firstName?.charAt(0)}. ${f.lastName}`, count: f.passedBalls ?? 0 }));
-      if (pbFromBox.length > 0) {
-        fieldingParts.push(`PB: ${mergeCountsByName(pbFromBox)}`);
-      } else if (passedBallCount > 0) {
-        const pbPairs: Array<{ name: string; count: number }> = [];
-        for (const e of fieldingEvents) {
-          if (e.eventType !== 'passed_ball') continue;
-          const pmap = positionMapsByEvent.get(e.id)?.get(fieldingTeamId);
-          const cid = pmap?.get(2);
-          if (cid) {
-            const p = lineups.find((l) => l.playerId === cid);
-            pbPairs.push({
-              name: p ? `${p.firstName?.charAt(0)}. ${p.lastName}` : `#${cid}`,
-              count: 1,
-            });
-          }
-        }
-        if (pbPairs.length > 0) fieldingParts.push(`PB: ${mergeCountsByName(pbPairs)}`);
-        else fieldingParts.push(`PB: ${passedBallCount}`);
-      }
-
-      const baseRunningParts: string[] = [];
-      const sbItems = battingEvents
-        .filter((event) => event.eventType === 'stolen_base')
-        .map((event) => ({ name: (event.batterName ?? '').trim() || 'Unknown', count: 1 }));
-      if (sbItems.length > 0) baseRunningParts.push(`SB: ${mergeCountsByName(sbItems)}`);
-      const csItems = battingEvents
-        .filter((event) => event.eventType === 'caught_stealing')
-        .map((event) => ({ name: (event.batterName ?? '').trim() || 'Unknown', count: 1 }));
-      if (csItems.length > 0) baseRunningParts.push(`CS: ${mergeCountsByName(csItems)}`);
-      const poItems = battingEvents
-        .filter((event) => event.eventType === 'picked_off')
-        .map((event) => ({ name: (event.batterName ?? '').trim() || 'Unknown', count: 1 }));
-      if (poItems.length > 0) baseRunningParts.push(`PO: ${mergeCountsByName(poItems)}`);
-      const defensiveIndifference = battingEvents.filter((event) => event.eventType === 'defensive_indifference').length;
-      if (defensiveIndifference > 0) baseRunningParts.push(`DI: ${defensiveIndifference}`);
-      const lob = teamLobMap[teamId] ?? 0;
-      if (lob > 0) baseRunningParts.push(`LOB: ${lob}`);
-
-      const pitchingRows = isHomeTeam ? homePitching : awayPitching;
-      const pitchingParts: string[] = [];
-      const wildPitches = withCounts(pitchingRows.map((pitcher) => ({ name: `${pitcher.firstName?.charAt(0)}. ${pitcher.lastName}`, count: pitcher.wildPitches ?? 0 })));
-      if (wildPitches.length > 0) pitchingParts.push(`WP: ${wildPitches.join(', ')}`);
-      const balks = withCounts(pitchingRows.map((pitcher) => ({ name: `${pitcher.firstName?.charAt(0)}. ${pitcher.lastName}`, count: pitcher.balks ?? 0 })));
-      if (balks.length > 0) pitchingParts.push(`BK: ${balks.join(', ')}`);
-      const hitBatters = withCounts(pitchingRows.map((pitcher) => ({ name: `${pitcher.firstName?.charAt(0)}. ${pitcher.lastName}`, count: pitcher.hitBatters ?? 0 })));
-      if (hitBatters.length > 0) pitchingParts.push(`HBP: ${hitBatters.join(', ')}`);
-      const pSegs: string[] = [];
-      for (const pitcher of pitchingRows) {
-        const live = livePitchingMap[pitcher.playerId];
-        const pt = Number(pitcher.pitchesThrown ?? live?.np ?? 0) || 0;
-        if (pt <= 0) continue;
-        const st = Number(pitcher.strikes ?? live?.strikes ?? 0) || 0;
-        const nm = `${pitcher.firstName?.charAt(0)}. ${pitcher.lastName}`;
-        pSegs.push(`${nm} ${pt}-${st}`);
-      }
-      if (pSegs.length > 0) pitchingParts.push(`P-S: ${pSegs.join('; ')}`);
-
-      return {
-        batting: battingParts,
-        fielding: fieldingParts,
-        baseRunning: baseRunningParts,
-        pitching: pitchingParts,
-      };
-    })();
-    const renderNoteLine = (label: string, parts: string[]) => (
-      <div>
-        <span className="font-semibold text-slate-700">{label}:</span>{' '}
-        {parts.length > 0 ? parts.join(' | ') : '—'}
-      </div>
-    );
 
     return (
       <div className="mb-8">
@@ -1091,12 +930,6 @@ export function LiveGameClient({
           </table>
           </div>
         </div>
-          <div className="mt-2 space-y-0.5 text-[10px] text-slate-600">
-            {renderNoteLine('Batting', notes.batting)}
-            {renderNoteLine('Fielding', notes.fielding)}
-            {renderNoteLine('Base Running', notes.baseRunning)}
-            {renderNoteLine('Pitching', notes.pitching)}
-          </div>
       </div>
     );
   };
@@ -1383,6 +1216,11 @@ export function LiveGameClient({
     if (ip <= 0) return '—';
     return ((h + bb) / ip).toFixed(2);
   };
+  const gameOba = (hits: number, bf: number, bb: number, ibb: number, hb: number) => {
+    const denom = bf - bb - ibb - hb;
+    if (denom <= 0) return '—';
+    return (hits / denom).toFixed(3).replace(/^0/, '');
+  };
 
   const strikePct = (balls: number | null | undefined, strikes: number | null | undefined) => {
     const b = balls ?? 0;
@@ -1394,11 +1232,11 @@ export function LiveGameClient({
 
   const renderPitchingTable = (teamName: string, pitchers: PitchingBoxScore[]) => {
     if (pitchers.length === 0) return null;
-    const pitchHeaders = ['Dec','IP','H','R','ER','BB','SO','Kc','Ks','HR','HBP','WP','BF','NP','B','S','%S','GSc','ERA','WHIP'] as const;
+    const pitchHeaders = ['Dec','IP','H','R','ER','BB','SO','Kc','Ks','HR','HBP','WP','BF','NP','B','S','%S','GSc','ERA','WHIP','OBA'] as const;
     const groupBorder = (h: string) =>
       ['IP','Kc','HR','BF','ERA'].includes(h) ? 'border-l border-slate-200' : '';
     const thWidth = (h: string) =>
-      h === '%S' ? 'w-11' : h === 'ERA' || h === 'WHIP' ? 'min-w-[2.75rem]' : h === 'BF' || h === 'NP' || h === 'B' || h === 'S' ? 'min-w-[2.25rem]' : 'min-w-[2rem]';
+      h === '%S' ? 'w-11' : h === 'ERA' || h === 'WHIP' || h === 'OBA' ? 'min-w-[2.75rem]' : h === 'BF' || h === 'NP' || h === 'B' || h === 'S' ? 'min-w-[2.25rem]' : 'min-w-[2rem]';
 
     const sumIp = (arr: PitchingBoxScore[]) => {
       let thirds = 0;
@@ -1470,6 +1308,12 @@ export function LiveGameClient({
             </td>
           );
         case 'WHIP': return <td key={h} className="text-center text-slate-900 font-mono text-[10px] py-2.5">{whip}</td>;
+        case 'OBA':
+          return (
+            <td key={h} className="text-center text-slate-900 font-mono text-[10px] py-2.5">
+              {gameOba(p.hits ?? 0, p.battersFaced ?? 0, p.walks ?? 0, p.intentionalWalks ?? 0, p.hitBatters ?? 0)}
+            </td>
+          );
         default: return null;
       }
     };
@@ -1491,6 +1335,8 @@ export function LiveGameClient({
     const tStrikes = pitchers.reduce((s, p) => s + (p.strikes ?? 0), 0);
     const tERA = ipResult.ip > 0 ? ((tER / ipResult.ip) * 9).toFixed(2) : '—';
     const tWHIP = ipResult.ip > 0 ? ((tH + tBB) / ipResult.ip).toFixed(2) : '—';
+    const tIBB = pitchers.reduce((s, p) => s + (p.intentionalWalks ?? 0), 0);
+    const tOBA = gameOba(tH, tBF, tBB, tIBB, tHBP);
 
     const totalCell = (h: string) => {
       switch (h) {
@@ -1514,6 +1360,7 @@ export function LiveGameClient({
         case 'GSc': return <td key={h} className="py-2.5" />;
         case 'ERA': return <td key={h} className={`text-center font-mono text-[10px] py-2.5 ${groupBorder(h)}`}>{tERA}</td>;
         case 'WHIP': return <td key={h} className="text-center font-mono text-[10px] py-2.5">{tWHIP}</td>;
+        case 'OBA': return <td key={h} className="text-center font-mono text-[10px] py-2.5">{tOBA}</td>;
         default: return null;
       }
     };
@@ -1870,11 +1717,12 @@ export function LiveGameClient({
                             const isCompact = playMode === 'compact';
                             const isSystemRow = result?.eventType === 'substitution' || result?.eventType === 'adjust_score';
                             const isCompactSystemRow = isCompact && isSystemRow;
-                            const contextLine = `${group.half === 'top' ? game.awayTeamName : game.homeTeamName} batting • ${group.half === 'top' ? game.homeTeamName : game.awayTeamName} pitching`;
+                            const hx = result?.hitLocationX != null ? Number(result.hitLocationX) : NaN;
+                            const hy = result?.hitLocationY != null ? Number(result.hitLocationY) : NaN;
+                            const showMiniHit = Boolean(result) && Number.isFinite(hx) && Number.isFinite(hy);
                             const metaParts = [
                               !isSystemRow && displayedPitchCount > 0 ? `${displayedPitchCount} pitch${displayedPitchCount === 1 ? '' : 'es'}` : null,
                               !isSystemRow ? formatted?.subtitle || null : null,
-                              contextLine,
                             ].filter(Boolean);
 
                             return (
@@ -1907,6 +1755,9 @@ export function LiveGameClient({
                                   </div>
                                   {!isCompactSystemRow && (
                                   <div className={`flex shrink-0 ${isCompact ? 'items-center gap-1 pt-0' : 'flex-col items-end gap-1.5 pt-0.5'}`}>
+                                    {showMiniHit && (
+                                      <MiniHitLocation hitLocationX={hx} hitLocationY={hy} />
+                                    )}
                                     <BaseDiamond first={bases.first} second={bases.second} third={bases.third} compact={isCompact} />
                                     <OutsIndicator outs={outsAfter} compact={isCompact} />
                                   </div>

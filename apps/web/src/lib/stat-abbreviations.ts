@@ -67,6 +67,7 @@ const STAT_ABBREVIATIONS: Record<string, string> = {
   'GO/AO': 'Ground Out / Air Out Ratio',
   ERA: 'Earned Run Average',
   WHIP: 'Walks + Hits Per Inning Pitched',
+  OBA: 'Opponent batting average (H per opponent AB; AB ≈ BF − BB − IBB − HBP)',
   FIP: 'Fielding Independent Pitching',
   'K/9': 'Strikeouts Per 9 Innings',
   'BB/9': 'Walks Per 9 Innings',

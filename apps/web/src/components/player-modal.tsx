@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { SprayChart } from '@/components/stats/spray-chart';
 import { getStatAbbreviationMeaning } from '@/lib/stat-abbreviations';
+import { derivePrimaryPositionLabel, POS_LABELS } from '@/lib/derive-primary-position';
 
 type Tab = 'batting' | 'pitching' | 'fielding' | 'gamelog' | 'spraychart';
 
@@ -27,10 +28,6 @@ const outsToIp = (outs: number): string => {
   const full = Math.floor(outs / 3);
   const rem = outs % 3;
   return rem === 0 ? `${full}` : `${full}.${rem}`;
-};
-
-const POS_LABELS: Record<number, string> = {
-  1: 'P', 2: 'C', 3: '1B', 4: '2B', 5: '3B', 6: 'SS', 7: 'LF', 8: 'CF', 9: 'RF',
 };
 
 interface PlayerModalProps {
@@ -218,9 +215,9 @@ export function PlayerModal({ slug, firstName, lastName, onClose }: PlayerModalP
     if (!rows.length) return null;
     const acc: any = {};
     const keysToSum = [
-      'games','gamesStarted','wins','losses','saves',
-      'hitsAllowed','runsAllowed','earnedRuns','walksAllowed',
-      'strikeouts','homeRunsAllowed',
+      'games', 'gamesStarted', 'wins', 'losses', 'saves',
+      'hitsAllowed', 'runsAllowed', 'earnedRuns', 'walksAllowed',
+      'strikeouts', 'homeRunsAllowed', 'battersFaced', 'intentionalWalks', 'hitBatters',
     ];
     for (const r of rows) {
       for (const k of keysToSum) acc[k] = (acc[k] || 0) + (Number(r[k] ?? 0) || 0);
@@ -230,27 +227,20 @@ export function PlayerModal({ slug, firstName, lastName, onClose }: PlayerModalP
     const er = acc.earnedRuns || 0;
     const h = acc.hitsAllowed || 0;
     const bb = acc.walksAllowed || 0;
+    const bf = acc.battersFaced || 0;
+    const ibb = acc.intentionalWalks || 0;
+    const hb = acc.hitBatters || 0;
+    const oppAb = bf - bb - ibb - hb;
     return {
       ...acc,
       inningsPitched: outsToIp(outs),
       era: ip > 0 ? ((er / ip) * 9).toFixed(2) : null,
       whip: ip > 0 ? ((bb + h) / ip).toFixed(2) : null,
+      opponentAvg: oppAb > 0 ? (h / oppAb).toFixed(3).replace(/^0/, '') : null,
     };
   };
 
-  // Derive primary position from fielding-by-position data
-  const derivedPosition = (() => {
-    if (!fieldingByPos || fieldingByPos.length === 0) return null;
-    const sorted = [...fieldingByPos].sort((a, b) => (b.games || 0) - (a.games || 0));
-    const top = sorted[0];
-    const second = sorted[1];
-    const topLabel = POS_LABELS[top.position] || String(top.position);
-    if (second && second.games >= top.games * 0.6) {
-      const secLabel = POS_LABELS[second.position] || String(second.position);
-      return `${topLabel}/${secLabel}`;
-    }
-    return topLabel;
-  })();
+  const derivedPosition = derivePrimaryPositionLabel(fieldingByPos ?? []);
 
   const tabs: { key: Tab; label: string }[] = [
     { key: 'batting', label: 'Batting' },
@@ -408,7 +398,7 @@ export function PlayerModal({ slug, firstName, lastName, onClose }: PlayerModalP
                     <table className="w-full text-[11px] border-collapse">
                       <thead>
                         <tr className="bg-[#e5e7eb] text-[#333] border-b border-[#ccc]">
-                          {['Season','Team','G','GS','W','L','SV','IP','H','R','ER','BB','SO','HR','ERA','WHIP'].map(col => (
+                          {['Season','Team','G','GS','W','L','SV','IP','H','R','ER','BB','SO','HR','ERA','WHIP','OBA'].map(col => (
                             <th
                               key={col}
                               title={getStatAbbreviationMeaning(col) ?? undefined}
@@ -445,6 +435,7 @@ export function PlayerModal({ slug, firstName, lastName, onClose }: PlayerModalP
                               <td className="px-2 py-1.5 text-right">{r.homeRunsAllowed}</td>
                               <td className="px-2 py-1.5 text-right">{fmtEra(r.era)}</td>
                               <td className="px-2 py-1.5 text-right">{fmtEra(r.whip)}</td>
+                              <td className="px-2 py-1.5 text-right">{fmtRate(r.opponentAvg)}</td>
                             </tr>
                           ))}
                         {total && (
@@ -464,6 +455,7 @@ export function PlayerModal({ slug, firstName, lastName, onClose }: PlayerModalP
                             <td className="px-2 py-1.5 font-semibold text-right">{total.homeRunsAllowed}</td>
                             <td className="px-2 py-1.5 font-semibold text-right">{fmtEra(total.era)}</td>
                             <td className="px-2 py-1.5 font-semibold text-right">{fmtEra(total.whip)}</td>
+                            <td className="px-2 py-1.5 font-semibold text-right">{fmtRate(total.opponentAvg)}</td>
                           </tr>
                         )}
                       </tbody>
