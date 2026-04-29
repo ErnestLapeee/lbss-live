@@ -307,7 +307,6 @@ export function LiveScoringPage() {
   /** Season PA + defensive position ranks for lineup entry (from API). */
   const [lineupHintsHome, setLineupHintsHome] = useState<Record<number, LineupHintsEntry>>({});
   const [lineupHintsAway, setLineupHintsAway] = useState<Record<number, LineupHintsEntry>>({});
-  const [loadUsualLineupBusy, setLoadUsualLineupBusy] = useState(false);
 
   const [lineupAdjustOpen, setLineupAdjustOpen] = useState(false);
   const [lineupAdjustTeam, setLineupAdjustTeam] = useState<'home' | 'away'>('away');
@@ -624,44 +623,6 @@ export function LiveScoringPage() {
       return next;
     });
   };
-
-  const fetchAndApplySeasonLineup = useCallback(async (side: 'home' | 'away'): Promise<'ok' | 'empty' | 'roster'> => {
-    if (!game) return 'empty';
-    const teamId = side === 'home' ? game.homeTeamId : game.awayTeamId;
-    const roster = side === 'home' ? homeRoster : awayRoster;
-    const data: any = await apiGet(`/admin/scoring/${gameId}/most-common-lineup/${teamId}`);
-    const raw = data.lineup as Array<{ playerId: number; position: number; battingOrder?: number }> | null | undefined;
-    if (!raw?.length) return 'empty';
-    const rosterIds = new Set(roster.map((p) => p.playerId));
-    const sorted = [...raw]
-      .filter((l) => rosterIds.has(l.playerId))
-      .sort((a, b) => (a.battingOrder ?? 0) - (b.battingOrder ?? 0))
-      .slice(0, 9);
-    if (sorted.length === 0) return 'roster';
-    const lined = sorted.map((l) => ({ playerId: l.playerId, position: l.position }));
-    if (side === 'home') setSetupHome(lined);
-    else setSetupAway(lined);
-    return 'ok';
-  }, [game, gameId, homeRoster, awayRoster]);
-
-  const loadUsualLineupForCurrentTeam = useCallback(async () => {
-    if (!game) return;
-    setLoadUsualLineupBusy(true);
-    try {
-      const r = await fetchAndApplySeasonLineup(setupTeam);
-      if (r === 'empty') {
-        alert(
-          'No usual lineup found yet — past games need nine-player starter rows this season.',
-        );
-      } else if (r === 'roster') {
-        alert('The usual lineup does not match players on the current roster.');
-      }
-    } catch (e: unknown) {
-      alert(e instanceof Error ? e.message : 'Failed to load usual lineup');
-    } finally {
-      setLoadUsualLineupBusy(false);
-    }
-  }, [game, setupTeam, fetchAndApplySeasonLineup]);
 
   useEffect(() => {
     if (phase !== 'setup' || !game) return;
@@ -1688,15 +1649,14 @@ function needsRunnerAdvanceErrorFieldingPrompt(
   if (phase === 'setup') {
     const currentRoster = setupTeam === 'home' ? homeRoster : awayRoster;
     const currentSetup = setupTeam === 'home' ? setupHome : setupAway;
-    const opposingSelectedIds = new Set((setupTeam === 'home' ? setupAway : setupHome).map(p => p.playerId));
-    const hintsMap = setupTeam === 'home' ? lineupHintsHome : lineupHintsAway;
-    const rosterPool = currentRoster.filter((p) => !opposingSelectedIds.has(p.playerId));
-    const sortedRosterPool = [...rosterPool].sort((a, b) => {
-      const paA = hintsMap[a.playerId]?.pa ?? 0;
-      const paB = hintsMap[b.playerId]?.pa ?? 0;
-      if (paB !== paA) return paB - paA;
-      return `${a.lastName} ${a.firstName}`.localeCompare(`${b.lastName} ${b.firstName}`);
-    });
+    const selectedIds = new Set(currentSetup.map((p) => p.playerId));
+    const opposingSelectedIds = new Set((setupTeam === 'home' ? setupAway : setupHome).map((p) => p.playerId));
+    const availablePlayers = currentRoster.filter(
+      (p) => !selectedIds.has(p.playerId) && !opposingSelectedIds.has(p.playerId),
+    );
+    const availableSorted = [...availablePlayers].sort((a, b) =>
+      `${a.lastName} ${a.firstName}`.localeCompare(`${b.lastName} ${b.firstName}`),
+    );
     return (
       <>
       <div className="min-h-screen bg-[#0c1220] text-white">
@@ -1733,81 +1693,41 @@ function needsRunnerAdvanceErrorFieldingPrompt(
               </button>
             ))}
           </div>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <div className="grid grid-cols-2 gap-6">
             <div>
               <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-                <div>
-                  <h3 className="text-base font-bold text-white tracking-wide">Available</h3>
-                  <p className="text-[11px] text-white/45 mt-0.5">Sorted by season PA · full roster for this team</p>
-                </div>
-                <div className="flex flex-wrap items-center justify-end gap-1.5">
-                  <button
-                    type="button"
-                    disabled={loadUsualLineupBusy}
-                    onClick={() => void loadUsualLineupForCurrentTeam()}
-                    className="shrink-0 rounded-lg border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white hover:bg-white/15 disabled:opacity-40"
-                  >
-                    {loadUsualLineupBusy ? 'Loading…' : 'Load usual lineup'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setAddRosterOpen(true)}
-                    className="shrink-0 rounded-lg border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white hover:bg-white/15"
-                  >
-                    + New player ({setupTeam === 'home' ? game.homeTeamName : game.awayTeamName})
-                  </button>
-                </div>
+                <h3 className="text-sm font-bold text-white/50 uppercase">Available</h3>
+                <button
+                  type="button"
+                  onClick={() => setAddRosterOpen(true)}
+                  className="shrink-0 rounded-lg border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white hover:bg-white/15"
+                >
+                  + New player ({setupTeam === 'home' ? game.homeTeamName : game.awayTeamName})
+                </button>
               </div>
-              <div className="space-y-1 max-h-[min(60vh,560px)] overflow-y-auto pr-1">
-                {sortedRosterPool.map((p) => {
-                  const slotIdx = currentSetup.findIndex((e) => e.playerId === p.playerId);
-                  const inLineup = slotIdx >= 0;
-                  const pa = hintsMap[p.playerId]?.pa ?? 0;
-                  return (
-                    <div
-                      key={p.playerId}
-                      className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm border ${
-                        inLineup ? 'bg-emerald-950/35 border-emerald-700/25' : 'bg-white/5 border-transparent hover:bg-white/10'
-                      }`}
-                    >
-                      {p.jerseyNumber && <span className="text-white/30 font-mono text-xs shrink-0">#{p.jerseyNumber}</span>}
-                      <span className="flex-1 min-w-0 truncate">{p.firstName.charAt(0)}. {p.lastName}</span>
-                      <span className="tabular-nums text-[11px] text-white/50 w-9 text-right shrink-0" title="Plate appearances (this season)">
-                        {pa}
-                      </span>
-                      <span className={`w-2 h-2 rounded-full shrink-0 ${p.licensePaid === 'paid' ? 'bg-green-500' : 'bg-red-500'}`} />
-                      {inLineup ? (
-                        <>
-                          <span className="text-[10px] font-bold text-emerald-400/95 uppercase w-11 text-center shrink-0">Bat {slotIdx + 1}</span>
-                          <button
-                            type="button"
-                            onClick={() => removeFromSetup(setupTeam, p.playerId)}
-                            className="text-[11px] font-semibold text-red-400 hover:text-red-300 shrink-0 px-1"
-                          >
-                            Remove
-                          </button>
-                        </>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => addToSetup(setupTeam, p.playerId)}
-                          className="text-[11px] font-bold uppercase text-accent shrink-0 px-2 py-1 rounded hover:bg-white/10"
-                        >
-                          Add
-                        </button>
-                      )}
-                    </div>
-                  );
-                })}
+              <div className="space-y-1">
+                {availableSorted.map((p) => (
+                  <button
+                    key={p.playerId}
+                    type="button"
+                    onClick={() => addToSetup(setupTeam, p.playerId)}
+                    className="w-full text-left px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-sm flex items-center gap-2"
+                  >
+                    {p.jerseyNumber && <span className="text-white/30 font-mono">#{p.jerseyNumber}</span>}
+                    <span className="flex-1">
+                      {p.firstName.charAt(0)}. {p.lastName}
+                    </span>
+                    <span
+                      className={`w-2 h-2 rounded-full shrink-0 ${p.licensePaid === 'paid' ? 'bg-green-500' : 'bg-red-500'}`}
+                      title={p.licensePaid === 'paid' ? 'License paid' : 'License unpaid'}
+                    />
+                  </button>
+                ))}
               </div>
             </div>
-
-            <div className="rounded-xl border border-white/10 bg-[#0f1829] p-4">
-              <div className="mb-3 border-b border-white/10 pb-3">
-                <h3 className="text-base font-bold text-white tracking-wide">Batting order</h3>
-                <p className="text-[11px] text-white/45 mt-1">Slots 1–9 · drag rows to reorder</p>
-              </div>
-              <div className="space-y-1 min-h-[100px]">
+            <div>
+              <h3 className="text-sm font-bold text-white/50 uppercase mb-3">Batting order</h3>
+              <div className="space-y-1">
                 {currentSetup.map((entry, idx) => {
                   const player = currentRoster.find((pr) => pr.playerId === entry.playerId);
                   return (
@@ -1832,14 +1752,20 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                         moveSetup(setupTeam, from, idx);
                         setSetupDragFrom(null);
                       }}
-                      className={`flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.06] border cursor-grab active:cursor-grabbing select-none ${
-                        setupDragFrom === idx ? 'opacity-50 border-amber-500/50' : 'border-white/[0.07] hover:border-white/15'
+                      className={`flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5 border border-transparent cursor-grab active:cursor-grabbing select-none ${
+                        setupDragFrom === idx ? 'opacity-50 border-amber-500/40' : 'hover:border-white/10'
                       }`}
                     >
-                      <span className="text-white/40 text-lg leading-none" aria-hidden>⋮⋮</span>
-                      <span className="text-white font-bold text-sm tabular-nums w-7 shrink-0 text-center rounded bg-black/25 py-0.5">{idx + 1}</span>
-                      <span className={`w-2 h-2 rounded-full shrink-0 ${player?.licensePaid === 'paid' ? 'bg-green-500' : 'bg-red-500'}`} />
-                      <span className="flex-1 text-sm font-medium">{player ? `${player.firstName.charAt(0)}. ${player.lastName}` : '?'}</span>
+                      <span className="text-white/40 text-lg leading-none" aria-hidden>
+                        ⋮⋮
+                      </span>
+                      <span className="text-white/30 font-bold w-6">{idx + 1}</span>
+                      <span
+                        className={`w-2 h-2 rounded-full shrink-0 ${player?.licensePaid === 'paid' ? 'bg-green-500' : 'bg-red-500'}`}
+                      />
+                      <span className="flex-1 text-sm">
+                        {player ? `${player.firstName.charAt(0)}. ${player.lastName}` : '?'}
+                      </span>
                       <select
                         value={entry.position}
                         onChange={(e) => updatePosition(setupTeam, entry.playerId, Number(e.target.value))}
@@ -1855,18 +1781,13 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                       <button
                         type="button"
                         onClick={() => removeFromSetup(setupTeam, entry.playerId)}
-                        className="text-red-400 text-xs shrink-0 px-1"
+                        className="text-red-400 text-xs"
                       >
                         ✕
                       </button>
                     </div>
                   );
                 })}
-                {currentSetup.length === 0 && (
-                  <p className="text-xs text-white/35 py-8 text-center border border-dashed border-white/10 rounded-lg">
-                    ← Add players from the roster list
-                  </p>
-                )}
               </div>
             </div>
           </div>
