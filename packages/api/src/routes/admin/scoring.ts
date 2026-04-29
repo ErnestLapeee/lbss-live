@@ -628,7 +628,7 @@ export async function adminScoringRoutes(app: FastifyInstance) {
         .where(and(eq(gameEvents.gameId, gameId), eq(gameEvents.isDeleted, false)))
         .orderBy(gameEvents.eventNumber);
 
-      const lineupRows = await db.select({
+      const lineupRaw = await db.select({
         id: gameLineups.id,
         teamId: gameLineups.teamId,
         playerId: gameLineups.playerId,
@@ -645,9 +645,16 @@ export async function adminScoringRoutes(app: FastifyInstance) {
         bats: players.bats,
       })
         .from(gameLineups)
-        .innerJoin(players, eq(gameLineups.playerId, players.id))
+        .leftJoin(players, eq(gameLineups.playerId, players.id))
         .where(eq(gameLineups.gameId, gameId))
         .orderBy(gameLineups.battingOrder);
+
+      const lineupRows = lineupRaw.map((row) => ({
+        ...row,
+        firstName: row.firstName ?? '—',
+        lastName: row.lastName ?? 'Vacant slot',
+        bats: row.bats ?? null,
+      }));
 
       // Get team names
       const [homeTeam] = await db.select({ name: teams.name }).from(teams).where(eq(teams.id, game.homeTeamId)).limit(1);
@@ -1073,7 +1080,7 @@ export async function adminScoringRoutes(app: FastifyInstance) {
     Params: { gameId: string };
     Body: {
       teamId: number;
-      lineup: Array<{ playerId: number; battingOrder: number; position: number }>;
+      lineup: Array<{ playerId: number | null; battingOrder: number; position: number | null }>;
     };
   }>('/:gameId/lineup', async (request, reply) => {
     try {
@@ -1098,10 +1105,45 @@ export async function adminScoringRoutes(app: FastifyInstance) {
         return reply.status(400).send({ message: 'Lineup team must be one of the two teams in this game' });
       }
 
-      const lineupPlayerIds = (lineup ?? []).map((entry) => Number(entry.playerId)).filter((id) => Number.isFinite(id));
+      const entries = lineup ?? [];
+      const battingOrders = entries.map((e) => Number(e.battingOrder));
+      if (battingOrders.some((b) => !Number.isInteger(b) || b < 1 || b > 10)) {
+        return reply.status(400).send({ message: 'Batting order must be integers 1–10 for each slot' });
+      }
+      if (new Set(battingOrders).size !== battingOrders.length) {
+        return reply.status(400).send({ message: 'Duplicate batting order in lineup' });
+      }
+
+      const filledPositions: number[] = [];
+      const lineupPlayerIds: number[] = [];
+      for (const entry of entries) {
+        const pidRaw = entry.playerId;
+        const isVacant = pidRaw == null;
+        if (isVacant) {
+          if (entry.position != null) {
+            return reply.status(400).send({ message: 'Vacant lineup slots cannot have a defensive position' });
+          }
+          continue;
+        }
+        const pid = Number(pidRaw);
+        if (!Number.isInteger(pid) || pid <= 0) {
+          return reply.status(400).send({ message: 'Invalid player id in lineup' });
+        }
+        lineupPlayerIds.push(pid);
+        const pos = Number(entry.position);
+        if (!Number.isInteger(pos) || pos < 1 || pos > 10) {
+          return reply.status(400).send({ message: 'Each filled slot needs a defensive position 1–10' });
+        }
+        filledPositions.push(pos);
+      }
+
       if (new Set(lineupPlayerIds).size !== lineupPlayerIds.length) {
         return reply.status(400).send({ message: 'The same player cannot appear twice in one lineup' });
       }
+      if (new Set(filledPositions).size !== filledPositions.length) {
+        return reply.status(400).send({ message: 'Each defensive position (P–DH) must be unique among active fielders' });
+      }
+
       if (lineupPlayerIds.length > 0) {
         const opponentTeamId = teamId === game.homeTeamId ? game.awayTeamId : game.homeTeamId;
         const [opponentConflict] = await db
@@ -1126,17 +1168,21 @@ export async function adminScoringRoutes(app: FastifyInstance) {
       );
 
       // Insert new lineup
-      if (lineup && lineup.length > 0) {
+      if (entries.length > 0) {
         await db.insert(gameLineups).values(
-          lineup.map(entry => ({
-            gameId,
-            teamId,
-            playerId: entry.playerId,
-            battingOrder: entry.battingOrder,
-            position: entry.position,
-            isStarter: true,
-            isActive: true,
-          }))
+          entries.map(entry => {
+            const pidRaw = entry.playerId;
+            const vacant = pidRaw == null;
+            return {
+              gameId,
+              teamId,
+              playerId: vacant ? null : Number(pidRaw),
+              battingOrder: entry.battingOrder,
+              position: vacant ? null : Number(entry.position),
+              isStarter: true,
+              isActive: true,
+            };
+          })
         );
       }
 
@@ -1886,6 +1932,9 @@ export async function adminScoringRoutes(app: FastifyInstance) {
             .limit(1);
 
           if (!row) throw new Error(`POSITION_SWAP_VALIDATION:Player #${change.playerId} is not active in this game`);
+          if (row.position == null) {
+            throw new Error(`POSITION_SWAP_VALIDATION:Player #${change.playerId} has no defensive position (vacant slot)`);
+          }
           snapshots.push({
             playerId: change.playerId,
             teamId: row.teamId,
@@ -1911,6 +1960,7 @@ export async function adminScoringRoutes(app: FastifyInstance) {
           ));
         const finalPositionsByTeam = new Map<number, Set<number>>();
         for (const row of activeRows) {
+          if (row.playerId == null || row.position == null) continue;
           const finalPosition = changeByPlayerId.get(row.playerId) ?? row.position;
           const positions = finalPositionsByTeam.get(row.teamId) ?? new Set<number>();
           if (positions.has(finalPosition)) {
@@ -2095,12 +2145,12 @@ export async function adminScoringRoutes(app: FastifyInstance) {
     }
   });
 
-  // ── PUT /:gameId/active-lineup ── Fix batting order / fielding positions for active players (no row delete — keeps sub history)
+  // ── PUT /:gameId/active-lineup ── Fix batting order / fielding positions for active players (incl. vacant/ejected slots)
   app.put<{
     Params: { gameId: string };
     Body: {
-      home: Array<{ playerId: number; battingOrder: number; position: number }>;
-      away: Array<{ playerId: number; battingOrder: number; position: number }>;
+      home: Array<{ id: number; playerId: number | null; battingOrder: number; position: number | null }>;
+      away: Array<{ id: number; playerId: number | null; battingOrder: number; position: number | null }>;
     };
   }>('/:gameId/active-lineup', async (request, reply) => {
     try {
@@ -2135,22 +2185,44 @@ export async function adminScoringRoutes(app: FastifyInstance) {
 
       function validateSide(
         label: string,
-        rows: Array<{ playerId: number; battingOrder: number; position: number }>,
+        rows: Array<{ id: number; playerId: number | null; battingOrder: number; position: number | null }>,
       ): string | null {
         if (rows.length === 0) return `${label}: lineup cannot be empty`;
-        const pids = rows.map((r) => Number(r.playerId)).filter((n) => Number.isFinite(n) && n > 0);
-        if (pids.length !== rows.length) return `${label}: invalid playerId`;
-        if (new Set(pids).size !== pids.length) return `${label}: duplicate player in payload`;
+        const ids = rows.map((r) => Number(r.id));
+        if (ids.some((id) => !Number.isInteger(id) || id <= 0)) return `${label}: invalid lineup row id`;
+        if (new Set(ids).size !== ids.length) return `${label}: duplicate lineup row id`;
+
+        const realPids: number[] = [];
+        for (const r of rows) {
+          if (r.playerId == null) continue;
+          const pid = Number(r.playerId);
+          if (!Number.isInteger(pid) || pid <= 0) return `${label}: invalid player id`;
+          realPids.push(pid);
+        }
+        if (new Set(realPids).size !== realPids.length) return `${label}: duplicate player in payload`;
+
         const bo = rows.map((r) => Number(r.battingOrder));
         if (bo.some((b) => !Number.isInteger(b) || b < 1 || b > 10)) {
           return `${label}: batting order must be integers 1–10`;
         }
         if (new Set(bo).size !== bo.length) return `${label}: duplicate batting order`;
-        const pos = rows.map((r) => Number(r.position));
-        if (pos.some((p) => !Number.isInteger(p) || p < 1 || p > 10)) {
-          return `${label}: position must be integers 1–10`;
+
+        const filledPositions: number[] = [];
+        for (const r of rows) {
+          const pid = r.playerId == null ? null : Number(r.playerId);
+          if (pid == null) {
+            if (r.position != null) {
+              return `${label}: vacant slot cannot have a fielding position`;
+            }
+            continue;
+          }
+          const pos = Number(r.position);
+          if (!Number.isInteger(pos) || pos < 1 || pos > 10) {
+            return `${label}: active players need position 1–10`;
+          }
+          filledPositions.push(pos);
         }
-        if (new Set(pos).size !== pos.length) {
+        if (new Set(filledPositions).size !== filledPositions.length) {
           return `${label}: each defensive position (P,C,IF,OF,DH) must be unique — fix duplicate roles (e.g. multiple DH)`;
         }
         return null;
@@ -2162,7 +2234,7 @@ export async function adminScoringRoutes(app: FastifyInstance) {
       if (errA) return reply.status(400).send({ message: errA });
 
       const activeHome = await db
-        .select({ playerId: gameLineups.playerId })
+        .select({ id: gameLineups.id })
         .from(gameLineups)
         .where(
           and(
@@ -2172,7 +2244,7 @@ export async function adminScoringRoutes(app: FastifyInstance) {
           ),
         );
       const activeAway = await db
-        .select({ playerId: gameLineups.playerId })
+        .select({ id: gameLineups.id })
         .from(gameLineups)
         .where(
           and(
@@ -2182,19 +2254,19 @@ export async function adminScoringRoutes(app: FastifyInstance) {
           ),
         );
 
-      const homeIds = new Set(activeHome.map((r) => r.playerId));
-      const awayIds = new Set(activeAway.map((r) => r.playerId));
-      const bodyHomeIds = new Set(homeRows.map((r) => r.playerId));
-      const bodyAwayIds = new Set(awayRows.map((r) => r.playerId));
+      const expectedHomeIds = new Set(activeHome.map((r) => r.id));
+      const expectedAwayIds = new Set(activeAway.map((r) => r.id));
+      const bodyHomeIds = new Set(homeRows.map((r) => Number(r.id)));
+      const bodyAwayIds = new Set(awayRows.map((r) => Number(r.id)));
 
-      if (homeIds.size !== bodyHomeIds.size || ![...homeIds].every((id) => bodyHomeIds.has(id))) {
+      if (expectedHomeIds.size !== bodyHomeIds.size || ![...expectedHomeIds].every((id) => bodyHomeIds.has(id))) {
         return reply.status(400).send({
-          message: 'Home payload must list exactly the same active players as the current lineup',
+          message: 'Home payload must list exactly one entry per active lineup row (same row ids as the server)',
         });
       }
-      if (awayIds.size !== bodyAwayIds.size || ![...awayIds].every((id) => bodyAwayIds.has(id))) {
+      if (expectedAwayIds.size !== bodyAwayIds.size || ![...expectedAwayIds].every((id) => bodyAwayIds.has(id))) {
         return reply.status(400).send({
-          message: 'Away payload must list exactly the same active players as the current lineup',
+          message: 'Away payload must list exactly one entry per active lineup row (same row ids as the server)',
         });
       }
 
@@ -2203,14 +2275,15 @@ export async function adminScoringRoutes(app: FastifyInstance) {
           await tx
             .update(gameLineups)
             .set({
+              playerId: row.playerId == null ? null : Number(row.playerId),
               battingOrder: row.battingOrder,
-              position: row.position,
+              position: row.playerId == null ? null : Number(row.position),
             })
             .where(
               and(
+                eq(gameLineups.id, row.id),
                 eq(gameLineups.gameId, gameId),
                 eq(gameLineups.teamId, game.homeTeamId),
-                eq(gameLineups.playerId, row.playerId),
                 eq(gameLineups.isActive, true),
               ),
             );
@@ -2219,14 +2292,15 @@ export async function adminScoringRoutes(app: FastifyInstance) {
           await tx
             .update(gameLineups)
             .set({
+              playerId: row.playerId == null ? null : Number(row.playerId),
               battingOrder: row.battingOrder,
-              position: row.position,
+              position: row.playerId == null ? null : Number(row.position),
             })
             .where(
               and(
+                eq(gameLineups.id, row.id),
                 eq(gameLineups.gameId, gameId),
                 eq(gameLineups.teamId, game.awayTeamId),
-                eq(gameLineups.playerId, row.playerId),
                 eq(gameLineups.isActive, true),
               ),
             );

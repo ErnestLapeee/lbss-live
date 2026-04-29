@@ -71,6 +71,13 @@
       "when": 1774000000000,
       "tag": "0011_season_kind_playoff",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1774100000000,
+      "tag": "0013_game_lineups_vacant_slots",
+      "breakpoints": true
     }
   ]
 }

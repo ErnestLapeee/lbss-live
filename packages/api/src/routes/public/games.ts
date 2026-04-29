@@ -535,7 +535,7 @@ export async function gamesRoutes(app: FastifyInstance) {
       const id = parseInt(request.params.id, 10);
       if (isNaN(id)) return reply.status(400).send({ message: 'Invalid game id' });
 
-      const lineups = await db
+      const lineupRows = await db
         .select({
           id: gameLineups.id,
           gameId: gameLineups.gameId,
@@ -549,11 +549,17 @@ export async function gamesRoutes(app: FastifyInstance) {
           lastName: players.lastName,
         })
         .from(gameLineups)
-        .innerJoin(players, eq(gameLineups.playerId, players.id))
+        .leftJoin(players, eq(gameLineups.playerId, players.id))
         .where(eq(gameLineups.gameId, id))
         .orderBy(gameLineups.battingOrder);
 
-      return reply.send(lineups);
+      return reply.send(
+        lineupRows.map((row) => ({
+          ...row,
+          firstName: row.firstName ?? '—',
+          lastName: row.lastName ?? 'Vacant slot',
+        })),
+      );
     } catch (err) {
       request.log.error(err);
       return reply.status(500).send({ message: 'Failed to fetch lineups' });

@@ -209,8 +209,10 @@ function buildPositionMapsByEvent(events: any[], lineups: any[]): Map<number, Ev
   const playerTeam = new Map<number, number>();
   const current: EventPositionMap = new Map();
   for (const row of lineups) {
-    playerTeam.set(row.playerId, row.teamId);
-    if (!row.isActive || row.position == null) continue;
+    if (row.playerId != null) {
+      playerTeam.set(row.playerId, row.teamId);
+    }
+    if (!row.isActive || row.position == null || row.playerId == null) continue;
     const posMap = current.get(row.teamId) ?? new Map<number, number>();
     posMap.set(row.position, row.playerId);
     current.set(row.teamId, posMap);
@@ -321,10 +323,11 @@ export async function finalizeGame(gameId: number, userId?: number, options?: Fi
 
   const playerTeamMap = new Map<number, number>();
   for (const entry of lineups) {
-    if (!entry.isActive) continue;
+    if (!entry.isActive || entry.playerId == null) continue;
     playerTeamMap.set(entry.playerId, entry.teamId);
   }
   for (const entry of lineups) {
+    if (entry.playerId == null) continue;
     if (!playerTeamMap.has(entry.playerId)) playerTeamMap.set(entry.playerId, entry.teamId);
   }
   const positionMapsByEvent = buildPositionMapsByEvent(events, lineups);
@@ -770,7 +773,9 @@ export async function finalizeGame(gameId: number, userId?: number, options?: Fi
 
   // Include ALL players who appeared in the lineup (so everyone gets a fielding record)
   const allFielders = new Set<number>();
-  for (const l of lineups) allFielders.add(l.playerId);
+  for (const l of lineups) {
+    if (l.playerId != null) allFielders.add(l.playerId);
+  }
   for (const pid of fielderPutouts.keys()) allFielders.add(pid);
   for (const pid of fielderAssists.keys()) allFielders.add(pid);
   for (const pid of fielderErrors.keys()) allFielders.add(pid);

@@ -23,6 +23,10 @@ export async function ensureOptionalSchemaColumns(): Promise<void> {
     sql`ALTER TABLE game_lineups ADD COLUMN IF NOT EXISTS exited_half varchar(3)`
   );
 
+  /** Migration 0013 — vacant batting-order rows (ejection); matches `0013_game_lineups_vacant_slots.sql`. */
+  await db.execute(sql`ALTER TABLE game_lineups ALTER COLUMN player_id DROP NOT NULL`);
+  await db.execute(sql`ALTER TABLE game_lineups ALTER COLUMN position DROP NOT NULL`);
+
   await ensurePlayoffsTables();
 }
 

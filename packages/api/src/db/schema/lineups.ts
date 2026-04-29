@@ -21,11 +21,11 @@ export const gameLineups = pgTable(
     teamId: integer('team_id')
       .notNull()
       .references(() => teams.id),
-    playerId: integer('player_id')
-      .notNull()
-      .references(() => players.id),
+    /** Null = vacant batting-order slot (no hitter yet / ejected). */
+    playerId: integer('player_id').references(() => players.id),
     battingOrder: integer('batting_order').notNull(), // 1-9, 0 = sub not yet in
-    position: integer('position').notNull(), // 1=P,2=C,3=1B,4=2B,5=3B,6=SS,7=LF,8=CF,9=RF,10=DH
+    /** Null when playerId is null (vacant slot does not occupy a defensive position). */
+    position: integer('position'), // 1=P..10=DH when fielding
     enteredInning: integer('entered_inning').default(1),
     enteredHalf: varchar('entered_half', { length: 3 }).default('top'),
     /** Set when this stint ends (player subbed out); used for fielding innings. */
