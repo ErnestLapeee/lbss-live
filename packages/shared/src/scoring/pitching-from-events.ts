@@ -1,6 +1,6 @@
 /**
  * Single source of truth for pitcher R/ER and related counts from raw game events.
- * Mirrors packages/api/src/services/finalize-game.ts (per-pitcher loop + inning cutoffs).
+ * Earned runs follow Rule 9.16 via `computeEarnedRunsByEventNumber` (shared reconstruction).
  */
 
 import {
@@ -9,6 +9,7 @@ import {
   STRIKEOUT_EVENTS as SHARED_STRIKEOUT_EVENTS,
   isPlateAppearanceEvent,
 } from '../constants/event-types.js';
+import { computeEarnedRunsByEventNumber } from './earned-runs-rule-916.js';
 
 const HIT_EVENTS = new Set<string>(SHARED_HIT_EVENTS);
 
@@ -19,60 +20,6 @@ const WALK_EVENTS = new Set<string>(BASE_ON_BALLS_EVENTS);
 
 const GROUND_BALL_OUTS = new Set(['ground_out', 'bunt_out']);
 const FLY_BALL_OUTS = new Set(['fly_out', 'line_out', 'pop_out', 'infield_fly', 'foul_out']);
-
-/**
- * Per-run reasons that mark the run as unearned (scorer / rulebook tags).
- * Note: `wild_pitch` and `balk` are not listed here — MLB Rule 9.16 does not make those runs
- * automatically unearned; earned vs unearned follows reconstruction, which we do not model in full.
- */
-const UNEARNED_REASONS = new Set([
-  'passed_ball',
-  'advance_on_error',
-  'error',
-  'defensive_indifference',
-  'obstruction',
-  'catcher_obstruction',
-  'catcher_interference',
-]);
-
-const ERROR_EVENT_TYPES = new Set(['error', 'sac_bunt_error', 'sac_fly_error']);
-
-/**
- * Between-pitch events where a scored run with no `runnerScoredReasons` is treated as unearned.
- * WP/balk omitted — same as UNEARNED_REASONS note (not automatic unearned in MLB).
- */
-const NON_PA_UNEARNED_WITHOUT_REASONS = new Set([
-  'passed_ball',
-  'advance_on_error',
-  'defensive_indifference',
-]);
-
-/**
- * Earned runs credited on one event. When reasons are missing, at most one unearned run per
- * `errorsOnPlay` is assumed (avoids negative ER when errors > runs).
- */
-function earnedRunsFromPlay(
-  runsScored: number,
-  runnerScoredReasons: string[] | null | undefined,
-  errorsOnPlay: number | null | undefined,
-  ctx: { isPlateAppearance: boolean; eventType: string },
-): number {
-  if (runsScored <= 0) return 0;
-  const reasons = runnerScoredReasons || [];
-  if (reasons.length > 0) {
-    let earned = 0;
-    for (let i = 0; i < runsScored; i++) {
-      const reason = reasons[i] || 'on_play';
-      if (!UNEARNED_REASONS.has(reason)) earned++;
-    }
-    return earned;
-  }
-
-  if (!ctx.isPlateAppearance && NON_PA_UNEARNED_WITHOUT_REASONS.has(ctx.eventType)) return 0;
-
-  const errs = errorsOnPlay ?? 0;
-  return Math.max(0, runsScored - Math.min(runsScored, errs));
-}
 
 export interface PitchingEventInput {
   eventNumber: number;
@@ -87,6 +34,9 @@ export interface PitchingEventInput {
   eventDetail?: string | null;
   hitType?: string | null;
 }
+
+/** Re-export for callers that need per-event ER (e.g. audits). */
+export { computeEarnedRunsByEventNumber } from './earned-runs-rule-916.js';
 
 /** Aggregated pitching line for one pitcher (same basis as finalize-game player_game_pitching). */
 export interface PitchingAggregate {
@@ -111,33 +61,6 @@ export interface PitchingAggregate {
   flyOuts: number;
   strikeoutsLooking: number;
   strikeoutsSwinging: number;
-}
-
-function buildInningCutoffMap(events: PitchingEventInput[]): Map<string, number> {
-  const inningCutoffEventNumber = new Map<string, number>();
-  const byHalfInning = new Map<string, PitchingEventInput[]>();
-  for (const e of events) {
-    if (e.eventType === 'pitch') continue;
-    const key = `${e.inning}:${e.half}`;
-    const arr = byHalfInning.get(key) || [];
-    arr.push(e);
-    byHalfInning.set(key, arr);
-  }
-
-  for (const [key, evts] of byHalfInning) {
-    evts.sort((a, b) => (a.eventNumber ?? 0) - (b.eventNumber ?? 0));
-    let outsSim = 0;
-    let cutoff: number | null = null;
-    for (const e of evts) {
-      if (cutoff != null) break;
-      const outsRecorded = e.outsRecorded ?? 0;
-      const extraOut = ERROR_EVENT_TYPES.has(e.eventType) ? 1 : 0;
-      outsSim += outsRecorded + extraOut;
-      if (outsSim >= 3) cutoff = e.eventNumber ?? null;
-    }
-    if (cutoff != null) inningCutoffEventNumber.set(key, cutoff);
-  }
-  return inningCutoffEventNumber;
 }
 
 function emptyAgg(): PitchingAggregate {
@@ -170,7 +93,7 @@ function emptyAgg(): PitchingAggregate {
  * Aggregate pitching stats per pitcher from chronological events (same rules as finalizeGame).
  */
 export function aggregatePitchingStatsByPitcher(events: PitchingEventInput[]): Map<number, PitchingAggregate> {
-  const inningCutoffEventNumber = buildInningCutoffMap(events);
+  const earnedByEvent = computeEarnedRunsByEventNumber(events);
   const eventsByPitcher = new Map<number, PitchingEventInput[]>();
   for (const e of events) {
     if (e.pitcherId == null || e.pitcherId === 0) continue;
@@ -208,10 +131,7 @@ export function aggregatePitchingStatsByPitcher(events: PitchingEventInput[]): M
         a.outsRecorded += e.outsRecorded ?? 0;
         const runs = e.runsScored ?? 0;
         a.runsAllowed += runs;
-        a.earnedRuns += earnedRunsFromPlay(runs, e.runnerScoredReasons, e.errorsOnPlay, {
-          isPlateAppearance: false,
-          eventType: t,
-        });
+        a.earnedRuns += earnedByEvent.get(e.eventNumber) ?? 0;
         continue;
       }
 
@@ -232,21 +152,7 @@ export function aggregatePitchingStatsByPitcher(events: PitchingEventInput[]): M
       const runsScoredOnPlay = e.runsScored ?? 0;
       a.runsAllowed += runsScoredOnPlay;
 
-      let inningExtended = false;
-      const hk = `${e.inning}:${e.half}`;
-      const cutoff = inningCutoffEventNumber.get(hk);
-      if (cutoff != null && (e.eventNumber ?? 0) > cutoff) inningExtended = true;
-
-      if (inningExtended || ERROR_EVENT_TYPES.has(t)) {
-        // unearned — runs already in runsAllowed
-      } else {
-        a.earnedRuns += earnedRunsFromPlay(
-          runsScoredOnPlay,
-          e.runnerScoredReasons as string[] | null,
-          e.errorsOnPlay,
-          { isPlateAppearance: true, eventType: t },
-        );
-      }
+      a.earnedRuns += earnedByEvent.get(e.eventNumber) ?? 0;
 
       if (HIT_EVENTS.has(t)) a.hitsAllowed++;
       if (WALK_EVENTS.has(t)) a.walksAllowed++;

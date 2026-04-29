@@ -122,3 +122,52 @@ const pbBetween = aggregatePitchingStatsByPitcher([
   },
 ]);
 assert(pbBetween.get(11)?.earnedRuns === 0, 'passed_ball without reasons stays unearned (catcher responsibility convention)');
+
+// Rule 9.16 — runs scoring after clean third out (extra chances / inning reconstruction)
+const extendedInning = aggregatePitchingStatsByPitcher([
+  {
+    eventNumber: 1,
+    eventType: 'strikeout',
+    inning: 1,
+    half: 'top',
+    pitcherId: 50,
+    runsScored: 0,
+    outsRecorded: 1,
+    runnerScoredReasons: null,
+    errorsOnPlay: 0,
+  },
+  {
+    eventNumber: 2,
+    eventType: 'strikeout',
+    inning: 1,
+    half: 'top',
+    pitcherId: 50,
+    runsScored: 0,
+    outsRecorded: 1,
+    runnerScoredReasons: null,
+    errorsOnPlay: 0,
+  },
+  {
+    eventNumber: 3,
+    eventType: 'strikeout',
+    inning: 1,
+    half: 'top',
+    pitcherId: 50,
+    runsScored: 0,
+    outsRecorded: 1,
+    runnerScoredReasons: null,
+    errorsOnPlay: 0,
+  },
+  {
+    eventNumber: 4,
+    eventType: 'single',
+    inning: 1,
+    half: 'top',
+    pitcherId: 50,
+    runsScored: 1,
+    outsRecorded: 0,
+    runnerScoredReasons: null,
+    errorsOnPlay: 0,
+  },
+]);
+assert(extendedInning.get(50)?.earnedRuns === 0, 'run scoring after third reconstructed out should be unearned');
