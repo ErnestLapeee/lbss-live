@@ -5,6 +5,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { PageHeader } from '@/components/ui/page-header';
 import { TeamMark } from '@/components/ui/team-mark';
+import { formatLineScoreCell } from '@lbss/shared';
 
 
 interface Game {
@@ -466,7 +467,7 @@ function FinalCard({ game }: { game: Game }) {
                   <tr>
                     <td className="pr-1 font-bold text-text-faint/80">{game.awayTeamShort || game.awayTeamName?.slice(0, 3)?.toUpperCase()}</td>
                     {Array.from({ length: maxInn }, (_, i) => (
-                      <td key={i} className="text-center tabular-nums">{awayLS[i] ?? 0}</td>
+                      <td key={i} className="text-center tabular-nums">{formatLineScoreCell(awayLS[i] ?? 0)}</td>
                     ))}
                     <td className={`text-center border-l border-border/50 ${awayWon ? 'font-bold text-text' : ''}`}>{game.awayScore ?? 0}</td>
                     <td className="text-center tabular-nums">{game.awayTeamHits ?? '—'}</td>
@@ -475,7 +476,7 @@ function FinalCard({ game }: { game: Game }) {
                   <tr>
                     <td className="pr-1 font-bold text-text-faint/80">{game.homeTeamShort || game.homeTeamName?.slice(0, 3)?.toUpperCase()}</td>
                     {Array.from({ length: maxInn }, (_, i) => (
-                      <td key={i} className="text-center tabular-nums">{homeLS[i] ?? 0}</td>
+                      <td key={i} className="text-center tabular-nums">{formatLineScoreCell(homeLS[i] ?? 0)}</td>
                     ))}
                     <td className={`text-center border-l border-border/50 ${homeWon ? 'font-bold text-text' : ''}`}>{game.homeScore ?? 0}</td>
                     <td className="text-center tabular-nums">{game.homeTeamHits ?? '—'}</td>

@@ -17,21 +17,7 @@ import {
 import { eq, and, gte, lte, sql, desc, sum, inArray } from 'drizzle-orm';
 import { rowsFromExecute } from '../../lib/pg-result.js';
 import { gamesTableHasOfficialColumns } from '../../lib/games-official-columns.js';
-
-/** Pad inning-by-inning lines so zeros render and short arrays align to innings played. */
-function padLineScores(
-  home: number[] | null | undefined,
-  away: number[] | null | undefined,
-  inningsCount: number | null | undefined
-): { homeLineScore: number[]; awayLineScore: number[] } {
-  const h = home ?? [];
-  const a = away ?? [];
-  const len = Math.max(h.length, a.length, inningsCount ?? 9, 1);
-  return {
-    homeLineScore: Array.from({ length: len }, (_, i) => Number(h[i] ?? 0)),
-    awayLineScore: Array.from({ length: len }, (_, i) => Number(a[i] ?? 0)),
-  };
-}
+import { buildPublicLineScores } from '@lbss/shared';
 
 export async function gamesRoutes(app: FastifyInstance) {
   // GET / - list games with optional filters: seasonId, leagueId, status, from/to dates
@@ -122,6 +108,8 @@ export async function gamesRoutes(app: FastifyInstance) {
       // Batch fetch linescores + game state for live/final games
       const scoredIds = gamesList.filter(g => g.status === 'live' || g.status === 'final').map(g => g.id);
       const linescoreMap: Record<number, { homeLineScore: number[]; awayLineScore: number[] }> = {};
+      const boundsMap: Record<number, { maxTop: number; maxBot: number }> = {};
+      for (const id of scoredIds) boundsMap[id] = { maxTop: 0, maxBot: 0 };
 
       if (scoredIds.length > 0) {
         const allEvts = await db.select({
@@ -138,6 +126,11 @@ export async function gamesRoutes(app: FastifyInstance) {
           .orderBy(gameEvents.eventNumber);
 
         for (const e of allEvts) {
+          const b = boundsMap[e.gameId];
+          if (b && e.eventType === 'end_half_inning' && e.inning != null && e.half) {
+            if (e.half === 'top') b.maxTop = Math.max(b.maxTop, e.inning);
+            else b.maxBot = Math.max(b.maxBot, e.inning);
+          }
           if (e.eventType === 'pitch' || e.eventType === 'end_half_inning') continue;
           const runs = e.runsScored ?? 0;
           if (runs === 0) continue;
@@ -297,7 +290,17 @@ export async function gamesRoutes(app: FastifyInstance) {
         const ls = linescoreMap[g.id];
         const paddedLines =
           g.status === 'live' || g.status === 'final'
-            ? padLineScores(ls?.homeLineScore, ls?.awayLineScore, g.inningsCount)
+            ? buildPublicLineScores({
+                awayScoring: ls?.awayLineScore ?? [],
+                homeScoring: ls?.homeLineScore ?? [],
+                bounds: boundsMap[g.id] ?? { maxTop: 0, maxBot: 0 },
+                gameStatus: g.status,
+                isFinalized: !!g.isFinalized,
+                awayRuns: g.awayScore ?? 0,
+                homeRuns: g.homeScore ?? 0,
+                currentInning: g.currentInning ?? null,
+                currentHalf: g.currentHalf ?? null,
+              })
             : null;
         const pitchers = wpMap[g.id] || [];
         const wp = pitchers.find(p => p.decision === 'W');

@@ -1,3 +1,5 @@
+import { formatLineScoreCell } from '@lbss/shared';
+
 interface LineScoreProps {
   homeTeam: string;
   awayTeam: string;
@@ -8,7 +10,7 @@ interface LineScoreProps {
 }
 
 export function LineScore({ homeTeam, awayTeam, homeLineScore, awayLineScore, homeTotal, awayTotal }: LineScoreProps) {
-  const maxInnings = Math.max(homeLineScore.length, awayLineScore.length, 9);
+  const maxInnings = Math.max(homeLineScore.length, awayLineScore.length, 1);
 
   return (
     <div className="overflow-x-auto rounded-xl border border-border">
@@ -29,7 +31,7 @@ export function LineScore({ homeTeam, awayTeam, homeLineScore, awayLineScore, ho
             <td className="px-3 py-2 font-semibold">{awayTeam}</td>
             {Array.from({ length: maxInnings }, (_, i) => (
               <td key={i} className="px-2 py-2 text-center font-mono tabular-nums">
-                {awayLineScore[i] !== undefined ? awayLineScore[i] : ''}
+                {awayLineScore[i] !== undefined ? formatLineScoreCell(awayLineScore[i] as number) : ''}
               </td>
             ))}
             <td className="px-2 py-2 text-center font-bold font-mono border-l border-border">{awayTotal.runs}</td>
@@ -40,7 +42,7 @@ export function LineScore({ homeTeam, awayTeam, homeLineScore, awayLineScore, ho
             <td className="px-3 py-2 font-semibold">{homeTeam}</td>
             {Array.from({ length: maxInnings }, (_, i) => (
               <td key={i} className="px-2 py-2 text-center font-mono tabular-nums">
-                {homeLineScore[i] !== undefined ? homeLineScore[i] : ''}
+                {homeLineScore[i] !== undefined ? formatLineScoreCell(homeLineScore[i] as number) : ''}
               </td>
             ))}
             <td className="px-2 py-2 text-center font-bold font-mono border-l border-border">{homeTotal.runs}</td>

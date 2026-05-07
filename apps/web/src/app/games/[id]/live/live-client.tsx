@@ -6,7 +6,7 @@ import { useGameSocket } from '@/hooks/useGameSocket';
 import { formatPlayByPlay } from '@/lib/format-play';
 import { useApiBase } from '@/lib/api-context';
 import { getStatAbbreviationMeaning } from '@/lib/stat-abbreviations';
-import { aggregatePitchingStatsByPitcher, inningsFromOuts } from '@lbss/shared';
+import { aggregatePitchingStatsByPitcher, inningsFromOuts, boundsFromEvents, buildPublicLineScores, formatLineScoreCell } from '@lbss/shared';
 import { normalizeGameEvents, tryExtractEventArray } from '@/lib/normalize-game-events';
 import { buildPositionMapsByEvent } from '@/lib/position-maps-by-event';
 
@@ -392,15 +392,53 @@ export function LiveGameClient({
         home[idx] += runs;
       }
     }
-    const maxLen = Math.max(home.length, away.length);
-    while (home.length < maxLen) home.push(0);
-    while (away.length < maxLen) away.push(0);
     return { home, away };
   }, [events]);
 
-  const homeLineScore = gameState?.homeLineScore ?? (evtLineScore.home.length > 0 ? evtLineScore.home : []);
-  const awayLineScore = gameState?.awayLineScore ?? (evtLineScore.away.length > 0 ? evtLineScore.away : []);
-  const maxInnings = Math.max(homeLineScore.length, awayLineScore.length, displayInning, 1);
+  const lineBounds = useMemo(
+    () =>
+      boundsFromEvents(
+        events.map((e) => ({
+          inning: e.inning ?? null,
+          half: e.half ?? null,
+          eventType: e.eventType,
+        })),
+      ),
+    [events],
+  );
+
+  const viewAsFinal = isFinal || game?.status === 'final';
+
+  const displayLineScores = useMemo(() => {
+    const rawAway = evtLineScore.away;
+    const rawHome = evtLineScore.home;
+    if (viewAsFinal) {
+      return buildPublicLineScores({
+        awayScoring: rawAway,
+        homeScoring: rawHome,
+        bounds: lineBounds,
+        gameStatus: 'final',
+        isFinalized: !!(game as { isFinalized?: boolean })?.isFinalized,
+        awayRuns: displayScore.away,
+        homeRuns: displayScore.home,
+        currentInning: game?.currentInning ?? null,
+        currentHalf: game?.currentHalf ?? null,
+      });
+    }
+    if (gameState?.awayLineScore?.length || gameState?.homeLineScore?.length) {
+      return {
+        awayLineScore: gameState!.awayLineScore,
+        homeLineScore: gameState!.homeLineScore,
+      };
+    }
+    return { awayLineScore: rawAway, homeLineScore: rawHome };
+  }, [viewAsFinal, evtLineScore, lineBounds, game, gameState, displayScore.away, displayScore.home]);
+
+  const awayLineScore = displayLineScores.awayLineScore;
+  const homeLineScore = displayLineScores.homeLineScore;
+  const maxInnings = viewAsFinal
+    ? Math.max(homeLineScore.length, awayLineScore.length, 1)
+    : Math.max(homeLineScore.length, awayLineScore.length, displayInning, 1);
 
   // Compute team error counts from scorer-confirmed errors, including runner advances on error.
   const errorCounts = useMemo(() => {
@@ -1536,7 +1574,7 @@ export function LiveGameClient({
                     const isFuture = i + 1 > Math.max(awayLineScore.length, homeLineScore.length);
                     return (
                       <td key={i} className={`py-2 text-center tabular-nums ${isCurrent ? 'text-live font-bold' : hasVal ? 'text-slate-800' : 'text-slate-400'}`}>
-                        {hasVal ? awayLineScore[i] : (isCurrent ? '•' : isFuture ? '' : '')}
+                        {hasVal ? formatLineScoreCell(awayLineScore[i]!) : (isCurrent ? '•' : isFuture ? '' : '')}
                       </td>
                     );
                   })}
@@ -1554,7 +1592,7 @@ export function LiveGameClient({
                     const isFuture = i + 1 > Math.max(awayLineScore.length, homeLineScore.length);
                     return (
                       <td key={i} className={`py-2 text-center tabular-nums ${isCurrent ? 'text-live font-bold' : hasVal ? 'text-slate-800' : 'text-slate-400'}`}>
-                        {hasVal ? homeLineScore[i] : (isCurrent ? '•' : (isTopOfThis || isFuture) ? '' : '')}
+                        {hasVal ? formatLineScoreCell(homeLineScore[i]!) : (isCurrent ? '•' : (isTopOfThis || isFuture) ? '' : '')}
                       </td>
                     );
                   })}
