@@ -35,6 +35,13 @@ interface Player {
   isActive: boolean;
 }
 
+interface LeagueOption {
+  id: number;
+  seasonId: number;
+  name: string;
+  slug: string;
+}
+
 const BATS_OPTIONS = ['R', 'L', 'S'];
 const THROWS_OPTIONS = ['R', 'L', 'S'];
 
@@ -43,6 +50,7 @@ export function TeamsPage() {
   const { selectedSeasonId, seasonsLoading } = useAdminSeason();
   const [teams, setTeams] = useState<TeamWithRoster[]>([]);
   const [allPlayers, setAllPlayers] = useState<Player[]>([]);
+  const [leaguesForSeason, setLeaguesForSeason] = useState<LeagueOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -50,6 +58,8 @@ export function TeamsPage() {
   const [showTeamForm, setShowTeamForm] = useState(false);
   const [editingTeam, setEditingTeam] = useState<TeamWithRoster | null>(null);
   const [teamForm, setTeamForm] = useState({ name: '', shortName: '', city: '', foundedYear: '', description: '', logoUrl: '' });
+  /** When creating a team and the season has multiple leagues, which league gets the initial league_teams row. */
+  const [createLeagueId, setCreateLeagueId] = useState('');
 
   // Player create form (add new player directly under a team)
   const [showPlayerForm, setShowPlayerForm] = useState(false);
@@ -77,12 +87,19 @@ export function TeamsPage() {
     setLoading(true);
     setError(null);
     try {
-      const [rostersData, playersData] = await Promise.all([
+      const [rostersData, playersData, leaguesData] = await Promise.all([
         apiGet<TeamWithRoster[]>(`/admin/teams/rosters?seasonId=${selectedSeasonId}`),
         apiGet<Player[]>('/admin/players'),
+        apiGet<LeagueOption[]>('/admin/leagues').catch(() => []),
       ]);
       setTeams(Array.isArray(rostersData) ? rostersData : []);
       setAllPlayers(Array.isArray(playersData) ? playersData : []);
+      const lg = Array.isArray(leaguesData)
+        ? leaguesData
+            .filter((l) => l.seasonId === selectedSeasonId)
+            .sort((a, b) => a.name.localeCompare(b.name))
+        : [];
+      setLeaguesForSeason(lg);
     } catch (err: any) {
       setError(err.message || 'Failed to load');
     } finally {
@@ -114,6 +131,7 @@ export function TeamsPage() {
   const openCreateTeam = () => {
     setEditingTeam(null);
     setTeamForm({ name: '', shortName: '', city: '', foundedYear: '', description: '', logoUrl: '' });
+    setCreateLeagueId(leaguesForSeason[0] ? String(leaguesForSeason[0].id) : '');
     setShowTeamForm(true);
   };
 
@@ -145,7 +163,24 @@ export function TeamsPage() {
       if (editingTeam) {
         await apiPut(`/admin/teams/${editingTeam.id}`, payload);
       } else {
-        await apiPost('/admin/teams', payload);
+        if (!selectedSeasonId) {
+          alert('Choose a workspace season in the header before creating a team.');
+          return;
+        }
+        if (leaguesForSeason.length === 0) {
+          alert('This season has no league yet. Create one under Leagues, then add the team.');
+          return;
+        }
+        const body: Record<string, unknown> = { ...payload, seasonId: selectedSeasonId };
+        if (leaguesForSeason.length > 1) {
+          const lid = parseInt(createLeagueId, 10);
+          if (!Number.isFinite(lid)) {
+            alert('Choose which league this team joins for this season.');
+            return;
+          }
+          body.leagueId = lid;
+        }
+        await apiPost('/admin/teams', body);
       }
       setShowTeamForm(false);
       await loadRosters();
@@ -315,15 +350,26 @@ export function TeamsPage() {
             <Link to="/season-setup" className="text-accent hover:text-accent-light font-medium">
               Season setup
             </Link>
-            . Deactivating a club (trash icon) is only allowed when it has no league membership, roster history, or games;
-            it is organization-wide, not per season. To remove a team from one year only, uncheck it under Season setup and
-            save.
+            . New teams are registered in the workspace season only (via the season&apos;s league). The roster grid lists
+            only clubs that have a league slot or roster row in that season. Deactivating a club (trash icon) is only
+            allowed when it has no league membership, roster history, or games; it is organization-wide, not per season. To
+            remove a team from one year only, uncheck it under Season setup and save.
           </p>
         </div>
         <button
           type="button"
           onClick={openCreateTeam}
-          className="px-4 py-2 bg-accent hover:bg-accent-light text-white text-sm font-semibold rounded-lg transition-colors"
+          disabled={!selectedSeasonId || loading || leaguesForSeason.length === 0}
+          title={
+            !selectedSeasonId
+              ? 'Choose a workspace season first'
+              : loading
+                ? 'Loading…'
+                : leaguesForSeason.length === 0
+                  ? 'Create a league for this season under Leagues before adding teams'
+                  : undefined
+          }
+          className="px-4 py-2 bg-accent hover:bg-accent-light text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           + Add Team
         </button>
@@ -527,6 +573,27 @@ export function TeamsPage() {
             {editingTeam ? 'Edit Team' : 'Create Team'}
           </h2>
           <form onSubmit={handleTeamSubmit} className="space-y-4">
+            {!editingTeam && leaguesForSeason.length > 1 && (
+              <Field label="League for this season *">
+                <select
+                  value={createLeagueId}
+                  onChange={(e) => setCreateLeagueId(e.target.value)}
+                  className={inputClass}
+                  required
+                >
+                  {leaguesForSeason.map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {l.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            )}
+            {!editingTeam && leaguesForSeason.length === 1 && (
+              <p className="text-xs text-text-muted">
+                This team will join <strong>{leaguesForSeason[0]!.name}</strong> for the workspace season.
+              </p>
+            )}
             <Field label="Team Name *">
               <input type="text" value={teamForm.name} onChange={e => setTeamForm(f => ({ ...f, name: e.target.value }))} className={inputClass} required />
             </Field>

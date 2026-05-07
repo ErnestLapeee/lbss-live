@@ -36,8 +36,8 @@ export async function adminTeamsRoutes(app: FastifyInstance) {
         return reply.send(activeTeams.map(t => ({ ...t, players: [] })));
       }
 
+      // Only clubs that actually participate this season (league membership and/or roster rows).
       const seasonTeamIds = new Set<number>();
-      for (const t of activeTeams) seasonTeamIds.add(t.id);
 
       const rosterTeamRows = await db
         .selectDistinct({ teamId: playerSeasons.teamId })
@@ -52,18 +52,14 @@ export async function adminTeamsRoutes(app: FastifyInstance) {
         .where(eq(leagues.seasonId, seasonId));
       for (const r of leagueTeamRows) seasonTeamIds.add(r.teamId);
 
-      const missingIds = [...seasonTeamIds].filter(
-        (tid) => !activeTeams.some((t) => t.id === tid),
-      );
-      const inactiveLinked =
-        missingIds.length > 0
-          ? await db.select().from(teams).where(inArray(teams.id, missingIds))
-          : [];
+      const ids = [...seasonTeamIds];
+      if (ids.length === 0) {
+        return reply.send([]);
+      }
 
-      const byId = new Map<number, (typeof activeTeams)[0]>();
-      for (const t of activeTeams) byId.set(t.id, t);
-      for (const t of inactiveLinked) byId.set(t.id, t);
-      const allTeams = [...byId.values()].sort((a, b) => a.name.localeCompare(b.name));
+      const allTeams = (await db.select().from(teams).where(inArray(teams.id, ids))).sort((a, b) =>
+        a.name.localeCompare(b.name),
+      );
 
       // Get all roster entries for this season with player data and license status
       const rosterEntries = await db
@@ -267,28 +263,92 @@ export async function adminTeamsRoutes(app: FastifyInstance) {
       foundedYear?: number;
       description?: string;
       logoUrl?: string;
+      /** When set, the club is linked to this season only via league_teams (not visible on other seasons' roster screens). */
+      seasonId?: number;
+      /** Required when the season has more than one league. Must belong to seasonId. */
+      leagueId?: number;
     };
   }>('/', async (request, reply) => {
     try {
-      const { name, shortName, city, foundedYear, description, logoUrl } = request.body ?? {};
+      const {
+        name,
+        shortName,
+        city,
+        foundedYear,
+        description,
+        logoUrl,
+        seasonId: seasonIdBody,
+        leagueId: leagueIdBody,
+      } = request.body ?? {};
       if (!name) {
         return reply.status(400).send({ message: 'name required' });
       }
 
       const slug = slugify(name);
 
-      const [team] = await db
-        .insert(teams)
-        .values({
-          name,
-          shortName: shortName ?? null,
-          city: city ?? null,
-          foundedYear: foundedYear ?? null,
-          description: description ?? null,
-          logoUrl: logoUrl ?? null,
-          slug,
-        })
-        .returning();
+      const seasonId =
+        seasonIdBody !== undefined && seasonIdBody !== null
+          ? parseInt(String(seasonIdBody), 10)
+          : NaN;
+      const wantsSeasonScope = Number.isFinite(seasonId);
+
+      let targetLeagueId: number | null = null;
+      if (wantsSeasonScope) {
+        const leagueIdParsed =
+          leagueIdBody !== undefined && leagueIdBody !== null
+            ? parseInt(String(leagueIdBody), 10)
+            : NaN;
+        if (Number.isFinite(leagueIdParsed)) {
+          const [lg] = await db
+            .select({ id: leagues.id })
+            .from(leagues)
+            .where(and(eq(leagues.id, leagueIdParsed), eq(leagues.seasonId, seasonId)))
+            .limit(1);
+          if (!lg) {
+            return reply.status(400).send({ message: 'leagueId does not belong to that season' });
+          }
+          targetLeagueId = lg.id;
+        } else {
+          const inSeason = await db
+            .select({ id: leagues.id })
+            .from(leagues)
+            .where(eq(leagues.seasonId, seasonId));
+          if (inSeason.length === 0) {
+            return reply.status(400).send({
+              message:
+                'This season has no league yet. Create one under Leagues, then add the team again (or omit seasonId to create an unattached club).',
+            });
+          }
+          if (inSeason.length > 1) {
+            return reply.status(400).send({
+              message:
+                'This season has multiple leagues; pass leagueId so we know which competition the team joins.',
+            });
+          }
+          targetLeagueId = inSeason[0]!.id;
+        }
+      }
+
+      const [team] = await db.transaction(async (tx) => {
+        const [t] = await tx
+          .insert(teams)
+          .values({
+            name,
+            shortName: shortName ?? null,
+            city: city ?? null,
+            foundedYear: foundedYear ?? null,
+            description: description ?? null,
+            logoUrl: logoUrl ?? null,
+            slug,
+          })
+          .returning();
+
+        if (wantsSeasonScope && targetLeagueId != null) {
+          await tx.insert(leagueTeams).values({ leagueId: targetLeagueId, teamId: t.id });
+        }
+
+        return [t];
+      });
 
       return reply.status(201).send(team);
     } catch (err) {
