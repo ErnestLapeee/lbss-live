@@ -2,22 +2,58 @@ import type { FastifyInstance } from 'fastify';
 import { db } from '../../db/index.js';
 import {
   teams,
+  leagues,
+  leagueTeams,
   playerSeasons,
   players,
   playerSeasonBatting,
   playerGameFielding,
   licenses,
 } from '../../db/schema/index.js';
-import { eq, and, sql, inArray } from 'drizzle-orm';
+import { eq, and, sql, inArray, asc } from 'drizzle-orm';
 
 export async function teamsRoutes(app: FastifyInstance) {
-  // GET / - list all active teams
-  app.get('/', async (request, reply) => {
+  // GET /?seasonId= — active teams that participate in that season (league membership and/or roster).
+  // Omit seasonId to list all active teams (legacy / admin pickers).
+  app.get<{ Querystring: { seasonId?: string } }>('/', async (request, reply) => {
     try {
+      const raw = request.query.seasonId;
+      const seasonIdNum =
+        raw !== undefined && raw !== '' ? parseInt(String(raw), 10) : NaN;
+
+      if (Number.isFinite(seasonIdNum)) {
+        const teamIds = new Set<number>();
+        const fromLeague = await db
+          .selectDistinct({ teamId: leagueTeams.teamId })
+          .from(leagueTeams)
+          .innerJoin(leagues, eq(leagueTeams.leagueId, leagues.id))
+          .where(eq(leagues.seasonId, seasonIdNum));
+        for (const r of fromLeague) teamIds.add(r.teamId);
+
+        const fromRoster = await db
+          .selectDistinct({ teamId: playerSeasons.teamId })
+          .from(playerSeasons)
+          .where(eq(playerSeasons.seasonId, seasonIdNum));
+        for (const r of fromRoster) teamIds.add(r.teamId);
+
+        const ids = [...teamIds];
+        if (ids.length === 0) {
+          return reply.send([]);
+        }
+
+        const result = await db
+          .select()
+          .from(teams)
+          .where(and(eq(teams.isActive, true), inArray(teams.id, ids)))
+          .orderBy(asc(teams.name));
+        return reply.send(result);
+      }
+
       const result = await db
         .select()
         .from(teams)
-        .where(eq(teams.isActive, true));
+        .where(eq(teams.isActive, true))
+        .orderBy(asc(teams.name));
       return reply.send(result);
     } catch (err) {
       request.log.error(err);

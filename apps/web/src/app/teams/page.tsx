@@ -32,12 +32,16 @@ export default async function TeamsPage({ searchParams }: Props) {
   } catch {}
 
   try {
-    teams = toArray(await apiFetch('/api/public/teams'));
+    const teamsUrl =
+      currentSeasonId != null
+        ? `/api/public/teams?seasonId=${currentSeasonId}`
+        : '/api/public/teams';
+    teams = toArray(await apiFetch(teamsUrl));
   } catch {}
 
   return (
     <div>
-      <PageHeader title="Teams" description="All teams competing in the Latvijas Beisbola Liga" />
+      <PageHeader title="Teams" />
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
         {seasons.length > 0 && (
           <div className="mb-4 flex justify-end">
@@ -45,12 +49,12 @@ export default async function TeamsPage({ searchParams }: Props) {
           </div>
         )}
         {teams.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-border bg-surface-alt p-12 text-center">
-            <p className="text-text-muted text-lg font-medium">No teams registered yet</p>
-            <p className="text-text-faint text-sm mt-2">Teams will appear here once added by administrators.</p>
+          <div className="rounded-xl border border-dashed border-border bg-surface-alt p-10 text-center">
+            <p className="text-text-muted text-sm font-medium">No teams in this season yet</p>
+            <p className="text-text-faint text-xs mt-2">Choose another season or check back after leagues are set up.</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {teams.map((team: any) => {
               const href =
                 currentSeasonId != null
@@ -60,7 +64,7 @@ export default async function TeamsPage({ searchParams }: Props) {
                 <Link
                   key={team.id}
                   href={href}
-                  className="group flex items-center gap-4 rounded-xl border border-border bg-surface p-5 hover:border-accent/30 hover:shadow-md transition-all"
+                  className="group flex items-center gap-3 rounded-lg border border-border bg-surface p-3.5 hover:border-accent/30 hover:shadow-sm transition-all"
                 >
                   <TeamMark
                     variant="card"
@@ -69,20 +73,20 @@ export default async function TeamsPage({ searchParams }: Props) {
                     logoUrl={team.logoUrl}
                   />
                   <div className="min-w-0 flex-1">
-                    <h3 className="font-heading text-base font-bold group-hover:text-accent transition-colors truncate">
+                    <h3 className="font-heading text-sm font-semibold group-hover:text-accent transition-colors truncate">
                       {team.name}
                     </h3>
                     <div className="flex items-center gap-2 mt-0.5">
-                      {team.city && <span className="text-xs text-text-muted">{team.city}</span>}
+                      {team.city && <span className="text-[11px] text-text-muted">{team.city}</span>}
                       {team.foundedYear && (
                         <>
                           <span className="text-text-faint">·</span>
-                          <span className="text-xs text-text-faint">Est. {team.foundedYear}</span>
+                          <span className="text-[11px] text-text-faint">Est. {team.foundedYear}</span>
                         </>
                       )}
                     </div>
                   </div>
-                  <svg className="w-4 h-4 text-text-faint group-hover:text-accent transition-colors shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-3.5 h-3.5 text-text-faint group-hover:text-accent transition-colors shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                   </svg>
                 </Link>

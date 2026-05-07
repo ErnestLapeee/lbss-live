@@ -343,17 +343,13 @@ export function TeamsPage() {
       {/* header */}
       <div className="flex items-center justify-between mb-6 gap-4 flex-wrap">
         <div>
-          <h1 className="font-heading text-2xl font-bold">Teams & Rosters</h1>
-          <p className="text-sm text-text-muted mt-1 max-w-3xl">
-            Rosters use the workspace season in the top bar. To attach teams to a league and bulk-copy last
-            season&apos;s rosters, use{' '}
-            <Link to="/season-setup" className="text-accent hover:text-accent-light font-medium">
+          <h1 className="font-heading text-xl font-bold">Teams & Rosters</h1>
+          <p className="text-xs text-text-muted mt-1">
+            Workspace season in the header. League membership:{' '}
+            <Link to="/season-setup" className="text-accent hover:text-accent-light">
               Season setup
             </Link>
-            . New teams are registered in the workspace season only (via the season&apos;s league). The roster grid lists
-            only clubs that have a league slot or roster row in that season. Deactivating a club (trash icon) is only
-            allowed when it has no league membership, roster history, or games; it is organization-wide, not per season. To
-            remove a team from one year only, uncheck it under Season setup and save.
+            .
           </p>
         </div>
         <button
@@ -411,7 +407,7 @@ export function TeamsPage() {
                   <div className="flex items-center justify-between gap-2">
                     <div className="min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <h3 className="font-heading font-bold text-base">{team.name}</h3>
+                        <h3 className="font-heading font-semibold text-sm">{team.name}</h3>
                         {!team.isActive && (
                           <span className="text-[10px] font-bold uppercase tracking-wide text-amber-700 dark:text-amber-300 shrink-0">
                             Inactive
@@ -546,8 +542,8 @@ export function TeamsPage() {
           {/* ── Unassigned players ── */}
           {unassignedPlayers.length > 0 && (
             <div className="mt-8">
-              <h2 className="font-heading text-lg font-bold mb-3 text-text-muted">
-                Unassigned Players ({unassignedPlayers.length})
+              <h2 className="font-heading text-sm font-semibold mb-2 text-text-muted">
+                Unassigned players ({unassignedPlayers.length})
               </h2>
               <div className="flex flex-wrap gap-2">
                 {unassignedPlayers.map(p => (
@@ -569,7 +565,7 @@ export function TeamsPage() {
       {/* ── Team form modal ── */}
       {showTeamForm && (
         <Modal onClose={() => setShowTeamForm(false)}>
-          <h2 className="font-heading text-xl font-bold mb-4">
+          <h2 className="font-heading text-lg font-bold mb-3">
             {editingTeam ? 'Edit Team' : 'Create Team'}
           </h2>
           <form onSubmit={handleTeamSubmit} className="space-y-4">
@@ -590,9 +586,7 @@ export function TeamsPage() {
               </Field>
             )}
             {!editingTeam && leaguesForSeason.length === 1 && (
-              <p className="text-xs text-text-muted">
-                This team will join <strong>{leaguesForSeason[0]!.name}</strong> for the workspace season.
-              </p>
+              <p className="text-xs text-text-muted">Joins {leaguesForSeason[0]!.name}.</p>
             )}
             <Field label="Team Name *">
               <input type="text" value={teamForm.name} onChange={e => setTeamForm(f => ({ ...f, name: e.target.value }))} className={inputClass} required />
@@ -625,7 +619,7 @@ export function TeamsPage() {
       {/* ── New player form modal ── */}
       {showPlayerForm && (
         <Modal onClose={() => setShowPlayerForm(false)}>
-          <h2 className="font-heading text-xl font-bold mb-4">
+          <h2 className="font-heading text-lg font-bold mb-3">
             Add New Player to {teams.find(t => t.id === addToTeamId)?.name}
           </h2>
           <form onSubmit={handlePlayerSubmit} className="space-y-4">
@@ -668,7 +662,7 @@ export function TeamsPage() {
       {/* ── Assign existing player modal ── */}
       {showAssignModal && (
         <Modal onClose={() => setShowAssignModal(false)}>
-          <h2 className="font-heading text-xl font-bold mb-4">
+          <h2 className="font-heading text-lg font-bold mb-3">
             Assign Player to {teams.find(t => t.id === assignToTeamId)?.name}
           </h2>
           <form onSubmit={handleAssignSubmit} className="space-y-4">
@@ -691,7 +685,7 @@ export function TeamsPage() {
       {/* ── Add player to another team modal ── */}
       {showMoveModal && movingPlayer && (
         <Modal onClose={() => { setShowMoveModal(false); setMovingPlayer(null); }}>
-          <h2 className="font-heading text-xl font-bold mb-4">
+          <h2 className="font-heading text-lg font-bold mb-3">
             Add {movingPlayer.firstName} {movingPlayer.lastName} to another team
           </h2>
           <form onSubmit={handleMoveSubmit} className="space-y-4">
@@ -703,9 +697,6 @@ export function TeamsPage() {
                 ))}
               </select>
             </Field>
-            <p className="text-xs text-text-muted">
-              This keeps their existing roster entry, so past and future games can use the correct team.
-            </p>
             <ModalActions onCancel={() => { setShowMoveModal(false); setMovingPlayer(null); }} saving={saving} label="Add to Team" />
           </form>
         </Modal>

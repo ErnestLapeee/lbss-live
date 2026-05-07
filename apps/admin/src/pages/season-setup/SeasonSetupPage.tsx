@@ -170,13 +170,10 @@ export function SeasonSetupPage() {
   return (
     <div>
       <div className="mb-6">
-        <h1 className="font-heading text-2xl font-bold">Season setup</h1>
-        <p className="text-sm text-text-muted mt-1 max-w-3xl">
-          Pick a <strong>league</strong> in the workspace season, tick which <strong>teams</strong> compete in it, then
-          save. That membership is per league and season only. To drop a club from the new year, uncheck it here — do not
-          use &quot;Deactivate&quot; on the Teams page, which hides the club everywhere once it has no league, roster, or
-          game ties. Use <strong>Import rosters</strong> to copy last season&apos;s player–team assignments for those
-          teams into the current season (jersey # and position are copied).
+        <h1 className="font-heading text-xl font-bold">Season setup</h1>
+        <p className="text-xs text-text-muted mt-1 max-w-2xl">
+          Choose a league, tick teams, save. Import rosters copies last season&apos;s assignments. To remove a club from
+          this year only, uncheck here (do not use Deactivate on the Teams page).
         </p>
       </div>
 

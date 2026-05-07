@@ -27,7 +27,13 @@ export default async function HomePage() {
       { noCache: true }
     ));
   } catch {}
-  try { teams = toArray(await apiFetch('/api/public/teams')); } catch {}
+  try {
+    teams = toArray(
+      await apiFetch(
+        activeSeason?.id ? `/api/public/teams?seasonId=${activeSeason.id}` : '/api/public/teams',
+      ),
+    );
+  } catch {}
 
   // Mini-standings: active season -> leagues -> standings rows (include 0-game teams)
   try {
