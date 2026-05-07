@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
 import { useAdminSeason } from '@/context/AdminSeasonContext';
@@ -73,6 +73,10 @@ export function TeamsPage() {
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [assignToTeamId, setAssignToTeamId] = useState<number | null>(null);
   const [assignForm, setAssignForm] = useState({ playerId: '', jerseyNumber: '' });
+  const [assignSearchQuery, setAssignSearchQuery] = useState('');
+
+  const [unassignedOpen, setUnassignedOpen] = useState(false);
+  const [unassignedQuery, setUnassignedQuery] = useState('');
 
   // Add player to another team modal
   const [showMoveModal, setShowMoveModal] = useState(false);
@@ -113,19 +117,73 @@ export function TeamsPage() {
   }, [selectedSeasonId, loadRosters]);
 
   /* ───── derived: roster membership ───── */
-  const rosterTeamIdsByPlayer = new Map<number, Set<number>>();
-  for (const team of teams) {
-    for (const player of team.players) {
-      const teamIds = rosterTeamIdsByPlayer.get(player.playerId) ?? new Set<number>();
-      teamIds.add(team.id);
-      rosterTeamIdsByPlayer.set(player.playerId, teamIds);
+  const rosterTeamIdsByPlayer = useMemo(() => {
+    const m = new Map<number, Set<number>>();
+    for (const team of teams) {
+      for (const player of team.players) {
+        const teamIds = m.get(player.playerId) ?? new Set<number>();
+        teamIds.add(team.id);
+        m.set(player.playerId, teamIds);
+      }
     }
-  }
+    return m;
+  }, [teams]);
+
   const getAssignablePlayers = (teamId: number | null) => {
     if (!teamId) return [];
     return allPlayers.filter((p) => p.isActive && !rosterTeamIdsByPlayer.get(p.id)?.has(teamId));
   };
-  const unassignedPlayers = allPlayers.filter(p => p.isActive && !rosterTeamIdsByPlayer.has(p.id));
+
+  const unassignedPlayers = useMemo(
+    () => allPlayers.filter((p) => p.isActive && !rosterTeamIdsByPlayer.has(p.id)),
+    [allPlayers, rosterTeamIdsByPlayer],
+  );
+
+  const unassignedFiltered = useMemo(() => {
+    const q = unassignedQuery.trim().toLowerCase();
+    const sorted = [...unassignedPlayers].sort((a, b) =>
+      `${a.lastName} ${a.firstName}`.localeCompare(`${b.lastName} ${b.firstName}`, undefined, {
+        sensitivity: 'base',
+      }),
+    );
+    if (!q) return sorted;
+    return sorted.filter((p) => `${p.firstName} ${p.lastName}`.toLowerCase().includes(q));
+  }, [unassignedPlayers, unassignedQuery]);
+
+  const assignableForModal = useMemo(() => {
+    if (assignToTeamId == null) return [];
+    return allPlayers.filter(
+      (p) => p.isActive && !rosterTeamIdsByPlayer.get(p.id)?.has(assignToTeamId),
+    );
+  }, [assignToTeamId, allPlayers, rosterTeamIdsByPlayer]);
+
+  const assignFiltered = useMemo(() => {
+    const sorted = [...assignableForModal].sort((a, b) =>
+      `${a.lastName} ${a.firstName}`.localeCompare(`${b.lastName} ${b.firstName}`, undefined, {
+        sensitivity: 'base',
+      }),
+    );
+    const q = assignSearchQuery.trim().toLowerCase();
+    if (!q) {
+      if (sorted.length <= 80) return sorted;
+      return sorted.slice(0, 80);
+    }
+    const matched = sorted.filter((p) => `${p.firstName} ${p.lastName}`.toLowerCase().includes(q));
+    return matched.length > 200 ? matched.slice(0, 200) : matched;
+  }, [assignableForModal, assignSearchQuery]);
+
+  const assignSearchMatchCount = useMemo(() => {
+    const q = assignSearchQuery.trim().toLowerCase();
+    if (!q) return 0;
+    return assignableForModal.filter((p) =>
+      `${p.firstName} ${p.lastName}`.toLowerCase().includes(q),
+    ).length;
+  }, [assignableForModal, assignSearchQuery]);
+
+  const assignHasMoreWhenEmpty =
+    assignSearchQuery.trim() === '' && assignableForModal.length > assignFiltered.length;
+  const assignHasMoreWhenSearch =
+    assignSearchQuery.trim() !== '' && assignSearchMatchCount > assignFiltered.length;
 
   /* ───── team CRUD ───── */
   const openCreateTeam = () => {
@@ -259,12 +317,17 @@ export function TeamsPage() {
   const openAssignExisting = (teamId: number) => {
     setAssignToTeamId(teamId);
     setAssignForm({ playerId: '', jerseyNumber: '' });
+    setAssignSearchQuery('');
     setShowAssignModal(true);
   };
 
   const handleAssignSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!assignToTeamId || !selectedSeasonId) return;
+    if (!assignForm.playerId) {
+      alert('Pick a player from the search results.');
+      return;
+    }
     setSaving(true);
     try {
       await apiPost(`/admin/players/${assignForm.playerId}/roster`, {
@@ -539,22 +602,49 @@ export function TeamsPage() {
             ))}
           </div>
 
-          {/* ── Unassigned players ── */}
+          {/* ── Unassigned players (collapsed + searchable; assign via each team’s + Existing Player) ── */}
           {unassignedPlayers.length > 0 && (
-            <div className="mt-8">
-              <h2 className="font-heading text-sm font-semibold mb-2 text-text-muted">
-                Unassigned players ({unassignedPlayers.length})
-              </h2>
-              <div className="flex flex-wrap gap-2">
-                {unassignedPlayers.map(p => (
-                  <span
-                    key={p.id}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-surface border border-border rounded-lg text-sm"
-                  >
-                    {p.firstName} {p.lastName}
-                  </span>
-                ))}
-              </div>
+            <div className="mt-8 rounded-lg border border-border bg-surface-alt/30 p-4">
+              <button
+                type="button"
+                onClick={() => {
+                  setUnassignedOpen((o) => {
+                    if (o) setUnassignedQuery('');
+                    return !o;
+                  });
+                }}
+                className="flex w-full items-center justify-between gap-3 text-left"
+              >
+                <span className="text-sm font-semibold text-text-muted">
+                  Not on any team this season ({unassignedPlayers.length})
+                </span>
+                <span className="text-xs font-medium text-accent shrink-0">{unassignedOpen ? 'Hide' : 'Show list'}</span>
+              </button>
+              {unassignedOpen && (
+                <div className="mt-3">
+                  <input
+                    type="search"
+                    autoComplete="off"
+                    placeholder="Filter by name…"
+                    value={unassignedQuery}
+                    onChange={(e) => setUnassignedQuery(e.target.value)}
+                    className={inputClass}
+                  />
+                  <ul className="mt-2 max-h-52 overflow-y-auto rounded-lg border border-border bg-surface divide-y divide-border/50 text-sm">
+                    {unassignedFiltered.map((p) => (
+                      <li key={p.id} className="px-3 py-1.5 text-text-muted">
+                        <span className="text-text">{p.lastName}</span>, {p.firstName}
+                      </li>
+                    ))}
+                  </ul>
+                  {unassignedFiltered.length === 0 && (
+                    <p className="text-xs text-text-muted mt-2">No names match.</p>
+                  )}
+                  <p className="text-xs text-text-muted mt-2">
+                    To add someone to a roster, use <strong>+ Existing Player</strong> on that team and search there.
+                  </p>
+                </div>
+              )}
             </div>
           )}
         </>
@@ -661,19 +751,62 @@ export function TeamsPage() {
 
       {/* ── Assign existing player modal ── */}
       {showAssignModal && (
-        <Modal onClose={() => setShowAssignModal(false)}>
+        <Modal onClose={() => setShowAssignModal(false)} size="lg">
           <h2 className="font-heading text-lg font-bold mb-3">
             Assign Player to {teams.find(t => t.id === assignToTeamId)?.name}
           </h2>
           <form onSubmit={handleAssignSubmit} className="space-y-4">
-            <Field label="Player *">
-              <select value={assignForm.playerId} onChange={e => setAssignForm(f => ({ ...f, playerId: e.target.value }))} className={inputClass} required>
-                <option value="">Select player...</option>
-                {getAssignablePlayers(assignToTeamId).map(p => (
-                  <option key={p.id} value={p.id}>{p.firstName} {p.lastName}</option>
+            <div>
+              <label className="block text-sm font-medium text-text-muted mb-1">Player *</label>
+              <input
+                type="search"
+                autoComplete="off"
+                autoFocus
+                placeholder="Search last or first name…"
+                value={assignSearchQuery}
+                onChange={(e) => setAssignSearchQuery(e.target.value)}
+                className={inputClass}
+              />
+              {assignHasMoreWhenEmpty && (
+                <p className="text-xs text-text-muted mt-1.5">
+                  Showing the first 80 alphabetically. Type a name to search the full list ({assignableForModal.length}{' '}
+                  players can join this team).
+                </p>
+              )}
+              {assignHasMoreWhenSearch && (
+                <p className="text-xs text-text-muted mt-1.5">Showing first 200 matches — type more letters to narrow.</p>
+              )}
+              <div className="mt-2 max-h-64 overflow-y-auto rounded-lg border border-border bg-surface-alt divide-y divide-border/60">
+                {assignFiltered.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => setAssignForm((f) => ({ ...f, playerId: String(p.id) }))}
+                    className={`w-full text-left px-3 py-2 text-sm transition-colors hover:bg-surface ${
+                      assignForm.playerId === String(p.id) ? 'bg-accent/15 text-accent font-medium' : ''
+                    }`}
+                  >
+                    <span className="font-medium">{p.lastName}</span>, {p.firstName}
+                  </button>
                 ))}
-              </select>
-            </Field>
+              </div>
+              {assignFiltered.length === 0 && assignableForModal.length > 0 && (
+                <p className="text-xs text-text-muted mt-2">No matches — try another spelling.</p>
+              )}
+              {assignableForModal.length === 0 && (
+                <p className="text-xs text-text-muted mt-2">Everyone is already on this team for this season.</p>
+              )}
+              {assignForm.playerId && (
+                <p className="text-xs text-text-muted mt-2">
+                  {(() => {
+                    const sp = assignableForModal.find((x) => String(x.id) === assignForm.playerId);
+                    return sp
+                      ? `Selected: ${sp.lastName}, ${sp.firstName}`
+                      : `Selected player #${assignForm.playerId}`;
+                  })()}
+                </p>
+              )}
+            </div>
             <Field label="Jersey #">
               <input type="text" value={assignForm.jerseyNumber} onChange={e => setAssignForm(f => ({ ...f, jerseyNumber: e.target.value }))} className={inputClass} placeholder="e.g. 7" />
             </Field>
@@ -707,10 +840,22 @@ export function TeamsPage() {
 
 /* ───── small reusable bits ───── */
 
-function Modal({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
+function Modal({
+  children,
+  onClose,
+  size = 'md',
+}: {
+  children: React.ReactNode;
+  onClose: () => void;
+  size?: 'md' | 'lg';
+}) {
+  const maxW = size === 'lg' ? 'max-w-2xl' : 'max-w-lg';
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
-      <div className="bg-surface rounded-xl border border-border shadow-2xl w-full max-w-lg mx-4 p-6 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+      <div
+        className={`bg-surface rounded-xl border border-border shadow-2xl w-full ${maxW} mx-4 p-6 max-h-[90vh] overflow-y-auto`}
+        onClick={e => e.stopPropagation()}
+      >
         {children}
       </div>
     </div>
