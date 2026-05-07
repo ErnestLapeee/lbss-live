@@ -42,6 +42,18 @@ export function SeasonSetupPage() {
 
   const activeTeams = useMemo(() => teams.filter((t) => t.isActive).sort((a, b) => a.name.localeCompare(b.name)), [teams]);
 
+  /** Active teams plus inactive clubs still linked to this league (so you can uncheck and save without them vanishing from the list). */
+  const teamsForLeagueChecklist = useMemo(() => {
+    const byId = new Map<number, TeamRow>();
+    for (const t of teams) {
+      if (t.isActive) byId.set(t.id, t);
+    }
+    for (const t of teams) {
+      if (!t.isActive && inLeague.has(t.id)) byId.set(t.id, t);
+    }
+    return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }, [teams, inLeague]);
+
   const loadMeta = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -161,8 +173,10 @@ export function SeasonSetupPage() {
         <h1 className="font-heading text-2xl font-bold">Season setup</h1>
         <p className="text-sm text-text-muted mt-1 max-w-3xl">
           Pick a <strong>league</strong> in the workspace season, tick which <strong>teams</strong> compete in it, then
-          save. Use <strong>Import rosters</strong> to copy last season&apos;s player–team assignments for those teams
-          into the current season (jersey # and position are copied).
+          save. That membership is per league and season only. To drop a club from the new year, uncheck it here — do not
+          use &quot;Deactivate&quot; on the Teams page, which hides the club everywhere once it has no league, roster, or
+          game ties. Use <strong>Import rosters</strong> to copy last season&apos;s player–team assignments for those
+          teams into the current season (jersey # and position are copied).
         </p>
       </div>
 
@@ -221,10 +235,12 @@ export function SeasonSetupPage() {
               </button>
             </div>
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {activeTeams.map((t) => (
+              {teamsForLeagueChecklist.map((t) => (
                 <label
                   key={t.id}
-                  className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border bg-surface hover:bg-surface-alt cursor-pointer text-sm"
+                  className={`flex items-center gap-2 px-3 py-2 rounded-lg border border-border bg-surface hover:bg-surface-alt cursor-pointer text-sm ${
+                    !t.isActive ? 'opacity-90 border-amber-500/40 bg-amber-500/5' : ''
+                  }`}
                 >
                   <input
                     type="checkbox"
@@ -234,6 +250,11 @@ export function SeasonSetupPage() {
                   />
                   <span className="font-medium">{t.name}</span>
                   {t.shortName && <span className="text-text-muted text-xs">({t.shortName})</span>}
+                  {!t.isActive && (
+                    <span className="text-[10px] font-bold uppercase tracking-wide text-amber-700 dark:text-amber-300">
+                      Inactive
+                    </span>
+                  )}
                 </label>
               ))}
             </div>

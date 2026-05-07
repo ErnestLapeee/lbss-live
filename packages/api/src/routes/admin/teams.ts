@@ -1,7 +1,15 @@
 import type { FastifyInstance } from 'fastify';
 import { db } from '../../db/index.js';
-import { teams, players, playerSeasons, licenses } from '../../db/schema/index.js';
-import { eq, and } from 'drizzle-orm';
+import {
+  teams,
+  leagueTeams,
+  players,
+  playerSeasons,
+  licenses,
+} from '../../db/schema/index.js';
+import { games } from '../../db/schema/games.js';
+import { leagues } from '../../db/schema/leagues.js';
+import { and, eq, inArray, or } from 'drizzle-orm';
 import { slugify } from '../../utils/slugify.js';
 
 export async function adminTeamsRoutes(app: FastifyInstance) {
@@ -21,12 +29,41 @@ export async function adminTeamsRoutes(app: FastifyInstance) {
     try {
       const seasonId = request.query.seasonId ? parseInt(request.query.seasonId, 10) : null;
 
-      const allTeams = await db.select().from(teams).where(eq(teams.isActive, true));
+      const activeTeams = await db.select().from(teams).where(eq(teams.isActive, true));
 
       if (!seasonId) {
         // Return teams with empty rosters if no season selected
-        return reply.send(allTeams.map(t => ({ ...t, players: [] })));
+        return reply.send(activeTeams.map(t => ({ ...t, players: [] })));
       }
+
+      const seasonTeamIds = new Set<number>();
+      for (const t of activeTeams) seasonTeamIds.add(t.id);
+
+      const rosterTeamRows = await db
+        .selectDistinct({ teamId: playerSeasons.teamId })
+        .from(playerSeasons)
+        .where(eq(playerSeasons.seasonId, seasonId));
+      for (const r of rosterTeamRows) seasonTeamIds.add(r.teamId);
+
+      const leagueTeamRows = await db
+        .selectDistinct({ teamId: leagueTeams.teamId })
+        .from(leagueTeams)
+        .innerJoin(leagues, eq(leagueTeams.leagueId, leagues.id))
+        .where(eq(leagues.seasonId, seasonId));
+      for (const r of leagueTeamRows) seasonTeamIds.add(r.teamId);
+
+      const missingIds = [...seasonTeamIds].filter(
+        (tid) => !activeTeams.some((t) => t.id === tid),
+      );
+      const inactiveLinked =
+        missingIds.length > 0
+          ? await db.select().from(teams).where(inArray(teams.id, missingIds))
+          : [];
+
+      const byId = new Map<number, (typeof activeTeams)[0]>();
+      for (const t of activeTeams) byId.set(t.id, t);
+      for (const t of inactiveLinked) byId.set(t.id, t);
+      const allTeams = [...byId.values()].sort((a, b) => a.name.localeCompare(b.name));
 
       // Get all roster entries for this season with player data and license status
       const rosterEntries = await db
@@ -306,12 +343,74 @@ export async function adminTeamsRoutes(app: FastifyInstance) {
     }
   });
 
-  // DELETE /:id - soft delete (set isActive=false)
+  // POST /:id/reactivate — undo global soft-deactivate (teams.isActive is org-wide, not per season)
+  app.post<{ Params: { id: string } }>('/:id/reactivate', async (request, reply) => {
+    try {
+      const id = parseInt(request.params.id, 10);
+      if (isNaN(id)) {
+        return reply.status(400).send({ message: 'Invalid team id' });
+      }
+
+      const [team] = await db
+        .update(teams)
+        .set({ isActive: true })
+        .where(eq(teams.id, id))
+        .returning();
+
+      if (!team) {
+        return reply.status(404).send({ message: 'Team not found' });
+      }
+
+      return reply.send({ message: 'Team reactivated', team });
+    } catch (err) {
+      request.log.error(err);
+      return reply.status(500).send({ message: 'Failed to reactivate team' });
+    }
+  });
+
+  // DELETE /:id — soft delete (set isActive=false) for the whole organization.
+  // Blocked while the club still has league links, games, or any roster history so one season cannot "remove" it globally by mistake.
   app.delete<{ Params: { id: string } }>('/:id', async (request, reply) => {
     try {
       const id = parseInt(request.params.id, 10);
       if (isNaN(id)) {
         return reply.status(400).send({ message: 'Invalid team id' });
+      }
+
+      const [inLeague] = await db
+        .select({ id: leagueTeams.id })
+        .from(leagueTeams)
+        .where(eq(leagueTeams.teamId, id))
+        .limit(1);
+      if (inLeague) {
+        return reply.status(409).send({
+          message:
+            'This club is still registered in one or more leagues. To stop it competing in the current season only, open Season setup, uncheck it for that league, and click Save team membership. That removes the league link without hiding the club in other years.',
+        });
+      }
+
+      const [onRoster] = await db
+        .select({ id: playerSeasons.id })
+        .from(playerSeasons)
+        .where(eq(playerSeasons.teamId, id))
+        .limit(1);
+      if (onRoster) {
+        return reply.status(409).send({
+          message:
+            'This club still has roster rows in player history. Remove players from rosters (or transfer them) before deactivating the organization, or use Season setup to remove the club from a league for one season only.',
+        });
+      }
+
+      const [hasGame] = await db
+        .select({ id: games.id })
+        .from(games)
+        .where(or(eq(games.homeTeamId, id), eq(games.awayTeamId, id)))
+        .limit(1);
+      if (hasGame) {
+        return reply.status(409).send({
+          message:
+            'This club appears on scheduled or recorded games. Deactivating it is blocked until those references are resolved.',
+        });
       }
 
       const [team] = await db

@@ -157,12 +157,27 @@ export function TeamsPage() {
   };
 
   const handleDeleteTeam = async (teamId: number) => {
-    if (!confirm('Deactivate this team?')) return;
+    if (
+      !confirm(
+        'Deactivate this club for the whole organization? This is blocked while the team is in a league, has roster rows, or appears on games. To drop it from the current season only, use Season setup instead.',
+      )
+    ) {
+      return;
+    }
     try {
       await apiDelete(`/admin/teams/${teamId}`);
       await loadRosters();
     } catch (err: any) {
       alert(err.message || 'Failed');
+    }
+  };
+
+  const handleReactivateTeam = async (teamId: number) => {
+    try {
+      await apiPost(`/admin/teams/${teamId}/reactivate`, {});
+      await loadRosters();
+    } catch (err: any) {
+      alert(err.message || 'Failed to reactivate');
     }
   };
 
@@ -294,13 +309,15 @@ export function TeamsPage() {
       <div className="flex items-center justify-between mb-6 gap-4 flex-wrap">
         <div>
           <h1 className="font-heading text-2xl font-bold">Teams & Rosters</h1>
-          <p className="text-sm text-text-muted mt-1">
+          <p className="text-sm text-text-muted mt-1 max-w-3xl">
             Rosters use the workspace season in the top bar. To attach teams to a league and bulk-copy last
             season&apos;s rosters, use{' '}
             <Link to="/season-setup" className="text-accent hover:text-accent-light font-medium">
               Season setup
             </Link>
-            .
+            . Deactivating a club (trash icon) is only allowed when it has no league membership, roster history, or games;
+            it is organization-wide, not per season. To remove a team from one year only, uncheck it under Season setup and
+            save.
           </p>
         </div>
         <button
@@ -337,18 +354,30 @@ export function TeamsPage() {
           {/* ── Team columns ── */}
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-5">
             {teams.map(team => (
-              <div key={team.id} className="bg-surface rounded-xl border border-border flex flex-col">
+              <div
+                key={team.id}
+                className={`bg-surface rounded-xl border flex flex-col ${
+                  team.isActive ? 'border-border' : 'border-amber-500/50 ring-1 ring-amber-500/20'
+                }`}
+              >
                 {/* team header */}
                 <div className="px-4 py-3 border-b border-border bg-surface-alt rounded-t-xl">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h3 className="font-heading font-bold text-base">{team.name}</h3>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="font-heading font-bold text-base">{team.name}</h3>
+                        {!team.isActive && (
+                          <span className="text-[10px] font-bold uppercase tracking-wide text-amber-700 dark:text-amber-300 shrink-0">
+                            Inactive
+                          </span>
+                        )}
+                      </div>
                       <p className="text-xs text-text-muted">
                         {[team.shortName, team.city].filter(Boolean).join(' · ') || 'No details'}
                         {' · '}{team.players.length} player{team.players.length !== 1 ? 's' : ''}
                       </p>
                     </div>
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1 shrink-0">
                       <button
                         onClick={() => openEditTeam(team)}
                         className="p-1.5 text-text-muted hover:text-accent rounded transition-colors"
@@ -358,15 +387,26 @@ export function TeamsPage() {
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                         </svg>
                       </button>
-                      <button
-                        onClick={() => handleDeleteTeam(team.id)}
-                        className="p-1.5 text-text-muted hover:text-red-500 rounded transition-colors"
-                        title="Deactivate team"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                        </svg>
-                      </button>
+                      {team.isActive ? (
+                        <button
+                          onClick={() => handleDeleteTeam(team.id)}
+                          className="p-1.5 text-text-muted hover:text-red-500 rounded transition-colors"
+                          title="Deactivate club (organization-wide, when no league/roster/games)"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handleReactivateTeam(team.id)}
+                          className="px-2 py-1 text-[11px] font-semibold rounded-md bg-amber-500/20 text-amber-800 dark:text-amber-200 hover:bg-amber-500/30 transition-colors"
+                          title="Restore club as active everywhere"
+                        >
+                          Reactivate
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
