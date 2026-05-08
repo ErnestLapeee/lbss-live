@@ -3435,10 +3435,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
 
             {step === 'misc_runner_second' && gameState && game && (
               <div className="bg-[#111d30] rounded-lg border border-white/10 p-3 flex flex-col max-h-[22rem]">
-                <p className="text-xs text-white/50 uppercase font-bold text-center mb-1">Runner on 2nd (extras)</p>
-                <p className="text-[10px] text-amber-200/55 text-center mb-2 leading-snug px-1">
-                  Tie-break / extra innings: records a runner on second with no outs added. Suggested pick is the last completed plate appearance from your team's previous offensive inning (often the last out); choose any active batter if needed.
-                </p>
+                <p className="text-xs text-white/50 uppercase font-bold text-center mb-2">Runner on 2nd (extras)</p>
                 {(() => {
                   const sug = suggestedGhostRunnerFromPrevOffensiveInning(events, gameState.inning, gameState.half);
                   if (sug == null) return null;
