@@ -125,7 +125,10 @@ export function Dashboard() {
       <div className="bg-surface rounded-xl border border-border p-6">
         <h2 className="font-heading text-lg font-semibold mb-2">Data Backup</h2>
         <p className="text-text-muted text-sm mb-3">
-          Download a full JSON backup of all database tables. Railway also provides automatic point-in-time database recovery.
+          Download a full JSON snapshot (seasons, teams, games, every play event, lineups, stats, articles, licenses, and playoff config). Store the file somewhere safe outside the app. If you cannot run native database dumps, use this regularly—especially after big scoring days—since it is your portable copy of the data.
+        </p>
+        <p className="text-text-muted text-sm mb-3">
+          Railway may offer point-in-time recovery depending on your plan; do not rely on it alone if you need a file you can keep offline or email.
         </p>
         <button
           type="button"

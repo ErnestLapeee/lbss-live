@@ -21,6 +21,8 @@ import {
   payments,
   articles,
   users,
+  playoffs,
+  playoffSeries,
 } from '../../db/schema/index.js';
 
 export async function adminBackupRoutes(app: FastifyInstance) {
@@ -48,6 +50,8 @@ export async function adminBackupRoutes(app: FastifyInstance) {
         paymentsData,
         articlesData,
         usersData,
+        playoffsData,
+        playoffSeriesData,
       ] = await Promise.all([
         db.select().from(seasons),
         db.select().from(leagues),
@@ -77,11 +81,13 @@ export async function adminBackupRoutes(app: FastifyInstance) {
           isActive: users.isActive,
           createdAt: users.createdAt,
         }).from(users),
+        db.select().from(playoffs),
+        db.select().from(playoffSeries),
       ]);
 
       const backup = {
         exportedAt: new Date().toISOString(),
-        version: 1,
+        version: 2,
         data: {
           seasons: seasonsData,
           leagues: leaguesData,
@@ -103,6 +109,8 @@ export async function adminBackupRoutes(app: FastifyInstance) {
           payments: paymentsData,
           articles: articlesData,
           users: usersData,
+          playoffs: playoffsData,
+          playoffSeries: playoffSeriesData,
         },
       };
 
