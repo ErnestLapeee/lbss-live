@@ -182,3 +182,6 @@ export function mergeBattingStats(statsList: BattingStats[]): BattingStats {
   }
   return merged;
 }
+
+export { remapBasesForSubstitutionDetail } from './remap-bases-for-substitution.js';
+export type { BaseOccupancy } from './remap-bases-for-substitution.js';

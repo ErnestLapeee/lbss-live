@@ -18,7 +18,7 @@ import { finalizeGame } from '../../services/finalize-game.js';
 import { firstRowFromExecute } from '../../lib/pg-result.js';
 import { gamesTableHasOfficialColumns } from '../../lib/games-official-columns.js';
 import { slugify } from '../../utils/slugify.js';
-import { isBetweenPitchEvent, isKnownEventType } from '@lbss/shared';
+import { isBetweenPitchEvent, isKnownEventType, remapBasesForSubstitutionDetail } from '@lbss/shared';
 
 /** JSONB array columns — normalize without `as any` on DB rows. */
 function jsonbNumberArray(v: unknown): number[] {
@@ -235,8 +235,9 @@ function computeGameState(events: any[]): GameState {
       continue;
     }
 
-    // Roster-only: does not change score, outs, bases, or count
+    // Roster change: pinch-runner / PH / defensive swap — remap runner IDs on bases when the outgoing player is on base
     if (event.eventType === 'substitution') {
+      state.bases = remapBasesForSubstitutionDetail(state.bases, event.eventDetail);
       state.eventCount++;
       continue;
     }

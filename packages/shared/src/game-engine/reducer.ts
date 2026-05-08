@@ -1,5 +1,6 @@
 import type { GameEvent } from '../types/game-event.js';
 import { isBetweenPitchEvent } from '../constants/event-types.js';
+import { remapBasesForSubstitutionDetail } from './remap-bases-for-substitution.js';
 
 export interface GameState {
   inning: number;
@@ -56,6 +57,7 @@ export function applyEvent(state: GameState, event: GameEvent): GameState {
   }
 
   if (event.eventType === 'substitution') {
+    next.bases = remapBasesForSubstitutionDetail(state.bases, event.eventDetail);
     next.eventCount = state.eventCount + 1;
     return next;
   }

@@ -4,11 +4,18 @@ import {
   isAtBatEvent,
   isBetweenPitchEvent,
   isPlateAppearanceEvent,
+  remapBasesForSubstitutionDetail,
 } from '../index.js';
 
 function assert(condition: unknown, message: string): void {
   if (!condition) throw new Error(message);
 }
+
+const prBases = remapBasesForSubstitutionDetail(
+  { first: 10, second: 20, third: null },
+  JSON.stringify({ kind: 'player_change', outPlayerId: 20, inPlayerId: 55 }),
+);
+assert(prBases.first === 10 && prBases.second === 55 && prBases.third == null, 'substitution should remap occupied bases for pinch runner');
 
 const pitcherLines = aggregatePitchingStatsByPitcher([
   {
