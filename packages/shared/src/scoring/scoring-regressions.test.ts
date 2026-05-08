@@ -29,6 +29,7 @@ assert(pitcherLine?.earnedRuns === 0, 'advance_on_error runs should remain unear
 assert(isPlateAppearanceEvent('catcher_interference'), 'catcher_interference should be a PA');
 assert(!isAtBatEvent('catcher_interference'), 'catcher_interference should not be an AB');
 assert(isBetweenPitchEvent('advance_on_error'), 'advance_on_error should preserve the current count');
+assert(isBetweenPitchEvent('place_runner_second'), 'place_runner_second should preserve the current count');
 
 const countSplits = aggregateBattingCountSplits([
   { eventNumber: 1, gameId: 1, eventType: 'pitch', eventDetail: 'called_strike', balls: 0, strikes: 0 },

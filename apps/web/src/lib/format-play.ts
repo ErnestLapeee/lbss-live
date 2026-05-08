@@ -197,6 +197,12 @@ export function formatPlayByPlay(
     return { title, subtitle: '', chips: [] };
   }
 
+  if (play.eventType === 'place_runner_second') {
+    const r = play.runnerSecondName ? lastName(play.runnerSecondName) : 'Runner';
+    title = `Runner on 2nd (extras): ${r}`;
+    return { title, subtitle: '', chips: [] };
+  }
+
   if (play.eventType === 'substitution') {
     let detail: {
       kind?: string;

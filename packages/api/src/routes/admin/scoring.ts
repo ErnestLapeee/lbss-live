@@ -145,6 +145,18 @@ function validateScoringEventPayload(
       return { ok: false, message: 'end_half_inning must clear the bases' };
     }
   }
+  if (eventType === 'place_runner_second') {
+    if (outsRecorded !== 0) {
+      return { ok: false, message: 'place_runner_second must record zero outs' };
+    }
+    if (Number(payload.runsScored ?? 0) !== 0) {
+      return { ok: false, message: 'place_runner_second cannot score runs' };
+    }
+    const r2 = payload.runnerSecondId;
+    if (r2 == null || !Number.isFinite(Number(r2))) {
+      return { ok: false, message: 'place_runner_second requires runnerSecondId (runner on second base)' };
+    }
+  }
   if (eventType === 'double_play') {
     if (outsRecorded !== 2) return { ok: false, message: 'double_play must record exactly two outs' };
     if (options?.strictState && options.expectedState && options.expectedState.outs > 1) {

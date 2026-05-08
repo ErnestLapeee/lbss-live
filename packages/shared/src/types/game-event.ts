@@ -87,6 +87,7 @@ export type EventType =
   | 'end_half_inning'
   | 'substitution'
   | 'adjust_score'
+  | 'place_runner_second'
 
   // Misc/legacy
   | 'interference'

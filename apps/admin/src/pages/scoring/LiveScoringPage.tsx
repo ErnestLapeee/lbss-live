@@ -59,6 +59,9 @@ function formatScoringMiniPbpLine(evt: GameEvent, game?: GameData | null): strin
       return parts.length ? `Score adjustment (${parts.join(', ')})` : 'Score adjustment';
     } catch { return 'Score adjustment'; }
   }
+  if (evt.eventType === 'place_runner_second') {
+    return evt.eventDetail || 'Runner on 2nd (extras)';
+  }
   if (evt.eventType === 'substitution') {
     try {
       const d = JSON.parse(evt.eventDetail || '{}') as {
@@ -88,6 +91,40 @@ function formatScoringMiniPbpLine(evt: GameEvent, game?: GameData | null): strin
     return 'Substitution';
   }
   return evt.eventDetail || evt.eventType;
+}
+
+/** Plate-appearance cursor skips these (must stay aligned with derived batter index). */
+const SCORER_NON_AB_EVENTS = new Set([
+  'pitch', 'stolen_base', 'caught_stealing', 'picked_off', 'wild_pitch', 'passed_ball',
+  'balk', 'advance', 'advance_on_error', 'defensive_indifference',
+  'runner_interference', 'appeal_play', 'tagged_out', 'force_out',
+  'hit_by_ball', 'missed_base', 'left_base_early', 'left_base_path',
+  'offensive_interference', 'passed_runner', 'hesitation',
+  'end_half_inning', 'adjust_score', 'illegal_pitch', 'substitution',
+  'place_runner_second',
+]);
+
+/** Last completed PA batter from this team's previous offensive inning (same half, inning − 1); typical extras tie-break pick. */
+function suggestedGhostRunnerFromPrevOffensiveInning(events: GameEvent[], inning: number, half: string): number | null {
+  if (inning < 2) return null;
+  const h = String(half ?? '').toLowerCase();
+  const normHalf = h === 'bottom' || h === 'bot' ? 'bot' : 'top';
+  const prevInning = inning - 1;
+  const slice = [...events]
+    .filter((e) => !(e as { isDeleted?: boolean }).isDeleted)
+    .filter((e) => {
+      const eh = String(e.half ?? '').toLowerCase();
+      const nh = eh === 'bottom' || eh === 'bot' ? 'bot' : 'top';
+      return e.inning === prevInning && nh === normHalf;
+    })
+    .sort((a, b) => a.eventNumber - b.eventNumber);
+  for (let i = slice.length - 1; i >= 0; i--) {
+    const e = slice[i];
+    const bid = e.batterId;
+    if (bid == null) continue;
+    if (!SCORER_NON_AB_EVENTS.has(e.eventType)) return bid;
+  }
+  return null;
 }
 
 const POS_LABELS: Record<number, string> = { 1:'P',2:'C',3:'1B',4:'2B',5:'3B',6:'SS',7:'LF',8:'CF',9:'RF',10:'DH' };
@@ -176,7 +213,7 @@ const getRunnerOutTypesForOuts = (currentOuts: number) => {
 
 /* ── (Field positions are defined inline in the SVG) ── */
 
-type ScoringStep = 'pitch' | 'strikeout_type' | 'out_type' | 'safe_type' | 'fielding' | 'hit_location' | 'runner' | 'batter_advance' | 'runner_out_detail' | 'runner_out_fielding' | 'runner_advance_error_fielding' | 'runner_action' | 'sub_defense' | 'sub_offense' | 'swap_position' | 'swap_position_pick' | 'misc' | 'adjust_score';
+type ScoringStep = 'pitch' | 'strikeout_type' | 'out_type' | 'safe_type' | 'fielding' | 'hit_location' | 'runner' | 'batter_advance' | 'runner_out_detail' | 'runner_out_fielding' | 'runner_advance_error_fielding' | 'runner_action' | 'sub_defense' | 'sub_offense' | 'swap_position' | 'swap_position_pick' | 'misc' | 'misc_runner_second' | 'adjust_score';
 
 const BATTED_BALL_EVENTS = new Set([
   'single', 'double', 'triple', 'home_run', 'inside_park_hr', 'ground_rule_double',
@@ -366,6 +403,7 @@ export function LiveScoringPage() {
   // Adjust score state
   const [adjustHome, setAdjustHome] = useState(0);
   const [adjustAway, setAdjustAway] = useState(0);
+  const [miscGhostRunnerId, setMiscGhostRunnerId] = useState<number | null>(null);
 
   // Event timeline panel
   const [showEventTimeline, setShowEventTimeline] = useState(false);
@@ -375,7 +413,7 @@ export function LiveScoringPage() {
   const pitcherPitchCounts = useMemo(() => {
     const counts: Record<number, { total: number; balls: number; strikes: number }> = {};
     if (!game) return counts;
-    const RUNNER_EVENTS = new Set(['stolen_base','caught_stealing','picked_off','wild_pitch','passed_ball','balk','advance','advance_on_error','defensive_indifference','runner_interference','appeal_play','tagged_out','force_out','hit_by_ball','missed_base','left_base_early','left_base_path','offensive_interference','passed_runner','hesitation','double_play','triple_play','end_half_inning','illegal_pitch']);
+    const RUNNER_EVENTS = new Set(['stolen_base','caught_stealing','picked_off','wild_pitch','passed_ball','balk','advance','advance_on_error','defensive_indifference','runner_interference','appeal_play','tagged_out','force_out','hit_by_ball','missed_base','left_base_early','left_base_path','offensive_interference','passed_runner','hesitation','double_play','triple_play','end_half_inning','illegal_pitch','place_runner_second']);
     const WALK_TYPES = new Set(['walk','intentional_walk']);
     const activePitcherId = (lineup: LineupEntry[]) =>
       lineup.find((l) => l.isActive && l.position === 1 && l.playerId != null)?.playerId ?? null;
@@ -460,26 +498,16 @@ export function LiveScoringPage() {
   }, [game?.id]);
 
   // Derive current batter position from events (computed during render, always in sync)
-  /** Events that do not advance the batting-order cursor (no new PA slot). */
-  const NON_AB_EVENTS = useMemo(() => new Set([
-    'pitch', 'stolen_base', 'caught_stealing', 'picked_off', 'wild_pitch', 'passed_ball',
-    'balk', 'advance', 'advance_on_error', 'defensive_indifference',
-    'runner_interference', 'appeal_play', 'tagged_out', 'force_out',
-    'hit_by_ball', 'missed_base', 'left_base_early', 'left_base_path',
-    'offensive_interference', 'passed_runner', 'hesitation',
-    'end_half_inning', 'adjust_score', 'illegal_pitch', 'substitution',
-  ]), []);
-
   const derivedBatterIdx = useMemo(() => {
     let awayABs = 0;
     let homeABs = 0;
     for (const e of events) {
-      if (NON_AB_EVENTS.has(e.eventType)) continue;
+      if (SCORER_NON_AB_EVENTS.has(e.eventType)) continue;
       if (e.half === 'top') awayABs++;
       else if (e.half === 'bot') homeABs++;
     }
     return { away: awayABs, home: homeABs };
-  }, [events, NON_AB_EVENTS]);
+  }, [events]);
 
   // Derived
   const battingTeamId = gameState?.half === 'top' ? game?.awayTeamId : game?.homeTeamId;
@@ -1601,7 +1629,44 @@ function needsRunnerAdvanceErrorFieldingPrompt(
       cancelWizard(); await loadState();
     } catch (err: any) { alert(err.message || 'Failed'); } finally { setSubmitting(false); }
   };
-  const cancelWizard = () => { setStep('pitch'); setSelectedEvent(null); setFieldingPositions([]); setRunnerQuestions([]); setCurrentRunnerIdx(0); setActiveRunnerBase(null); setRunnerActionType(null); setRunnerActionDest(null); setRunnerActionOutType(null); setRunnerActionFielding([]); setSubPosition(null); setSubTeamId(null); setSubBattingSlot(null); setPendingPositionChanges([]); setRunnerOutSafeTab('safe'); setRunnerSafeDest(null); setHitLocationX(null); setHitLocationY(null); setHitType(null); setHitHardness(null); setBetweenPitchEvent(null); setBetweenPitchInitiatorRunnerId(null); setOutSafeMorePage(false); setRunnerOutPendingType(null); setRunnerOutFielding([]); setRunnerAdvanceErrorPending(null); setRunnerAdvanceErrorFielding([]); };
+  const cancelWizard = () => { setStep('pitch'); setSelectedEvent(null); setFieldingPositions([]); setRunnerQuestions([]); setCurrentRunnerIdx(0); setActiveRunnerBase(null); setRunnerActionType(null); setRunnerActionDest(null); setRunnerActionOutType(null); setRunnerActionFielding([]); setSubPosition(null); setSubTeamId(null); setSubBattingSlot(null); setPendingPositionChanges([]); setRunnerOutSafeTab('safe'); setRunnerSafeDest(null); setHitLocationX(null); setHitLocationY(null); setHitType(null); setHitHardness(null); setBetweenPitchEvent(null); setBetweenPitchInitiatorRunnerId(null); setOutSafeMorePage(false); setRunnerOutPendingType(null); setRunnerOutFielding([]); setRunnerAdvanceErrorPending(null); setRunnerAdvanceErrorFielding([]); setMiscGhostRunnerId(null); };
+
+  const submitPlaceRunnerSecond = async () => {
+    if (!gameState || submitting || !game || miscGhostRunnerId == null) return;
+    if (currentBatter && (currentBatter.bats || '').trim().toUpperCase() === 'S' && !switchBatSide) {
+      alert('Select LHB or RHB for this switch hitter first.');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const miscSide = batterSideForCurrentPa();
+      const nm = getPlayerName(miscGhostRunnerId);
+      await apiPost(`/admin/scoring/${gameId}/event`, {
+        eventType: 'place_runner_second',
+        batterId: null,
+        pitcherId: currentPitcher?.playerId,
+        inning: gameState.inning,
+        half: gameState.half,
+        rbi: 0,
+        runsScored: 0,
+        outsRecorded: 0,
+        balls,
+        strikes,
+        runnerFirstId: gameState.bases.first,
+        runnerSecondId: miscGhostRunnerId,
+        runnerThirdId: gameState.bases.third,
+        runnersScored: [],
+        eventDetail: `Runner on 2nd (extras): ${nm}`,
+        ...(miscSide ? { batterSide: miscSide } : {}),
+      });
+      cancelWizard();
+      await loadState();
+    } catch (err: any) {
+      alert(err.message || 'Failed');
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const openLineupAdjust = () => {
     if (!game) return;
@@ -3342,6 +3407,17 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                     } },
                     { label: 'Balk', fn: () => handleMiscEvent('balk', 'Balk') },
                     { label: 'Illegal Pitch', fn: () => handleMiscEvent('illegal_pitch', 'Illegal pitch') },
+                    { label: 'Runner on 2nd (extras)', fn: () => {
+                      if (!gameState || !game) return;
+                      if (currentBatter && (currentBatter.bats || '').trim().toUpperCase() === 'S' && !switchBatSide) {
+                        alert('Select LHB or RHB for this switch hitter first.');
+                        return;
+                      }
+                      const sug = suggestedGhostRunnerFromPrevOffensiveInning(events, gameState.inning, gameState.half);
+                      const fallback = battingLineup.find((l) => l.playerId != null)?.playerId ?? null;
+                      setMiscGhostRunnerId(sug ?? fallback);
+                      setStep('misc_runner_second');
+                    } },
                     { label: 'End Half Inning', fn: handleEndHalfInning },
                     { label: 'Adjust Score', fn: openAdjustScore },
                     { label: 'Adjust starting lineups', fn: openLineupAdjust },
@@ -3354,6 +3430,64 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                   ))}
                 </div>
                 <button onClick={cancelWizard} className="py-3 text-white/40 text-xs font-bold uppercase border-t border-white/10 hover:text-white/60 shrink-0">CANCEL</button>
+              </div>
+            )}
+
+            {step === 'misc_runner_second' && gameState && game && (
+              <div className="bg-[#111d30] rounded-lg border border-white/10 p-3 flex flex-col max-h-[22rem]">
+                <p className="text-xs text-white/50 uppercase font-bold text-center mb-1">Runner on 2nd (extras)</p>
+                <p className="text-[10px] text-amber-200/55 text-center mb-2 leading-snug px-1">
+                  Tie-break / extra innings: records a runner on second with no outs added. Suggested pick is the last completed plate appearance from your team&apos;s previous offensive inning (often the last out); choose any active batter if needed.
+                </p>
+                {(() => {
+                  const sug = suggestedGhostRunnerFromPrevOffensiveInning(events, gameState.inning, gameState.half);
+                  if (sug == null) return null;
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => setMiscGhostRunnerId(sug)}
+                      className="mb-2 w-full py-1.5 px-2 rounded bg-amber-500/15 text-[10px] text-amber-100 hover:bg-amber-500/25 border border-amber-500/25"
+                    >
+                      Use suggested: {getPlayerName(sug)}
+                    </button>
+                  );
+                })()}
+                <div className="overflow-y-auto space-y-1 flex-1 min-h-0 mb-2 pr-0.5">
+                  {battingLineup.filter((l) => l.playerId != null).map((l) => (
+                    <button
+                      key={l.playerId}
+                      type="button"
+                      onClick={() => setMiscGhostRunnerId(l.playerId!)}
+                      className={`w-full text-left px-3 py-2 rounded text-xs transition-colors ${
+                        miscGhostRunnerId === l.playerId
+                          ? 'bg-emerald-600/40 text-white border border-emerald-400/40'
+                          : 'bg-white/5 text-white/80 hover:bg-white/10'
+                      }`}
+                    >
+                      #{l.battingOrder} {l.firstName.charAt(0)}. {l.lastName}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex flex-col gap-1.5 shrink-0 pt-1 border-t border-white/10">
+                  <button
+                    type="button"
+                    onClick={submitPlaceRunnerSecond}
+                    disabled={submitting || miscGhostRunnerId == null}
+                    className="w-full py-2.5 bg-green-700 hover:bg-green-600 disabled:opacity-40 disabled:pointer-events-none text-white text-[10px] font-bold rounded uppercase"
+                  >
+                    {submitting ? 'Saving…' : 'Confirm runner on 2nd'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setMiscGhostRunnerId(null); setStep('misc'); }}
+                    className="w-full py-2 text-white/45 text-[10px] font-bold uppercase hover:text-white/70"
+                  >
+                    Back
+                  </button>
+                  <button type="button" onClick={cancelWizard} className="w-full py-2 text-white/35 text-[10px] font-bold uppercase hover:text-white/55">
+                    Cancel
+                  </button>
+                </div>
               </div>
             )}
 
@@ -3632,7 +3766,7 @@ function EventTimelinePanel({ gameId, events, homeLineup, awayLineup, onClose, o
     'stolen_base', 'caught_stealing', 'picked_off', 'wild_pitch', 'passed_ball', 'balk', 'defensive_indifference',
     'advance', 'advance_on_error', 'runner_interference', 'appeal_play', 'tagged_out', 'force_out', 'hit_by_ball',
     'missed_base', 'left_base_early', 'left_base_path', 'offensive_interference', 'passed_runner', 'hesitation', 'illegal_pitch',
-    'end_half_inning', 'substitution', 'adjust_score', 'interference', 'other',
+    'end_half_inning', 'substitution', 'adjust_score', 'place_runner_second', 'interference', 'other',
   ];
 
   const playerOptions = [...allPlayers.entries()].sort((a, b) => a[1].localeCompare(b[1]));

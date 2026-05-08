@@ -519,6 +519,21 @@ export function LiveGameClient({
         continue;
       }
 
+      if (evt.eventType === 'place_runner_second') {
+        const rnm = evt.runnerSecondName?.trim() || 'Runner on 2nd';
+        group.atBats.push({
+          batterId: evt.runnerSecondId ?? null,
+          batterName: rnm,
+          result: evt,
+          pitches: [],
+          betweenEvents: [],
+          inning: evt.inning,
+          half: evt.half,
+        });
+        currentAB = null;
+        continue;
+      }
+
       if (evt.eventType === 'pitch') {
         if (!currentAB) {
           currentAB = { batterId: evt.batterId, batterName: evt.batterName || 'Unknown', result: null, pitches: [], betweenEvents: [], inning: evt.inning, half: evt.half };
@@ -595,7 +610,7 @@ export function LiveGameClient({
     }
 
     for (const evt of events) {
-      if (evt.eventType === 'end_half_inning' || evt.eventType === 'pitch' || evt.eventType === 'adjust_score' || evt.eventType === 'substitution') continue;
+      if (evt.eventType === 'end_half_inning' || evt.eventType === 'pitch' || evt.eventType === 'adjust_score' || evt.eventType === 'substitution' || evt.eventType === 'place_runner_second') continue;
       if (RUNNER_EVENT_TYPES.has(evt.eventType)) {
         const actorId = evt.batterId ?? runnerActorByEventId.get(evt.id);
         if (evt.eventType === 'stolen_base' && actorId) getOrCreate(actorId).sb++;
@@ -1752,7 +1767,7 @@ export function LiveGameClient({
                             const cardKey = `${group.key}-${abIdx}-${ab.result?.id ?? 'runner'}`;
                             const showPitchDetails = playMode === 'expanded' || Boolean(openPitchCards[cardKey]);
                             const isCompact = playMode === 'compact';
-                            const isSystemRow = result?.eventType === 'substitution' || result?.eventType === 'adjust_score';
+                            const isSystemRow = result?.eventType === 'substitution' || result?.eventType === 'adjust_score' || result?.eventType === 'place_runner_second';
                             const isCompactSystemRow = isCompact && isSystemRow;
                             const metaParts = [
                               !isSystemRow && displayedPitchCount > 0 ? `${displayedPitchCount} pitch${displayedPitchCount === 1 ? '' : 'es'}` : null,

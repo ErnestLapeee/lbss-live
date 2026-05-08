@@ -105,6 +105,7 @@ export const SYSTEM_EVENTS = [
   'end_half_inning',
   'substitution',
   'adjust_score',
+  'place_runner_second',
 ] as const;
 
 export const NON_PA_EVENTS = [
@@ -128,6 +129,7 @@ export const BETWEEN_PITCH_EVENTS = [
   ...RUNNER_ONLY_EVENTS,
   'end_half_inning',
   'adjust_score',
+  'place_runner_second',
 ] as const;
 
 export const isKnownEventType = (eventType: string): boolean =>
@@ -220,6 +222,7 @@ export const EVENT_TYPE_LABELS: Record<string, string> = {
   end_half_inning: 'End of Inning',
   substitution: 'Substitution',
   adjust_score: 'Score Adjustment',
+  place_runner_second: 'Runner on 2nd (extras)',
   interference: 'Interference',
   other: 'Other',
 };
