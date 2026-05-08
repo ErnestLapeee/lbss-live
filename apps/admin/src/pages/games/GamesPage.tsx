@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
 import { useAdminSeason } from '@/context/AdminSeasonContext';
 
@@ -14,10 +14,14 @@ interface Game {
   homeScore: number;
   awayScore: number;
   isFinalized: boolean;
-  playoffSeriesId?: number | null;
 }
 
 interface Team {
+  id: number;
+  name: string;
+}
+
+interface LeagueTeamOption {
   id: number;
   name: string;
 }
@@ -26,18 +30,6 @@ interface League {
   id: number;
   name: string;
   seasonId: number;
-}
-
-interface PlayoffListRow {
-  id: number;
-  name: string;
-}
-
-interface PlayoffSeriesListRow {
-  id: number;
-  roundNumber: number;
-  seriesIndex: number;
-  label: string | null;
 }
 
 const STATUS_OPTIONS = [
@@ -83,10 +75,7 @@ export function GamesPage() {
   const [editing, setEditing] = useState<Game | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [bulkGameIds, setBulkGameIds] = useState('');
-  const [bulkSeriesIdInput, setBulkSeriesIdInput] = useState('');
-  const [bulkSaving, setBulkSaving] = useState(false);
-  const [seriesOptions, setSeriesOptions] = useState<{ id: number; label: string }[]>([]);
+  const [formLeagueTeams, setFormLeagueTeams] = useState<LeagueTeamOption[]>([]);
 
   const [form, setForm] = useState({
     leagueId: '',
@@ -95,15 +84,9 @@ export function GamesPage() {
     scheduledAt: '',
     venue: '',
     status: 'scheduled',
-    playoffSeriesId: '',
   });
 
-  const teamMap = Object.fromEntries(teams.map((t) => [t.id, t.name]));
-
-  const seriesLabelById = useMemo(
-    () => Object.fromEntries(seriesOptions.map((o) => [o.id, o.label])),
-    [seriesOptions],
-  );
+  const teamMap = useMemo(() => Object.fromEntries(teams.map((t) => [t.id, t.name])), [teams]);
 
   const leaguesForSeason = useMemo(
     () =>
@@ -128,7 +111,9 @@ export function GamesPage() {
     setError(null);
     try {
       const [teamsRes, leaguesRes] = await Promise.all([
-        apiGet<Team[]>('/admin/teams'),
+        selectedSeasonId
+          ? apiGet<Team[]>(`/admin/teams?seasonId=${selectedSeasonId}`)
+          : Promise.resolve([] as Team[]),
         apiGet<League[]>('/admin/leagues'),
       ]);
       setTeams(Array.isArray(teamsRes) ? teamsRes : []);
@@ -153,40 +138,42 @@ export function GamesPage() {
   }, [loadData]);
 
   useEffect(() => {
-    if (!selectedSeasonId) {
-      setSeriesOptions([]);
+    const lid = form.leagueId.trim();
+    if (!lid) {
+      setFormLeagueTeams([]);
       return;
     }
     let cancelled = false;
     (async () => {
       try {
-        const po = await apiGet<PlayoffListRow[]>(`/admin/playoffs?seasonId=${selectedSeasonId}`);
-        if (cancelled || !Array.isArray(po)) return;
-        const pairs = await Promise.all(
-          po.map(async (p) => {
-            const rows = await apiGet<PlayoffSeriesListRow[]>(`/admin/playoffs/${p.id}/series`);
-            return { p, rows: Array.isArray(rows) ? rows : [] };
-          }),
+        const rows = await apiGet<{ teamId: number; name: string; shortName: string | null }[]>(
+          `/admin/leagues/${lid}/teams`,
         );
-        const opts: { id: number; label: string }[] = [];
-        for (const { p, rows } of pairs) {
-          for (const s of rows) {
-            opts.push({
-              id: s.id,
-              label: `${p.name} — R${s.roundNumber}.${s.seriesIndex}${s.label ? ` ${s.label}` : ''} (#${s.id})`,
-            });
+        if (cancelled) return;
+        let list: LeagueTeamOption[] = (Array.isArray(rows) ? rows : []).map((r) => ({
+          id: r.teamId,
+          name: r.shortName ? `${r.name} (${r.shortName})` : r.name,
+        }));
+        if (editing) {
+          for (const tid of [editing.homeTeamId, editing.awayTeamId]) {
+            if (tid && !list.some((x) => x.id === tid)) {
+              list.push({
+                id: tid,
+                name: `${teamMap[tid] ?? `Team #${tid}`} — not in this league roster`,
+              });
+            }
           }
         }
-        opts.sort((a, b) => a.label.localeCompare(b.label));
-        if (!cancelled) setSeriesOptions(opts);
+        list.sort((a, b) => a.name.localeCompare(b.name));
+        setFormLeagueTeams(list);
       } catch {
-        if (!cancelled) setSeriesOptions([]);
+        if (!cancelled) setFormLeagueTeams([]);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [selectedSeasonId]);
+  }, [form.leagueId, editing?.id, editing?.homeTeamId, editing?.awayTeamId, teamMap]);
 
   const openCreate = () => {
     setEditing(null);
@@ -198,7 +185,6 @@ export function GamesPage() {
       scheduledAt: '',
       venue: '',
       status: 'scheduled',
-      playoffSeriesId: '',
     });
     setShowForm(true);
     setError(null);
@@ -213,7 +199,6 @@ export function GamesPage() {
       scheduledAt: formatDatetimeLocal(g.scheduledAt),
       venue: g.venue ?? '',
       status: g.status ?? 'scheduled',
-      playoffSeriesId: g.playoffSeriesId != null ? String(g.playoffSeriesId) : '',
     });
     setShowForm(true);
     setError(null);
@@ -232,7 +217,6 @@ export function GamesPage() {
           scheduledAt: new Date(form.scheduledAt).toISOString(),
           venue: form.venue.trim() || undefined,
           status: form.status,
-          playoffSeriesId: form.playoffSeriesId.trim() ? parseInt(form.playoffSeriesId, 10) : null,
         });
       } else {
         await apiPost('/admin/games', {
@@ -241,7 +225,6 @@ export function GamesPage() {
           awayTeamId: parseInt(form.awayTeamId, 10),
           scheduledAt: new Date(form.scheduledAt).toISOString(),
           venue: form.venue.trim() || undefined,
-          playoffSeriesId: form.playoffSeriesId.trim() ? parseInt(form.playoffSeriesId, 10) : null,
         });
       }
       setShowForm(false);
@@ -263,44 +246,6 @@ export function GamesPage() {
       loadData();
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Failed to delete');
-    }
-  };
-
-  const handleBulkPlayoffSeries = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const ids = bulkGameIds
-      .split(/[\s,]+/)
-      .map((x) => parseInt(x.trim(), 10))
-      .filter((n) => !isNaN(n));
-    if (ids.length === 0) {
-      setError('Enter at least one game ID (comma or space separated).');
-      return;
-    }
-    const raw = bulkSeriesIdInput.trim();
-    let playoffSeriesId: number | null;
-    if (raw === '') {
-      playoffSeriesId = null;
-    } else {
-      const n = parseInt(raw, 10);
-      if (isNaN(n)) {
-        setError('Invalid playoff series ID.');
-        return;
-      }
-      playoffSeriesId = n;
-    }
-    setBulkSaving(true);
-    setError(null);
-    try {
-      await apiPost<{ updated: number }>('/admin/games/bulk/playoff-series', {
-        gameIds: ids,
-        playoffSeriesId,
-      });
-      setBulkGameIds('');
-      loadData();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Bulk update failed');
-    } finally {
-      setBulkSaving(false);
     }
   };
 
@@ -343,12 +288,7 @@ export function GamesPage() {
         <div>
           <h1 className="font-heading text-2xl font-bold">Games</h1>
           <p className="text-sm text-text-muted mt-1">
-            Schedule is filtered by the workspace season (top bar). Create leagues for that season first. For playoff
-            games, define series on{' '}
-            <Link to="/playoffs" className="text-accent hover:text-accent-light font-medium">
-              Playoffs
-            </Link>{' '}
-            then pick a series below.
+            Games are listed for the workspace season (top bar). Home and away must be teams registered in the league you pick (Season setup). Rosters and licenses stay tied to that season.
           </p>
         </div>
         <button
@@ -367,46 +307,6 @@ export function GamesPage() {
         </div>
       )}
 
-      <details className="mb-4 rounded-xl border border-border bg-surface-alt/50 p-4 text-sm">
-        <summary className="cursor-pointer font-medium text-text-muted select-none">
-          Bulk attach games to a playoff series
-        </summary>
-        <form onSubmit={handleBulkPlayoffSeries} className="mt-3 grid gap-3 sm:grid-cols-[1fr_auto_auto] sm:items-end">
-          <div>
-            <label className="block text-xs font-medium text-text-muted mb-1">Game IDs</label>
-            <input
-              type="text"
-              value={bulkGameIds}
-              onChange={(e) => setBulkGameIds(e.target.value)}
-              className={inputClass}
-              placeholder="e.g. 101, 102, 103"
-              disabled={bulkSaving}
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-text-muted mb-1">Playoff series ID</label>
-            <input
-              type="number"
-              value={bulkSeriesIdInput}
-              onChange={(e) => setBulkSeriesIdInput(e.target.value)}
-              className={inputClass}
-              placeholder="Clear to detach"
-              disabled={bulkSaving}
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={bulkSaving}
-            className="px-4 py-2 bg-surface border border-border rounded-lg text-sm font-semibold hover:bg-surface-alt disabled:opacity-50"
-          >
-            {bulkSaving ? 'Applying…' : 'Apply'}
-          </button>
-        </form>
-        <p className="mt-2 text-xs text-text-faint">
-          Sets <code className="text-text-muted">playoff_series_id</code> for all listed games. Leave series empty to clear.
-        </p>
-      </details>
-
       <div className="bg-surface rounded-xl border border-border overflow-hidden">
         <table className="w-full text-sm">
           <thead>
@@ -416,14 +316,13 @@ export function GamesPage() {
               <th className="px-4 py-3 text-left font-semibold text-text-muted">Away Team</th>
               <th className="px-4 py-3 text-left font-semibold text-text-muted">Score</th>
               <th className="px-4 py-3 text-left font-semibold text-text-muted">Status</th>
-              <th className="px-4 py-3 text-left font-semibold text-text-muted">Playoff series</th>
               <th className="px-4 py-3 text-left font-semibold text-text-muted">Actions</th>
             </tr>
           </thead>
           <tbody>
             {seasonsLoading ? (
               <tr>
-                <td className="px-4 py-8 text-center text-text-muted" colSpan={6}>
+                <td className="px-4 py-8 text-center text-text-muted" colSpan={7}>
                   Loading seasons…
                 </td>
               </tr>
@@ -441,7 +340,7 @@ export function GamesPage() {
               </tr>
             ) : games.length === 0 ? (
               <tr>
-                <td className="px-4 py-8 text-center text-text-muted" colSpan={6}>
+                <td className="px-4 py-8 text-center text-text-muted" colSpan={7}>
                   {leaguesForSeason.length === 0
                     ? 'No leagues for this season yet. Create a league first.'
                     : 'No games scheduled yet. Create your first game.'}
@@ -466,11 +365,6 @@ export function GamesPage() {
                     >
                       {g.status}
                     </span>
-                  </td>
-                  <td className="px-4 py-3 max-w-[11rem] text-xs text-text-muted truncate" title={g.playoffSeriesId != null ? seriesLabelById[g.playoffSeriesId] ?? `#${g.playoffSeriesId}` : ''}>
-                    {g.playoffSeriesId != null
-                      ? seriesLabelById[g.playoffSeriesId] ?? `#${g.playoffSeriesId}`
-                      : '—'}
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2 flex-wrap">
@@ -520,7 +414,14 @@ export function GamesPage() {
                 <label className="block text-sm font-medium text-text-muted mb-1">League *</label>
                 <select
                   value={form.leagueId}
-                  onChange={(e) => setForm((f) => ({ ...f, leagueId: e.target.value }))}
+                  onChange={(e) =>
+                    setForm((f) => ({
+                      ...f,
+                      leagueId: e.target.value,
+                      homeTeamId: '',
+                      awayTeamId: '',
+                    }))
+                  }
                   className={inputClass}
                   required
                 >
@@ -532,6 +433,11 @@ export function GamesPage() {
                   ))}
                 </select>
               </div>
+              {form.leagueId && formLeagueTeams.length === 0 && (
+                <p className="text-xs text-amber-800 bg-amber-500/10 border border-amber-500/25 rounded-lg px-3 py-2">
+                  This league has no teams yet. Add clubs under <strong>Season setup</strong>, then pick home and away here.
+                </p>
+              )}
               <div>
                 <label className="block text-sm font-medium text-text-muted mb-1">
                   Home Team *
@@ -543,7 +449,7 @@ export function GamesPage() {
                   required
                 >
                   <option value="">Select team</option>
-                  {teams.map((t) => (
+                  {formLeagueTeams.map((t) => (
                     <option key={t.id} value={t.id}>
                       {t.name}
                     </option>
@@ -561,7 +467,7 @@ export function GamesPage() {
                   required
                 >
                   <option value="">Select team</option>
-                  {teams.map((t) => (
+                  {formLeagueTeams.map((t) => (
                     <option key={t.id} value={t.id}>
                       {t.name}
                     </option>
@@ -602,26 +508,6 @@ export function GamesPage() {
                     </option>
                   ))}
                 </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-text-muted mb-1">
-                  Playoff series (optional)
-                </label>
-                <select
-                  value={form.playoffSeriesId}
-                  onChange={(e) => setForm((f) => ({ ...f, playoffSeriesId: e.target.value }))}
-                  className={inputClass}
-                >
-                  <option value="">None (regular season)</option>
-                  {seriesOptions.map((o) => (
-                    <option key={o.id} value={String(o.id)}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-                <p className="mt-1 text-xs text-text-faint">
-                  Create brackets and series on the <Link to="/playoffs" className="text-accent">Playoffs</Link> page.
-                </p>
               </div>
               <div className="flex justify-end gap-3 pt-2">
                 <button

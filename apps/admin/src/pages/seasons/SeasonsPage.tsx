@@ -376,8 +376,7 @@ export function SeasonsPage() {
                       </div>
                     </div>
                     <p className="text-xs text-text-faint">
-                      Series matchups are configured in the admin Playoffs flow; bracket attaches to this playoff
-                      season.
+                      Schedule games for this playoff season under Games once teams are in the league.
                     </p>
                   </div>
                 </>

@@ -9,14 +9,41 @@ import {
 } from '../../db/schema/index.js';
 import { games } from '../../db/schema/games.js';
 import { leagues } from '../../db/schema/leagues.js';
-import { and, eq, inArray, or } from 'drizzle-orm';
+import { and, asc, eq, inArray, or } from 'drizzle-orm';
 import { slugify } from '../../utils/slugify.js';
 
 export async function adminTeamsRoutes(app: FastifyInstance) {
-  // GET / - list all teams
-  app.get('/', async (request, reply) => {
+  // GET / - list teams; optional ?seasonId= limits to clubs in that workspace season (league membership and/or season rosters)
+  app.get<{ Querystring: { seasonId?: string } }>('/', async (request, reply) => {
     try {
-      const result = await db.select().from(teams);
+      const seasonIdStr = request.query?.seasonId;
+      if (seasonIdStr === undefined || seasonIdStr === '') {
+        const result = await db.select().from(teams).orderBy(asc(teams.name));
+        return reply.send(result);
+      }
+      const sid = parseInt(seasonIdStr, 10);
+      if (Number.isNaN(sid)) {
+        return reply.status(400).send({ message: 'Invalid seasonId' });
+      }
+      const seasonTeamIds = new Set<number>();
+      const rosterTeamRows = await db
+        .selectDistinct({ teamId: playerSeasons.teamId })
+        .from(playerSeasons)
+        .where(eq(playerSeasons.seasonId, sid));
+      for (const r of rosterTeamRows) seasonTeamIds.add(r.teamId);
+
+      const leagueTeamRows = await db
+        .selectDistinct({ teamId: leagueTeams.teamId })
+        .from(leagueTeams)
+        .innerJoin(leagues, eq(leagueTeams.leagueId, leagues.id))
+        .where(eq(leagues.seasonId, sid));
+      for (const r of leagueTeamRows) seasonTeamIds.add(r.teamId);
+
+      const ids = [...seasonTeamIds];
+      if (ids.length === 0) {
+        return reply.send([]);
+      }
+      const result = await db.select().from(teams).where(inArray(teams.id, ids)).orderBy(asc(teams.name));
       return reply.send(result);
     } catch (err) {
       request.log.error(err);

@@ -10,8 +10,6 @@ const sidebarItems = [
   { label: 'Teams', href: '/teams', icon: '⚑' },
   { label: 'Players', href: '/players', icon: '⚇' },
   { label: 'Games', href: '/games', icon: '⚾' },
-  { label: 'Playoffs', href: '/playoffs', icon: '◇' },
-  { label: 'Articles', href: '/articles', icon: '✎' },
   { label: 'Users', href: '/users', icon: '⚙' },
 ];
 

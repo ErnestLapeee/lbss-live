@@ -5,6 +5,7 @@ import {
   gameEvents,
   gameLineups,
   leagues,
+  leagueTeams,
   playerGameBatting,
   playerGamePitching,
   playerGameFielding,
@@ -50,6 +51,33 @@ const adminGameListSelect = {
   createdAt: games.createdAt,
   updatedAt: games.updatedAt,
 } as const;
+
+async function assertGameTeamsInLeague(
+  leagueId: number,
+  homeTeamId: number,
+  awayTeamId: number,
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  if (homeTeamId === awayTeamId) {
+    return { ok: false, message: 'Home and away must be different teams' };
+  }
+  const rows = await db.select({ teamId: leagueTeams.teamId }).from(leagueTeams).where(eq(leagueTeams.leagueId, leagueId));
+  const allowed = new Set(rows.map((r) => r.teamId));
+  if (!allowed.has(homeTeamId)) {
+    return {
+      ok: false,
+      message:
+        'Home team is not registered in this league. Add the club under Season setup for this league, then try again.',
+    };
+  }
+  if (!allowed.has(awayTeamId)) {
+    return {
+      ok: false,
+      message:
+        'Away team is not registered in this league. Add the club under Season setup for this league, then try again.',
+    };
+  }
+  return { ok: true };
+}
 
 export async function adminGamesRoutes(app: FastifyInstance) {
   async function getSeasonIdForLeague(leagueId: number): Promise<number | null> {
@@ -127,6 +155,11 @@ export async function adminGamesRoutes(app: FastifyInstance) {
       const scheduledAt = new Date(String(scheduledAtRaw));
       if (Number.isNaN(scheduledAt.getTime())) {
         return reply.status(400).send({ message: 'Invalid scheduledAt' });
+      }
+
+      const members = await assertGameTeamsInLeague(leagueId, homeTeamId, awayTeamId);
+      if (!members.ok) {
+        return reply.status(400).send({ message: members.message });
       }
 
       let playoffSeriesId: number | null = null;
@@ -272,7 +305,31 @@ export async function adminGamesRoutes(app: FastifyInstance) {
         return reply.status(400).send({ message: 'Invalid game id' });
       }
 
+      const [existing] = await db.select(adminGameListSelect).from(games).where(eq(games.id, id)).limit(1);
+      if (!existing) {
+        return reply.status(404).send({ message: 'Game not found' });
+      }
+
       const body = request.body ?? {};
+      const nextLeagueId = body.leagueId !== undefined ? Number(body.leagueId) : existing.leagueId;
+      const nextHome = body.homeTeamId !== undefined ? Number(body.homeTeamId) : existing.homeTeamId;
+      const nextAway = body.awayTeamId !== undefined ? Number(body.awayTeamId) : existing.awayTeamId;
+      if (
+        !Number.isFinite(nextLeagueId) ||
+        !Number.isFinite(nextHome) ||
+        !Number.isFinite(nextAway) ||
+        nextLeagueId <= 0 ||
+        nextHome <= 0 ||
+        nextAway <= 0
+      ) {
+        return reply.status(400).send({ message: 'leagueId, homeTeamId, and awayTeamId must be valid positive numbers' });
+      }
+
+      const members = await assertGameTeamsInLeague(nextLeagueId, nextHome, nextAway);
+      if (!members.ok) {
+        return reply.status(400).send({ message: members.message });
+      }
+
       const updateData: Record<string, unknown> = {};
       if (body.leagueId !== undefined) updateData.leagueId = body.leagueId;
       if (body.homeTeamId !== undefined) updateData.homeTeamId = body.homeTeamId;
