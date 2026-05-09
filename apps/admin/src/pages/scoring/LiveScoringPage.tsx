@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 
 /* ── Types ── */
 interface Player { playerId: number; firstName: string; lastName: string; jerseyNumber?: string; teamId: number; licensePaid?: string | null }
@@ -321,6 +322,8 @@ function computeMinDestinations(
 export function LiveScoringPage() {
   const { gameId: gameIdStr } = useParams<{ gameId: string }>();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const isScorer = user?.role === 'statistician';
   const gameId = parseInt(gameIdStr || '0', 10);
 
   const [game, setGame] = useState<GameData | null>(null);
@@ -491,6 +494,13 @@ export function LiveScoringPage() {
   }, [gameId]);
 
   useEffect(() => { loadState(); loadRosters(); }, [loadState, loadRosters]);
+  useEffect(() => {
+    if (!isScorer || !game) return;
+    if (game.isFinalized || game.status === 'final') {
+      alert('Scorer accounts cannot open scoring for finished games. Use the Games page.');
+      navigate('/games', { replace: true });
+    }
+  }, [isScorer, game, navigate]);
   useEffect(() => {
     if (!game) return;
     setSetupUmpire(game.umpire ?? '');

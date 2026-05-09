@@ -19,6 +19,7 @@ import { eq, and, sql, inArray, asc } from 'drizzle-orm';
 import { finalizeGame, recomputeSeasonBatting, recomputeSeasonPitching, recomputeSeasonFielding, recomputeStandings } from '../../services/finalize-game.js';
 import { firstRowFromExecute } from '../../lib/pg-result.js';
 import { gamesTableHasOfficialColumns } from '../../lib/games-official-columns.js';
+import { isStatistician } from '../../lib/statistician-guards.js';
 
 function pgErrorMessage(err: unknown): string {
   if (!err || typeof err !== 'object') return err instanceof Error ? err.message : String(err);
@@ -246,6 +247,9 @@ export async function adminGamesRoutes(app: FastifyInstance) {
     Body: { gameIds: number[]; playoffSeriesId: number | null };
   }>('/bulk/playoff-series', async (request, reply) => {
     try {
+      if (isStatistician(request)) {
+        return reply.status(403).send({ message: 'Scorers cannot bulk-link playoff series.' });
+      }
       const { gameIds, playoffSeriesId: seriesRaw } = request.body ?? {};
       if (!Array.isArray(gameIds) || gameIds.length === 0) {
         return reply.status(400).send({ message: 'gameIds array required' });
@@ -310,7 +314,21 @@ export async function adminGamesRoutes(app: FastifyInstance) {
         return reply.status(404).send({ message: 'Game not found' });
       }
 
+      if (
+        isStatistician(request) &&
+        (Boolean(existing.isFinalized) || String(existing.status) === 'final')
+      ) {
+        return reply.status(403).send({
+          message: 'Scorers cannot edit completed or finalized games.',
+        });
+      }
+
       const body = request.body ?? {};
+      if (isStatistician(request) && body.status !== undefined && String(body.status) === 'final') {
+        return reply.status(403).send({
+          message: 'Scorers cannot set a game to final status. Ask an admin to finalize.',
+        });
+      }
       const nextLeagueId = body.leagueId !== undefined ? Number(body.leagueId) : existing.leagueId;
       const nextHome = body.homeTeamId !== undefined ? Number(body.homeTeamId) : existing.homeTeamId;
       const nextAway = body.awayTeamId !== undefined ? Number(body.awayTeamId) : existing.awayTeamId;
@@ -366,6 +384,9 @@ export async function adminGamesRoutes(app: FastifyInstance) {
   // DELETE /:id - delete game and all related data, then recompute season stats
   app.delete<{ Params: { id: string } }>('/:id', async (request, reply) => {
     try {
+      if (isStatistician(request)) {
+        return reply.status(403).send({ message: 'Scorers cannot delete games.' });
+      }
       const id = parseInt(request.params.id, 10);
       if (isNaN(id)) {
         return reply.status(400).send({ message: 'Invalid game id' });
@@ -424,6 +445,9 @@ export async function adminGamesRoutes(app: FastifyInstance) {
   // POST /:id/finalize - finalize game (computes stats, standings, etc.)
   app.post<{ Params: { id: string } }>('/:id/finalize', async (request, reply) => {
     try {
+      if (isStatistician(request)) {
+        return reply.status(403).send({ message: 'Only staff accounts can finalize games.' });
+      }
       const id = parseInt(request.params.id, 10);
       if (isNaN(id)) {
         return reply.status(400).send({ message: 'Invalid game id' });
@@ -463,6 +487,9 @@ export async function adminGamesRoutes(app: FastifyInstance) {
     Body: Record<string, any>;
   }>('/:id/stats/:kind/:playerId', async (request, reply) => {
     try {
+      if (isStatistician(request)) {
+        return reply.status(403).send({ message: 'Scorers cannot edit official stat lines from the games admin.' });
+      }
       const id = parseInt(request.params.id, 10);
       const playerId = parseInt(request.params.playerId, 10);
       const kind = request.params.kind;

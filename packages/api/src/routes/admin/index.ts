@@ -18,6 +18,24 @@ export async function adminRoutes(app: FastifyInstance) {
 
   app.addHook('onRequest', requireAuth);
 
+  /** Scorers (statistician): read-only on most of admin; may only mutate via /games and /scoring. */
+  app.addHook('preHandler', async (request, reply) => {
+    const method = request.method;
+    if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') return;
+
+    const user = request.user;
+    if (!user || user.role !== 'statistician') return;
+
+    const path = (request.raw.url ?? '').split('?')[0];
+    if (path.includes('/api/admin/auth/')) return;
+    if (path.includes('/api/admin/games')) return;
+    if (path.includes('/api/admin/scoring')) return;
+
+    return reply.status(403).send({
+      message: 'Scorer accounts may only create or update games and use live scoring.',
+    });
+  });
+
   await app.register(adminSeasonsRoutes, { prefix: '/seasons' });
   await app.register(adminLeaguesRoutes, { prefix: '/leagues' });
   await app.register(adminTeamsRoutes, { prefix: '/teams' });

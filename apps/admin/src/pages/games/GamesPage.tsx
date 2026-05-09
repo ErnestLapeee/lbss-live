@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
 import { useAdminSeason } from '@/context/AdminSeasonContext';
+import { useAuth } from '@/lib/auth';
 
 interface Game {
   id: number;
@@ -66,6 +67,9 @@ function formatDatetimeLocal(iso: string) {
 
 export function GamesPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const isScorer = user?.role === 'statistician';
+  const isFinishedGame = (g: Game) => g.isFinalized || g.status === 'final';
   const { selectedSeasonId, seasonsLoading } = useAdminSeason();
   const [games, setGames] = useState<Game[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
@@ -289,6 +293,11 @@ export function GamesPage() {
           <h1 className="font-heading text-2xl font-bold">Games</h1>
           <p className="text-sm text-text-muted mt-1">
             Games are listed for the workspace season (top bar). Home and away must be teams registered in the league you pick (Season setup). Rosters and licenses stay tied to that season.
+            {isScorer && (
+              <span className="block mt-1 text-amber-800">
+                Scorer login: add or edit games that are not finished yet, and use live scoring only on those games. Finished games stay in the list for reference—ask an admin to change the official book.
+              </span>
+            )}
           </p>
         </div>
         <button
@@ -368,13 +377,15 @@ export function GamesPage() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <button
-                        onClick={() => navigate(`/scoring/${g.id}`)}
-                        className="px-2 py-1 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded"
-                      >
-                        {g.isFinalized ? 'Edit Score' : 'Score Game'}
-                      </button>
-                      {!g.isFinalized && (
+                      {!(isScorer && isFinishedGame(g)) && (
+                        <button
+                          onClick={() => navigate(`/scoring/${g.id}`)}
+                          className="px-2 py-1 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded"
+                        >
+                          {g.isFinalized ? 'Edit Score' : 'Score Game'}
+                        </button>
+                      )}
+                      {!g.isFinalized && !isScorer && (
                         <button
                           onClick={() => handleFinalize(g)}
                           className="text-green-600 hover:text-green-500 text-sm font-medium"
@@ -382,18 +393,22 @@ export function GamesPage() {
                           Finalize
                         </button>
                       )}
-                      <button
-                        onClick={() => openEdit(g)}
-                        className="text-accent hover:text-accent-light text-sm font-medium"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => handleDelete(g)}
-                        className="text-red-500 hover:text-red-400 text-sm font-medium"
-                      >
-                        Delete
-                      </button>
+                      {!(isScorer && isFinishedGame(g)) && (
+                        <button
+                          onClick={() => openEdit(g)}
+                          className="text-accent hover:text-accent-light text-sm font-medium"
+                        >
+                          Edit
+                        </button>
+                      )}
+                      {!isScorer && (
+                        <button
+                          onClick={() => handleDelete(g)}
+                          className="text-red-500 hover:text-red-400 text-sm font-medium"
+                        >
+                          Delete
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>

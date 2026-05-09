@@ -1,4 +1,5 @@
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
+import { useEffect } from 'react';
 import { useAuth } from '@/lib/auth';
 import { useAdminSeason, type AdminSeasonRow } from '@/context/AdminSeasonContext';
 
@@ -19,6 +20,16 @@ export function AdminLayout() {
   const { user, logout } = useAuth();
   const { seasons, selectedSeasonId, setSelectedSeasonId, seasonsLoading } = useAdminSeason();
 
+  const isScorer = user?.role === 'statistician';
+  const navItems = isScorer ? sidebarItems.filter((item) => item.href === '/games') : sidebarItems;
+
+  useEffect(() => {
+    if (!isScorer) return;
+    if (location.pathname !== '/games') {
+      navigate('/games', { replace: true });
+    }
+  }, [isScorer, location.pathname, navigate]);
+
   const handleLogout = async () => {
     await logout();
     navigate('/login');
@@ -29,7 +40,7 @@ export function AdminLayout() {
       {/* Sidebar */}
       <aside className="w-64 bg-sidebar text-sidebar-text flex flex-col shrink-0">
         <div className="p-4 border-b border-white/10">
-          <Link to="/" className="flex items-center gap-3">
+          <Link to={isScorer ? '/games' : '/'} className="flex items-center gap-3">
             <img src="/lbss-logo.png" alt="LBSS" className="h-9 w-9 object-contain" />
             <div>
               <div className="font-heading font-bold text-white text-sm">LBSS Admin</div>
@@ -38,7 +49,7 @@ export function AdminLayout() {
           </Link>
         </div>
         <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-          {sidebarItems.map((item) => {
+          {navItems.map((item) => {
             const isActive = location.pathname === item.href ||
               (item.href !== '/' && location.pathname.startsWith(item.href));
             return (

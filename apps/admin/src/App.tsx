@@ -12,6 +12,15 @@ import { GamesPage } from './pages/games/GamesPage';
 import { UsersPage } from './pages/users/UsersPage';
 import { LoginPage } from './pages/LoginPage';
 import { LiveScoringPage } from './pages/scoring/LiveScoringPage';
+import { useAuth } from './lib/auth';
+
+function AdminHome() {
+  const { user } = useAuth();
+  if (user?.role === 'statistician') {
+    return <Navigate to="/games" replace />;
+  }
+  return <Dashboard />;
+}
 
 export function App() {
   return (
@@ -36,7 +45,7 @@ export function App() {
           </RequireAuth>
         }
       >
-        <Route index element={<Dashboard />} />
+        <Route index element={<AdminHome />} />
         <Route path="seasons" element={<SeasonsPage />} />
         <Route path="leagues" element={<LeaguesPage />} />
         <Route path="season-setup" element={<SeasonSetupPage />} />

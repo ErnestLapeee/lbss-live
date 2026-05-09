@@ -20,6 +20,7 @@ import { firstRowFromExecute } from '../../lib/pg-result.js';
 import { gamesTableHasOfficialColumns } from '../../lib/games-official-columns.js';
 import { slugify } from '../../utils/slugify.js';
 import { isBetweenPitchEvent, isKnownEventType, remapBasesForSubstitutionDetail } from '@lbss/shared';
+import { isStatistician } from '../../lib/statistician-guards.js';
 
 /** JSONB array columns — normalize without `as any` on DB rows. */
 function jsonbNumberArray(v: unknown): number[] {
@@ -344,6 +345,37 @@ function pgUniqueViolationCode(err: unknown): boolean {
 }
 
 export async function adminScoringRoutes(app: FastifyInstance) {
+  app.addHook('preHandler', async (request, reply) => {
+    if (!isStatistician(request)) return;
+    if (['GET', 'HEAD', 'OPTIONS'].includes(request.method)) return;
+
+    const url = (request.raw.url ?? '').split('?')[0];
+    if (url.includes('/finalize')) {
+      return reply.status(403).send({
+        message: 'Only staff accounts can finalize games from scoring.',
+      });
+    }
+
+    const gidRaw = (request.params as { gameId?: string }).gameId;
+    const gameId = gidRaw != null ? parseInt(String(gidRaw), 10) : NaN;
+    if (!Number.isFinite(gameId)) return;
+
+    const [row] = await db
+      .select({ isFinalized: games.isFinalized, status: games.status })
+      .from(games)
+      .where(eq(games.id, gameId))
+      .limit(1);
+
+    if (!row) return;
+
+    if (row.isFinalized || row.status === 'final') {
+      return reply.status(403).send({
+        message:
+          'Scorer accounts cannot change completed or finalized games. Ask an admin if the book needs a correction.',
+      });
+    }
+  });
+
   async function applyPlayerSubstitutionLineup(
     gameId: number,
     params: {
