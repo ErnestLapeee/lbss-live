@@ -1,6 +1,7 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import cookie from '@fastify/cookie';
+import compress from '@fastify/compress';
 import { Server as SocketIOServer } from 'socket.io';
 import { ensureOptionalSchemaColumns } from './db/ensure-schema.js';
 import { publicRoutes } from './routes/public/index.js';
@@ -33,6 +34,11 @@ export async function buildApp() {
   });
 
   await app.register(cookie);
+
+  await app.register(compress, {
+    threshold: 2048,
+    encodings: ['gzip', 'deflate'],
+  });
 
   // Health check
   app.get('/api/health', async () => ({ status: 'ok', timestamp: new Date().toISOString() }));

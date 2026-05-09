@@ -4,9 +4,10 @@ import { rowsFromExecute } from './pg-result.js';
 
 let cached: boolean | null = null;
 let cachedAt = 0;
-const TTL_MS = 60_000;
+/** Schema checks are stable for long periods; longer TTL avoids extra round-trips on busy routes. */
+const TTL_MS = 300_000;
 
-/** True when `games.umpire` and `games.official_scorer` exist (migration 0012). Cached briefly. */
+/** True when `games.umpire` and `games.official_scorer` exist (migration 0012). Cached for several minutes. */
 export async function gamesTableHasOfficialColumns(): Promise<boolean> {
   const now = Date.now();
   if (cached !== null && now - cachedAt < TTL_MS) return cached;

@@ -153,12 +153,8 @@ export async function gamesRoutes(app: FastifyInstance) {
       const currentBatterMap: Record<number, { name: string; battingOrder: number } | null> = {};
       if (liveIds.length > 0) {
         const liveIdArray = sql.raw(`ARRAY[${liveIds.join(',')}]`);
-        const baseRows = rowsFromExecute<{
-          game_id: number;
-          runner_first_id: number | null;
-          runner_second_id: number | null;
-          runner_third_id: number | null;
-        }>(await db.execute(sql`
+        const [basesResult, battersResult] = await Promise.all([
+          db.execute(sql`
           select distinct on (game_id)
             game_id, runner_first_id, runner_second_id, runner_third_id
           from game_events
@@ -166,7 +162,22 @@ export async function gamesRoutes(app: FastifyInstance) {
             and is_deleted = false
             and event_type != 'pitch'
           order by game_id, event_number desc
-        `));
+        `),
+          db.execute(sql`
+          select distinct on (game_id) game_id, batter_id
+          from game_events
+          where game_id = any(${liveIdArray})
+            and is_deleted = false
+            and batter_id is not null
+          order by game_id, event_number desc
+        `),
+        ]);
+        const baseRows = rowsFromExecute<{
+          game_id: number;
+          runner_first_id: number | null;
+          runner_second_id: number | null;
+          runner_third_id: number | null;
+        }>(basesResult);
         for (const row of baseRows) {
           basesMap[row.game_id] = {
             first: !!row.runner_first_id,
@@ -175,14 +186,7 @@ export async function gamesRoutes(app: FastifyInstance) {
           };
         }
 
-        const batterRows = rowsFromExecute<{ game_id: number; batter_id: number }>(await db.execute(sql`
-          select distinct on (game_id) game_id, batter_id
-          from game_events
-          where game_id = any(${liveIdArray})
-            and is_deleted = false
-            and batter_id is not null
-          order by game_id, event_number desc
-        `));
+        const batterRows = rowsFromExecute<{ game_id: number; batter_id: number }>(battersResult);
         const batterIds = [...new Set(batterRows.map((row) => row.batter_id))];
         if (batterIds.length > 0) {
           const [playerRows, lineupRows] = await Promise.all([
@@ -699,54 +703,66 @@ export async function gamesRoutes(app: FastifyInstance) {
       const id = parseInt(request.params.id, 10);
       if (isNaN(id)) return reply.status(400).send({ message: 'Invalid game id' });
 
-      // Get the game's season via league
-      const [gameRow] = await db.select({ leagueId: games.leagueId }).from(games).where(eq(games.id, id)).limit(1);
-      if (!gameRow) return reply.status(404).send({ message: 'Game not found' });
-      const [leagueRow] = await db.select({ seasonId: leagues.seasonId }).from(leagues).where(eq(leagues.id, gameRow.leagueId)).limit(1);
-      if (!leagueRow) return reply.send({ batting: [], pitching: [] });
-      const seasonId = leagueRow.seasonId;
+      const [joined] = await db
+        .select({ seasonId: leagues.seasonId })
+        .from(games)
+        .leftJoin(leagues, eq(games.leagueId, leagues.id))
+        .where(eq(games.id, id))
+        .limit(1);
+      if (!joined) return reply.status(404).send({ message: 'Game not found' });
+      if (joined.seasonId == null) return reply.send({ batting: [], pitching: [] });
+      const seasonId = joined.seasonId;
 
-      // Get all player IDs in this game's lineups
       const lineupRows = await db.select({ playerId: gameLineups.playerId }).from(gameLineups).where(eq(gameLineups.gameId, id));
       const pids = lineupRows.map(r => r.playerId);
       if (pids.length === 0) return reply.send({ batting: [], pitching: [] });
 
-      const batting = await db.select({
-        playerId: playerSeasonBatting.playerId,
-        atBats: playerSeasonBatting.atBats,
-        hits: playerSeasonBatting.hits,
-        homeRuns: playerSeasonBatting.homeRuns,
-        rbi: playerSeasonBatting.rbi,
-        runs: playerSeasonBatting.runs,
-        avg: playerSeasonBatting.battingAvg,
-        obp: playerSeasonBatting.onBasePct,
-        slg: playerSeasonBatting.sluggingPct,
-        ops: playerSeasonBatting.ops,
-        walks: playerSeasonBatting.walks,
-        strikeouts: playerSeasonBatting.strikeouts,
-        stolenBases: playerSeasonBatting.stolenBases,
-        hitByPitch: playerSeasonBatting.hitByPitch,
-        sacrificeFlies: playerSeasonBatting.sacrificeFlies,
-        totalBases: playerSeasonBatting.totalBases,
-      }).from(playerSeasonBatting)
-        .where(and(
-          eq(playerSeasonBatting.seasonId, seasonId),
-          sql`${playerSeasonBatting.playerId} = ANY(${sql.raw(`ARRAY[${pids.join(',')}]`)})`
-        ));
-
-      const pitching = await db.select({
-        playerId: playerSeasonPitching.playerId,
-        inningsPitched: playerSeasonPitching.inningsPitched,
-        wins: playerSeasonPitching.wins,
-        losses: playerSeasonPitching.losses,
-        era: playerSeasonPitching.era,
-        strikeouts: playerSeasonPitching.strikeouts,
-        walksAllowed: playerSeasonPitching.walksAllowed,
-      }).from(playerSeasonPitching)
-        .where(and(
-          eq(playerSeasonPitching.seasonId, seasonId),
-          sql`${playerSeasonPitching.playerId} = ANY(${sql.raw(`ARRAY[${pids.join(',')}]`)})`
-        ));
+      const pidArray = sql.raw(`ARRAY[${pids.join(',')}]`);
+      const [batting, pitching] = await Promise.all([
+        db
+          .select({
+            playerId: playerSeasonBatting.playerId,
+            atBats: playerSeasonBatting.atBats,
+            hits: playerSeasonBatting.hits,
+            homeRuns: playerSeasonBatting.homeRuns,
+            rbi: playerSeasonBatting.rbi,
+            runs: playerSeasonBatting.runs,
+            avg: playerSeasonBatting.battingAvg,
+            obp: playerSeasonBatting.onBasePct,
+            slg: playerSeasonBatting.sluggingPct,
+            ops: playerSeasonBatting.ops,
+            walks: playerSeasonBatting.walks,
+            strikeouts: playerSeasonBatting.strikeouts,
+            stolenBases: playerSeasonBatting.stolenBases,
+            hitByPitch: playerSeasonBatting.hitByPitch,
+            sacrificeFlies: playerSeasonBatting.sacrificeFlies,
+            totalBases: playerSeasonBatting.totalBases,
+          })
+          .from(playerSeasonBatting)
+          .where(
+            and(
+              eq(playerSeasonBatting.seasonId, seasonId),
+              sql`${playerSeasonBatting.playerId} = ANY(${pidArray})`,
+            ),
+          ),
+        db
+          .select({
+            playerId: playerSeasonPitching.playerId,
+            inningsPitched: playerSeasonPitching.inningsPitched,
+            wins: playerSeasonPitching.wins,
+            losses: playerSeasonPitching.losses,
+            era: playerSeasonPitching.era,
+            strikeouts: playerSeasonPitching.strikeouts,
+            walksAllowed: playerSeasonPitching.walksAllowed,
+          })
+          .from(playerSeasonPitching)
+          .where(
+            and(
+              eq(playerSeasonPitching.seasonId, seasonId),
+              sql`${playerSeasonPitching.playerId} = ANY(${pidArray})`,
+            ),
+          ),
+      ]);
 
       return reply.send({ batting, pitching });
     } catch (err) {
