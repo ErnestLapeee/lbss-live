@@ -102,10 +102,7 @@ export function Dashboard() {
 
   return (
     <div>
-      <h1 className="font-heading text-2xl font-bold mb-2">Dashboard</h1>
-      <p className="text-sm text-text-muted mb-6">
-        Teams, rostered players, and games reflect the workspace season in the top bar. Seasons counts all seasons.
-      </p>
+      <h1 className="font-heading text-2xl font-bold mb-6">Dashboard</h1>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         {cards.map((card) => (
           <div key={card.label} className="bg-surface rounded-xl border border-border p-5">
@@ -116,20 +113,8 @@ export function Dashboard() {
           </div>
         ))}
       </div>
-      <div className="bg-surface rounded-xl border border-border p-6 mb-4">
-        <h2 className="font-heading text-lg font-semibold mb-4">Quick Start</h2>
-        <p className="text-text-muted text-sm">
-          Use the sidebar to create seasons, leagues, teams, and players. Pick the active year in the workspace menu, then add games to the schedule and manage your federation data.
-        </p>
-      </div>
       <div className="bg-surface rounded-xl border border-border p-6">
-        <h2 className="font-heading text-lg font-semibold mb-2">Data Backup</h2>
-        <p className="text-text-muted text-sm mb-3">
-          Download a full JSON snapshot (seasons, teams, games, every play event, lineups, stats, articles, licenses, and playoff config). Store the file somewhere safe outside the app. If you cannot run native database dumps, use this regularly—especially after big scoring days—since it is your portable copy of the data.
-        </p>
-        <p className="text-text-muted text-sm mb-3">
-          Railway may offer point-in-time recovery depending on your plan; do not rely on it alone if you need a file you can keep offline or email.
-        </p>
+        <h2 className="font-heading text-lg font-semibold mb-4">Data backup</h2>
         <button
           type="button"
           onClick={handleBackup}

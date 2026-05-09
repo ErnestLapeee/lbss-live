@@ -44,7 +44,6 @@ export function AdminLayout() {
             <img src="/lbss-logo.png" alt="LBSS" className="h-9 w-9 object-contain" />
             <div>
               <div className="font-heading font-bold text-white text-sm">LBSS Admin</div>
-              <div className="text-xs text-sidebar-text/60">Management Panel</div>
             </div>
           </Link>
         </div>
@@ -85,7 +84,6 @@ export function AdminLayout() {
                   setSelectedSeasonId(v ? parseInt(v, 10) : null);
                 }}
                 className="min-w-0 max-w-full px-2 py-1.5 border border-border rounded-lg bg-surface-alt text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-                title="Schedules, rosters, licenses, and game lists use this season"
               >
                 {seasons.length === 0 ? (
                   <option value="">No seasons</option>

@@ -291,14 +291,6 @@ export function GamesPage() {
       <div className="flex items-center justify-between mb-6 gap-4 flex-wrap">
         <div>
           <h1 className="font-heading text-2xl font-bold">Games</h1>
-          <p className="text-sm text-text-muted mt-1">
-            Games are listed for the workspace season (top bar). Home and away must be teams registered in the league you pick (Season setup). Rosters and licenses stay tied to that season.
-            {isScorer && (
-              <span className="block mt-1 text-amber-800">
-                Scorer login: add or edit games that are not finished yet, and use live scoring only on those games. Finished games stay in the list for reference—ask an admin to change the official book.
-              </span>
-            )}
-          </p>
         </div>
         <button
           type="button"

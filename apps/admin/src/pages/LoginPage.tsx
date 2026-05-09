@@ -30,11 +30,6 @@ export function LoginPage() {
         <div className="text-center mb-8">
           <img src="/lbss-logo.png" alt="LBSS" className="h-14 w-14 mx-auto object-contain" />
           <h1 className="mt-4 font-heading text-2xl font-bold">LBSS Admin</h1>
-          <p className="mt-1 text-sm text-text-muted">Sign in to the management panel</p>
-          <p className="mt-3 text-xs text-text-faint max-w-xs mx-auto leading-relaxed">
-            Sessions expire after 7 days. Too many failed attempts will temporarily lock this browser&apos;s IP from
-            signing in.
-          </p>
         </div>
         {error && (
           <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">

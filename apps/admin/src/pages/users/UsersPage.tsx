@@ -11,9 +11,6 @@ interface User {
 
 const ROLE_OPTIONS = ['public', 'admin', 'league_official', 'statistician'];
 
-const PASSWORD_HINT =
-  'At least 12 characters with uppercase, lowercase, a number, and a symbol (e.g. ! @ #).';
-
 export function UsersPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
@@ -148,18 +145,8 @@ export function UsersPage() {
 
   return (
     <div>
-      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h1 className="font-heading text-2xl font-bold">Users</h1>
-          <p className="mt-2 text-sm text-text-muted max-w-2xl">
-            Administrators can create accounts here and set roles (including scorers). To reset a password later, run
-            the API{' '}
-            <code className="text-xs bg-surface-alt px-1 rounded">db:set-password</code> script against the database.
-            Automation may still use{' '}
-            <code className="text-xs bg-surface-alt px-1 rounded">ALLOW_ADMIN_USER_CREATE=true</code> without an admin
-            session.
-          </p>
-        </div>
+      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <h1 className="font-heading text-2xl font-bold">Users</h1>
         <button
           type="button"
           onClick={openCreate}
@@ -303,7 +290,6 @@ export function UsersPage() {
                       className={inputClass}
                       required
                     />
-                    <p className="mt-1 text-xs text-text-muted">{PASSWORD_HINT}</p>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-text-muted mb-1">
