@@ -114,7 +114,7 @@ export async function adminBackupRoutes(app: FastifyInstance) {
         },
       };
 
-      const dateStr = new Date().toISOString().slice(0, 10);
+      const dateStr = new Date().toISOString().replace(/[:]/g, '-').replace(/\.\d{3}Z$/, 'Z');
       reply.header('Content-Type', 'application/json');
       reply.header('Content-Disposition', `attachment; filename=lbss-backup-${dateStr}.json`);
       return reply.send(backup);

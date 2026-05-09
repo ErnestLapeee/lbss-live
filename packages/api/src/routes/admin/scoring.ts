@@ -13,6 +13,7 @@ import {
   playerGameFielding,
 } from '../../db/schema/index.js';
 import { eq, and, or, desc, max, sql, inArray } from 'drizzle-orm';
+import type { InferSelectModel } from 'drizzle-orm';
 import { getIO } from '../../app.js';
 import { finalizeGame } from '../../services/finalize-game.js';
 import { firstRowFromExecute } from '../../lib/pg-result.js';
@@ -324,6 +325,22 @@ async function clearRedoTail(gameId: number, conn: any = db) {
       eq(gameEvents.isDeleted, true),
       sql`${gameEvents.eventNumber} > ${activeTailEventNumber}`,
     ));
+}
+
+/** Thrown inside a transaction to return a non-500 response after rollback. */
+class ScoringAbortReply extends Error {
+  constructor(
+    readonly statusCode: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'ScoringAbortReply';
+  }
+}
+
+function pgUniqueViolationCode(err: unknown): boolean {
+  const e = err as { code?: string; cause?: { code?: string } };
+  return e?.code === '23505' || e?.cause?.code === '23505';
 }
 
 export async function adminScoringRoutes(app: FastifyInstance) {
@@ -1331,18 +1348,11 @@ export async function adminScoringRoutes(app: FastifyInstance) {
   }>('/:gameId/event', async (request, reply) => {
     try {
       const gameId = parseInt(request.params.gameId, 10);
+      if (Number.isNaN(gameId)) {
+        return reply.status(400).send({ message: 'Invalid game id' });
+      }
       const body = request.body;
       const user = request.user;
-
-      // A new event after one or more undos starts a new history branch.
-      await clearRedoTail(gameId);
-
-      // Get next event number
-      const [maxEvt] = await db
-        .select({ maxNum: max(gameEvents.eventNumber) })
-        .from(gameEvents)
-        .where(eq(gameEvents.gameId, gameId));
-      const eventNumber = ((maxEvt?.maxNum as number) || 0) + 1;
 
       const rawSide = body.batterSide;
       const batterSideNorm =
@@ -1351,73 +1361,112 @@ export async function adminScoringRoutes(app: FastifyInstance) {
       const runNorm = normalizeIncomingRunScoring(body);
       if (!runNorm.ok) return reply.status(400).send({ message: runNorm.message });
 
-      const priorEvents = await db.select().from(gameEvents)
-        .where(and(eq(gameEvents.gameId, gameId), eq(gameEvents.isDeleted, false)))
-        .orderBy(gameEvents.eventNumber);
-      const priorState = computeGameState(priorEvents);
-      const eventValidation = validateScoringEventPayload(body, { expectedState: priorState, strictState: true });
-      if (!eventValidation.ok) return reply.status(400).send({ message: eventValidation.message });
-
       const outsRecorded = Number(body.outsRecorded ?? 0);
 
-      // Insert event
-      const [event] = await db.insert(gameEvents).values({
-        gameId,
-        eventNumber,
-        inning: body.inning,
-        half: normalizeHalf(body.half),
-        batterId: body.batterId ?? null,
-        batterSide: batterSideNorm,
-        pitcherId: body.pitcherId ?? null,
-        eventType: body.eventType,
-        eventDetail: body.eventDetail ?? null,
-        rbi: body.rbi ?? 0,
-        runsScored: runNorm.runsScored,
-        outsRecorded,
-        errorsOnPlay: eventValidation.normalizedErrorsOnPlay,
-        balls: body.balls ?? 0,
-        strikes: body.strikes ?? 0,
-        runnerFirstId: body.runnerFirstId ?? null,
-        runnerSecondId: body.runnerSecondId ?? null,
-        runnerThirdId: body.runnerThirdId ?? null,
-        runnersScored: runNorm.runnersScored,
-        runnerScoredReasons: runNorm.runnerScoredReasons,
-        fieldingSequence: body.fieldingSequence ?? null,
-        putoutFielderIds: uniqueNumberArray(body.putoutFielderIds),
-        assistFielderIds: uniqueNumberArray(body.assistFielderIds),
-        errorFielderIds: uniqueNumberArray(body.errorFielderIds),
-        pitchCount: body.pitchCount ?? null,
-        pitchSequence: body.pitchSequence ?? null,
-        hitLocationX: body.hitLocationX != null ? String(body.hitLocationX) : null,
-        hitLocationY: body.hitLocationY != null ? String(body.hitLocationY) : null,
-        hitType: body.hitType ?? null,
-        hitHardness: body.hitHardness ?? null,
-        createdBy: user?.id ?? null,
-      }).returning();
+      let result: { event: InferSelectModel<typeof gameEvents>; state: GameState };
+      try {
+        result = await db.transaction(async (tx) => {
+          await clearRedoTail(gameId, tx);
 
-      // Recompute game state from all events
-      const allEvents = await db.select().from(gameEvents)
-        .where(and(eq(gameEvents.gameId, gameId), eq(gameEvents.isDeleted, false)))
-        .orderBy(gameEvents.eventNumber);
+          const priorEvents = await tx
+            .select()
+            .from(gameEvents)
+            .where(and(eq(gameEvents.gameId, gameId), eq(gameEvents.isDeleted, false)))
+            .orderBy(gameEvents.eventNumber);
+          const priorState = computeGameState(priorEvents);
+          const eventValidation = validateScoringEventPayload(body, {
+            expectedState: priorState,
+            strictState: true,
+          });
+          if (!eventValidation.ok) {
+            throw new ScoringAbortReply(400, eventValidation.message);
+          }
 
-      const state = computeGameState(allEvents);
+          const [maxEvt] = await tx
+            .select({ maxNum: max(gameEvents.eventNumber) })
+            .from(gameEvents)
+            .where(eq(gameEvents.gameId, gameId));
+          const nextEventNumber = ((maxEvt?.maxNum as number) || 0) + 1;
 
-      // Update games table with current state
-      await db.update(games).set({
-        homeScore: state.homeScore,
-        awayScore: state.awayScore,
-        currentInning: state.inning,
-        currentHalf: state.half,
-        currentOuts: state.outs,
-        updatedAt: new Date(),
-      }).where(eq(games.id, gameId));
+          const [event] = await tx
+            .insert(gameEvents)
+            .values({
+              gameId,
+              eventNumber: nextEventNumber,
+              inning: body.inning,
+              half: normalizeHalf(body.half),
+              batterId: body.batterId ?? null,
+              batterSide: batterSideNorm,
+              pitcherId: body.pitcherId ?? null,
+              eventType: body.eventType,
+              eventDetail: body.eventDetail ?? null,
+              rbi: body.rbi ?? 0,
+              runsScored: runNorm.runsScored,
+              outsRecorded,
+              errorsOnPlay: eventValidation.normalizedErrorsOnPlay,
+              balls: body.balls ?? 0,
+              strikes: body.strikes ?? 0,
+              runnerFirstId: body.runnerFirstId ?? null,
+              runnerSecondId: body.runnerSecondId ?? null,
+              runnerThirdId: body.runnerThirdId ?? null,
+              runnersScored: runNorm.runnersScored,
+              runnerScoredReasons: runNorm.runnerScoredReasons,
+              fieldingSequence: body.fieldingSequence ?? null,
+              putoutFielderIds: uniqueNumberArray(body.putoutFielderIds),
+              assistFielderIds: uniqueNumberArray(body.assistFielderIds),
+              errorFielderIds: uniqueNumberArray(body.errorFielderIds),
+              pitchCount: body.pitchCount ?? null,
+              pitchSequence: body.pitchSequence ?? null,
+              hitLocationX: body.hitLocationX != null ? String(body.hitLocationX) : null,
+              hitLocationY: body.hitLocationY != null ? String(body.hitLocationY) : null,
+              hitType: body.hitType ?? null,
+              hitHardness: body.hitHardness ?? null,
+              createdBy: user?.id ?? null,
+            })
+            .returning();
 
-      // Emit to WebSocket
+          const allEvents = await tx
+            .select()
+            .from(gameEvents)
+            .where(and(eq(gameEvents.gameId, gameId), eq(gameEvents.isDeleted, false)))
+            .orderBy(gameEvents.eventNumber);
+
+          const state = computeGameState(allEvents);
+
+          await tx
+            .update(games)
+            .set({
+              homeScore: state.homeScore,
+              awayScore: state.awayScore,
+              currentInning: state.inning,
+              currentHalf: state.half,
+              currentOuts: state.outs,
+              updatedAt: new Date(),
+            })
+            .where(eq(games.id, gameId));
+
+          return { event, state };
+        });
+      } catch (err) {
+        if (err instanceof ScoringAbortReply) {
+          return reply.status(err.statusCode).send({ message: err.message });
+        }
+        if (pgUniqueViolationCode(err)) {
+          return reply.status(409).send({
+            message:
+              'A play was saved at the same moment as yours (duplicate event number). Refresh the game and try again.',
+          });
+        }
+        throw err;
+      }
+
+      const { event, state } = result;
+
       try {
         getIO().to(`game:${gameId}`).emit('game:update', {
           state,
           event: {
-            eventNumber,
+            eventNumber: event.eventNumber,
             eventType: body.eventType,
             batterId: body.batterId,
             pitcherId: body.pitcherId,

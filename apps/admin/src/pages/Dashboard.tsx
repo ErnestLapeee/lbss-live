@@ -81,7 +81,7 @@ export function Dashboard() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `lbss-backup-${new Date().toISOString().slice(0, 10)}.json`;
+      a.download = `lbss-backup-${new Date().toISOString().replace(/[:]/g, '-').replace(/\.\d{3}Z$/, 'Z')}.json`;
       document.body.appendChild(a);
       a.click();
       a.remove();
