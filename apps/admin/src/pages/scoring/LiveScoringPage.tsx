@@ -132,7 +132,7 @@ const POS_LABELS: Record<number, string> = { 1:'P',2:'C',3:'1B',4:'2B',5:'3B',6:
 
 /** Native `<select>`: solid bg + `color-scheme: dark` so option lists stay readable (Windows/Chrome often default to light popup with invisible text on dark UIs). */
 const ADMIN_SELECT_BASE =
-  'rounded border border-white/20 bg-[#152238] text-slate-100 [color-scheme:dark]';
+  'rounded border border-white/25 bg-scoring-input text-slate-100 [color-scheme:dark]';
 const ADMIN_SELECT_SM = `${ADMIN_SELECT_BASE} text-[10px] px-1.5 py-1`;
 const ADMIN_SELECT_SM_FLEX = `${ADMIN_SELECT_SM} flex-1 min-w-0`;
 const ADMIN_SELECT_ROW = `${ADMIN_SELECT_SM} mt-0.5 w-full`;
@@ -1741,18 +1741,18 @@ function needsRunnerAdvanceErrorFieldingPrompt(
 
   if (!gameIdStr || Number.isNaN(gameId) || gameId <= 0) {
     return (
-      <div className="flex flex-col items-center justify-center gap-4 h-screen bg-[#0c1220] px-4">
+      <div className="flex flex-col items-center justify-center gap-4 h-screen bg-scoring-canvas px-4 scoring-app">
         <p className="text-red-400 text-center">Invalid game link.</p>
         <button type="button" onClick={() => navigate('/games')} className="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-sm">Back to games</button>
       </div>
     );
   }
 
-  if (loading) return <div className="flex items-center justify-center h-screen bg-[#0c1220]"><span className="text-gray-400">Loading...</span></div>;
+  if (loading) return <div className="scoring-app flex items-center justify-center h-screen bg-scoring-canvas"><span className="text-white/80 text-lg">Loading...</span></div>;
 
   if (loadError && !game) {
     return (
-      <div className="flex flex-col items-center justify-center gap-4 h-screen bg-[#0c1220] px-4">
+      <div className="flex flex-col items-center justify-center gap-4 h-screen bg-scoring-canvas px-4 scoring-app">
         <p className="text-red-400 text-center max-w-md">{loadError}</p>
         <div className="flex gap-2">
           <button type="button" onClick={() => { setLoading(true); void loadState(); }} className="px-4 py-2 bg-green-700 hover:bg-green-600 rounded-lg text-sm font-bold">Retry</button>
@@ -1762,7 +1762,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
     );
   }
 
-  if (!game) return <div className="flex items-center justify-center h-screen bg-[#0c1220]"><span className="text-red-400">Game not found</span></div>;
+  if (!game) return <div className="scoring-app flex items-center justify-center h-screen bg-scoring-canvas"><span className="text-red-400 text-lg">Game not found</span></div>;
 
   // ── LINEUP SETUP ──
   if (phase === 'setup') {
@@ -1784,8 +1784,8 @@ function needsRunnerAdvanceErrorFieldingPrompt(
     });
     return (
       <>
-      <div className="min-h-screen bg-[#0c1220] text-white">
-        <div className="bg-[#162038] border-b border-white/10 px-6 py-4 flex items-center justify-between">
+      <div className="scoring-app min-h-screen bg-scoring-canvas text-white">
+        <div className="bg-scoring-bar border-b border-white/10 px-6 py-4 flex items-center justify-between">
           <button onClick={() => navigate('/games')} className="text-sm text-white/50 hover:text-white">← Back</button>
           <h1 className="font-bold text-lg">{game.awayTeamName} @ {game.homeTeamName} — Lineup</h1>
           <button onClick={handleSetupSubmit} disabled={setupHome.length === 0 || setupAway.length === 0 || !setupUmpire.trim() || !setupScorer.trim()} className="px-4 py-2 bg-green-600 hover:bg-green-500 disabled:opacity-30 text-white text-sm font-bold rounded-lg">Start Game</button>
@@ -1939,7 +1939,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
       </div>
       {addRosterOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" role="dialog" aria-modal="true" aria-labelledby="add-roster-title">
-          <div className="w-full max-w-md rounded-xl border border-white/10 bg-[#162038] p-5 shadow-xl">
+          <div className="w-full max-w-md rounded-xl border border-white/10 bg-scoring-bar p-5 shadow-xl">
             <h2 id="add-roster-title" className="mb-1 text-lg font-bold text-white">Add player to roster</h2>
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="block sm:col-span-1">
@@ -2048,39 +2048,39 @@ function needsRunnerAdvanceErrorFieldingPrompt(
     pid != null ? pitcherPitchCounts[pid]?.strikes ?? 0 : 0;
 
   return (
-    <div className="min-h-screen bg-[#0a1029] text-white flex flex-col">
+    <div className="scoring-app min-h-screen bg-scoring-canvas text-white flex flex-col">
       {/* ── Scoreboard bar ── */}
-      <div className="bg-[#060d1a] border-b border-white/10 px-4 py-2">
-        <div className="max-w-6xl mx-auto flex items-center justify-between text-xs font-bold font-mono">
+      <div className="bg-scoring-footer border-b border-white/20 px-4 py-2.5">
+        <div className="max-w-6xl mx-auto flex items-center justify-between text-sm font-bold font-mono">
           <div className="flex items-center gap-6">
             <div className="flex items-center gap-2">
-              <span className="text-white/40 text-[10px] uppercase w-12">Visitor</span>
-              <span className="text-white/80 truncate max-w-[100px]">{game.awayTeamName}</span>
-              <span className="text-2xl text-white tabular-nums ml-1">{gameState.awayScore}</span>
+              <span className="text-white/70 text-xs uppercase w-12">Visitor</span>
+              <span className="text-white truncate max-w-[120px] font-semibold">{game.awayTeamName}</span>
+              <span className="text-3xl text-white tabular-nums ml-1">{gameState.awayScore}</span>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-white/40 text-[10px] uppercase w-12">Home</span>
-              <span className="text-white/80 truncate max-w-[100px]">{game.homeTeamName}</span>
-              <span className="text-2xl text-white tabular-nums ml-1">{gameState.homeScore}</span>
+              <span className="text-white/70 text-xs uppercase w-12">Home</span>
+              <span className="text-white truncate max-w-[120px] font-semibold">{game.homeTeamName}</span>
+              <span className="text-3xl text-white tabular-nums ml-1">{gameState.homeScore}</span>
             </div>
           </div>
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-1.5">
-              <span className="text-white/40 text-[10px]">INN</span>
-              <span className="text-white text-sm">{gameState.half === 'top' ? '▲' : '▼'} {gameState.inning}</span>
+              <span className="text-white/70 text-xs">INN</span>
+              <span className="text-white text-base">{gameState.half === 'top' ? '▲' : '▼'} {gameState.inning}</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <span className="text-white/40 text-[10px]">OUTS</span>
+              <span className="text-white/70 text-xs">OUTS</span>
               <div className="flex gap-1">
-                {[0,1,2].map(i => <div key={i} className={`w-3 h-3 rounded-full border ${i < gameState.outs ? 'bg-red-500 border-red-400' : 'border-white/20'}`} />)}
+                {[0,1,2].map(i => <div key={i} className={`w-3.5 h-3.5 rounded-full border ${i < gameState.outs ? 'bg-red-500 border-red-300' : 'border-white/35'}`} />)}
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <div className="flex items-center gap-1"><span className="text-white/40 text-[10px]">B</span>
-                {[0,1,2,3].map(i => <div key={i} className={`w-2.5 h-2.5 rounded-full ${i < balls ? 'bg-green-400' : 'bg-white/15'}`} />)}
+              <div className="flex items-center gap-1"><span className="text-white/70 text-xs">B</span>
+                {[0,1,2,3].map(i => <div key={i} className={`w-3 h-3 rounded-full ${i < balls ? 'bg-green-400' : 'bg-white/25'}`} />)}
               </div>
-              <div className="flex items-center gap-1"><span className="text-white/40 text-[10px]">S</span>
-                {[0,1,2].map(i => <div key={i} className={`w-2.5 h-2.5 rounded-full ${i < strikes ? 'bg-yellow-400' : 'bg-white/15'}`} />)}
+              <div className="flex items-center gap-1"><span className="text-white/70 text-xs">S</span>
+                {[0,1,2].map(i => <div key={i} className={`w-3 h-3 rounded-full ${i < strikes ? 'bg-yellow-300' : 'bg-white/25'}`} />)}
               </div>
             </div>
           </div>
@@ -2092,7 +2092,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
         {/* ── Left panel: Lineups + Pitcher info ── */}
         <div className="w-52 shrink-0 border-r border-white/5 overflow-y-auto py-3 px-2">
           {/* Current batter highlight */}
-          <div className="bg-[#1a2744] rounded-lg px-3 py-2 mb-3 border border-white/5">
+          <div className="bg-scoring-card rounded-lg px-3 py-2 mb-3 border border-white/5">
             <div className="text-[9px] text-white/30 font-bold uppercase tracking-wider mb-0.5">At Bat</div>
             <button onClick={() => {
               if (!currentBatter) return;
@@ -2109,7 +2109,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
 
           {/* Pitcher info with pitch count */}
           {currentPitcher && (
-            <div className="bg-[#1a2744] rounded-lg px-3 py-2 mb-3 border border-white/5">
+            <div className="bg-scoring-card rounded-lg px-3 py-2 mb-3 border border-white/5">
               <div className="text-[9px] text-white/30 font-bold uppercase tracking-wider mb-0.5">Pitching</div>
               <button onClick={() => { setSubTeamId(fieldingTeamId ?? null); setSubPosition(1); setStep('sub_defense'); }}
                 className="text-white font-bold text-sm hover:text-amber-300 transition-colors">
@@ -2294,7 +2294,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
           <div className="px-3 pb-2">
             {/* EMPTY SLOT — automatic out */}
             {step === 'pitch' && isEmptySlot && (
-              <div className="bg-[#111d30] rounded-xl border border-white/10 overflow-hidden p-4 text-center">
+              <div className="bg-scoring-panel rounded-xl border border-white/10 overflow-hidden p-4 text-center">
                 <p className="text-xs text-white/40 uppercase font-bold tracking-wide mb-4">Batting slot #{battingOrderSlot} is empty</p>
                   <button onClick={async () => {
                     setSubmitting(true);
@@ -2348,35 +2348,35 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                   <button
                     onClick={handleBall}
                     disabled={submitting || ((currentBatter.bats || '').trim().toUpperCase() === 'S' && !switchBatSide)}
-                    className="py-4 bg-[#1a6b3a] hover:bg-[#20804a] text-white font-bold text-sm rounded-lg transition-all disabled:opacity-30 border border-[#20804a]/50"
+                    className="py-4 bg-[#1a6b3a] hover:bg-[#20804a] text-white font-bold text-base rounded-lg transition-all disabled:opacity-30 border border-[#20804a]/50"
                   >
                     BALL
                   </button>
                   <button
                     onClick={handleStrike}
                     disabled={submitting || ((currentBatter.bats || '').trim().toUpperCase() === 'S' && !switchBatSide)}
-                    className="py-4 bg-[#8b2020] hover:bg-[#a02828] text-white font-bold text-sm rounded-lg transition-all disabled:opacity-30 border border-[#a02828]/50"
+                    className="py-4 bg-[#8b2020] hover:bg-[#a02828] text-white font-bold text-base rounded-lg transition-all disabled:opacity-30 border border-[#a02828]/50"
                   >
                     STRIKE
                   </button>
                   <button
                     onClick={handleFoul}
                     disabled={submitting || ((currentBatter.bats || '').trim().toUpperCase() === 'S' && !switchBatSide)}
-                    className="py-4 bg-[#8b7020] hover:bg-[#a08428] text-white font-bold text-sm rounded-lg transition-all disabled:opacity-30 border border-[#a08428]/50"
+                    className="py-4 bg-[#8b7020] hover:bg-[#a08428] text-white font-bold text-base rounded-lg transition-all disabled:opacity-30 border border-[#a08428]/50"
                   >
                     FOUL
                   </button>
                   <button
                     onClick={handleOut}
                     disabled={submitting || ((currentBatter.bats || '').trim().toUpperCase() === 'S' && !switchBatSide)}
-                    className="py-4 bg-[#1a5c3a] hover:bg-[#237548] text-white font-bold text-sm rounded-lg transition-all disabled:opacity-30 border border-[#237548]/50"
+                    className="py-4 bg-[#1a5c3a] hover:bg-[#237548] text-white font-bold text-base rounded-lg transition-all disabled:opacity-30 border border-[#237548]/50"
                   >
                     OUT
                   </button>
                   <button
                     onClick={handleInPlay}
                     disabled={submitting || ((currentBatter.bats || '').trim().toUpperCase() === 'S' && !switchBatSide)}
-                    className="py-4 bg-[#1a3a8b] hover:bg-[#2248a0] text-white font-bold text-sm rounded-lg transition-all disabled:opacity-30 border border-[#2248a0]/50"
+                    className="py-4 bg-[#1a3a8b] hover:bg-[#2248a0] text-white font-bold text-base rounded-lg transition-all disabled:opacity-30 border border-[#2248a0]/50"
                   >
                     IN PLAY
                   </button>
@@ -2386,7 +2386,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
 
             {/* STRIKEOUT TYPE (strike 3 popup - like iScore) */}
             {step === 'strikeout_type' && (
-              <div className="bg-[#111d30] rounded-xl border border-white/10 overflow-hidden">
+              <div className="bg-scoring-panel rounded-xl border border-white/10 overflow-hidden">
                 <div className="px-4 py-3 border-b border-white/5 text-center">
                   <div className="flex justify-center gap-1 mb-2">
                     {(['out', 'safe', 'quick'] as const).map(t => (
@@ -2400,21 +2400,21 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                 <div className="p-4 space-y-2">
                   <div className="grid grid-cols-2 gap-2">
                     <button onClick={() => selectOutcome('strikeout_looking')} disabled={submitting}
-                      className="py-4 bg-[#2a3a5a] hover:bg-[#3a4a6a] text-white text-sm font-bold rounded-lg uppercase transition-colors border border-white/10">
+                      className="py-4 bg-scoring-tile hover:bg-scoring-tile-hover text-white text-sm font-bold rounded-lg uppercase transition-colors border border-white/10">
                       STRIKEOUT LOOKING
                     </button>
                     <button onClick={() => selectOutcome('strikeout_swinging')} disabled={submitting}
-                      className="py-4 bg-[#2a3a5a] hover:bg-[#3a4a6a] text-white text-sm font-bold rounded-lg uppercase transition-colors border border-white/10">
+                      className="py-4 bg-scoring-tile hover:bg-scoring-tile-hover text-white text-sm font-bold rounded-lg uppercase transition-colors border border-white/10">
                       STRIKEOUT SWINGING
                     </button>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <button onClick={() => selectOutcome('caught_foul_tip')} disabled={submitting}
-                      className="py-3 bg-[#2a3a5a] hover:bg-[#3a4a6a] text-white text-xs font-bold rounded-lg uppercase transition-colors border border-white/10">
+                      className="py-3 bg-scoring-tile hover:bg-scoring-tile-hover text-white text-xs font-bold rounded-lg uppercase transition-colors border border-white/10">
                       CAUGHT FOUL TIP
                     </button>
                     <button onClick={() => selectOutcome('bunt_foul')} disabled={submitting}
-                      className="py-3 bg-[#2a3a5a] hover:bg-[#3a4a6a] text-white text-xs font-bold rounded-lg uppercase transition-colors border border-white/10">
+                      className="py-3 bg-scoring-tile hover:bg-scoring-tile-hover text-white text-xs font-bold rounded-lg uppercase transition-colors border border-white/10">
                       BUNT FOUL
                     </button>
                   </div>
@@ -2438,7 +2438,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
 
             {/* OUT / SAFE panels */}
             {(step === 'out_type' || step === 'safe_type') && (
-              <div className="bg-[#111d30] rounded-xl border border-white/10 overflow-hidden">
+              <div className="bg-scoring-panel rounded-xl border border-white/10 overflow-hidden">
                 <div className="flex border-b border-white/10">
                   <button onClick={() => { setOutSafeTab('out'); setStep('out_type'); setOutSafeMorePage(false); }}
                     className={`flex-1 py-2.5 text-sm font-bold transition-colors ${outSafeTab === 'out' ? 'bg-white/10 text-white border-b-2 border-white' : 'text-white/40 hover:text-white/60'}`}>Out</button>
@@ -2452,7 +2452,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                       : (outSafeMorePage ? OUT_OUTCOMES_P2 : OUT_OUTCOMES_P1)
                     ).map(o => (
                       <button key={o.key} onClick={() => selectOutcome(o.key)}
-                        className="py-3 bg-[#1e2d48]/80 hover:bg-[#283a58] text-white text-xs font-bold rounded-lg transition-all uppercase border border-white/[0.06]">
+                        className="py-3 bg-scoring-tile/80 hover:bg-scoring-tile-hover text-white text-xs font-bold rounded-lg transition-all uppercase border border-white/[0.06]">
                         {o.label}
                       </button>
                     ))}
@@ -2468,7 +2468,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
 
             {/* FIELDING step */}
             {step === 'fielding' && (
-              <div className="bg-[#111d30] rounded-lg border border-white/10 p-3 text-center">
+              <div className="bg-scoring-panel rounded-lg border border-white/10 p-3 text-center">
                 {selectedEvent && ERROR_EVENTS.has(selectedEvent) ? (
                   <p className="text-[10px] text-red-400/70 uppercase font-bold mb-2">Error on</p>
                 ) : (
@@ -2484,7 +2484,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
 
             {/* HIT LOCATION step */}
             {step === 'hit_location' && (
-              <div className="bg-[#111d30] rounded-xl border border-white/10 p-3">
+              <div className="bg-scoring-panel rounded-xl border border-white/10 p-3">
                 <div className="flex justify-center mb-2">
                   <svg viewBox="0 0 300 200" className="w-full max-w-sm cursor-crosshair"
                     onClick={(e) => {
@@ -2566,7 +2566,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
 
             {/* BATTER ADVANCE — where batter ends up on ROE (after fielding + runner resolution if any) */}
             {step === 'batter_advance' && selectedEvent && ERROR_EVENTS.has(selectedEvent) && currentBatter && (
-              <div className="bg-[#111d30] rounded-xl border border-white/10 overflow-hidden">
+              <div className="bg-scoring-panel rounded-xl border border-white/10 overflow-hidden">
                 <div className="px-4 py-3 border-b border-white/5 text-center">
                   <p className="text-[10px] text-amber-400 font-bold uppercase mb-1 tracking-widest">Batter on same error</p>
                   <p className="text-xs text-white/80 font-bold tracking-wide">
@@ -2621,7 +2621,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
               ];
               const reasonLabel = runnerAdvanceErrorPending.reason === 'advance_on_error' ? 'ADVANCED ON ERROR' : 'ERROR ON ADVANCE';
               return (
-                <div className="bg-[#111d30] rounded-xl border border-amber-500/30 overflow-hidden">
+                <div className="bg-scoring-panel rounded-xl border border-amber-500/30 overflow-hidden">
                   <div className="px-4 py-3 border-b border-white/5 text-center">
                     <p className="text-[10px] text-amber-400 font-bold uppercase mb-1 tracking-widest">{reasonLabel}</p>
                     <p className="text-xs text-white/80 font-bold tracking-wide">{q.playerName}</p>
@@ -2727,7 +2727,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                   { pos: 7, label: 'LF' }, { pos: 8, label: 'CF' }, { pos: 9, label: 'RF' },
                 ];
                 return (
-                  <div className="bg-[#111d30] rounded-xl border border-white/10 overflow-hidden">
+                  <div className="bg-scoring-panel rounded-xl border border-white/10 overflow-hidden">
                     <div className="px-4 py-3 border-b border-white/5 text-center">
                       <p className="text-[10px] text-red-400 font-bold uppercase mb-1 tracking-widest">{runnerOutPendingType.replace(/_/g, ' ')}</p>
                       <p className="text-xs text-white/80 font-bold tracking-wide">
@@ -2772,7 +2772,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
               }
 
               return (
-                <div className="bg-[#111d30] rounded-xl border border-white/10 overflow-hidden">
+                <div className="bg-scoring-panel rounded-xl border border-white/10 overflow-hidden">
                   {/* Title */}
                   <div className="px-4 py-3 border-b border-white/5 text-center">
                     {betweenPitchEvent && (
@@ -2835,7 +2835,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                       <div className="grid grid-cols-2 gap-2">
                         {getRunnerOutTypesForOuts(gameState.outs).map(t => (
                           <button key={t.key} onClick={() => startRunnerOutFielding(t.key)}
-                            className="py-3 bg-[#1e2d48]/80 hover:bg-[#283a58] text-white text-xs font-bold rounded-lg uppercase transition-colors border border-white/[0.06]">
+                            className="py-3 bg-scoring-tile/80 hover:bg-scoring-tile-hover text-white text-xs font-bold rounded-lg uppercase transition-colors border border-white/[0.06]">
                             {t.label}
                           </button>
                         ))}
@@ -2924,7 +2924,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
 
                           return options.map(r => (
                             <button key={r.key} onClick={r.action}
-                              className="py-3 bg-[#1e2d48]/80 hover:bg-[#283a58] text-white text-xs font-bold rounded-lg uppercase transition-colors border border-white/[0.06]">
+                              className="py-3 bg-scoring-tile/80 hover:bg-scoring-tile-hover text-white text-xs font-bold rounded-lg uppercase transition-colors border border-white/[0.06]">
                               {r.label}
                             </button>
                           ));
@@ -2951,7 +2951,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
               // Step 1: choose action type (Safe view)
               if (!runnerActionType) {
                 return (
-                  <div className="bg-[#111d30] rounded-xl border border-white/10 overflow-hidden">
+                  <div className="bg-scoring-panel rounded-xl border border-white/10 overflow-hidden">
                     {/* Title */}
                     <div className="px-4 py-3 border-b border-white/5 text-center">
                       <p className="text-xs text-white/50 uppercase font-bold tracking-wide">
@@ -2995,17 +2995,17 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                           { key: 'advance', label: 'ON THE THROW' },
                         ].map(a => (
                           <button key={a.key} onClick={() => handleRunnerActionSubmit(a.key, selectedDest)}
-                            className="py-3 bg-[#1e2d48]/80 hover:bg-[#283a58] border border-white/[0.06] text-white text-xs font-bold rounded-lg uppercase transition-colors">
+                            className="py-3 bg-scoring-tile/80 hover:bg-scoring-tile-hover border border-white/[0.06] text-white text-xs font-bold rounded-lg uppercase transition-colors">
                             {a.label}
                           </button>
                         ))}
                         <button onClick={() => { setRunnerActionType('__error__'); setRunnerActionDest(selectedDest); setRunnerActionFielding([]); }}
-                          className="py-3 bg-[#1e2d48]/80 hover:bg-[#283a58] border border-white/[0.06] text-white text-xs font-bold rounded-lg uppercase transition-colors">
+                          className="py-3 bg-scoring-tile/80 hover:bg-scoring-tile-hover border border-white/[0.06] text-white text-xs font-bold rounded-lg uppercase transition-colors">
                           ERROR
                         </button>
                         {/* Pickoff attempt means runner stays at current base (does not advance). */}
                         <button onClick={() => handleRunnerActionSubmit('advance', activeRunnerBase)}
-                          className="py-3 bg-[#1e2d48]/80 hover:bg-[#283a58] border border-white/[0.06] text-white text-xs font-bold rounded-lg uppercase transition-colors">
+                          className="py-3 bg-scoring-tile/80 hover:bg-scoring-tile-hover border border-white/[0.06] text-white text-xs font-bold rounded-lg uppercase transition-colors">
                           PICKOFF ATTEMPT
                         </button>
                       </div>
@@ -3029,7 +3029,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                   ];
                   const outLabel = runnerActionOutType.replace(/_/g, ' ').toUpperCase();
                   return (
-                    <div className="bg-[#111d30] rounded-xl border border-white/10 overflow-hidden">
+                    <div className="bg-scoring-panel rounded-xl border border-white/10 overflow-hidden">
                       <div className="px-4 py-3 border-b border-white/5 text-center">
                         <p className="text-xs text-white/50 uppercase font-bold tracking-wide">
                           {outLabel}
@@ -3074,7 +3074,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
 
                 // Step 1: Choose out type
                 return (
-                  <div className="bg-[#111d30] rounded-xl border border-white/10 overflow-hidden">
+                  <div className="bg-scoring-panel rounded-xl border border-white/10 overflow-hidden">
                     <div className="px-4 py-3 border-b border-white/5 text-center">
                       <p className="text-xs text-white/50 uppercase font-bold tracking-wide">
                         What happened to the runner on {baseLabel} base,
@@ -3093,7 +3093,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                       <div className="grid grid-cols-2 gap-2">
                         {getRunnerOutTypesForOuts(gameState.outs).map(a => (
                           <button key={a.key} onClick={() => { setRunnerActionOutType(a.key); setRunnerActionFielding([]); }}
-                            className="py-3 bg-[#1e2d48]/80 hover:bg-[#283a58] border border-white/[0.06] text-white text-xs font-bold rounded-lg uppercase transition-colors">
+                            className="py-3 bg-scoring-tile/80 hover:bg-scoring-tile-hover border border-white/[0.06] text-white text-xs font-bold rounded-lg uppercase transition-colors">
                             {a.label}
                           </button>
                         ))}
@@ -3114,7 +3114,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                   { pos: 7, label: 'LF' }, { pos: 8, label: 'CF' }, { pos: 9, label: 'RF' },
                 ];
                 return (
-                  <div className="bg-[#111d30] rounded-xl border border-white/10 overflow-hidden">
+                  <div className="bg-scoring-panel rounded-xl border border-white/10 overflow-hidden">
                     <div className="px-4 py-3 border-b border-white/5 text-center">
                         <p className="text-xs text-red-400/70 uppercase font-bold tracking-wide">
                         ERROR
@@ -3167,7 +3167,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
               const currentPlayer = draftFieldingLineup.find(l => l.position === subPosition);
               const changeTeamName = defensiveChangeTeamId === game.homeTeamId ? game.homeTeamName : game.awayTeamName;
               return (
-                <div className="bg-[#111d30] rounded-lg border border-white/10 p-3 max-h-72 overflow-y-auto">
+                <div className="bg-scoring-panel rounded-lg border border-white/10 p-3 max-h-72 overflow-y-auto">
                   <p className="text-[10px] text-white/40 uppercase font-bold text-center mb-2">
                     {changeTeamName} · {POS_LABELS[subPosition]} — {currentPlayer?.lastName ?? ''}
                   </p>
@@ -3232,7 +3232,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
               const currentPlayer = draftFieldingLineup.find(l => l.position === subPosition);
               const changeTeamName = defensiveChangeTeamId === game.homeTeamId ? game.homeTeamName : game.awayTeamName;
               return (
-                <div className="bg-[#111d30] rounded-lg border border-white/10 p-3 max-h-72 overflow-y-auto">
+                <div className="bg-scoring-panel rounded-lg border border-white/10 p-3 max-h-72 overflow-y-auto">
                   <p className="text-[10px] text-white/40 uppercase font-bold text-center mb-1">
                     {changeTeamName}: move {currentPlayer?.lastName ?? ''} ({POS_LABELS[subPosition]}) to:
                   </p>
@@ -3270,7 +3270,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                       const occupant = draftFieldingLineup.find(l => l.position === posNum);
                       return (
                         <button key={k} onClick={() => handlePositionSwap(posNum)}
-                          className="py-2.5 bg-[#1e2d48] hover:bg-[#283a58] text-white rounded transition-all text-center">
+                          className="py-2.5 bg-scoring-tile hover:bg-scoring-tile-hover text-white rounded transition-all text-center">
                           <div className="text-xs font-bold">{label}</div>
                           {occupant && <div className="text-[9px] text-white/40 mt-0.5">{occupant.lastName}</div>}
                         </button>
@@ -3294,7 +3294,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
 
             {/* PICK PLAYER FOR POSITION CHANGE (from Misc) */}
             {step === 'swap_position_pick' && (
-              <div className="bg-[#111d30] rounded-lg border border-white/10 p-3 max-h-72 overflow-y-auto">
+              <div className="bg-scoring-panel rounded-lg border border-white/10 p-3 max-h-72 overflow-y-auto">
                 <p className="text-[10px] text-white/40 uppercase font-bold text-center mb-2">
                   {defensiveChangeTeamId === game.homeTeamId ? game.homeTeamName : game.awayTeamName} defense
                 </p>
@@ -3335,7 +3335,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
               const offenseTeamName = offensiveChangeTeamId === game.homeTeamId ? game.homeTeamName : game.awayTeamName;
               const phName = offensiveChangeLineup.find(l => l.battingOrder === subBattingSlot);
               return (
-                <div className="bg-[#111d30] rounded-lg border border-white/10 p-3 max-h-64 overflow-y-auto">
+                <div className="bg-scoring-panel rounded-lg border border-white/10 p-3 max-h-64 overflow-y-auto">
                   <p className="text-[10px] text-white/40 uppercase font-bold text-center mb-1">
                     {offenseTeamName} · #{subBattingSlot} — {phName ? `${phName.firstName.charAt(0)}. ${phName.lastName}` : 'open slot'}
                   </p>
@@ -3393,7 +3393,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
 
             {/* MISC - iScore style vertical list */}
             {step === 'misc' && (
-              <div className="bg-[#111d30] rounded-lg border border-white/10 overflow-hidden max-h-80 flex flex-col">
+              <div className="bg-scoring-panel rounded-lg border border-white/10 overflow-hidden max-h-80 flex flex-col">
                 <div className="overflow-y-auto divide-y divide-white/5">
                   {[
                     { label: 'Pitching Change', fn: () => { setSubTeamId(fieldingTeamId ?? null); setSubPosition(1); setStep('sub_defense'); } },
@@ -3433,7 +3433,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
             )}
 
             {step === 'misc_runner_second' && gameState && game && (
-              <div className="bg-[#111d30] rounded-lg border border-white/10 p-3 flex flex-col max-h-[22rem]">
+              <div className="bg-scoring-panel rounded-lg border border-white/10 p-3 flex flex-col max-h-[22rem]">
                 <p className="text-xs text-white/50 uppercase font-bold text-center mb-2">Runner on 2nd (extras)</p>
                 {(() => {
                   const sug = suggestedGhostRunnerFromPrevOffensiveInning(events, gameState.inning, gameState.half);
@@ -3489,7 +3489,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
 
             {/* ADJUST SCORE */}
             {step === 'adjust_score' && (
-              <div className="bg-[#111d30] rounded-lg border border-white/10 p-4">
+              <div className="bg-scoring-panel rounded-lg border border-white/10 p-4">
                 <p className="text-xs text-white/40 uppercase font-bold text-center mb-4">Adjust Score</p>
                 <div className="flex items-center gap-6 justify-center mb-4">
                   <div className="text-center">
@@ -3519,7 +3519,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
           </div>
 
           {/* ── Bottom bar ── */}
-          <div className="bg-[#060d1a] border-t border-white/10 px-3 py-1.5">
+          <div className="bg-scoring-footer border-t border-white/10 px-3 py-1.5">
             <div className="flex items-center justify-between text-[10px] font-bold uppercase">
               <button onClick={() => navigate('/games')} className="px-3 py-1.5 text-white/40 hover:text-white">Exit</button>
               <button onClick={handleUndo} disabled={historyBusy} className="px-3 py-1.5 text-white/40 hover:text-white disabled:opacity-30">Undo</button>
@@ -3580,7 +3580,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
 
       {lineupAdjustOpen && game && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-3" role="dialog" aria-modal="true" aria-labelledby="lineup-adjust-title">
-          <div className="w-full max-w-lg max-h-[min(90vh,640px)] overflow-y-auto rounded-xl border border-white/10 bg-[#0f1a2a] p-4 shadow-xl">
+          <div className="w-full max-w-lg max-h-[min(90vh,640px)] overflow-y-auto rounded-xl border border-white/10 bg-scoring-modal p-4 shadow-xl">
             <h2 id="lineup-adjust-title" className="text-center text-sm font-bold uppercase tracking-wider text-white mb-1">
               Adjust active lineups
             </h2>
@@ -3661,7 +3661,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                             battingOrder: Math.min(10, Math.max(1, parseInt(e.target.value, 10) || 1)),
                           })
                         }
-                        className="w-11 rounded border border-white/15 bg-[#152238] px-1 py-0.5 text-[11px] text-slate-100 [color-scheme:dark]"
+                        className="w-11 rounded border border-white/15 bg-scoring-input px-1 py-0.5 text-[11px] text-slate-100 [color-scheme:dark]"
                       />
                     </label>
                     {row.playerId != null ? (
@@ -3916,7 +3916,7 @@ function EventTimelinePanel({ gameId, events, homeLineup, awayLineup, onClose, o
   return (
     <div className="fixed inset-0 z-50 flex">
       <div className="absolute inset-0 bg-black/60" onClick={onClose} />
-      <div className="relative ml-auto w-full max-w-lg bg-[#0a1628] border-l border-white/10 h-full flex flex-col overflow-hidden">
+      <div className="relative ml-auto w-full max-w-lg bg-scoring-timeline border-l border-white/10 h-full flex flex-col overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
           <div className="flex items-center gap-2">
@@ -4234,7 +4234,7 @@ function EventTimelinePanel({ gameId, events, homeLineup, awayLineup, onClose, o
                                 <input
                                   value={(statsEdits[`pitching:${p.playerId}`]?.[k] ?? p[k] ?? '')}
                                   onChange={(e) => setRowEdit('pitching', p.playerId, { [k]: e.target.value })}
-                                  className="mt-0.5 w-full bg-[#0b1a30] border border-white/10 rounded px-1 py-0.5 text-white"
+                                  className="mt-0.5 w-full bg-scoring-input border border-white/10 rounded px-1 py-0.5 text-white"
                                 />
                               </label>
                             ))}
@@ -4290,7 +4290,7 @@ function EventTimelinePanel({ gameId, events, homeLineup, awayLineup, onClose, o
                                 <input
                                   value={(statsEdits[`batting:${b.playerId}`]?.[k] ?? b[k] ?? '')}
                                   onChange={(e) => setRowEdit('batting', b.playerId, { [k]: e.target.value })}
-                                  className="mt-0.5 w-full bg-[#0b1a30] border border-white/10 rounded px-1 py-0.5 text-white"
+                                  className="mt-0.5 w-full bg-scoring-input border border-white/10 rounded px-1 py-0.5 text-white"
                                 />
                               </label>
                             ))}
@@ -4329,7 +4329,7 @@ function EventTimelinePanel({ gameId, events, homeLineup, awayLineup, onClose, o
                                 <input
                                   value={(statsEdits[`fielding:${f.playerId}`]?.[k] ?? f[k] ?? '')}
                                   onChange={(e) => setRowEdit('fielding', f.playerId, { [k]: e.target.value })}
-                                  className="mt-0.5 w-full bg-[#0b1a30] border border-white/10 rounded px-1 py-0.5 text-white"
+                                  className="mt-0.5 w-full bg-scoring-input border border-white/10 rounded px-1 py-0.5 text-white"
                                 />
                               </label>
                             ))}

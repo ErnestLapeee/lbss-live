@@ -25,11 +25,17 @@ export function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-primary">
-      <div className="w-full max-w-md bg-surface rounded-xl shadow-2xl p-8">
+    <div className="min-h-screen flex flex-col bg-[#f5f5f5]">
+      <header className="shrink-0 bg-[#2f2f2f] text-white border-b border-black/30">
+        <div className="mx-auto max-w-md px-4 py-3 flex items-center justify-center gap-2">
+          <img src="/lbss-logo.png" alt="LBSS" className="h-8 w-8 object-contain" />
+          <span className="text-sm font-semibold">LBSS Admin</span>
+        </div>
+      </header>
+      <div className="flex-1 flex items-center justify-center p-6">
+        <div className="w-full max-w-md bg-surface rounded-lg border border-border shadow-sm p-8">
         <div className="text-center mb-8">
-          <img src="/lbss-logo.png" alt="LBSS" className="h-14 w-14 mx-auto object-contain" />
-          <h1 className="mt-4 font-heading text-2xl font-bold">LBSS Admin</h1>
+          <h1 className="font-heading text-2xl font-bold text-text">Sign in</h1>
         </div>
         {error && (
           <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
@@ -71,6 +77,7 @@ export function LoginPage() {
             {loading ? 'Signing in...' : 'Sign In'}
           </button>
         </form>
+        </div>
       </div>
     </div>
   );

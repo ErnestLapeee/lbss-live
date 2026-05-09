@@ -38,7 +38,7 @@ export function AdminLayout() {
   return (
     <div className="flex h-screen">
       {/* Sidebar */}
-      <aside className="w-64 bg-sidebar text-sidebar-text flex flex-col shrink-0">
+      <aside className="w-64 bg-sidebar text-sidebar-text flex flex-col shrink-0 border-r border-black/25">
         <div className="p-4 border-b border-white/10">
           <Link to={isScorer ? '/games' : '/'} className="flex items-center gap-3">
             <img src="/lbss-logo.png" alt="LBSS" className="h-9 w-9 object-contain" />
@@ -58,7 +58,7 @@ export function AdminLayout() {
                 className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                   isActive
                     ? 'bg-sidebar-active text-white'
-                    : 'text-sidebar-text hover:bg-sidebar-active/50 hover:text-white'
+                    : 'text-sidebar-text hover:bg-sidebar-active hover:text-white'
                 }`}
               >
                 <span className="text-base">{item.icon}</span>
@@ -71,7 +71,7 @@ export function AdminLayout() {
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col overflow-hidden">
-        <header className="h-14 border-b border-border bg-surface flex items-center justify-between px-6 shrink-0 gap-4">
+        <header className="h-14 border-b border-border bg-surface flex items-center justify-between px-6 shrink-0 gap-4 shadow-sm">
           <h2 className="font-heading font-semibold text-lg shrink-0">LBSS Administration</h2>
           <div className="flex items-center gap-4 min-w-0 flex-1 justify-end">
             <label className="flex items-center gap-2 text-sm min-w-0 max-w-[min(100%,20rem)]">

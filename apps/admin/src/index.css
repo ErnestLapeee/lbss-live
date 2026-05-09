@@ -1,25 +1,82 @@
 @import "tailwindcss";
 
+/*
+ * Align admin shell with public site (apps/web globals.css).
+ * Live scoring uses dedicated dark tokens for outdoor legibility.
+ */
 @theme {
-  --color-primary: #1a2744;
-  --color-primary-light: #2a3f6a;
-  --color-accent: #dc2626;
-  --color-accent-light: #ef4444;
-  --color-live: #22c55e;
-  --color-sidebar: #0f172a;
-  --color-sidebar-text: #cbd5e1;
-  --color-sidebar-active: #1e293b;
+  --color-primary: #1a1a1a;
+  --color-primary-light: #333333;
+  --color-primary-mid: #555555;
+  --color-accent: #136cb2;
+  --color-accent-light: #1a7fd4;
+  --color-accent-bright: #1e90ff;
+  --color-gold: #b8860b;
+  --color-gold-light: #daa520;
+  --color-live: #0a7d0a;
+
   --color-surface: #ffffff;
-  --color-surface-alt: #f8fafc;
-  --color-text: #0f172a;
-  --color-text-muted: #64748b;
-  --color-border: #e2e8f0;
-  --font-heading: 'Space Grotesk', sans-serif;
-  --font-body: 'Inter', sans-serif;
+  --color-surface-alt: #f0f0f0;
+  --color-surface-raised: #ffffff;
+  --color-surface-inset: #e8e8e8;
+
+  --color-text: #111111;
+  --color-text-muted: #444444;
+  --color-text-faint: #666666;
+
+  --color-border: #cccccc;
+  --color-border-light: #dddddd;
+
+  /* Sidebar matches public sticky header */
+  --color-sidebar: #2f2f2f;
+  --color-sidebar-text: #e8e8e8;
+  --color-sidebar-active: #3a3a3a;
+
+  /* Live scoring — high contrast for bright conditions / shade */
+  --color-scoring-canvas: #000000;
+  --color-scoring-bar: #0c0e12;
+  --color-scoring-panel: #151922;
+  --color-scoring-footer: #08090c;
+  --color-scoring-modal: #12161c;
+  --color-scoring-card: #1c2430;
+  --color-scoring-tile: #2a3545;
+  --color-scoring-tile-hover: #344256;
+  --color-scoring-input: #1a222e;
+  --color-scoring-timeline: #0a1018;
+
+  --font-ibm-plex: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-heading: var(--font-ibm-plex);
+  --font-body: var(--font-ibm-plex);
+  --font-mono: var(--font-ibm-plex);
 }
 
 body {
   font-family: var(--font-body);
-  background: var(--color-surface-alt);
+  background: #f5f5f5;
   color: var(--color-text);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--font-heading);
+}
+
+/* Full-screen scorer: larger type and comfortable tap targets */
+.scoring-app {
+  font-size: clamp(16px, 1.1vw + 14px, 20px);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.scoring-app button {
+  touch-action: manipulation;
+}
+
+.scoring-app .py-4 {
+  padding-top: 1.15rem;
+  padding-bottom: 1.15rem;
 }
