@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { apiGet, apiPut, apiDelete } from '@/lib/api';
+import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
 
 interface User {
   id: number;
@@ -10,6 +10,9 @@ interface User {
 }
 
 const ROLE_OPTIONS = ['public', 'admin', 'league_official', 'statistician'];
+
+const PASSWORD_HINT =
+  'At least 12 characters with uppercase, lowercase, a number, and a symbol (e.g. ! @ #).';
 
 export function UsersPage() {
   const [users, setUsers] = useState<User[]>([]);
@@ -23,6 +26,8 @@ export function UsersPage() {
     email: '',
     displayName: '',
     role: 'public',
+    password: '',
+    passwordConfirm: '',
   });
 
   const loadData = async () => {
@@ -41,14 +46,40 @@ export function UsersPage() {
     loadData();
   }, []);
 
+  const resetForm = () => {
+    setForm({
+      email: '',
+      displayName: '',
+      role: 'public',
+      password: '',
+      passwordConfirm: '',
+    });
+  };
+
+  const openCreate = () => {
+    setEditing(null);
+    resetForm();
+    setShowForm(true);
+    setError(null);
+  };
+
   const openEdit = (u: User) => {
     setEditing(u);
     setForm({
       email: u.email,
       displayName: u.displayName,
       role: u.role ?? 'public',
+      password: '',
+      passwordConfirm: '',
     });
     setShowForm(true);
+    setError(null);
+  };
+
+  const closeForm = () => {
+    setShowForm(false);
+    setEditing(null);
+    resetForm();
     setError(null);
   };
 
@@ -57,13 +88,30 @@ export function UsersPage() {
     setSaving(true);
     setError(null);
     try {
-      if (!editing) return;
-      await apiPut(`/admin/users/${editing.id}`, {
-        email: form.email.trim(),
-        displayName: form.displayName.trim(),
-        role: form.role,
-      });
-      setShowForm(false);
+      if (editing) {
+        await apiPut(`/admin/users/${editing.id}`, {
+          email: form.email.trim(),
+          displayName: form.displayName.trim(),
+          role: form.role,
+        });
+      } else {
+        const pw = form.password.trim();
+        if (pw !== form.passwordConfirm.trim()) {
+          setError('Passwords do not match.');
+          return;
+        }
+        if (!pw) {
+          setError('Password is required for new users.');
+          return;
+        }
+        await apiPost('/admin/users', {
+          email: form.email.trim(),
+          displayName: form.displayName.trim(),
+          role: form.role,
+          password: pw,
+        });
+      }
+      closeForm();
       loadData();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save');
@@ -100,14 +148,25 @@ export function UsersPage() {
 
   return (
     <div>
-      <div className="mb-6">
-        <h1 className="font-heading text-2xl font-bold">Users</h1>
-        <p className="mt-2 text-sm text-text-muted max-w-2xl">
-          New accounts and passwords are not created here. Add rows in the database (or run the API{' '}
-          <code className="text-xs bg-surface-alt px-1 rounded">db:set-password</code> script) and use{' '}
-          <code className="text-xs bg-surface-alt px-1 rounded">ALLOW_ADMIN_USER_CREATE=true</code> only if you
-          intentionally enable API user creation.
-        </p>
+      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="font-heading text-2xl font-bold">Users</h1>
+          <p className="mt-2 text-sm text-text-muted max-w-2xl">
+            Administrators can create accounts here and set roles (including scorers). To reset a password later, run
+            the API{' '}
+            <code className="text-xs bg-surface-alt px-1 rounded">db:set-password</code> script against the database.
+            Automation may still use{' '}
+            <code className="text-xs bg-surface-alt px-1 rounded">ALLOW_ADMIN_USER_CREATE=true</code> without an admin
+            session.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={openCreate}
+          className="shrink-0 px-4 py-2 bg-accent hover:bg-accent-light text-white text-sm font-semibold rounded-lg transition-colors"
+        >
+          + Create user
+        </button>
       </div>
 
       {error && (
@@ -188,7 +247,7 @@ export function UsersPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="bg-surface rounded-xl border border-border shadow-2xl w-full max-w-lg mx-4 p-6 max-h-[90vh] overflow-y-auto">
             <h2 className="font-heading text-xl font-bold mb-4">
-              {editing ? 'Edit User' : 'Create User'}
+              {editing ? 'Edit user' : 'Create user'}
             </h2>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
@@ -201,6 +260,7 @@ export function UsersPage() {
                   onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
                   className={inputClass}
                   required
+                  disabled={!!editing}
                 />
               </div>
               <div>
@@ -229,10 +289,41 @@ export function UsersPage() {
                   ))}
                 </select>
               </div>
+              {!editing && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-text-muted mb-1">
+                      Password *
+                    </label>
+                    <input
+                      type="password"
+                      autoComplete="new-password"
+                      value={form.password}
+                      onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
+                      className={inputClass}
+                      required
+                    />
+                    <p className="mt-1 text-xs text-text-muted">{PASSWORD_HINT}</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-text-muted mb-1">
+                      Confirm password *
+                    </label>
+                    <input
+                      type="password"
+                      autoComplete="new-password"
+                      value={form.passwordConfirm}
+                      onChange={(e) => setForm((f) => ({ ...f, passwordConfirm: e.target.value }))}
+                      className={inputClass}
+                      required
+                    />
+                  </div>
+                </>
+              )}
               <div className="flex justify-end gap-3 pt-2">
                 <button
                   type="button"
-                  onClick={() => setShowForm(false)}
+                  onClick={closeForm}
                   className="px-4 py-2 text-sm font-medium text-text-muted hover:text-text transition-colors"
                 >
                   Cancel
@@ -242,7 +333,7 @@ export function UsersPage() {
                   disabled={saving}
                   className="px-4 py-2 bg-accent hover:bg-accent-light text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-50"
                 >
-                  {saving ? 'Saving...' : 'Save'}
+                  {saving ? 'Saving…' : editing ? 'Save changes' : 'Create user'}
                 </button>
               </div>
             </form>

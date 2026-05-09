@@ -9,6 +9,9 @@ export async function adminUsersRoutes(app: FastifyInstance) {
   // GET / - list all users
   app.get('/', async (request, reply) => {
     try {
+      if (request.user?.role === 'statistician') {
+        return reply.status(403).send({ message: 'Scorer accounts cannot manage users.' });
+      }
       const result = await db.select({
         id: users.id,
         email: users.email,
@@ -24,7 +27,7 @@ export async function adminUsersRoutes(app: FastifyInstance) {
     }
   });
 
-  // POST / - create user (disabled by default; use DB + db:set-password or seed)
+  // POST / - create user (admins from UI; optional ALLOW_ADMIN_USER_CREATE for scripts)
   app.post<{
     Body: {
       email: string;
@@ -33,10 +36,12 @@ export async function adminUsersRoutes(app: FastifyInstance) {
       role?: string;
     };
   }>('/', async (request, reply) => {
-    if (process.env.ALLOW_ADMIN_USER_CREATE !== 'true') {
+    const actor = request.user;
+    const canCreate =
+      actor?.role === 'admin' || process.env.ALLOW_ADMIN_USER_CREATE === 'true';
+    if (!canCreate) {
       return reply.status(403).send({
-        message:
-          'Creating users from the admin UI is disabled. Add users in the database or set ALLOW_ADMIN_USER_CREATE=true for a controlled environment.',
+        message: 'Only administrators can create new users from the admin panel.',
       });
     }
     try {
@@ -53,15 +58,18 @@ export async function adminUsersRoutes(app: FastifyInstance) {
         return reply.status(400).send({ message: passwordCheck.message });
       }
 
+      const allowedRoles = new Set(['public', 'admin', 'league_official', 'statistician']);
+      const roleNorm = role != null && allowedRoles.has(String(role)) ? String(role) : 'public';
+
       const passwordHash = await hash(password);
 
       const [user] = await db
         .insert(users)
         .values({
-          email,
+          email: String(email).trim(),
           passwordHash,
-          displayName,
-          role: role ?? 'public',
+          displayName: String(displayName).trim(),
+          role: roleNorm,
         })
         .returning();
 
@@ -73,6 +81,13 @@ export async function adminUsersRoutes(app: FastifyInstance) {
       });
     } catch (err) {
       request.log.error(err);
+      const code =
+        err && typeof err === 'object'
+          ? ((err as { code?: string }).code ?? (err as { cause?: { code?: string } }).cause?.code)
+          : undefined;
+      if (code === '23505') {
+        return reply.status(409).send({ message: 'That email is already registered.' });
+      }
       return reply.status(500).send({ message: 'Failed to create user' });
     }
   });
@@ -87,6 +102,9 @@ export async function adminUsersRoutes(app: FastifyInstance) {
     };
   }>('/:id', async (request, reply) => {
     try {
+      if (request.user?.role === 'statistician') {
+        return reply.status(403).send({ message: 'Scorer accounts cannot manage users.' });
+      }
       const id = parseInt(request.params.id, 10);
       if (isNaN(id)) {
         return reply.status(400).send({ message: 'Invalid user id' });
@@ -123,6 +141,9 @@ export async function adminUsersRoutes(app: FastifyInstance) {
   // DELETE /:id - soft delete (set isActive=false)
   app.delete<{ Params: { id: string } }>('/:id', async (request, reply) => {
     try {
+      if (request.user?.role === 'statistician') {
+        return reply.status(403).send({ message: 'Scorer accounts cannot manage users.' });
+      }
       const id = parseInt(request.params.id, 10);
       if (isNaN(id)) {
         return reply.status(400).send({ message: 'Invalid user id' });
