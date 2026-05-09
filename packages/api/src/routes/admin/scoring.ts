@@ -686,9 +686,13 @@ export async function adminScoringRoutes(app: FastifyInstance) {
         bats: row.bats ?? null,
       }));
 
-      // Get team names
-      const [homeTeam] = await db.select({ name: teams.name }).from(teams).where(eq(teams.id, game.homeTeamId)).limit(1);
-      const [awayTeam] = await db.select({ name: teams.name }).from(teams).where(eq(teams.id, game.awayTeamId)).limit(1);
+      const teamRows = await db
+        .select({ id: teams.id, name: teams.name })
+        .from(teams)
+        .where(inArray(teams.id, [game.homeTeamId, game.awayTeamId]));
+      const teamById = new Map(teamRows.map((t) => [t.id, t]));
+      const homeTeam = teamById.get(game.homeTeamId);
+      const awayTeam = teamById.get(game.awayTeamId);
 
       const state = computeGameState(events);
 
