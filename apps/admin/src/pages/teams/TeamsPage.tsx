@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Link } from 'react-router-dom';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
 import { useAdminSeason } from '@/context/AdminSeasonContext';
 
@@ -58,7 +57,6 @@ export function TeamsPage() {
   const [showTeamForm, setShowTeamForm] = useState(false);
   const [editingTeam, setEditingTeam] = useState<TeamWithRoster | null>(null);
   const [teamForm, setTeamForm] = useState({ name: '', shortName: '', city: '', foundedYear: '', description: '', logoUrl: '' });
-  /** When creating a team and the season has multiple leagues, which league gets the initial league_teams row. */
   const [createLeagueId, setCreateLeagueId] = useState('');
 
   // Player create form (add new player directly under a team)
@@ -171,19 +169,6 @@ export function TeamsPage() {
     const matched = sorted.filter((p) => `${p.firstName} ${p.lastName}`.toLowerCase().includes(q));
     return matched.length > 200 ? matched.slice(0, 200) : matched;
   }, [assignableForModal, assignSearchQuery]);
-
-  const assignSearchMatchCount = useMemo(() => {
-    const q = assignSearchQuery.trim().toLowerCase();
-    if (!q) return 0;
-    return assignableForModal.filter((p) =>
-      `${p.firstName} ${p.lastName}`.toLowerCase().includes(q),
-    ).length;
-  }, [assignableForModal, assignSearchQuery]);
-
-  const assignHasMoreWhenEmpty =
-    assignSearchQuery.trim() === '' && assignableForModal.length > assignFiltered.length;
-  const assignHasMoreWhenSearch =
-    assignSearchQuery.trim() !== '' && assignSearchMatchCount > assignFiltered.length;
 
   /* ───── team CRUD ───── */
   const openCreateTeam = () => {
@@ -405,29 +390,11 @@ export function TeamsPage() {
     <div>
       {/* header */}
       <div className="flex items-center justify-between mb-6 gap-4 flex-wrap">
-        <div>
-          <h1 className="font-heading text-xl font-bold">Teams & Rosters</h1>
-          <p className="text-xs text-text-muted mt-1">
-            Workspace season in the header. League membership:{' '}
-            <Link to="/season-setup" className="text-accent hover:text-accent-light">
-              Season setup
-            </Link>
-            .
-          </p>
-        </div>
+        <h1 className="font-heading text-xl font-bold">Teams & Rosters</h1>
         <button
           type="button"
           onClick={openCreateTeam}
           disabled={!selectedSeasonId || loading || leaguesForSeason.length === 0}
-          title={
-            !selectedSeasonId
-              ? 'Choose a workspace season first'
-              : loading
-                ? 'Loading…'
-                : leaguesForSeason.length === 0
-                  ? 'Create a league for this season under Leagues before adding teams'
-                  : undefined
-          }
           className="px-4 py-2 bg-accent hover:bg-accent-light text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           + Add Team
@@ -443,17 +410,11 @@ export function TeamsPage() {
       {seasonsLoading ? (
         <div className="text-center py-16 text-text-muted">Loading seasons…</div>
       ) : !selectedSeasonId ? (
-        <div className="text-center py-16 text-text-muted">
-          <p className="text-lg mb-2">No season available</p>
-          <p className="text-sm">Create a season on the Seasons page, then choose it in the workspace menu above.</p>
-        </div>
+        <div className="text-center py-16 text-text-muted text-sm">No season selected.</div>
       ) : loading ? (
         <div className="text-center py-16 text-text-muted">Loading rosters...</div>
       ) : teams.length === 0 ? (
-        <div className="text-center py-16 text-text-muted">
-          <p className="text-lg mb-2">No teams yet</p>
-          <p className="text-sm">Click "+ Add Team" to create your first team.</p>
-        </div>
+        <div className="text-center py-16 text-text-muted text-sm">No teams yet.</div>
       ) : (
         <>
           {/* ── Team columns ── */}
@@ -486,7 +447,6 @@ export function TeamsPage() {
                       <button
                         onClick={() => openEditTeam(team)}
                         className="p-1.5 text-text-muted hover:text-accent rounded transition-colors"
-                        title="Edit team"
                       >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -496,7 +456,6 @@ export function TeamsPage() {
                         <button
                           onClick={() => handleDeleteTeam(team.id)}
                           className="p-1.5 text-text-muted hover:text-red-500 rounded transition-colors"
-                          title="Deactivate club (organization-wide, when no league/roster/games)"
                         >
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -507,7 +466,6 @@ export function TeamsPage() {
                           type="button"
                           onClick={() => handleReactivateTeam(team.id)}
                           className="px-2 py-1 text-[11px] font-semibold rounded-md bg-amber-500/20 text-amber-800 dark:text-amber-200 hover:bg-amber-500/30 transition-colors"
-                          title="Restore club as active everywhere"
                         >
                           Reactivate
                         </button>
@@ -551,7 +509,6 @@ export function TeamsPage() {
                               ? 'bg-green-500/15 text-green-400 border border-green-500/30 hover:bg-green-500/25'
                               : 'bg-red-500/15 text-red-400 border border-red-500/30 hover:bg-red-500/25'
                           }`}
-                          title={p.licensePaid === 'paid' ? 'License paid — click to mark unpaid' : 'License unpaid — click to mark paid'}
                         >
                           {p.licensePaid === 'paid' ? 'Licensed' : 'Unpaid'}
                         </button>
@@ -560,7 +517,6 @@ export function TeamsPage() {
                           <button
                             onClick={() => openMovePlayer(p)}
                             className="p-1 text-text-muted hover:text-accent rounded"
-                            title="Add to another team"
                           >
                             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
@@ -569,7 +525,6 @@ export function TeamsPage() {
                           <button
                             onClick={() => handleRemoveFromRoster(p)}
                             className="p-1 text-text-muted hover:text-red-500 rounded"
-                            title="Remove from roster"
                           >
                             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -602,7 +557,7 @@ export function TeamsPage() {
             ))}
           </div>
 
-          {/* ── Unassigned players (collapsed + searchable; assign via each team’s + Existing Player) ── */}
+          {/* Unassigned players */}
           {unassignedPlayers.length > 0 && (
             <div className="mt-8 rounded-lg border border-border bg-surface-alt/30 p-4">
               <button
@@ -637,12 +592,6 @@ export function TeamsPage() {
                       </li>
                     ))}
                   </ul>
-                  {unassignedFiltered.length === 0 && (
-                    <p className="text-xs text-text-muted mt-2">No names match.</p>
-                  )}
-                  <p className="text-xs text-text-muted mt-2">
-                    To add someone to a roster, use <strong>+ Existing Player</strong> on that team and search there.
-                  </p>
                 </div>
               )}
             </div>
@@ -674,9 +623,6 @@ export function TeamsPage() {
                   ))}
                 </select>
               </Field>
-            )}
-            {!editingTeam && leaguesForSeason.length === 1 && (
-              <p className="text-xs text-text-muted">Joins {leaguesForSeason[0]!.name}.</p>
             )}
             <Field label="Team Name *">
               <input type="text" value={teamForm.name} onChange={e => setTeamForm(f => ({ ...f, name: e.target.value }))} className={inputClass} required />
@@ -767,15 +713,6 @@ export function TeamsPage() {
                 onChange={(e) => setAssignSearchQuery(e.target.value)}
                 className={inputClass}
               />
-              {assignHasMoreWhenEmpty && (
-                <p className="text-xs text-text-muted mt-1.5">
-                  Showing the first 80 alphabetically. Type a name to search the full list ({assignableForModal.length}{' '}
-                  players can join this team).
-                </p>
-              )}
-              {assignHasMoreWhenSearch && (
-                <p className="text-xs text-text-muted mt-1.5">Showing first 200 matches — type more letters to narrow.</p>
-              )}
               <div className="mt-2 max-h-64 overflow-y-auto rounded-lg border border-border bg-surface-alt divide-y divide-border/60">
                 {assignFiltered.map((p) => (
                   <button
@@ -790,22 +727,6 @@ export function TeamsPage() {
                   </button>
                 ))}
               </div>
-              {assignFiltered.length === 0 && assignableForModal.length > 0 && (
-                <p className="text-xs text-text-muted mt-2">No matches — try another spelling.</p>
-              )}
-              {assignableForModal.length === 0 && (
-                <p className="text-xs text-text-muted mt-2">Everyone is already on this team for this season.</p>
-              )}
-              {assignForm.playerId && (
-                <p className="text-xs text-text-muted mt-2">
-                  {(() => {
-                    const sp = assignableForModal.find((x) => String(x.id) === assignForm.playerId);
-                    return sp
-                      ? `Selected: ${sp.lastName}, ${sp.firstName}`
-                      : `Selected player #${assignForm.playerId}`;
-                  })()}
-                </p>
-              )}
             </div>
             <Field label="Jersey #">
               <input type="text" value={assignForm.jerseyNumber} onChange={e => setAssignForm(f => ({ ...f, jerseyNumber: e.target.value }))} className={inputClass} placeholder="e.g. 7" />

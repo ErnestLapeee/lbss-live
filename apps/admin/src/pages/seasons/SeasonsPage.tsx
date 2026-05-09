@@ -156,12 +156,6 @@ export function SeasonsPage() {
         </button>
       </div>
 
-      <p className="text-sm text-text-muted mb-4 max-w-2xl">
-        Regular season is for the full league schedule. Playoffs are a <strong>separate season</strong> (add a second
-        row with type &quot;Playoff&quot;) so only teams that advance can have games and stats—no automatic playoff
-        bracket from the full league standings.
-      </p>
-
       {error && (
         <div className="mb-4 px-4 py-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-600 text-sm">
           {error}
@@ -253,10 +247,6 @@ export function SeasonsPage() {
                   <option value="regular">Regular season (full league)</option>
                   <option value="playoff">Playoff — separate campaign (add manually)</option>
                 </select>
-                <p className="mt-1 text-xs text-text-faint">
-                  Playoffs are not created automatically from the league table. Teams that do not participate are simply
-                  not in this season&apos;s leagues.
-                </p>
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1.5">Year</label>
@@ -293,7 +283,6 @@ export function SeasonsPage() {
                       </option>
                     ))}
                   </select>
-                  <p className="mt-1 text-xs text-text-faint">Link to the regular season this playoff follows, if useful.</p>
                 </div>
               )}
               <div>
@@ -326,9 +315,6 @@ export function SeasonsPage() {
                   Active (workspace default)
                 </label>
               </div>
-              <p className="text-xs text-text-muted -mt-1 ml-6">
-                Only one season can be active at a time. Saving will clear &quot;active&quot; on all other seasons.
-              </p>
 
               {form.seasonKind === 'playoff' && (
                 <>
@@ -375,9 +361,6 @@ export function SeasonsPage() {
                         />
                       </div>
                     </div>
-                    <p className="text-xs text-text-faint">
-                      Schedule games for this playoff season under Games once teams are in the league.
-                    </p>
                   </div>
                 </>
               )}

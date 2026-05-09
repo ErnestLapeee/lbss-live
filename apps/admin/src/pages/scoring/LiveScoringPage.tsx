@@ -1853,7 +1853,6 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                     </span>
                     <span
                       className={`w-2 h-2 rounded-full shrink-0 ${p.licensePaid === 'paid' ? 'bg-green-500' : 'bg-red-500'}`}
-                      title={p.licensePaid === 'paid' ? 'License paid' : 'License unpaid'}
                     />
                   </button>
                 ))}
@@ -1942,10 +1941,6 @@ function needsRunnerAdvanceErrorFieldingPrompt(
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" role="dialog" aria-modal="true" aria-labelledby="add-roster-title">
           <div className="w-full max-w-md rounded-xl border border-white/10 bg-[#162038] p-5 shadow-xl">
             <h2 id="add-roster-title" className="mb-1 text-lg font-bold text-white">Add player to roster</h2>
-            <p className="mb-4 text-xs text-white/50">
-              Creates the player and registers them for this season on{' '}
-              <span className="text-white/80">{setupTeam === 'home' ? game.homeTeamName : game.awayTeamName}</span>.
-            </p>
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="block sm:col-span-1">
                 <span className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-white/40">First name *</span>
@@ -2128,12 +2123,11 @@ function needsRunnerAdvanceErrorFieldingPrompt(
             </div>
           )}
 
-          {/* Batting lineup — tap a hitter to replace that batting-order slot */}
+          {/* Batting lineup */}
           <div className="mb-3">
             <div className="text-[9px] text-white/30 font-bold uppercase tracking-wider px-1 mb-0.5">
               {battingSide === 'away' ? game.awayTeamName : game.homeTeamName}
             </div>
-            <div className="text-[8px] text-white/20 px-1 mb-1.5 leading-tight">Tap a name to replace that batting-order slot</div>
             {Array.from({ length: 9 }, (_, i) => {
               const slot = i + 1;
               const entry = battingLineup.find(l => l.battingOrder === slot);
@@ -2328,9 +2322,6 @@ function needsRunnerAdvanceErrorFieldingPrompt(
               <div className="space-y-2">
                 {(currentBatter.bats || '').trim().toUpperCase() === 'S' && (
                   <div className="rounded-lg border border-amber-500/35 bg-amber-950/35 px-3 py-2">
-                    <p className="text-[10px] text-amber-100/90 font-bold uppercase tracking-wide mb-2">
-                      Switch hitter — batting from this PA:
-                    </p>
                     <div className="flex gap-2">
                       <button
                         type="button"
@@ -2634,7 +2625,6 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                   <div className="px-4 py-3 border-b border-white/5 text-center">
                     <p className="text-[10px] text-amber-400 font-bold uppercase mb-1 tracking-widest">{reasonLabel}</p>
                     <p className="text-xs text-white/80 font-bold tracking-wide">{q.playerName}</p>
-                    <p className="text-[10px] text-white/40 mt-1">tap position(s) — who committed the error</p>
                     {fld.length > 0 && (
                       <p className="text-sm text-white font-bold mt-2 tracking-wider">E{fld.join('')}</p>
                     )}
@@ -3389,7 +3379,6 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                       );
                     })}
                   </div>
-                  <p className="text-[9px] text-white/30 text-center mb-2">Choose who comes in for this lineup spot</p>
                   <div className="space-y-1">
                     {availableBattingSubs.map(p => (
                       <button key={p.playerId} onClick={() => handleOffensiveSub(p.playerId)}
@@ -3502,9 +3491,6 @@ function needsRunnerAdvanceErrorFieldingPrompt(
             {step === 'adjust_score' && (
               <div className="bg-[#111d30] rounded-lg border border-white/10 p-4">
                 <p className="text-xs text-white/40 uppercase font-bold text-center mb-4">Adjust Score</p>
-                <p className="mb-3 text-center text-[10px] leading-snug text-amber-200/60">
-                  Team-score correction only. Player runs/RBIs and pitcher runs stay unchanged.
-                </p>
                 <div className="flex items-center gap-6 justify-center mb-4">
                   <div className="text-center">
                     <p className="text-[10px] text-white/40 uppercase mb-1">{game.awayTeamName}</p>
@@ -3598,9 +3584,6 @@ function needsRunnerAdvanceErrorFieldingPrompt(
             <h2 id="lineup-adjust-title" className="text-center text-sm font-bold uppercase tracking-wider text-white mb-1">
               Adjust active lineups
             </h2>
-            <p className="text-[10px] text-center text-white/45 mb-3 leading-snug">
-              Set batting order and defensive positions. Choose <span className="text-white/70">Vacant slot</span> for an ejected player or empty lineup spot (automatic out when that slot bats). Fielding positions must stay unique among active players.
-            </p>
             <div className="flex gap-1 mb-3">
               {(['away', 'home'] as const).map((side) => (
                 <button
@@ -4061,7 +4044,6 @@ function EventTimelinePanel({ gameId, events, homeLineup, awayLineup, onClose, o
                       <div className="flex gap-2 text-[10px]">
                         <label className="text-white/40 w-16 shrink-0">Errors:</label>
                         <input type="number" value={editForm.errorsOnPlay ?? 0} onChange={e => setEditForm(f => ({ ...f, errorsOnPlay: parseInt(e.target.value) || 0 }))} className="w-12 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-[10px]" />
-                        <span className="text-white/25 text-[9px] mt-1">Auto-matches selected error fielders</span>
                       </div>
 
                       <div className="grid grid-cols-3 gap-1.5 text-[10px]">

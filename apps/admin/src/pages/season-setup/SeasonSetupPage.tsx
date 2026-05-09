@@ -171,10 +171,6 @@ export function SeasonSetupPage() {
     <div>
       <div className="mb-6">
         <h1 className="font-heading text-xl font-bold">Season setup</h1>
-        <p className="text-xs text-text-muted mt-1 max-w-2xl">
-          Choose a league, tick teams, save. Import rosters copies last season&apos;s assignments. To remove a club from
-          this year only, uncheck here (do not use Deactivate on the Teams page).
-        </p>
       </div>
 
       {error && (
@@ -189,11 +185,9 @@ export function SeasonSetupPage() {
       {seasonsLoading || loading ? (
         <p className="text-text-muted text-sm">Loading…</p>
       ) : !selectedSeasonId ? (
-        <p className="text-text-muted text-sm">Choose a workspace season in the header.</p>
+        <p className="text-text-muted text-sm">No season selected.</p>
       ) : leaguesInSeason.length === 0 ? (
-        <p className="text-text-muted text-sm">
-          No league for this season yet. Create one under <strong>Leagues</strong> first.
-        </p>
+        <p className="text-text-muted text-sm">No league for this season.</p>
       ) : (
         <div className="space-y-8">
           <div className="flex flex-wrap items-end gap-4">
@@ -259,11 +253,6 @@ export function SeasonSetupPage() {
 
           <div className="rounded-xl border border-border bg-surface-alt/40 p-4 max-w-xl">
             <h2 className="font-heading font-semibold text-lg mb-2">Import rosters</h2>
-            <p className="text-sm text-text-muted mb-3">
-              For each team checked above, copies <code className="text-xs bg-surface px-1 rounded">player_seasons</code>{' '}
-              from the source season (same team id). Does not remove existing rows; skips players who already have a
-              roster line in the current season.
-            </p>
             <div className="flex flex-wrap items-end gap-3">
               <div>
                 <label className="block text-xs font-medium text-text-muted mb-1">Copy from season</label>

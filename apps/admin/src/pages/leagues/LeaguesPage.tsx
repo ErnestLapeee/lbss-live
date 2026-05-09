@@ -119,14 +119,7 @@ export function LeaguesPage() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="font-heading text-2xl font-bold">Leagues</h1>
-          <p className="text-sm text-text-muted mt-1">
-            {selectedSeasonId
-              ? `Showing leagues for the workspace season (${seasonMap[selectedSeasonId]?.year ?? '?'}). Switch season in the top bar to see others.`
-              : 'Choose a workspace season in the top bar to filter this list.'}
-          </p>
-        </div>
+        <h1 className="font-heading text-2xl font-bold">Leagues</h1>
         <button
           onClick={openCreate}
           className="px-4 py-2 bg-accent hover:bg-accent-light text-white text-sm font-semibold rounded-lg transition-colors"
@@ -162,9 +155,7 @@ export function LeaguesPage() {
             ) : filteredItems.length === 0 ? (
               <tr>
                 <td className="px-4 py-8 text-center text-text-muted" colSpan={5}>
-                  {items.length === 0
-                    ? 'No data yet. Create your first entry.'
-                    : 'No leagues for the selected workspace season. Switch season in the top bar or create a league.'}
+                  {items.length === 0 ? 'No leagues yet.' : 'No leagues for this season.'}
                 </td>
               </tr>
             ) : (

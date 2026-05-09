@@ -32,7 +32,7 @@ const BATS_OPTIONS = ['R', 'L', 'S'];
 const THROWS_OPTIONS = ['R', 'L', 'S'];
 
 export function PlayersPage() {
-  const { selectedSeasonId, seasonsLoading } = useAdminSeason();
+  const { selectedSeasonId } = useAdminSeason();
   const [players, setPlayers] = useState<Player[]>([]);
   const [licenseMap, setLicenseMap] = useState<Map<number, string>>(new Map());
   const [loading, setLoading] = useState(true);
@@ -152,16 +152,12 @@ export function PlayersPage() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6 gap-4 flex-wrap">
-        <div>
-          <h1 className="font-heading text-2xl font-bold">Player Directory</h1>
-          <p className="text-sm text-text-muted mt-1">Manage player details. Assign players to teams on the Teams page.</p>
-        </div>
+        <h1 className="font-heading text-2xl font-bold">Player Directory</h1>
         <button onClick={openCreate} className="px-4 py-2 bg-accent hover:bg-accent-light text-white text-sm font-semibold rounded-lg transition-colors">
           + Create Player
         </button>
       </div>
 
-      {/* search + season filter */}
       <div className="mb-4 flex items-center gap-3 flex-wrap">
         <input
           type="text"
@@ -170,13 +166,6 @@ export function PlayersPage() {
           onChange={e => setSearch(e.target.value)}
           className="w-full max-w-sm px-3 py-2 border border-border rounded-lg bg-surface text-sm focus:outline-none focus:ring-2 focus:ring-accent"
         />
-        {seasonsLoading ? (
-          <span className="text-xs text-text-muted">Loading seasons…</span>
-        ) : !selectedSeasonId ? (
-          <span className="text-xs text-amber-600">Add a season to see license status</span>
-        ) : (
-          <span className="text-xs text-text-muted">License column = workspace season</span>
-        )}
       </div>
 
       {error && (
