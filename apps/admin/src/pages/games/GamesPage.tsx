@@ -131,7 +131,10 @@ export function GamesPage() {
       const gamesRes = await apiGet<Game[]>(`/admin/games?seasonId=${selectedSeasonId}`);
       setGames(Array.isArray(gamesRes) ? gamesRes : []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load data');
+      const msg = err instanceof Error ? err.message : 'Failed to load data';
+      if (!/authentication required/i.test(msg)) {
+        setError(msg);
+      }
     } finally {
       setLoading(false);
     }
@@ -304,14 +307,7 @@ export function GamesPage() {
 
       {error && (
         <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-600">
-          <p className="font-medium">{error}</p>
-          {/authentication required/i.test(error) && (
-            <p className="mt-2 text-xs leading-relaxed text-red-700/90">
-              Try <strong>Log out</strong> and sign in again on this device. The admin app and API must use HTTPS, and
-              your Railway <code className="rounded bg-red-500/15 px-1">ADMIN_URL</code> must match this site&apos;s
-              address exactly so the session cookie is accepted.
-            </p>
-          )}
+          {error}
         </div>
       )}
 

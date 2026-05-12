@@ -4,14 +4,14 @@ import { useAuth } from '@/lib/auth';
 import { useAdminSeason, type AdminSeasonRow } from '@/context/AdminSeasonContext';
 
 const sidebarItems = [
-  { label: 'Dashboard', href: '/', icon: '□' },
-  { label: 'Seasons', href: '/seasons', icon: '◷' },
-  { label: 'Leagues', href: '/leagues', icon: '⊞' },
-  { label: 'Season setup', href: '/season-setup', icon: '⊕' },
-  { label: 'Teams', href: '/teams', icon: '⚑' },
-  { label: 'Players', href: '/players', icon: '⚇' },
-  { label: 'Games', href: '/games', icon: '⚾' },
-  { label: 'Users', href: '/users', icon: '⚙' },
+  { label: 'Dashboard', href: '/' },
+  { label: 'Seasons', href: '/seasons' },
+  { label: 'Leagues', href: '/leagues' },
+  { label: 'Season setup', href: '/season-setup' },
+  { label: 'Teams', href: '/teams' },
+  { label: 'Players', href: '/players' },
+  { label: 'Games', href: '/games' },
+  { label: 'Users', href: '/users' },
 ];
 
 export function AdminLayout() {
@@ -94,7 +94,6 @@ export function AdminLayout() {
                     : 'text-sidebar-text hover:bg-sidebar-active hover:text-white'
                 }`}
               >
-                <span className="text-base">{item.icon}</span>
                 {item.label}
               </Link>
             );
@@ -139,7 +138,7 @@ export function AdminLayout() {
                     <option key={s.id} value={s.id}>
                       {s.year} – {s.name}
                       {s.seasonKind === 'playoff' ? ' (Playoffs)' : ''}
-                      {s.isActive ? ' ★' : ''}
+                      {s.isActive ? ' (active)' : ''}
                     </option>
                   ))
                 )}
