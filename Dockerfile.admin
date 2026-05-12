@@ -23,7 +23,8 @@ RUN pnpm install --frozen-lockfile
 COPY packages/shared packages/shared
 COPY apps/admin apps/admin
 
-# API URL for admin to call in production (set in Railway: Variables or Build → Build Args)
+# API base for the production server to proxy `/api` (set in Railway Variables at runtime).
+# The browser always calls same-origin `/api` so session cookies work on mobile Safari.
 ARG VITE_API_URL
 ENV VITE_API_URL=$VITE_API_URL
 RUN pnpm --filter @lbss/shared build
