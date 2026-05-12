@@ -51,8 +51,7 @@ export function LoginPage() {
               autoComplete="username"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-3 py-2.5 border border-border rounded-lg bg-surface-alt text-sm focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent"
-              placeholder="admin@lbss.lv"
+              className="w-full px-3 py-2.5 border border-border rounded-lg bg-surface-alt text-sm focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-transparent"
               required
             />
           </div>
@@ -64,17 +63,16 @@ export function LoginPage() {
               autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-3 py-2.5 border border-border rounded-lg bg-surface-alt text-sm focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent"
-              placeholder="Enter password"
+              className="w-full px-3 py-2.5 border border-border rounded-lg bg-surface-alt text-sm focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-transparent"
               required
             />
           </div>
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-2.5 bg-accent hover:bg-accent-light text-white font-semibold rounded-lg transition-colors disabled:opacity-50"
+            className="w-full rounded-lg border border-black/15 bg-[#e8e8e8] py-2.5 text-sm font-medium text-text shadow-sm transition-colors hover:bg-[#dedede] active:bg-[#d4d4d4] disabled:opacity-50"
           >
-            {loading ? 'Signing in...' : 'Sign In'}
+            {loading ? 'Signing in...' : 'Sign in'}
           </button>
         </form>
         </div>
