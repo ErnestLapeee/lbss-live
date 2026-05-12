@@ -1785,12 +1785,33 @@ function needsRunnerAdvanceErrorFieldingPrompt(
     return (
       <>
       <div className="scoring-app min-h-screen bg-scoring-canvas text-white">
-        <div className="bg-scoring-bar border-b border-white/10 px-6 py-4 flex items-center justify-between">
-          <button onClick={() => navigate('/games')} className="text-sm text-white/50 hover:text-white">← Back</button>
-          <h1 className="font-bold text-lg">{game.awayTeamName} @ {game.homeTeamName} — Lineup</h1>
-          <button onClick={handleSetupSubmit} disabled={setupHome.length === 0 || setupAway.length === 0 || !setupUmpire.trim() || !setupScorer.trim()} className="px-4 py-2 bg-green-600 hover:bg-green-500 disabled:opacity-30 text-white text-sm font-bold rounded-lg">Start Game</button>
+        <div className="bg-scoring-bar border-b border-white/10 px-3 py-3 sm:px-6 sm:py-4">
+          <div className="mx-auto flex max-w-6xl flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+            <div className="flex items-center justify-between gap-3 sm:contents">
+              <button type="button" onClick={() => navigate('/games')} className="shrink-0 text-sm text-white/50 hover:text-white">← Back</button>
+              <button
+                type="button"
+                onClick={handleSetupSubmit}
+                disabled={setupHome.length === 0 || setupAway.length === 0 || !setupUmpire.trim() || !setupScorer.trim()}
+                className="shrink-0 rounded-lg bg-green-600 px-3 py-2 text-xs font-bold text-white hover:bg-green-500 disabled:opacity-30 sm:hidden"
+              >
+                Start game
+              </button>
+            </div>
+            <h1 className="order-last text-center text-xs font-bold leading-snug text-white sm:order-none sm:flex-1 sm:truncate sm:px-2 sm:text-left sm:text-lg">
+              {game.awayTeamName} @ {game.homeTeamName} — Lineup
+            </h1>
+            <button
+              type="button"
+              onClick={handleSetupSubmit}
+              disabled={setupHome.length === 0 || setupAway.length === 0 || !setupUmpire.trim() || !setupScorer.trim()}
+              className="hidden shrink-0 rounded-lg bg-green-600 px-4 py-2 text-sm font-bold text-white hover:bg-green-500 disabled:opacity-30 sm:inline-flex"
+            >
+              Start Game
+            </button>
+          </div>
         </div>
-        <div className="max-w-6xl mx-auto p-6">
+        <div className="mx-auto max-w-6xl px-3 py-4 sm:p-6">
           <div className="mb-4 grid gap-3 rounded-lg border border-white/10 bg-white/5 p-4 sm:grid-cols-2">
             <label className="block">
               <span className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-white/40">Umpire</span>
@@ -1811,29 +1832,34 @@ function needsRunnerAdvanceErrorFieldingPrompt(
               />
             </label>
           </div>
-          <div className="flex flex-wrap gap-2 mb-4 items-center">
+          <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-stretch">
             {(['away', 'home'] as const).map(side => (
-              <button key={side} onClick={() => setSetupTeam(side)} className={`px-4 py-2 rounded-lg text-sm font-semibold ${setupTeam === side ? 'bg-accent text-white' : 'bg-white/10 text-white/60'}`}>
+              <button
+                key={side}
+                type="button"
+                onClick={() => setSetupTeam(side)}
+                className={`w-full rounded-lg px-4 py-3 text-left text-sm font-semibold sm:w-auto sm:py-2 ${setupTeam === side ? 'bg-accent text-white' : 'bg-white/10 text-white/60'}`}
+              >
                 {side === 'away' ? game.awayTeamName : game.homeTeamName} ({(side === 'home' ? setupHome : setupAway).length}/9)
               </button>
             ))}
           </div>
-          <div className="grid grid-cols-2 gap-6">
-            <div>
-              <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-                <h3 className="text-sm font-bold text-white/50 uppercase">Available</h3>
-                <div className="flex flex-wrap gap-2">
+          <div className="flex flex-col gap-8 lg:grid lg:grid-cols-2 lg:gap-8">
+            <div className="min-w-0">
+              <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+                <h3 className="text-sm font-bold uppercase text-white/50">Available</h3>
+                <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                   <button
                     type="button"
                     onClick={() => addVacantSlotToSetup(setupTeam)}
-                    className="shrink-0 rounded-lg border border-dashed border-white/20 bg-white/5 px-3 py-1.5 text-xs font-semibold text-white/70 hover:bg-white/10"
+                    className="min-h-[44px] shrink-0 rounded-lg border border-dashed border-white/20 bg-white/5 px-3 py-2 text-xs font-semibold text-white/70 hover:bg-white/10 sm:min-h-0 sm:py-1.5"
                   >
                     + Vacant slot
                   </button>
                   <button
                     type="button"
                     onClick={() => setAddRosterOpen(true)}
-                    className="shrink-0 rounded-lg border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white hover:bg-white/15"
+                    className="min-h-[44px] shrink-0 rounded-lg border border-white/15 bg-white/10 px-3 py-2 text-xs font-semibold text-white hover:bg-white/15 sm:min-h-0 sm:py-1.5"
                   >
                     + New player ({setupTeam === 'home' ? game.homeTeamName : game.awayTeamName})
                   </button>
@@ -1845,7 +1871,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                     key={p.playerId}
                     type="button"
                     onClick={() => addToSetup(setupTeam, p.playerId)}
-                    className="w-full text-left px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-sm flex items-center gap-2"
+                    className="flex min-h-[44px] w-full items-center gap-2 rounded-lg bg-white/5 px-3 py-2 text-left text-sm hover:bg-white/10 sm:min-h-0"
                   >
                     {p.jerseyNumber && <span className="text-white/30 font-mono">#{p.jerseyNumber}</span>}
                     <span className="flex-1">
@@ -1858,8 +1884,8 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                 ))}
               </div>
             </div>
-            <div>
-              <h3 className="text-sm font-bold text-white/50 uppercase mb-3">Batting order</h3>
+            <div className="min-w-0 border-t border-white/10 pt-6 lg:border-t-0 lg:pt-0">
+              <h3 className="mb-3 text-sm font-bold uppercase text-white/50">Batting order</h3>
               <div className="space-y-1">
                 {currentSetup.map((entry, idx) => {
                   const player =
@@ -1886,49 +1912,54 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                         moveSetup(setupTeam, from, idx);
                         setSetupDragFrom(null);
                       }}
-                      className={`flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5 border border-transparent cursor-grab active:cursor-grabbing select-none ${
-                        setupDragFrom === idx ? 'opacity-50 border-amber-500/40' : 'hover:border-white/10'
+                      className={`flex cursor-grab select-none flex-col gap-2 rounded-lg border border-transparent bg-white/5 px-3 py-2 active:cursor-grabbing sm:flex-row sm:items-center sm:gap-2 ${
+                        setupDragFrom === idx ? 'border-amber-500/40 opacity-50' : 'hover:border-white/10'
                       }`}
                     >
-                      <span className="text-white/40 text-lg leading-none" aria-hidden>
-                        ⋮⋮
-                      </span>
-                      <span className="text-white/30 font-bold w-6">{idx + 1}</span>
-                      {player && (
-                        <span
-                          className={`w-2 h-2 rounded-full shrink-0 ${player.licensePaid === 'paid' ? 'bg-green-500' : 'bg-red-500'}`}
-                        />
-                      )}
-                      <span className="flex-1 text-sm">
-                        {entry.playerId == null
-                          ? <span className="text-white/45 italic">Vacant (ejection / empty)</span>
-                          : player
-                            ? `${player.firstName.charAt(0)}. ${player.lastName}`
-                            : '?'}
-                      </span>
-                      {entry.playerId != null ? (
-                        <select
-                          value={entry.position ?? 1}
-                          onChange={(e) => updatePosition(setupTeam, idx, Number(e.target.value))}
-                          className={ADMIN_SELECT_POS}
-                          onClick={(e) => e.stopPropagation()}
+                      <div className="flex min-w-0 flex-1 items-center gap-2">
+                        <span className="text-lg leading-none text-white/40" aria-hidden>
+                          ⋮⋮
+                        </span>
+                        <span className="w-6 shrink-0 font-bold text-white/30">{idx + 1}</span>
+                        {player && (
+                          <span
+                            className={`h-2 w-2 shrink-0 rounded-full ${player.licensePaid === 'paid' ? 'bg-green-500' : 'bg-red-500'}`}
+                          />
+                        )}
+                        <span className="min-w-0 flex-1 text-sm">
+                          {entry.playerId == null
+                            ? <span className="italic text-white/45">Vacant (ejection / empty)</span>
+                            : player
+                              ? `${player.firstName.charAt(0)}. ${player.lastName}`
+                              : '?'}
+                        </span>
+                      </div>
+                      <div className="flex shrink-0 items-center justify-end gap-2 sm:justify-start">
+                        {entry.playerId != null ? (
+                          <select
+                            value={entry.position ?? 1}
+                            onChange={(e) => updatePosition(setupTeam, idx, Number(e.target.value))}
+                            className={`${ADMIN_SELECT_POS} min-w-0 max-w-[11rem] flex-1 sm:max-w-none sm:flex-initial`}
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            {Object.entries(POS_LABELS).map(([k, v]) => (
+                              <option key={k} value={k}>
+                                {v}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <span className="flex-1 text-right text-[10px] text-white/30 sm:w-[7rem] sm:flex-initial sm:text-left">No position</span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => removeFromSetup(setupTeam, idx)}
+                          className="flex h-11 min-h-[44px] w-11 min-w-[44px] shrink-0 items-center justify-center rounded-lg text-base text-red-400 hover:bg-red-500/10 sm:h-9 sm:min-h-0 sm:w-9 sm:min-w-0"
+                          aria-label={`Remove slot ${idx + 1}`}
                         >
-                          {Object.entries(POS_LABELS).map(([k, v]) => (
-                            <option key={k} value={k}>
-                              {v}
-                            </option>
-                          ))}
-                        </select>
-                      ) : (
-                        <span className="text-[10px] text-white/30 w-[7rem] text-right">No position</span>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => removeFromSetup(setupTeam, idx)}
-                        className="text-red-400 text-xs"
-                      >
-                        ✕
-                      </button>
+                          ✕
+                        </button>
+                      </div>
                     </div>
                   );
                 })}
@@ -2089,8 +2120,8 @@ function needsRunnerAdvanceErrorFieldingPrompt(
 
       {/* ── Main content: stack on phone, row on large screens ── */}
       <div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col lg:flex-row">
-        {/* ── Lineups (full width strip on mobile) ── */}
-        <div className="max-h-[42vh] w-full shrink-0 overflow-y-auto border-b border-white/10 px-2 py-2 sm:max-h-[38vh] lg:max-h-none lg:w-52 lg:border-b-0 lg:border-r lg:border-white/5">
+        {/* ── Lineups: scroll strip on phone; sidebar on lg ── */}
+        <div className="max-h-[min(34vh,300px)] w-full shrink-0 overflow-y-auto border-b border-white/10 px-2 py-2 sm:max-h-[38vh] lg:max-h-none lg:w-52 lg:border-b-0 lg:border-r lg:border-white/5">
           {/* Current batter highlight */}
           <div className="bg-scoring-card rounded-lg px-3 py-2 mb-3 border border-white/5">
             <div className="text-[9px] text-white/30 font-bold uppercase tracking-wider mb-0.5">At Bat</div>
@@ -2291,7 +2322,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
           </div>
 
           {/* ── Wizard panels ── */}
-          <div className="px-3 pb-2">
+          <div className="px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:px-3">
             {/* EMPTY SLOT — automatic out */}
             {step === 'pitch' && isEmptySlot && (
               <div className="bg-scoring-panel rounded-xl border border-white/10 overflow-hidden p-4 text-center">
@@ -2344,39 +2375,39 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                     </div>
                   </div>
                 )}
-                <div className="grid grid-cols-5 gap-1.5">
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-5 sm:gap-1.5">
                   <button
                     onClick={handleBall}
                     disabled={submitting || ((currentBatter.bats || '').trim().toUpperCase() === 'S' && !switchBatSide)}
-                    className="py-4 bg-[#1a6b3a] hover:bg-[#20804a] text-white font-bold text-base rounded-lg transition-all disabled:opacity-30 border border-[#20804a]/50"
+                    className="col-span-1 py-4 bg-[#1a6b3a] hover:bg-[#20804a] text-white font-bold text-sm sm:text-base rounded-lg transition-all disabled:opacity-30 border border-[#20804a]/50"
                   >
                     BALL
                   </button>
                   <button
                     onClick={handleStrike}
                     disabled={submitting || ((currentBatter.bats || '').trim().toUpperCase() === 'S' && !switchBatSide)}
-                    className="py-4 bg-[#8b2020] hover:bg-[#a02828] text-white font-bold text-base rounded-lg transition-all disabled:opacity-30 border border-[#a02828]/50"
+                    className="col-span-1 py-4 bg-[#8b2020] hover:bg-[#a02828] text-white font-bold text-sm sm:text-base rounded-lg transition-all disabled:opacity-30 border border-[#a02828]/50"
                   >
                     STRIKE
                   </button>
                   <button
                     onClick={handleFoul}
                     disabled={submitting || ((currentBatter.bats || '').trim().toUpperCase() === 'S' && !switchBatSide)}
-                    className="py-4 bg-[#8b7020] hover:bg-[#a08428] text-white font-bold text-base rounded-lg transition-all disabled:opacity-30 border border-[#a08428]/50"
+                    className="col-span-1 py-4 bg-[#8b7020] hover:bg-[#a08428] text-white font-bold text-sm sm:text-base rounded-lg transition-all disabled:opacity-30 border border-[#a08428]/50"
                   >
                     FOUL
                   </button>
                   <button
                     onClick={handleOut}
                     disabled={submitting || ((currentBatter.bats || '').trim().toUpperCase() === 'S' && !switchBatSide)}
-                    className="py-4 bg-[#1a5c3a] hover:bg-[#237548] text-white font-bold text-base rounded-lg transition-all disabled:opacity-30 border border-[#237548]/50"
+                    className="col-span-1 py-4 bg-[#1a5c3a] hover:bg-[#237548] text-white font-bold text-sm sm:text-base rounded-lg transition-all disabled:opacity-30 border border-[#237548]/50"
                   >
                     OUT
                   </button>
                   <button
                     onClick={handleInPlay}
                     disabled={submitting || ((currentBatter.bats || '').trim().toUpperCase() === 'S' && !switchBatSide)}
-                    className="py-4 bg-[#1a3a8b] hover:bg-[#2248a0] text-white font-bold text-base rounded-lg transition-all disabled:opacity-30 border border-[#2248a0]/50"
+                    className="col-span-2 py-4 bg-[#1a3a8b] hover:bg-[#2248a0] text-white font-bold text-sm sm:text-base rounded-lg transition-all disabled:opacity-30 border border-[#2248a0]/50 sm:col-span-1"
                   >
                     IN PLAY
                   </button>
@@ -3519,14 +3550,14 @@ function needsRunnerAdvanceErrorFieldingPrompt(
           </div>
 
           {/* ── Bottom bar ── */}
-          <div className="bg-scoring-footer border-t border-white/10 px-3 py-1.5">
-            <div className="flex items-center justify-between text-[10px] font-bold uppercase">
-              <button onClick={() => navigate('/games')} className="px-3 py-1.5 text-white/40 hover:text-white">Exit</button>
-              <button onClick={handleUndo} disabled={historyBusy} className="px-3 py-1.5 text-white/40 hover:text-white disabled:opacity-30">Undo</button>
-              <button onClick={handleRedo} disabled={historyBusy} className="px-3 py-1.5 text-white/40 hover:text-white disabled:opacity-30">Redo</button>
-              <button onClick={() => setShowEventTimeline(v => !v)} className="px-3 py-1.5 text-white/40 hover:text-white">Log</button>
-              <button onClick={cancelWizard} className="px-3 py-1.5 text-white/40 hover:text-white">Reset</button>
-              <button onClick={() => setStep('misc')} className="px-3 py-1.5 text-white/40 hover:text-white">Misc</button>
+          <div className="bg-scoring-footer border-t border-white/10 px-2 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:px-3 sm:py-1.5">
+            <div className="flex flex-wrap items-center justify-center gap-x-1 gap-y-1 text-[10px] font-bold uppercase sm:flex-nowrap sm:justify-between">
+              <button type="button" onClick={() => navigate('/games')} className="min-h-[40px] min-w-[3.25rem] rounded px-2 py-1.5 text-white/40 hover:text-white sm:min-h-0 sm:px-3">Exit</button>
+              <button type="button" onClick={handleUndo} disabled={historyBusy} className="min-h-[40px] min-w-[3.25rem] rounded px-2 py-1.5 text-white/40 hover:text-white disabled:opacity-30 sm:min-h-0 sm:px-3">Undo</button>
+              <button type="button" onClick={handleRedo} disabled={historyBusy} className="min-h-[40px] min-w-[3.25rem] rounded px-2 py-1.5 text-white/40 hover:text-white disabled:opacity-30 sm:min-h-0 sm:px-3">Redo</button>
+              <button type="button" onClick={() => setShowEventTimeline(v => !v)} className="min-h-[40px] min-w-[3.25rem] rounded px-2 py-1.5 text-white/40 hover:text-white sm:min-h-0 sm:px-3">Log</button>
+              <button type="button" onClick={cancelWizard} className="min-h-[40px] min-w-[3.25rem] rounded px-2 py-1.5 text-white/40 hover:text-white sm:min-h-0 sm:px-3">Reset</button>
+              <button type="button" onClick={() => setStep('misc')} className="min-h-[40px] min-w-[3.25rem] rounded px-2 py-1.5 text-white/40 hover:text-white sm:min-h-0 sm:px-3">Misc</button>
             </div>
           </div>
         </div>
@@ -3590,7 +3621,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                   key={side}
                   type="button"
                   onClick={() => setLineupAdjustTeam(side)}
-                  className={`flex-1 rounded-lg py-2 text-[10px] font-bold uppercase ${
+                  className={`min-w-0 flex-1 truncate rounded-lg py-2 text-[10px] font-bold uppercase ${
                     lineupAdjustTeam === side ? 'bg-accent text-white' : 'bg-white/10 text-white/50 hover:text-white/80'
                   }`}
                 >
@@ -3608,8 +3639,8 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                 );
                 const pickable = roster.filter((p) => !takenIds.has(p.playerId) || p.playerId === row.playerId);
                 return (
-                  <div key={row.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] px-2 py-2">
-                    <label className="flex flex-col gap-0.5 text-[10px] text-white/40 min-w-[140px] flex-[2]">
+                  <div key={row.id} className="flex flex-col gap-2 rounded-lg border border-white/10 bg-white/[0.04] px-2 py-2 sm:flex-row sm:flex-wrap sm:items-center">
+                    <label className="flex min-w-0 flex-[2] flex-col gap-0.5 text-[10px] text-white/40 sm:min-w-[140px]">
                       <span>Player</span>
                       <select
                         value={row.playerId ?? ''}
@@ -3916,7 +3947,7 @@ function EventTimelinePanel({ gameId, events, homeLineup, awayLineup, onClose, o
   return (
     <div className="fixed inset-0 z-50 flex">
       <div className="absolute inset-0 bg-black/60" onClick={onClose} />
-      <div className="relative ml-auto w-full max-w-lg bg-scoring-timeline border-l border-white/10 h-full flex flex-col overflow-hidden">
+      <div className="relative ml-auto flex h-full w-full max-w-lg flex-col overflow-hidden border-l border-white/10 bg-scoring-timeline pt-[env(safe-area-inset-top)]">
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
           <div className="flex items-center gap-2">
