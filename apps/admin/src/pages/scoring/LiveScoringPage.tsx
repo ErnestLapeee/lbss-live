@@ -2050,21 +2050,21 @@ function needsRunnerAdvanceErrorFieldingPrompt(
   return (
     <div className="scoring-app min-h-screen bg-scoring-canvas text-white flex flex-col">
       {/* ── Scoreboard bar ── */}
-      <div className="bg-scoring-footer border-b border-white/20 px-4 py-2.5">
-        <div className="max-w-6xl mx-auto flex items-center justify-between text-sm font-bold font-mono">
-          <div className="flex items-center gap-6">
-            <div className="flex items-center gap-2">
-              <span className="text-white/70 text-xs uppercase w-12">Visitor</span>
-              <span className="text-white truncate max-w-[120px] font-semibold">{game.awayTeamName}</span>
-              <span className="text-3xl text-white tabular-nums ml-1">{gameState.awayScore}</span>
+      <div className="bg-scoring-footer border-b border-white/20 px-3 py-2 sm:px-4 sm:py-2.5">
+        <div className="mx-auto flex max-w-6xl flex-col gap-3 font-mono text-sm font-bold sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 sm:gap-6">
+            <div className="flex min-w-0 flex-1 items-center gap-2 sm:flex-initial">
+              <span className="w-12 shrink-0 text-xs uppercase text-white/70">Visitor</span>
+              <span className="min-w-0 truncate font-semibold text-white">{game.awayTeamName}</span>
+              <span className="ml-auto shrink-0 text-3xl tabular-nums text-white sm:ml-1">{gameState.awayScore}</span>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="text-white/70 text-xs uppercase w-12">Home</span>
-              <span className="text-white truncate max-w-[120px] font-semibold">{game.homeTeamName}</span>
-              <span className="text-3xl text-white tabular-nums ml-1">{gameState.homeScore}</span>
+            <div className="flex min-w-0 flex-1 items-center gap-2 sm:flex-initial">
+              <span className="w-12 shrink-0 text-xs uppercase text-white/70">Home</span>
+              <span className="min-w-0 truncate font-semibold text-white">{game.homeTeamName}</span>
+              <span className="ml-auto shrink-0 text-3xl tabular-nums text-white sm:ml-1">{gameState.homeScore}</span>
             </div>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-center gap-4 border-t border-white/10 pt-2 sm:border-t-0 sm:pt-0">
             <div className="flex items-center gap-1.5">
               <span className="text-white/70 text-xs">INN</span>
               <span className="text-white text-base">{gameState.half === 'top' ? '▲' : '▼'} {gameState.inning}</span>
@@ -2087,10 +2087,10 @@ function needsRunnerAdvanceErrorFieldingPrompt(
         </div>
       </div>
 
-      {/* ── Main content ── */}
-      <div className="flex-1 flex max-w-6xl mx-auto w-full">
-        {/* ── Left panel: Lineups + Pitcher info ── */}
-        <div className="w-52 shrink-0 border-r border-white/5 overflow-y-auto py-3 px-2">
+      {/* ── Main content: stack on phone, row on large screens ── */}
+      <div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col lg:flex-row">
+        {/* ── Lineups (full width strip on mobile) ── */}
+        <div className="max-h-[42vh] w-full shrink-0 overflow-y-auto border-b border-white/10 px-2 py-2 sm:max-h-[38vh] lg:max-h-none lg:w-52 lg:border-b-0 lg:border-r lg:border-white/5">
           {/* Current batter highlight */}
           <div className="bg-scoring-card rounded-lg px-3 py-2 mb-3 border border-white/5">
             <div className="text-[9px] text-white/30 font-bold uppercase tracking-wider mb-0.5">At Bat</div>

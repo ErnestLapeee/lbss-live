@@ -288,7 +288,7 @@ export function GamesPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6 gap-4 flex-wrap">
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="font-heading text-2xl font-bold">Games</h1>
         </div>
@@ -296,20 +296,96 @@ export function GamesPage() {
           type="button"
           onClick={openCreate}
           disabled={!selectedSeasonId || leaguesForSeason.length === 0}
-          className="px-4 py-2 bg-accent hover:bg-accent-light disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg transition-colors"
+          className="min-h-[44px] w-full shrink-0 rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-accent-light disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
         >
           + Create New
         </button>
       </div>
 
       {error && (
-        <div className="mb-4 p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-600 text-sm">
-          {error}
+        <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-600">
+          <p className="font-medium">{error}</p>
+          {/authentication required/i.test(error) && (
+            <p className="mt-2 text-xs leading-relaxed text-red-700/90">
+              Try <strong>Log out</strong> and sign in again on this device. The admin app and API must use HTTPS, and
+              your Railway <code className="rounded bg-red-500/15 px-1">ADMIN_URL</code> must match this site&apos;s
+              address exactly so the session cookie is accepted.
+            </p>
+          )}
         </div>
       )}
 
-      <div className="bg-surface rounded-xl border border-border overflow-hidden">
-        <table className="w-full text-sm">
+      {/* Mobile: one card per game */}
+      {selectedSeasonId && !loading && !seasonsLoading && games.length > 0 && (
+        <div className="mb-4 space-y-3 md:hidden">
+          {games.map((g) => (
+            <div
+              key={g.id}
+              className="rounded-xl border border-border bg-surface p-4 shadow-sm"
+            >
+              <div className="text-xs text-text-muted">{formatDate(g.scheduledAt)}</div>
+              <div className="mt-1 text-base font-semibold leading-snug">
+                <span className="text-text-muted">{teamMap[g.awayTeamId] ?? `Away #${g.awayTeamId}`}</span>
+                <span className="mx-1 text-text-muted">@</span>
+                <span>{teamMap[g.homeTeamId] ?? `Home #${g.homeTeamId}`}</span>
+              </div>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <span className="tabular-nums text-lg font-bold">
+                  {g.awayScore}–{g.homeScore}
+                </span>
+                <span
+                  className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium capitalize ${statusBadgeClass(g.status)}`}
+                >
+                  {g.status}
+                </span>
+              </div>
+              <div className="mt-4 flex flex-col gap-2">
+                {!(isScorer && isFinishedGame(g)) && (
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/scoring/${g.id}`)}
+                    className="min-h-[48px] w-full rounded-lg bg-blue-600 py-3 text-center text-sm font-bold text-white hover:bg-blue-500 active:bg-blue-700"
+                  >
+                    {g.isFinalized ? 'Edit score' : 'Score game'}
+                  </button>
+                )}
+                <div className="flex flex-wrap gap-2">
+                  {!g.isFinalized && !isScorer && (
+                    <button
+                      type="button"
+                      onClick={() => handleFinalize(g)}
+                      className="min-h-[44px] flex-1 rounded-lg border border-green-600/40 px-3 text-sm font-semibold text-green-700 hover:bg-green-500/10"
+                    >
+                      Finalize
+                    </button>
+                  )}
+                  {!(isScorer && isFinishedGame(g)) && (
+                    <button
+                      type="button"
+                      onClick={() => openEdit(g)}
+                      className="min-h-[44px] flex-1 rounded-lg border border-border px-3 text-sm font-semibold text-accent hover:bg-surface-alt"
+                    >
+                      Edit
+                    </button>
+                  )}
+                  {!isScorer && (
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(g)}
+                      className="min-h-[44px] flex-1 rounded-lg border border-red-300/60 px-3 text-sm font-semibold text-red-600 hover:bg-red-500/10"
+                    >
+                      Delete
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="overflow-x-auto rounded-xl border border-border bg-surface sm:overflow-visible">
+        <table className={`w-full min-w-[36rem] text-sm ${games.length > 0 ? 'hidden md:table' : 'table'}`}>
           <thead>
             <tr className="border-b border-border bg-surface-alt">
               <th className="px-4 py-3 text-left font-semibold text-text-muted">Date</th>
@@ -323,25 +399,25 @@ export function GamesPage() {
           <tbody>
             {seasonsLoading ? (
               <tr>
-                <td className="px-4 py-8 text-center text-text-muted" colSpan={7}>
+                <td className="px-4 py-8 text-center text-text-muted" colSpan={6}>
                   Loading seasons…
                 </td>
               </tr>
             ) : !selectedSeasonId ? (
               <tr>
-                <td className="px-4 py-8 text-center text-text-muted" colSpan={7}>
-                  Add a season, then pick it in the workspace menu above.
+                <td className="px-4 py-8 text-center text-text-muted" colSpan={6}>
+                  Choose a season in the header, then games for that year will load here.
                 </td>
               </tr>
             ) : loading ? (
               <tr>
-                <td className="px-4 py-8 text-center text-text-muted" colSpan={7}>
+                <td className="px-4 py-8 text-center text-text-muted" colSpan={6}>
                   Loading...
                 </td>
               </tr>
             ) : games.length === 0 ? (
               <tr>
-                <td className="px-4 py-8 text-center text-text-muted" colSpan={7}>
+                <td className="px-4 py-8 text-center text-text-muted" colSpan={6}>
                   {leaguesForSeason.length === 0
                     ? 'No leagues for this season yet. Create a league first.'
                     : 'No games scheduled yet. Create your first game.'}
