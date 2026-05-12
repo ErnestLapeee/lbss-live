@@ -18,7 +18,8 @@ export function AdminLayout() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, logout } = useAuth();
-  const { seasons, selectedSeasonId, setSelectedSeasonId, seasonsLoading } = useAdminSeason();
+  const { seasons, selectedSeasonId, setSelectedSeasonId, seasonsLoading, seasonsError, reloadSeasons } =
+    useAdminSeason();
   const [navOpen, setNavOpen] = useState(false);
 
   const isScorer = user?.role === 'statistician';
@@ -120,29 +121,46 @@ export function AdminLayout() {
             </h2>
           </div>
           <div className="flex min-w-0 flex-wrap items-center gap-2 sm:gap-3 lg:flex-nowrap lg:justify-end">
-            <label className="flex min-w-0 w-full flex-col gap-1 sm:w-auto sm:max-w-md sm:flex-row sm:items-center sm:gap-2">
+            <label className="flex min-w-0 w-full flex-col gap-1 sm:w-auto sm:max-w-md sm:flex-row sm:items-start sm:gap-2">
               <span className="shrink-0 text-xs font-medium text-text-muted sm:text-sm">Season</span>
-              <select
-                value={selectedSeasonId ?? ''}
-                disabled={seasonsLoading || seasons.length === 0}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  setSelectedSeasonId(v ? parseInt(v, 10) : null);
-                }}
-                className="min-h-[44px] min-w-0 w-full rounded-lg border border-border bg-surface-alt px-3 py-2 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-accent sm:min-w-[12rem] sm:max-w-[20rem]"
-              >
-                {seasons.length === 0 ? (
-                  <option value="">No seasons</option>
-                ) : (
-                  seasons.map((s: AdminSeasonRow) => (
-                    <option key={s.id} value={s.id}>
-                      {s.year} – {s.name}
-                      {s.seasonKind === 'playoff' ? ' (Playoffs)' : ''}
-                      {s.isActive ? ' (active)' : ''}
-                    </option>
-                  ))
+              <div className="flex min-w-0 w-full flex-col gap-1.5 sm:max-w-[20rem]">
+                <div className="flex min-w-0 flex-wrap items-stretch gap-2">
+                  <select
+                    value={selectedSeasonId ?? ''}
+                    disabled={seasonsLoading}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setSelectedSeasonId(v ? parseInt(v, 10) : null);
+                    }}
+                    className="min-h-[44px] min-w-0 flex-1 rounded-lg border border-border bg-surface-alt px-3 py-2 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-accent sm:min-w-[12rem]"
+                  >
+                    {seasons.length === 0 ? (
+                      <option value="">{seasonsError ? 'Seasons could not be loaded' : 'No seasons yet'}</option>
+                    ) : (
+                      seasons.map((s: AdminSeasonRow) => (
+                        <option key={s.id} value={s.id}>
+                          {s.year} – {s.name}
+                          {s.seasonKind === 'playoff' ? ' (Playoffs)' : ''}
+                          {s.isActive ? ' (active)' : ''}
+                        </option>
+                      ))
+                    )}
+                  </select>
+                  {seasonsError && (
+                    <button
+                      type="button"
+                      disabled={seasonsLoading}
+                      onClick={() => void reloadSeasons()}
+                      className="min-h-[44px] shrink-0 rounded-lg border border-border bg-surface px-3 text-sm font-semibold text-text hover:bg-surface-alt disabled:opacity-50"
+                    >
+                      Retry
+                    </button>
+                  )}
+                </div>
+                {seasonsError && (
+                  <p className="text-xs leading-snug text-red-600">{seasonsError}</p>
                 )}
-              </select>
+              </div>
             </label>
             <span className="hidden max-w-[10rem] truncate text-sm text-text-muted sm:inline md:max-w-[14rem]">
               {user?.displayName || user?.email || 'Admin'}

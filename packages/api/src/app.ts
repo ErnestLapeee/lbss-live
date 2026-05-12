@@ -7,6 +7,16 @@ import { ensureOptionalSchemaColumns } from './db/ensure-schema.js';
 import { publicRoutes } from './routes/public/index.js';
 import { adminRoutes } from './routes/admin/index.js';
 
+/** Comma- or whitespace-separated absolute origins (e.g. two Railway admin URLs). */
+function parseOriginList(envVal: string | undefined, fallback: string): string[] {
+  const raw = (envVal ?? '').trim() || fallback;
+  const parts = raw
+    .split(/[,|\s]+/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+  return [...new Set(parts.length > 0 ? parts : [fallback])];
+}
+
 // Global IO reference so routes can emit events
 let io: SocketIOServer | null = null;
 export function getIO(): SocketIOServer {
@@ -26,8 +36,13 @@ export async function buildApp() {
 
   const app = Fastify({ logger: true });
 
+  const corsOrigins = [
+    ...parseOriginList(process.env.WEB_URL, 'http://localhost:3000'),
+    ...parseOriginList(process.env.ADMIN_URL, 'http://localhost:3001'),
+  ];
+
   await app.register(cors, {
-    origin: [process.env.WEB_URL || 'http://localhost:3000', process.env.ADMIN_URL || 'http://localhost:3001'],
+    origin: corsOrigins,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
@@ -53,7 +68,7 @@ export async function buildApp() {
   app.addHook('onReady', () => {
     io = new SocketIOServer(app.server, {
       cors: {
-        origin: [process.env.WEB_URL || 'http://localhost:3000', process.env.ADMIN_URL || 'http://localhost:3001'],
+        origin: corsOrigins,
         credentials: true,
       },
       path: '/ws',

@@ -44,6 +44,8 @@ interface AdminSeasonContextValue {
   setSelectedSeasonId: (id: number | null) => void;
   /** True while fetching /admin/seasons on first load. */
   seasonsLoading: boolean;
+  /** Set when the seasons list could not be loaded (e.g. network or session). */
+  seasonsError: string | null;
   /** Reload seasons from API (e.g. after create/delete on Seasons page). */
   reloadSeasons: () => Promise<void>;
 }
@@ -54,8 +56,10 @@ export function AdminSeasonProvider({ children }: { children: ReactNode }) {
   const [seasons, setSeasons] = useState<AdminSeasonRow[]>([]);
   const [selectedSeasonId, setSelectedSeasonIdState] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
+  const [seasonsError, setSeasonsError] = useState<string | null>(null);
 
   const applySeasonList = useCallback((list: AdminSeasonRow[]) => {
+    setSeasonsError(null);
     setSeasons(list);
     if (list.length === 0) {
       setSelectedSeasonIdState(null);
@@ -94,8 +98,18 @@ export function AdminSeasonProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const reloadSeasons = useCallback(async () => {
-    const list = await fetchAdminSeasonsWithRetry();
-    applySeasonList(list);
+    setSeasonsError(null);
+    setLoading(true);
+    try {
+      const list = await fetchAdminSeasonsWithRetry();
+      applySeasonList(list);
+    } catch (e) {
+      setSeasons([]);
+      setSelectedSeasonIdState(null);
+      setSeasonsError(e instanceof Error ? e.message : 'Could not load seasons');
+    } finally {
+      setLoading(false);
+    }
   }, [applySeasonList]);
 
   useEffect(() => {
@@ -106,8 +120,12 @@ export function AdminSeasonProvider({ children }: { children: ReactNode }) {
         const list = await fetchAdminSeasonsWithRetry();
         if (cancelled) return;
         applySeasonList(list);
-      } catch {
-        if (!cancelled) setSeasons([]);
+      } catch (e) {
+        if (!cancelled) {
+          setSeasons([]);
+          setSelectedSeasonIdState(null);
+          setSeasonsError(e instanceof Error ? e.message : 'Could not load seasons');
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -142,9 +160,10 @@ export function AdminSeasonProvider({ children }: { children: ReactNode }) {
       selectedSeason,
       setSelectedSeasonId,
       seasonsLoading: loading,
+      seasonsError,
       reloadSeasons,
     }),
-    [seasons, selectedSeasonId, selectedSeason, setSelectedSeasonId, loading, reloadSeasons],
+    [seasons, selectedSeasonId, selectedSeason, setSelectedSeasonId, loading, seasonsError, reloadSeasons],
   );
 
   return <AdminSeasonContext.Provider value={value}>{children}</AdminSeasonContext.Provider>;
