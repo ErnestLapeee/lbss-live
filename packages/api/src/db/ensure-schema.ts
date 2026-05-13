@@ -5,7 +5,8 @@ import { db } from './index.js';
  * Drizzle migrations are not always run on deploy (e.g. Railway).
  * Missing columns cause `SELECT` with the full Drizzle schema to 500 — e.g. public
  * `/games/:id/events` only touches `game_events`, while admin `GET /admin/scoring/:id/state`
- * also selects `game_lineups` including `exited_inning` / `exited_half` (migration 0009).
+ * also selects `game_lineups` including `exited_inning` / `exited_half` (migration 0009),
+ * and backup export selects `games.umpire` / `games.official_scorer` (migration 0012).
  * All statements match the SQL migrations — safe to run repeatedly.
  */
 export async function ensureOptionalSchemaColumns(): Promise<void> {
@@ -28,6 +29,10 @@ export async function ensureOptionalSchemaColumns(): Promise<void> {
   await db.execute(sql`ALTER TABLE game_lineups ALTER COLUMN position DROP NOT NULL`);
 
   await ensurePlayoffsTables();
+
+  /** Migration 0012 — lineup / scoring officials on games row (backup export selects these). */
+  await db.execute(sql`ALTER TABLE games ADD COLUMN IF NOT EXISTS umpire varchar(200)`);
+  await db.execute(sql`ALTER TABLE games ADD COLUMN IF NOT EXISTS official_scorer varchar(200)`);
 }
 
 /**
