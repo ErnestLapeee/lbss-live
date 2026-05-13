@@ -352,7 +352,6 @@ function JerseyQuickInput({
     <input
       type="text"
       inputMode="numeric"
-      pattern="[0-9]*"
       maxLength={5}
       disabled={busy}
       title="Jersey # — blur or Enter to save"
