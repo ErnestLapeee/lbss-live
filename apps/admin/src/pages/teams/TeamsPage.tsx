@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
 import { useAdminSeason } from '@/context/AdminSeasonContext';
 
@@ -28,10 +27,17 @@ interface TeamWithRoster {
   players: RosterPlayer[];
 }
 
-interface Player {
+interface DirectoryPlayer {
   id: number;
   firstName: string;
   lastName: string;
+  nationality: string | null;
+  bats: string | null;
+  throws: string | null;
+  dateOfBirth: string | null;
+  heightCm: number | null;
+  weightKg: number | null;
+  bio: string | null;
   isActive: boolean;
 }
 
@@ -47,10 +53,9 @@ const THROWS_OPTIONS = ['R', 'L', 'S'];
 
 /* ───── component ───── */
 export function TeamsPage() {
-  const navigate = useNavigate();
   const { selectedSeasonId, seasonsLoading } = useAdminSeason();
   const [teams, setTeams] = useState<TeamWithRoster[]>([]);
-  const [allPlayers, setAllPlayers] = useState<Player[]>([]);
+  const [allPlayers, setAllPlayers] = useState<DirectoryPlayer[]>([]);
   const [leaguesForSeason, setLeaguesForSeason] = useState<LeagueOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -83,6 +88,20 @@ export function TeamsPage() {
   const [movingPlayer, setMovingPlayer] = useState<RosterPlayer | null>(null);
   const [moveTargetTeamId, setMoveTargetTeamId] = useState('');
 
+  const [showDirectoryPlayerEdit, setShowDirectoryPlayerEdit] = useState(false);
+  const [directoryPlayerEditId, setDirectoryPlayerEditId] = useState<number | null>(null);
+  const [directoryPlayerEditForm, setDirectoryPlayerEditForm] = useState({
+    firstName: '',
+    lastName: '',
+    nationality: 'LV',
+    dateOfBirth: '',
+    bats: '',
+    throws: '',
+    heightCm: '',
+    weightKg: '',
+    bio: '',
+  });
+
   const [saving, setSaving] = useState(false);
 
   /* ───── data loading ───── */
@@ -93,7 +112,7 @@ export function TeamsPage() {
     try {
       const [rostersData, playersData, leaguesData] = await Promise.all([
         apiGet<TeamWithRoster[]>(`/admin/teams/rosters?seasonId=${selectedSeasonId}`),
-        apiGet<Player[]>('/admin/players'),
+        apiGet<DirectoryPlayer[]>('/admin/players'),
         apiGet<LeagueOption[]>('/admin/leagues').catch(() => []),
       ]);
       setTeams(Array.isArray(rostersData) ? rostersData : []);
@@ -338,6 +357,57 @@ export function TeamsPage() {
     setShowMoveModal(true);
   };
 
+  const openDirectoryPlayerEdit = (rosterPlayer: RosterPlayer) => {
+    const d = allPlayers.find((x) => x.id === rosterPlayer.playerId);
+    if (!d) {
+      alert('Could not load this player for editing. Try refreshing the page.');
+      return;
+    }
+    setDirectoryPlayerEditId(d.id);
+    setDirectoryPlayerEditForm({
+      firstName: d.firstName,
+      lastName: d.lastName,
+      nationality: d.nationality ?? 'LV',
+      dateOfBirth: d.dateOfBirth ?? '',
+      bats: d.bats ?? '',
+      throws: d.throws ?? '',
+      heightCm: d.heightCm != null ? String(d.heightCm) : '',
+      weightKg: d.weightKg != null ? String(d.weightKg) : '',
+      bio: d.bio ?? '',
+    });
+    setShowDirectoryPlayerEdit(true);
+  };
+
+  const closeDirectoryPlayerEdit = () => {
+    setShowDirectoryPlayerEdit(false);
+    setDirectoryPlayerEditId(null);
+  };
+
+  const handleDirectoryPlayerEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (directoryPlayerEditId == null) return;
+    setSaving(true);
+    try {
+      await apiPut(`/admin/players/${directoryPlayerEditId}`, {
+        firstName: directoryPlayerEditForm.firstName.trim(),
+        lastName: directoryPlayerEditForm.lastName.trim(),
+        nationality: directoryPlayerEditForm.nationality.trim() || 'LV',
+        dateOfBirth: directoryPlayerEditForm.dateOfBirth || undefined,
+        bats: directoryPlayerEditForm.bats || undefined,
+        throws: directoryPlayerEditForm.throws || undefined,
+        heightCm: directoryPlayerEditForm.heightCm ? parseInt(directoryPlayerEditForm.heightCm, 10) : undefined,
+        weightKg: directoryPlayerEditForm.weightKg ? parseInt(directoryPlayerEditForm.weightKg, 10) : undefined,
+        bio: directoryPlayerEditForm.bio.trim() || undefined,
+      });
+      closeDirectoryPlayerEdit();
+      await loadRosters();
+    } catch (err: any) {
+      alert(err.message || 'Failed to save player');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleMoveSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!movingPlayer || !moveTargetTeamId) return;
@@ -518,13 +588,13 @@ export function TeamsPage() {
                         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                           <button
                             type="button"
-                            onClick={() => navigate(`/players?edit=${p.playerId}`)}
+                            onClick={() => openDirectoryPlayerEdit(p)}
                             className="p-1 text-text-muted hover:text-accent rounded"
-                            title="Edit player profile & stats (height, weight, B/T, bio, …)"
-                            aria-label="Edit player profile and stats"
+                            title="Edit player"
+                            aria-label="Edit player"
                           >
                             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                             </svg>
                           </button>
                           <button
@@ -747,6 +817,110 @@ export function TeamsPage() {
               <input type="text" value={assignForm.jerseyNumber} onChange={e => setAssignForm(f => ({ ...f, jerseyNumber: e.target.value }))} className={inputClass} placeholder="e.g. 7" />
             </Field>
             <ModalActions onCancel={() => setShowAssignModal(false)} saving={saving} label="Assign" />
+          </form>
+        </Modal>
+      )}
+
+      {/* ── Edit player (directory) from roster row ── */}
+      {showDirectoryPlayerEdit && directoryPlayerEditId != null && (
+        <Modal onClose={closeDirectoryPlayerEdit}>
+          <h2 className="font-heading text-lg font-bold mb-3">Edit player</h2>
+          <form onSubmit={handleDirectoryPlayerEditSubmit} className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="First Name *">
+                <input
+                  type="text"
+                  value={directoryPlayerEditForm.firstName}
+                  onChange={(e) => setDirectoryPlayerEditForm((f) => ({ ...f, firstName: e.target.value }))}
+                  className={inputClass}
+                  required
+                />
+              </Field>
+              <Field label="Last Name *">
+                <input
+                  type="text"
+                  value={directoryPlayerEditForm.lastName}
+                  onChange={(e) => setDirectoryPlayerEditForm((f) => ({ ...f, lastName: e.target.value }))}
+                  className={inputClass}
+                  required
+                />
+              </Field>
+            </div>
+            <div className="grid grid-cols-3 gap-4">
+              <Field label="Nationality">
+                <input
+                  type="text"
+                  value={directoryPlayerEditForm.nationality}
+                  onChange={(e) => setDirectoryPlayerEditForm((f) => ({ ...f, nationality: e.target.value }))}
+                  className={inputClass}
+                />
+              </Field>
+              <Field label="Bats">
+                <select
+                  value={directoryPlayerEditForm.bats}
+                  onChange={(e) => setDirectoryPlayerEditForm((f) => ({ ...f, bats: e.target.value }))}
+                  className={inputClass}
+                >
+                  <option value="">—</option>
+                  {BATS_OPTIONS.map((o) => (
+                    <option key={o} value={o}>
+                      {o}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Throws">
+                <select
+                  value={directoryPlayerEditForm.throws}
+                  onChange={(e) => setDirectoryPlayerEditForm((f) => ({ ...f, throws: e.target.value }))}
+                  className={inputClass}
+                >
+                  <option value="">—</option>
+                  {THROWS_OPTIONS.map((o) => (
+                    <option key={o} value={o}>
+                      {o}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+            <Field label="Date of Birth">
+              <input
+                type="date"
+                value={directoryPlayerEditForm.dateOfBirth}
+                onChange={(e) => setDirectoryPlayerEditForm((f) => ({ ...f, dateOfBirth: e.target.value }))}
+                className={inputClass}
+              />
+            </Field>
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="Height (cm)">
+                <input
+                  type="number"
+                  value={directoryPlayerEditForm.heightCm}
+                  onChange={(e) => setDirectoryPlayerEditForm((f) => ({ ...f, heightCm: e.target.value }))}
+                  className={inputClass}
+                  min={1}
+                />
+              </Field>
+              <Field label="Weight (kg)">
+                <input
+                  type="number"
+                  value={directoryPlayerEditForm.weightKg}
+                  onChange={(e) => setDirectoryPlayerEditForm((f) => ({ ...f, weightKg: e.target.value }))}
+                  className={inputClass}
+                  min={1}
+                />
+              </Field>
+            </div>
+            <Field label="Bio">
+              <textarea
+                value={directoryPlayerEditForm.bio}
+                onChange={(e) => setDirectoryPlayerEditForm((f) => ({ ...f, bio: e.target.value }))}
+                className={inputClass}
+                rows={3}
+              />
+            </Field>
+            <ModalActions onCancel={closeDirectoryPlayerEdit} saving={saving} label="Save" />
           </form>
         </Modal>
       )}
