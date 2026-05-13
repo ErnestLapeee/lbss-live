@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
 import { useAdminSeason } from '@/context/AdminSeasonContext';
-import { APP_LOCALE } from '@/lib/localeDisplay';
+import { EuropeanDateInput } from '@/components/EuropeanDateInput';
 
 /* ───── types ───── */
 interface RosterPlayer {
@@ -778,7 +778,12 @@ export function TeamsPage() {
               </Field>
             </div>
             <Field label="Date of Birth">
-              <input type="date" lang={APP_LOCALE} value={playerForm.dateOfBirth} onChange={e => setPlayerForm(f => ({ ...f, dateOfBirth: e.target.value }))} className={inputClass} />
+              <EuropeanDateInput
+                value={playerForm.dateOfBirth}
+                onChange={(iso) => setPlayerForm((f) => ({ ...f, dateOfBirth: iso }))}
+                className={inputClass}
+                aria-label="Date of birth (DD/MM/YYYY)"
+              />
             </Field>
             <ModalActions onCancel={() => setShowPlayerForm(false)} saving={saving} label="Add Player" />
           </form>
@@ -890,12 +895,11 @@ export function TeamsPage() {
               </Field>
             </div>
             <Field label="Date of Birth">
-              <input
-                type="date"
-                lang={APP_LOCALE}
+              <EuropeanDateInput
                 value={directoryPlayerEditForm.dateOfBirth}
-                onChange={(e) => setDirectoryPlayerEditForm((f) => ({ ...f, dateOfBirth: e.target.value }))}
+                onChange={(iso) => setDirectoryPlayerEditForm((f) => ({ ...f, dateOfBirth: iso }))}
                 className={inputClass}
+                aria-label="Date of birth (DD/MM/YYYY)"
               />
             </Field>
             <div className="grid grid-cols-2 gap-4">

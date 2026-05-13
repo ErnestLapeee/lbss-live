@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
 import { useAdminSeason } from '@/context/AdminSeasonContext';
 import { useAuth } from '@/lib/auth';
+import { EuropeanDateInput } from '@/components/EuropeanDateInput';
 import { APP_LOCALE, formatShortDateTime } from '@/lib/localeDisplay';
 
 interface Game {
@@ -44,13 +45,17 @@ const STATUS_OPTIONS = [
   'suspended',
 ];
 
-function formatDatetimeLocal(iso: string) {
+function splitLocalDateTimeFromIso(iso: string): { date: string; time: string } {
   try {
     const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return { date: '', time: '18:00' };
     const pad = (n: number) => String(n).padStart(2, '0');
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    return {
+      date: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`,
+      time: `${pad(d.getHours())}:${pad(d.getMinutes())}`,
+    };
   } catch {
-    return '';
+    return { date: '', time: '18:00' };
   }
 }
 
@@ -74,7 +79,8 @@ export function GamesPage() {
     leagueId: '',
     homeTeamId: '',
     awayTeamId: '',
-    scheduledAt: '',
+    scheduledDate: '',
+    scheduledTime: '18:00',
     venue: '',
     status: 'scheduled',
   });
@@ -178,7 +184,8 @@ export function GamesPage() {
       leagueId: firstLeague?.id ? String(firstLeague.id) : '',
       homeTeamId: '',
       awayTeamId: '',
-      scheduledAt: '',
+      scheduledDate: '',
+      scheduledTime: '18:00',
       venue: '',
       status: 'scheduled',
     });
@@ -188,11 +195,13 @@ export function GamesPage() {
 
   const openEdit = (g: Game) => {
     setEditing(g);
+    const { date, time } = splitLocalDateTimeFromIso(g.scheduledAt);
     setForm({
       leagueId: String(g.leagueId),
       homeTeamId: String(g.homeTeamId),
       awayTeamId: String(g.awayTeamId),
-      scheduledAt: formatDatetimeLocal(g.scheduledAt),
+      scheduledDate: date,
+      scheduledTime: time,
       venue: g.venue ?? '',
       status: g.status ?? 'scheduled',
     });
@@ -205,12 +214,19 @@ export function GamesPage() {
     setSaving(true);
     setError(null);
     try {
+      if (!form.scheduledDate.trim()) {
+        setError('Pick a scheduled date (DD/MM/YYYY).');
+        return;
+      }
+      const tm = (form.scheduledTime || '00:00').trim();
+      const timeHm = tm.length >= 5 ? tm.slice(0, 5) : '00:00';
+      const scheduledAtIso = new Date(`${form.scheduledDate.trim()}T${timeHm}`).toISOString();
       if (editing) {
         await apiPut(`/admin/games/${editing.id}`, {
           leagueId: parseInt(form.leagueId, 10),
           homeTeamId: parseInt(form.homeTeamId, 10),
           awayTeamId: parseInt(form.awayTeamId, 10),
-          scheduledAt: new Date(form.scheduledAt).toISOString(),
+          scheduledAt: scheduledAtIso,
           venue: form.venue.trim() || undefined,
           status: form.status,
         });
@@ -219,7 +235,7 @@ export function GamesPage() {
           leagueId: parseInt(form.leagueId, 10),
           homeTeamId: parseInt(form.homeTeamId, 10),
           awayTeamId: parseInt(form.awayTeamId, 10),
-          scheduledAt: new Date(form.scheduledAt).toISOString(),
+          scheduledAt: scheduledAtIso,
           venue: form.venue.trim() || undefined,
         });
       }
@@ -543,17 +559,33 @@ export function GamesPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-text-muted mb-1">
-                  Scheduled At *
-                </label>
-                <input
-                  type="datetime-local"
-                  lang={APP_LOCALE}
-                  value={form.scheduledAt}
-                  onChange={(e) => setForm((f) => ({ ...f, scheduledAt: e.target.value }))}
-                  className={inputClass}
-                  required
-                />
+                <span className="block text-sm font-medium text-text-muted mb-2">Scheduled *</span>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-1 block text-xs text-text-muted">Date (DD/MM/YYYY)</label>
+                    <EuropeanDateInput
+                      value={form.scheduledDate}
+                      onChange={(iso) => setForm((f) => ({ ...f, scheduledDate: iso }))}
+                      className={inputClass}
+                      aria-label="Game date, day first"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="game-scheduled-time" className="mb-1 block text-xs text-text-muted">
+                      Time
+                    </label>
+                    <input
+                      id="game-scheduled-time"
+                      type="time"
+                      lang={APP_LOCALE}
+                      step={60}
+                      value={form.scheduledTime}
+                      onChange={(e) => setForm((f) => ({ ...f, scheduledTime: e.target.value }))}
+                      className={inputClass}
+                      required
+                    />
+                  </div>
+                </div>
               </div>
               <div>
                 <label className="block text-sm font-medium text-text-muted mb-1">Venue</label>

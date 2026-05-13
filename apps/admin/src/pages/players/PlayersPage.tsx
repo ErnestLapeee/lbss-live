@@ -1,7 +1,8 @@
 import { useEffect, useState, useCallback } from 'react';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
 import { useAdminSeason } from '@/context/AdminSeasonContext';
-import { APP_LOCALE, formatShortDate } from '@/lib/localeDisplay';
+import { EuropeanDateInput } from '@/components/EuropeanDateInput';
+import { formatShortDate } from '@/lib/localeDisplay';
 
 interface Player {
   id: number;
@@ -278,7 +279,13 @@ export function PlayersPage() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-text-muted mb-1">Date of Birth</label>
-                <input type="date" lang={APP_LOCALE} value={form.dateOfBirth} onChange={e => setForm(f => ({ ...f, dateOfBirth: e.target.value }))} className={inputClass} />
+                <EuropeanDateInput
+                  value={form.dateOfBirth}
+                  onChange={(iso) => setForm((f) => ({ ...f, dateOfBirth: iso }))}
+                  className={inputClass}
+                  aria-label="Date of birth (DD/MM/YYYY)"
+                  autoComplete="bday"
+                />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>

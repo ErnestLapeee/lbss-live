@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
 import { useAdminSeason } from '@/context/AdminSeasonContext';
-import { APP_LOCALE, formatShortDate } from '@/lib/localeDisplay';
+import { EuropeanDateInput } from '@/components/EuropeanDateInput';
+import { formatShortDate } from '@/lib/localeDisplay';
 
 type SeasonKind = 'regular' | 'playoff';
 
@@ -288,22 +289,20 @@ export function SeasonsPage() {
               )}
               <div>
                 <label className="block text-sm font-medium mb-1.5">Start Date</label>
-                <input
-                  type="date"
-                  lang={APP_LOCALE}
+                <EuropeanDateInput
                   value={form.startDate}
-                  onChange={(e) => setForm({ ...form, startDate: e.target.value })}
+                  onChange={(iso) => setForm({ ...form, startDate: iso })}
                   className="w-full px-3 py-2 border border-border rounded-lg bg-surface-alt text-sm focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent"
+                  aria-label="Season start date (DD/MM/YYYY)"
                 />
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1.5">End Date</label>
-                <input
-                  type="date"
-                  lang={APP_LOCALE}
+                <EuropeanDateInput
                   value={form.endDate}
-                  onChange={(e) => setForm({ ...form, endDate: e.target.value })}
+                  onChange={(iso) => setForm({ ...form, endDate: iso })}
                   className="w-full px-3 py-2 border border-border rounded-lg bg-surface-alt text-sm focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent"
+                  aria-label="Season end date (DD/MM/YYYY)"
                 />
               </div>
               <div className="flex items-center gap-2">

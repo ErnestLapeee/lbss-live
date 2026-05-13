@@ -1,20 +1,50 @@
-/** Used for `Intl` / `toLocale*` and as `lang` on native date inputs (day-first, 24h where applicable). */
+/** Used for `Intl` / `toLocale*` and as `lang` on native time inputs (24h where applicable). */
 export const APP_LOCALE = 'lv-LV' as const;
+
+const pad2 = (n: number) => String(n).padStart(2, '0');
+
+/** `YYYY-MM-DD` → `DD/MM/YYYY` for display (always day-first). */
+export function isoDateToDdMmYyyy(iso: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso).trim());
+  if (!m) return '';
+  return `${m[3]}/${m[2]}/${m[1]}`;
+}
+
+/**
+ * Parse European calendar date: day first, then month, then year.
+ * Accepts `DD/MM/YYYY`, `DD.MM.YYYY`, `DD-MM-YYYY`, or already `YYYY-MM-DD`.
+ * Two-digit years: 00–49 → 2000–2049, 50–99 → 1950–1999.
+ * @returns `YYYY-MM-DD`, empty string if input empty, or `null` if invalid.
+ */
+export function parseEuropeanDateStringToIso(input: string): string | null {
+  const s = input.trim();
+  if (!s) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const m = /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4}|\d{2})$/.exec(s);
+  if (!m) return null;
+  const day = parseInt(m[1], 10);
+  const month = parseInt(m[2], 10);
+  let year = parseInt(m[3], 10);
+  if (m[3].length === 2) year += year >= 50 ? 1900 : 2000;
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  const d = new Date(year, month - 1, day);
+  if (d.getFullYear() !== year || d.getMonth() !== month - 1 || d.getDate() !== day) return null;
+  return `${year}-${pad2(month)}-${pad2(day)}`;
+}
 
 export function formatShortDate(isoDate: string | null | undefined): string {
   if (isoDate == null || String(isoDate).trim() === '') return '—';
   const s = String(isoDate).trim();
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
   if (m) {
-    const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
-    if (!Number.isNaN(d.getTime())) {
-      return d.toLocaleDateString(APP_LOCALE, { day: '2-digit', month: '2-digit', year: 'numeric' });
-    }
+    return `${m[3]}/${m[2]}/${m[1]}`;
   }
   const d = new Date(s);
   return Number.isNaN(d.getTime())
     ? s
-    : d.toLocaleDateString(APP_LOCALE, { day: '2-digit', month: '2-digit', year: 'numeric' });
+    : isoDateToDdMmYyyy(
+        `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`,
+      ) || s;
 }
 
 export function formatShortDateTime(iso: string): string {
