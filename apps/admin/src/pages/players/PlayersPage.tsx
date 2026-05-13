@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
 import { useAdminSeason } from '@/context/AdminSeasonContext';
 
@@ -33,6 +34,7 @@ const THROWS_OPTIONS = ['R', 'L', 'S'];
 
 export function PlayersPage() {
   const { selectedSeasonId } = useAdminSeason();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [players, setPlayers] = useState<Player[]>([]);
   const [licenseMap, setLicenseMap] = useState<Map<number, string>>(new Map());
   const [loading, setLoading] = useState(true);
@@ -46,6 +48,8 @@ export function PlayersPage() {
     firstName: '', lastName: '', nationality: 'LV', dateOfBirth: '',
     bats: '', throws: '', heightCm: '', weightKg: '', bio: '',
   });
+
+  const editPlayerIdFromQuery = searchParams.get('edit');
 
   const loadPlayers = async () => {
     setLoading(true);
@@ -88,7 +92,7 @@ export function PlayersPage() {
     setError(null);
   };
 
-  const openEdit = (p: Player) => {
+  const openEdit = useCallback((p: Player) => {
     setEditing(p);
     setForm({
       firstName: p.firstName, lastName: p.lastName,
@@ -100,7 +104,24 @@ export function PlayersPage() {
     });
     setShowForm(true);
     setError(null);
-  };
+  }, []);
+
+  /** Open edit modal when linked from Teams roster (?edit=playerId). */
+  useEffect(() => {
+    if (loading || !editPlayerIdFromQuery) return;
+    const editId = parseInt(editPlayerIdFromQuery, 10);
+    setSearchParams(
+      (p) => {
+        p.delete('edit');
+        return p;
+      },
+      { replace: true },
+    );
+    if (!Number.isFinite(editId)) return;
+    const player = players.find((x) => x.id === editId);
+    if (player) openEdit(player);
+    else setError(`Player #${editId} not found.`);
+  }, [loading, players, editPlayerIdFromQuery, setSearchParams, openEdit]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
