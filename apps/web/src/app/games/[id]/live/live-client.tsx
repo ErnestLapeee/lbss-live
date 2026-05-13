@@ -6,7 +6,7 @@ import { useGameSocket } from '@/hooks/useGameSocket';
 import { formatPlayByPlay } from '@/lib/format-play';
 import { useApiBase } from '@/lib/api-context';
 import { getStatAbbreviationMeaning } from '@/lib/stat-abbreviations';
-import { aggregatePitchingStatsByPitcher, inningsFromOuts, boundsFromEvents, buildPublicLineScores, formatLineScoreCell } from '@lbss/shared';
+import { aggregatePitchingStatsByPitcher, inningsFromOuts, boundsFromEvents, buildPublicLineScores, formatLineScoreCell, computePlayerGameBattingLinesFromEvents, type PlayerGameBattingCounts } from '@lbss/shared';
 import { normalizeGameEvents, tryExtractEventArray } from '@/lib/normalize-game-events';
 import { buildPositionMapsByEvent } from '@/lib/position-maps-by-event';
 
@@ -184,6 +184,19 @@ interface BattingBoxScore {
   fieldersChoice?: number;
   catcherInterference?: number;
   groundedIntoTriplePlay?: number;
+}
+
+function pickBattingStat(
+  status: string,
+  box: BattingBoxScore | undefined,
+  live: PlayerGameBattingCounts | undefined,
+  key: keyof PlayerGameBattingCounts,
+): number {
+  const liveV = live?.[key];
+  const boxV = box?.[key as keyof BattingBoxScore];
+  const bNum = typeof boxV === 'number' && !Number.isNaN(boxV) ? boxV : undefined;
+  if (status === 'live') return (liveV ?? bNum ?? 0) as number;
+  return (bNum ?? liveV ?? 0) as number;
 }
 
 interface PitchingBoxScore {
@@ -568,85 +581,42 @@ export function LiveGameClient({
     return groups.reverse();
   }, [events]);
 
-  // Build live batting stats from events for live games (before finalization)
-  const liveBattingMap = useMemo(() => {
-    const map: Record<number, { pa: number; ab: number; h: number; r: number; rbi: number; bb: number; so: number; hr: number; tb: number; hbp: number; sf: number; sb: number; cs: number }> = {};
-    const getOrCreate = (id: number) => {
-      if (!map[id]) map[id] = { pa: 0, ab: 0, h: 0, r: 0, rbi: 0, bb: 0, so: 0, hr: 0, tb: 0, hbp: 0, sf: 0, sb: 0, cs: 0 };
-      return map[id];
-    };
-
-    const hitTypes = new Set(['single', 'bunt_single', 'double', 'triple', 'home_run', 'inside_park_hr', 'ground_rule_double']);
-    const outTypes = new Set([
-      'ground_out', 'fly_out', 'line_out', 'pop_out', 'bunt_out', 'foul_out', 'fielders_choice', 'infield_fly',
-      'hit_by_batted_ball', 'runner_interference_batter', 'offensive_interference_batter',
-      'batting_out_of_turn', 'fan_interference', 'thrown_bat', 'out_of_box', 'left_base_path_batter', 'other_out',
-    ]);
-    const kTypes = new Set(['strikeout', 'strikeout_swinging', 'strikeout_looking', 'caught_foul_tip', 'bunt_foul', 'dropped_third_strike_out', 'dropped_third_strike', 'wild_pitch_third_strike']);
-    const walkTypes = new Set(['walk', 'intentional_walk']);
-    const sacFly = new Set(['sacrifice_fly', 'sac_fly_error']);
-    const sacBunt = new Set(['sacrifice_bunt', 'sac_bunt_error']);
-    const runnerActorByEventId = new Map<number, number>();
-    let prevBases = { first: null as number | null, second: null as number | null, third: null as number | null };
-    const getBaseState = (evt: GameEvent) => ({
-      first: evt.runnerFirstId ?? null,
-      second: evt.runnerSecondId ?? null,
-      third: evt.runnerThirdId ?? null,
+  // Full batting lines from events (same rules as finalize-game / player_game_batting).
+  const liveBattingMap = useMemo((): Record<number, PlayerGameBattingCounts> => {
+    if (!game) return {};
+    const playerTeamMap = new Map<number, number>();
+    for (const entry of lineups) {
+      if (!entry.isActive || entry.playerId == null) continue;
+      playerTeamMap.set(entry.playerId, entry.teamId);
+    }
+    for (const entry of lineups) {
+      if (entry.playerId == null) continue;
+      if (!playerTeamMap.has(entry.playerId)) playerTeamMap.set(entry.playerId, entry.teamId);
+    }
+    const m = computePlayerGameBattingLinesFromEvents({
+      events: events.map((e) => ({
+        id: e.id,
+        eventNumber: e.eventNumber,
+        eventType: e.eventType,
+        half: e.half,
+        batterId: e.batterId,
+        rbi: e.rbi,
+        outsRecorded: e.outsRecorded,
+        runnersScored: e.runnersScored,
+        runnerFirstId: e.runnerFirstId,
+        runnerSecondId: e.runnerSecondId,
+        runnerThirdId: e.runnerThirdId,
+        hitType: e.hitType ?? null,
+        isDeleted: (e as { isDeleted?: boolean }).isDeleted,
+      })),
+      homeTeamId: game.homeTeamId,
+      awayTeamId: game.awayTeamId,
+      playerTeamMap,
     });
-
-    for (const evt of events) {
-      const cur = getBaseState(evt);
-      if (evt.eventType === 'stolen_base') {
-        if (prevBases.first && cur.second === prevBases.first) runnerActorByEventId.set(evt.id, prevBases.first);
-        else if (prevBases.second && cur.third === prevBases.second) runnerActorByEventId.set(evt.id, prevBases.second);
-        else if (prevBases.first && cur.third === prevBases.first) runnerActorByEventId.set(evt.id, prevBases.first);
-      } else if (evt.eventType === 'caught_stealing' || evt.eventType === 'picked_off') {
-        const prevIds = [prevBases.first, prevBases.second, prevBases.third].filter(Boolean) as number[];
-        const curIds = new Set([cur.first, cur.second, cur.third].filter(Boolean) as number[]);
-        const removed = prevIds.find(id => !curIds.has(id));
-        if (removed) runnerActorByEventId.set(evt.id, removed);
-      }
-      prevBases = cur;
-    }
-
-    for (const evt of events) {
-      if (evt.eventType === 'end_half_inning' || evt.eventType === 'pitch' || evt.eventType === 'adjust_score' || evt.eventType === 'substitution' || evt.eventType === 'place_runner_second') continue;
-      if (RUNNER_EVENT_TYPES.has(evt.eventType)) {
-        const actorId = evt.batterId ?? runnerActorByEventId.get(evt.id);
-        if (evt.eventType === 'stolen_base' && actorId) getOrCreate(actorId).sb++;
-        if (evt.eventType === 'caught_stealing' && actorId) getOrCreate(actorId).cs++;
-        if (evt.runnersScored && Array.isArray(evt.runnersScored)) {
-          for (const rid of evt.runnersScored) getOrCreate(rid as number).r++;
-        }
-        continue;
-      }
-      if (!evt.batterId) continue;
-      const b = getOrCreate(evt.batterId);
-      b.pa++;
-
-      if (hitTypes.has(evt.eventType)) {
-        b.ab++; b.h++;
-        if (evt.eventType === 'single' || evt.eventType === 'bunt_single') b.tb += 1;
-        else if (evt.eventType === 'double' || evt.eventType === 'ground_rule_double') b.tb += 2;
-        else if (evt.eventType === 'triple') b.tb += 3;
-        else if (evt.eventType === 'home_run' || evt.eventType === 'inside_park_hr') { b.tb += 4; b.hr++; }
-      } else if (outTypes.has(evt.eventType)) { b.ab++; }
-      else if (kTypes.has(evt.eventType)) { b.ab++; b.so++; }
-      else if (walkTypes.has(evt.eventType)) { b.bb++; }
-      else if (evt.eventType === 'hit_by_pitch') { b.hbp++; }
-      else if (sacFly.has(evt.eventType)) { b.sf++; }
-      else if (sacBunt.has(evt.eventType)) { /* sac bunt: PA but not AB */ }
-      else if (evt.eventType === 'error') { b.ab++; }
-      else if (evt.eventType === 'catcher_obstruction') { /* PA but not AB, like HBP */ }
-
-      b.rbi += evt.rbi || 0;
-
-      if (evt.runnersScored && Array.isArray(evt.runnersScored)) {
-        for (const rid of evt.runnersScored) getOrCreate(rid as number).r++;
-      }
-    }
-    return map;
-  }, [events]);
+    const out: Record<number, PlayerGameBattingCounts> = {};
+    for (const [pid, line] of m) out[pid] = line;
+    return out;
+  }, [events, game, lineups]);
 
   // Season stats map
   const seasonBattingMap = useMemo(() => {
@@ -703,7 +673,31 @@ export function LiveGameClient({
         hitType: e.hitType ?? null,
       })),
     );
-    const map: Record<number, { ip: number; outs: number; h: number; r: number; er: number; bb: number; k: number; hr: number; np: number; balls: number; strikes: number; teamId: number }> = {};
+    const map: Record<
+      number,
+      {
+        ip: number;
+        outs: number;
+        h: number;
+        r: number;
+        er: number;
+        bb: number;
+        k: number;
+        hr: number;
+        np: number;
+        balls: number;
+        strikes: number;
+        teamId: number;
+        kc: number;
+        ks: number;
+        hb: number;
+        wp: number;
+        bf: number;
+        balks: number;
+        ibb: number;
+        gsc: number;
+      }
+    > = {};
     for (const [pid, a] of agg) {
       const pLineup = lineups.find(l => l.playerId === pid);
       const outs = a.outsRecorded;
@@ -720,6 +714,14 @@ export function LiveGameClient({
         balls: a.balls,
         strikes: a.strikes,
         teamId: pLineup?.teamId ?? pitcherTeamById.get(pid) ?? 0,
+        kc: a.strikeoutsLooking,
+        ks: a.strikeoutsSwinging,
+        hb: a.hitBatters,
+        wp: a.wildPitches,
+        bf: a.battersFaced,
+        balks: a.balks,
+        ibb: a.intentionalWalks,
+        gsc: Math.max(0, Math.round(50 + outs - 2 * (a.hitsAllowed + a.walksAllowed) - a.earnedRuns + a.strikeouts)),
       };
     }
     return map;
@@ -743,7 +745,7 @@ export function LiveGameClient({
       .filter(([, v]) => v.teamId === game?.homeTeamId)
       .map(([pid, v]) => {
         const p = lineups.find(l => l.playerId === Number(pid));
-        return { playerId: Number(pid), teamId: v.teamId, inningsPitched: String(v.ip), hits: v.h, runs: v.r, earnedRuns: v.er, walks: v.bb, strikeouts: v.k, homeRuns: v.hr, pitchesThrown: v.np, balls: v.balls, strikes: v.strikes, decision: null, isStarter: !!p?.isStarter, firstName: p?.firstName || '', lastName: p?.lastName || '' } as PitchingBoxScore;
+        return { playerId: Number(pid), teamId: v.teamId, inningsPitched: String(v.ip), hits: v.h, runs: v.r, earnedRuns: v.er, walks: v.bb, strikeouts: v.k, homeRuns: v.hr, pitchesThrown: v.np, balls: v.balls, strikes: v.strikes, decision: null, isStarter: !!p?.isStarter, firstName: p?.firstName || '', lastName: p?.lastName || '', strikeoutsLooking: v.kc, strikeoutsSwinging: v.ks, hitBatters: v.hb, wildPitches: v.wp, battersFaced: v.bf, balks: v.balks, intentionalWalks: v.ibb, gameScore: v.gsc } as PitchingBoxScore;
       });
   }, [pitchingBox, game, livePitchingMap, lineups, status]);
 
@@ -765,7 +767,7 @@ export function LiveGameClient({
       .filter(([, v]) => v.teamId === game?.awayTeamId)
       .map(([pid, v]) => {
         const p = lineups.find(l => l.playerId === Number(pid));
-        return { playerId: Number(pid), teamId: v.teamId, inningsPitched: String(v.ip), hits: v.h, runs: v.r, earnedRuns: v.er, walks: v.bb, strikeouts: v.k, homeRuns: v.hr, pitchesThrown: v.np, balls: v.balls, strikes: v.strikes, decision: null, isStarter: !!p?.isStarter, firstName: p?.firstName || '', lastName: p?.lastName || '' } as PitchingBoxScore;
+        return { playerId: Number(pid), teamId: v.teamId, inningsPitched: String(v.ip), hits: v.h, runs: v.r, earnedRuns: v.er, walks: v.bb, strikeouts: v.k, homeRuns: v.hr, pitchesThrown: v.np, balls: v.balls, strikes: v.strikes, decision: null, isStarter: !!p?.isStarter, firstName: p?.firstName || '', lastName: p?.lastName || '', strikeoutsLooking: v.kc, strikeoutsSwinging: v.ks, hitBatters: v.hb, wildPitches: v.wp, battersFaced: v.bf, balks: v.balks, intentionalWalks: v.ibb, gameScore: v.gsc } as PitchingBoxScore;
       });
   }, [pitchingBox, game, livePitchingMap, lineups, status]);
 
@@ -773,6 +775,48 @@ export function LiveGameClient({
     battingBox.filter(b => b.teamId === game?.homeTeamId), [battingBox, game]);
   const awayBatting = useMemo(() =>
     battingBox.filter(b => b.teamId === game?.awayTeamId), [battingBox, game]);
+
+  const awayTeamHitsDisplay = useMemo(() => {
+    const rows =
+      awayLineup.length > 0
+        ? awayLineup
+        : awayBatting.map((b) => ({
+            playerId: b.playerId,
+            teamId: b.teamId,
+            battingOrder: 0,
+            position: 0,
+            isStarter: true,
+            isActive: true,
+            firstName: b.firstName,
+            lastName: b.lastName,
+          }));
+    const bmap = Object.fromEntries(awayBatting.map((b) => [b.playerId, b]));
+    return rows.reduce(
+      (s, p) => s + pickBattingStat(status, bmap[p.playerId], liveBattingMap[p.playerId], 'hits'),
+      0,
+    );
+  }, [awayLineup, awayBatting, liveBattingMap, status]);
+
+  const homeTeamHitsDisplay = useMemo(() => {
+    const rows =
+      homeLineup.length > 0
+        ? homeLineup
+        : homeBatting.map((b) => ({
+            playerId: b.playerId,
+            teamId: b.teamId,
+            battingOrder: 0,
+            position: 0,
+            isStarter: true,
+            isActive: true,
+            firstName: b.firstName,
+            lastName: b.lastName,
+          }));
+    const bmap = Object.fromEntries(homeBatting.map((b) => [b.playerId, b]));
+    return rows.reduce(
+      (s, p) => s + pickBattingStat(status, bmap[p.playerId], liveBattingMap[p.playerId], 'hits'),
+      0,
+    );
+  }, [homeLineup, homeBatting, liveBattingMap, status]);
 
   if (!game) {
     return (
@@ -855,28 +899,28 @@ export function LiveGameClient({
               {rows.map((p, i) => {
                 const box = battingMap[p.playerId];
                 const live = liveBattingMap[p.playerId];
-                const pa = box?.plateAppearances ?? live?.pa ?? 0;
-                const ab = box?.atBats ?? live?.ab ?? 0;
-                const h = box?.hits ?? live?.h ?? 0;
-                const r = box?.runs ?? live?.r ?? 0;
-                const rbi = box?.rbi ?? live?.rbi ?? 0;
-                const bb = box?.walks ?? live?.bb ?? 0;
-                const so = box?.strikeouts ?? live?.so ?? 0;
-                const hr = box?.homeRuns ?? live?.hr ?? 0;
-                const dbl = box?.doubles ?? 0;
-                const trp = box?.triples ?? 0;
-                const hbp = box?.hitByPitch ?? live?.hbp ?? 0;
-                const sf = box?.sacrificeFlies ?? live?.sf ?? 0;
-                const sac = box?.sacrificeBunts ?? 0;
-                const sb = status === 'live' ? (live?.sb ?? box?.stolenBases ?? 0) : (box?.stolenBases ?? live?.sb ?? 0);
-                const cs = status === 'live' ? (live?.cs ?? box?.caughtStealing ?? 0) : (box?.caughtStealing ?? live?.cs ?? 0);
-                const kc = box?.strikeoutsLooking ?? 0;
-                const ks = box?.strikeoutsSwinging ?? 0;
-                const b = box?.buntSingles ?? 0;
-                const gdp = box?.groundedIntoDoublePlays ?? 0;
-                const fc = box?.fieldersChoice ?? 0;
-                const ci = box?.catcherInterference ?? 0;
-                const tb = box?.totalBases ?? live?.tb ?? 0;
+                const pa = pickBattingStat(status, box, live, 'plateAppearances');
+                const ab = pickBattingStat(status, box, live, 'atBats');
+                const h = pickBattingStat(status, box, live, 'hits');
+                const r = pickBattingStat(status, box, live, 'runs');
+                const rbi = pickBattingStat(status, box, live, 'rbi');
+                const bb = pickBattingStat(status, box, live, 'walks');
+                const so = pickBattingStat(status, box, live, 'strikeouts');
+                const hr = pickBattingStat(status, box, live, 'homeRuns');
+                const dbl = pickBattingStat(status, box, live, 'doubles');
+                const trp = pickBattingStat(status, box, live, 'triples');
+                const hbp = pickBattingStat(status, box, live, 'hitByPitch');
+                const sf = pickBattingStat(status, box, live, 'sacrificeFlies');
+                const sac = pickBattingStat(status, box, live, 'sacrificeBunts');
+                const sb = pickBattingStat(status, box, live, 'stolenBases');
+                const cs = pickBattingStat(status, box, live, 'caughtStealing');
+                const kc = pickBattingStat(status, box, live, 'strikeoutsLooking');
+                const ks = pickBattingStat(status, box, live, 'strikeoutsSwinging');
+                const b = pickBattingStat(status, box, live, 'buntSingles');
+                const gdp = pickBattingStat(status, box, live, 'groundedIntoDoublePlays');
+                const fc = pickBattingStat(status, box, live, 'fieldersChoice');
+                const ci = pickBattingStat(status, box, live, 'catcherInterference');
+                const tb = pickBattingStat(status, box, live, 'totalBases');
                 const displayAvg = fmtAvg(h, ab);
                 const displayOps = fmtOps(h, ab, bb, hbp, sf, tb);
                 const rowBg = i % 2 === 0 ? 'bg-white' : 'bg-slate-50/80';
@@ -916,38 +960,33 @@ export function LiveGameClient({
               })}
             </tbody>
             {(() => {
-              const tPA = rows.reduce((s, p) => s + (battingMap[p.playerId]?.plateAppearances ?? liveBattingMap[p.playerId]?.pa ?? 0), 0);
-              const tAB = rows.reduce((s, p) => s + (battingMap[p.playerId]?.atBats ?? liveBattingMap[p.playerId]?.ab ?? 0), 0);
-              const tR = rows.reduce((s, p) => s + (battingMap[p.playerId]?.runs ?? liveBattingMap[p.playerId]?.r ?? 0), 0);
-              const tH = rows.reduce((s, p) => s + (battingMap[p.playerId]?.hits ?? liveBattingMap[p.playerId]?.h ?? 0), 0);
-              const tDbl = rows.reduce((s, p) => s + (battingMap[p.playerId]?.doubles ?? 0), 0);
-              const tTrp = rows.reduce((s, p) => s + (battingMap[p.playerId]?.triples ?? 0), 0);
-              const tHR = rows.reduce((s, p) => s + (battingMap[p.playerId]?.homeRuns ?? liveBattingMap[p.playerId]?.hr ?? 0), 0);
-              const tRBI = rows.reduce((s, p) => s + (battingMap[p.playerId]?.rbi ?? liveBattingMap[p.playerId]?.rbi ?? 0), 0);
-              const tBB = rows.reduce((s, p) => s + (battingMap[p.playerId]?.walks ?? liveBattingMap[p.playerId]?.bb ?? 0), 0);
-              const tHBP = rows.reduce((s, p) => s + (battingMap[p.playerId]?.hitByPitch ?? liveBattingMap[p.playerId]?.hbp ?? 0), 0);
-              const tSO = rows.reduce((s, p) => s + (battingMap[p.playerId]?.strikeouts ?? liveBattingMap[p.playerId]?.so ?? 0), 0);
-              const tKc = rows.reduce((s, p) => s + (battingMap[p.playerId]?.strikeoutsLooking ?? 0), 0);
-              const tKs = rows.reduce((s, p) => s + (battingMap[p.playerId]?.strikeoutsSwinging ?? 0), 0);
-              const tSB = rows.reduce((s, p) => s + (status === 'live'
-                ? (liveBattingMap[p.playerId]?.sb ?? battingMap[p.playerId]?.stolenBases ?? 0)
-                : (battingMap[p.playerId]?.stolenBases ?? liveBattingMap[p.playerId]?.sb ?? 0)
-              ), 0);
-              const tCS = rows.reduce((s, p) => s + (status === 'live'
-                ? (liveBattingMap[p.playerId]?.cs ?? battingMap[p.playerId]?.caughtStealing ?? 0)
-                : (battingMap[p.playerId]?.caughtStealing ?? liveBattingMap[p.playerId]?.cs ?? 0)
-              ), 0);
-              const tSF = rows.reduce((s, p) => s + (battingMap[p.playerId]?.sacrificeFlies ?? liveBattingMap[p.playerId]?.sf ?? 0), 0);
-              const tSAC = rows.reduce((s, p) => s + (battingMap[p.playerId]?.sacrificeBunts ?? 0), 0);
-              const tB = rows.reduce((s, p) => s + (battingMap[p.playerId]?.buntSingles ?? 0), 0);
-              const tGDP = rows.reduce((s, p) => s + (battingMap[p.playerId]?.groundedIntoDoublePlays ?? 0), 0);
-              const tFC = rows.reduce((s, p) => s + (battingMap[p.playerId]?.fieldersChoice ?? 0), 0);
-              const tCI = rows.reduce((s, p) => s + (battingMap[p.playerId]?.catcherInterference ?? 0), 0);
-              const tTB = rows.reduce((s, p) => {
-                const box = battingMap[p.playerId];
-                const live = liveBattingMap[p.playerId];
-                return s + (box?.totalBases ?? live?.tb ?? 0);
-              }, 0);
+              const sumB = (key: keyof PlayerGameBattingCounts) =>
+                rows.reduce(
+                  (s, p) => s + pickBattingStat(status, battingMap[p.playerId], liveBattingMap[p.playerId], key),
+                  0,
+                );
+              const tPA = sumB('plateAppearances');
+              const tAB = sumB('atBats');
+              const tR = sumB('runs');
+              const tH = sumB('hits');
+              const tDbl = sumB('doubles');
+              const tTrp = sumB('triples');
+              const tHR = sumB('homeRuns');
+              const tRBI = sumB('rbi');
+              const tBB = sumB('walks');
+              const tHBP = sumB('hitByPitch');
+              const tSO = sumB('strikeouts');
+              const tKc = sumB('strikeoutsLooking');
+              const tKs = sumB('strikeoutsSwinging');
+              const tSB = sumB('stolenBases');
+              const tCS = sumB('caughtStealing');
+              const tSF = sumB('sacrificeFlies');
+              const tSAC = sumB('sacrificeBunts');
+              const tB = sumB('buntSingles');
+              const tGDP = sumB('groundedIntoDoublePlays');
+              const tFC = sumB('fieldersChoice');
+              const tCI = sumB('catcherInterference');
+              const tTB = sumB('totalBases');
               return (
                 <tfoot>
                   <tr className="border-t-2 border-slate-200 bg-slate-100 font-semibold text-slate-900">
@@ -1594,7 +1633,7 @@ export function LiveGameClient({
                     );
                   })}
                   <td className="border-l border-slate-200 py-2 text-center text-base font-bold tabular-nums text-slate-900">{displayScore.away}</td>
-                  <td className="py-2 text-center tabular-nums text-slate-700">{awayBatting.reduce((s, b) => s + (b.hits || 0), 0) || awayLineup.reduce((s, p) => s + (liveBattingMap[p.playerId]?.h ?? 0), 0)}</td>
+                  <td className="py-2 text-center tabular-nums text-slate-700">{awayTeamHitsDisplay}</td>
                   <td className="py-2 text-center tabular-nums text-slate-700">{errorCounts.away}</td>
                 </tr>
                 <tr className="border-t border-slate-200/80 bg-white">
@@ -1612,7 +1651,7 @@ export function LiveGameClient({
                     );
                   })}
                   <td className="border-l border-slate-200 py-2 text-center text-base font-bold tabular-nums text-slate-900">{displayScore.home}</td>
-                  <td className="py-2 text-center tabular-nums text-slate-700">{homeBatting.reduce((s, b) => s + (b.hits || 0), 0) || homeLineup.reduce((s, p) => s + (liveBattingMap[p.playerId]?.h ?? 0), 0)}</td>
+                  <td className="py-2 text-center tabular-nums text-slate-700">{homeTeamHitsDisplay}</td>
                   <td className="py-2 text-center tabular-nums text-slate-700">{errorCounts.home}</td>
                 </tr>
               </tbody>
