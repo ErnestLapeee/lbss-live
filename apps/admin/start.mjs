@@ -135,6 +135,9 @@ const server = http.createServer((req, res) => {
   sendFile(req, res, filePath);
 });
 
+server.requestTimeout = 1_800_000;
+server.headersTimeout = 1_900_000;
+
 server.listen(port, '0.0.0.0', () => {
   console.log(`[@lbss/admin] http://0.0.0.0:${port}  static:${distDir}  /api -> ${upstreamOrigin}`);
 });
