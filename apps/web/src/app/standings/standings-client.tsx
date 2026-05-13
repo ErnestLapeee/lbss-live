@@ -76,6 +76,13 @@ function proxy(path: string) {
   return path.startsWith('/api/') ? path.replace(/^\/api\//, '/api/proxy/') : `/api/proxy${path}`;
 }
 
+function seasonSelectLabel(s: Season): string {
+  const base = (s.name ?? '').trim();
+  if (base) return s.seasonKind === 'playoff' ? `${base} (Playoffs)` : base;
+  if (s.year != null) return String(s.year);
+  return `Season ${s.id}`;
+}
+
 export function StandingsClient() {
   const router = useRouter();
   const pathname = usePathname();
@@ -270,7 +277,7 @@ export function StandingsClient() {
         <div
           className={`mb-6 flex flex-wrap items-center gap-4 ${isPlayoffSeason ? 'rounded-xl border border-border bg-surface-alt p-4' : ''}`}
         >
-          <span className="text-sm font-medium text-text-muted">Season (year):</span>
+          <span className="text-sm font-medium text-text-muted">Season:</span>
           {loading ? (
             <span className="text-text-faint text-sm">Loading seasons…</span>
           ) : seasons.length === 0 ? (
@@ -284,8 +291,7 @@ export function StandingsClient() {
             >
               {seasons.map((s) => (
                 <option key={s.id} value={s.id}>
-                  {s.year != null ? `${s.year} – ` : ''}
-                  {s.name ?? ''}
+                  {seasonSelectLabel(s)}
                 </option>
               ))}
             </select>
@@ -348,9 +354,6 @@ export function StandingsClient() {
         ) : !hasStandings ? (
           <div className="rounded-xl border border-dashed border-border bg-surface-alt p-12 text-center">
             <p className="text-lg font-medium text-text-muted">No standings data for this season yet</p>
-            <p className="mt-2 text-sm text-text-faint">
-              Standings will appear once games are played and finalized. Try selecting another season above.
-            </p>
           </div>
         ) : (
           <div className="space-y-8">

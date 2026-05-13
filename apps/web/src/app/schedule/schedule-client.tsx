@@ -155,9 +155,6 @@ export function ScheduleClient({ initialGames, seasons, defaultSeasonId }: Sched
                 </option>
               ))}
             </select>
-            <span className="text-xs text-text-faint">
-              {selectedSeasonId != null ? 'Showing one season' : 'Showing all, grouped by season'}
-            </span>
           </div>
         )}
         {games.length === 0 ? (

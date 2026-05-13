@@ -416,9 +416,6 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
               </option>
             ))}
           </select>
-          <span className="text-[11px] text-text-faint max-w-md">
-            Filters splits, batting vs pitcher, game log, and spray chart.
-          </span>
         </div>
       )}
 
