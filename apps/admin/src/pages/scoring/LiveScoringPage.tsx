@@ -1944,7 +1944,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                       className="flex min-h-0 min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-1 text-left text-sm hover:bg-white/10"
                     >
                       <span className="min-w-0 flex-1 truncate">
-                        {p.firstName.charAt(0)}. {p.lastName}
+                        {`${p.firstName} ${p.lastName}`.trim()}
                       </span>
                       <span
                         className={`h-2 w-2 shrink-0 rounded-full ${p.licensePaid === 'paid' ? 'bg-green-500' : 'bg-red-500'}`}
@@ -2008,7 +2008,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                           {entry.playerId == null
                             ? <span className="italic text-white/45">Vacant (ejection / empty)</span>
                             : player
-                              ? `${player.firstName.charAt(0)}. ${player.lastName}`
+                              ? `${player.firstName} ${player.lastName}`.trim()
                               : '?'}
                         </span>
                       </div>
