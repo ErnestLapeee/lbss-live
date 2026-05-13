@@ -105,10 +105,13 @@ export function TeamsPage() {
   const [saving, setSaving] = useState(false);
 
   /* ───── data loading ───── */
-  const loadRosters = useCallback(async () => {
+  const loadRosters = useCallback(async (opts?: { background?: boolean }) => {
     if (!selectedSeasonId) return;
-    setLoading(true);
-    setError(null);
+    const background = Boolean(opts?.background);
+    if (!background) {
+      setLoading(true);
+      setError(null);
+    }
     try {
       const [rostersData, playersData, leaguesData] = await Promise.all([
         apiGet<TeamWithRoster[]>(`/admin/teams/rosters?seasonId=${selectedSeasonId}`),
@@ -123,10 +126,11 @@ export function TeamsPage() {
             .sort((a, b) => a.name.localeCompare(b.name))
         : [];
       setLeaguesForSeason(lg);
+      setError(null);
     } catch (err: any) {
       setError(err.message || 'Failed to load');
     } finally {
-      setLoading(false);
+      if (!background) setLoading(false);
     }
   }, [selectedSeasonId]);
 
@@ -247,7 +251,7 @@ export function TeamsPage() {
         await apiPost('/admin/teams', body);
       }
       setShowTeamForm(false);
-      await loadRosters();
+      await loadRosters({ background: true });
     } catch (err: any) {
       alert(err.message || 'Failed to save team');
     } finally {
@@ -265,7 +269,7 @@ export function TeamsPage() {
     }
     try {
       await apiDelete(`/admin/teams/${teamId}`);
-      await loadRosters();
+      await loadRosters({ background: true });
     } catch (err: any) {
       alert(err.message || 'Failed');
     }
@@ -274,7 +278,7 @@ export function TeamsPage() {
   const handleReactivateTeam = async (teamId: number) => {
     try {
       await apiPost(`/admin/teams/${teamId}/reactivate`, {});
-      await loadRosters();
+      await loadRosters({ background: true });
     } catch (err: any) {
       alert(err.message || 'Failed to reactivate');
     }
@@ -311,7 +315,7 @@ export function TeamsPage() {
         jerseyNumber: playerForm.jerseyNumber || undefined,
       });
       setShowPlayerForm(false);
-      await loadRosters();
+      await loadRosters({ background: true });
     } catch (err: any) {
       alert(err.message || 'Failed to add player');
     } finally {
@@ -342,7 +346,7 @@ export function TeamsPage() {
         jerseyNumber: assignForm.jerseyNumber || undefined,
       });
       setShowAssignModal(false);
-      await loadRosters();
+      await loadRosters({ background: true });
     } catch (err: any) {
       alert(err.message || 'Failed to assign');
     } finally {
@@ -400,7 +404,7 @@ export function TeamsPage() {
         bio: directoryPlayerEditForm.bio.trim() || undefined,
       });
       closeDirectoryPlayerEdit();
-      await loadRosters();
+      await loadRosters({ background: true });
     } catch (err: any) {
       alert(err.message || 'Failed to save player');
     } finally {
@@ -418,7 +422,7 @@ export function TeamsPage() {
       });
       setShowMoveModal(false);
       setMovingPlayer(null);
-      await loadRosters();
+      await loadRosters({ background: true });
     } catch (err: any) {
       alert(err.message || 'Failed to add player to team');
     } finally {
@@ -431,7 +435,7 @@ export function TeamsPage() {
     if (!confirm(`Remove ${player.firstName} ${player.lastName} from this team's roster?`)) return;
     try {
       await apiDelete(`/admin/teams/roster/${player.rosterId}`);
-      await loadRosters();
+      await loadRosters({ background: true });
     } catch (err: any) {
       alert(err.message || 'Failed to remove');
     }
