@@ -100,6 +100,8 @@ const STAT_ABBREVIATIONS: Record<string, string> = {
   Team: 'Team',
   Player: 'Player',
   Season: 'Season',
+  TH: 'Pitcher throws (R / L / S)',
+  Pitcher: 'Opposing pitcher',
 };
 
 export function getStatAbbreviationMeaning(label: string): string | null {

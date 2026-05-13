@@ -4,7 +4,10 @@ import {
   aggregateBattingCountSplits,
   aggregatePitchingCountSplits,
   aggregatePitchingPlatoon,
+  computeBattingStatsFromEvents,
+  computeDerivedBattingStats,
   type CountSplitEventRow,
+  type GameEvent,
   type PlatoonBattingEventRow,
   type PlatoonPitchingEventRow,
 } from '@lbss/shared';
@@ -115,6 +118,35 @@ async function gamesHavePlayoffSeriesId(): Promise<boolean> {
 /** Migration 0010 — when not applied, platoon SQL must not reference ge.batter_side. */
 async function gameEventsHasBatterSideColumn(): Promise<boolean> {
   return (await getPlayerRouteColumnFlags()).gameEventsHaveBatterSide;
+}
+
+function gameEventRowFromDb(r: Record<string, unknown>, batterId: number): GameEvent {
+  const halfRaw = String(r.half ?? 'top').toLowerCase();
+  const half: 'top' | 'bot' = halfRaw.startsWith('b') ? 'bot' : 'top';
+  return {
+    id: Number(r.id),
+    gameId: Number(r.game_id),
+    eventNumber: Number(r.event_number),
+    inning: Number(r.inning),
+    half,
+    batterId,
+    pitcherId: r.pitcher_id != null ? Number(r.pitcher_id) : null,
+    eventType: String(r.event_type) as GameEvent['eventType'],
+    eventDetail: r.event_detail != null ? String(r.event_detail) : null,
+    rbi: Number(r.rbi ?? 0),
+    runsScored: Number(r.runs_scored ?? 0),
+    outsRecorded: Number(r.outs_recorded ?? 0),
+    errorsOnPlay: Number(r.errors_on_play ?? 0),
+    balls: Number(r.balls ?? 0),
+    strikes: Number(r.strikes ?? 0),
+    runnerFirstId: null,
+    runnerSecondId: null,
+    runnerThirdId: null,
+    runnersScored: [],
+    isDeleted: Boolean(r.is_deleted),
+    createdAt: '',
+    createdBy: null,
+  };
 }
 
 export async function playersRoutes(app: FastifyInstance) {
@@ -881,6 +913,150 @@ export async function playersRoutes(app: FastifyInstance) {
       return reply.status(500).send({ message: 'Failed to fetch platoon splits' });
     }
   });
+
+  // GET /:slug/batting-by-pitcher — batting line vs each opposing pitcher (finalized games, event-derived)
+  app.get<{ Params: { slug: string }; Querystring: { seasonId?: string } }>(
+    '/:slug/batting-by-pitcher',
+    async (request, reply) => {
+      try {
+        const [player] = await db
+          .select()
+          .from(players)
+          .where(eq(players.slug, request.params.slug))
+          .limit(1);
+        if (!player || !player.isActive) {
+          return reply.status(404).send({ message: 'Player not found' });
+        }
+
+        const rawSeason = request.query.seasonId;
+        let seasonFilter: number | null = null;
+        if (rawSeason && rawSeason !== 'all') {
+          const n = parseInt(rawSeason, 10);
+          if (Number.isNaN(n)) {
+            return reply.status(400).send({ message: 'Invalid seasonId' });
+          }
+          seasonFilter = n;
+        }
+
+        const evRows = await db.execute(sql`
+          SELECT ge.id, ge.game_id, ge.event_number, ge.inning, ge.half, ge.batter_id, ge.pitcher_id,
+            ge.event_type, ge.event_detail, ge.rbi, ge.runs_scored, ge.outs_recorded, ge.errors_on_play,
+            ge.balls, ge.strikes, ge.is_deleted,
+            p.first_name AS pitcher_first_name, p.last_name AS pitcher_last_name, p.slug AS pitcher_slug,
+            p.throws AS pitcher_throws
+          FROM game_events ge
+          JOIN games g ON ge.game_id = g.id
+          JOIN leagues l ON g.league_id = l.id
+          LEFT JOIN players p ON ge.pitcher_id = p.id
+          WHERE ge.batter_id = ${player.id}
+            AND ge.is_deleted = false
+            AND g.is_finalized = true
+            ${seasonFilter != null ? sql`AND l.season_id = ${seasonFilter}` : sql``}
+        `);
+
+        const rows = rowsFromExecute<Record<string, unknown>>(evRows);
+        const byPitcher = new Map<
+          number,
+          {
+            meta: {
+              pitcherId: number;
+              firstName: string;
+              lastName: string;
+              slug: string | null;
+              throws: string | null;
+            };
+            events: GameEvent[];
+          }
+        >();
+
+        for (const r of rows) {
+          const pid = r.pitcher_id != null ? Number(r.pitcher_id) : NaN;
+          if (!Number.isFinite(pid) || pid <= 0) continue;
+          let g = byPitcher.get(pid);
+          if (!g) {
+            g = {
+              meta: {
+                pitcherId: pid,
+                firstName: String(r.pitcher_first_name ?? 'Unknown'),
+                lastName: String(r.pitcher_last_name ?? ''),
+                slug: r.pitcher_slug != null ? String(r.pitcher_slug) : null,
+                throws: r.pitcher_throws != null ? String(r.pitcher_throws) : null,
+              },
+              events: [],
+            };
+            byPitcher.set(pid, g);
+          }
+          g.events.push(gameEventRowFromDb(r, player.id));
+        }
+
+        const out: Array<{
+          pitcherId: number;
+          pitcherFirstName: string;
+          pitcherLastName: string;
+          pitcherSlug: string | null;
+          pitcherThrows: string | null;
+          plateAppearances: number;
+          atBats: number;
+          hits: number;
+          doubles: number;
+          triples: number;
+          homeRuns: number;
+          walks: number;
+          strikeouts: number;
+          hitByPitch: number;
+          rbi: number;
+          runs: number;
+          sacrificeFlies: number;
+          sacrificeBunts: number;
+          stolenBases: number;
+          caughtStealing: number;
+          battingAvg: number;
+          onBasePct: number;
+          sluggingPct: number;
+          ops: number;
+        }> = [];
+
+        for (const { meta, events } of byPitcher.values()) {
+          const raw = computeBattingStatsFromEvents(events, player.id);
+          const derived = computeDerivedBattingStats(raw);
+          if (raw.plateAppearances <= 0) continue;
+          out.push({
+            pitcherId: meta.pitcherId,
+            pitcherFirstName: meta.firstName,
+            pitcherLastName: meta.lastName,
+            pitcherSlug: meta.slug,
+            pitcherThrows: meta.throws,
+            plateAppearances: raw.plateAppearances,
+            atBats: raw.atBats,
+            hits: raw.hits,
+            doubles: raw.doubles,
+            triples: raw.triples,
+            homeRuns: raw.homeRuns,
+            walks: raw.walks,
+            strikeouts: raw.strikeouts,
+            hitByPitch: raw.hitByPitch,
+            rbi: raw.rbi,
+            runs: raw.runs,
+            sacrificeFlies: raw.sacrificeFlies,
+            sacrificeBunts: raw.sacrificeBunts,
+            stolenBases: raw.stolenBases,
+            caughtStealing: raw.caughtStealing,
+            battingAvg: derived.battingAvg,
+            onBasePct: derived.onBasePct,
+            sluggingPct: derived.sluggingPct,
+            ops: derived.ops,
+          });
+        }
+
+        out.sort((a, b) => b.plateAppearances - a.plateAppearances);
+
+        return reply.send({ seasonId: seasonFilter, rows: out });
+      } catch (err) {
+        request.log.error(err);
+        return reply.status(500).send({ message: 'Failed to fetch batting by pitcher' });
+      }
+    },
+  );
 
   // GET /:slug/spray-chart - hit location data from events
   app.get<{ Params: { slug: string }; Querystring: { seasonId?: string } }>(

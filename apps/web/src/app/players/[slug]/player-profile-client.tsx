@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
+import Link from 'next/link';
 import { SprayChart } from '@/components/stats/spray-chart';
 import { TeamMark } from '@/components/ui/team-mark';
 import { getStatAbbreviationMeaning } from '@/lib/stat-abbreviations';
@@ -291,6 +292,7 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
     battingCounts?: { firstPitch?: any; counts?: any[]; reachedCounts?: any[] };
     pitchingCounts?: { firstPitch?: any; counts?: any[]; reachedCounts?: any[] };
   } | null>(null);
+  const [battingByPitcher, setBattingByPitcher] = useState<any[] | null>(null);
 
   // Season filter: splits, game log, spray chart (career tables stay all-time)
   const filterParam = selectedSeasonId != null ? `seasonId=${selectedSeasonId}` : '';
@@ -336,6 +338,21 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
     fetchJson(url).then(d =>
       setPlatoonSplits(d && typeof d === 'object' && d.batting && d.pitching ? d : null)
     );
+  }, [tab, slug, filterParam]);
+
+  // Batting vs each opposing pitcher (same season filter as splits / game log)
+  useEffect(() => {
+    if (tab !== 'batting') return;
+    const url = filterParam
+      ? `/api/public/players/${slug}/batting-by-pitcher?${filterParam}`
+      : `/api/public/players/${slug}/batting-by-pitcher`;
+    fetchJson(url).then((d) => {
+      if (d && typeof d === 'object' && Array.isArray(d.rows)) {
+        setBattingByPitcher(d.rows);
+      } else {
+        setBattingByPitcher([]);
+      }
+    });
   }, [tab, slug, filterParam]);
 
   const tabs: { key: Tab; label: string }[] = [
@@ -400,7 +417,7 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
             ))}
           </select>
           <span className="text-[11px] text-text-faint max-w-md">
-            Filters splits, game log, and spray chart.
+            Filters splits, batting vs pitcher, game log, and spray chart.
           </span>
         </div>
       )}
@@ -512,6 +529,77 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
                   })()}
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {/* Batting vs opposing pitcher (event-derived, finalized games) */}
+          {battingByPitcher != null && battingByPitcher.length > 0 && (
+            <div>
+              <h3 className="font-heading text-sm font-bold mb-3 flex items-center gap-2">
+                <div className="w-1 h-4 rounded-full bg-gold" />
+                Batting vs pitcher
+              </h3>
+              <p className="text-xs text-text-muted mb-3 max-w-2xl">
+                Performance against each opposing pitcher (from the live scoring event log in finalized games). Sorted
+                by plate appearances.
+              </p>
+              <div className="rounded-xl border border-border bg-surface overflow-x-auto max-w-5xl">
+                <table className="w-full text-sm min-w-[720px]">
+                  <thead>
+                    <tr className="border-b border-border bg-surface-alt">
+                      {['Pitcher', 'TH', 'PA', 'AB', 'H', '2B', '3B', 'HR', 'BB', 'SO', 'HBP', 'RBI', 'R', 'SB', 'CS', 'AVG', 'OBP', 'SLG', 'OPS'].map((col) => (
+                        <th
+                          key={col}
+                          title={getStatAbbreviationMeaning(col) ?? undefined}
+                          className={`px-2 py-2 text-[10px] font-bold uppercase tracking-wider text-text-faint whitespace-nowrap ${col === 'Pitcher' ? 'text-left' : 'text-right'}`}
+                        >
+                          {col}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {battingByPitcher.map((row: any) => {
+                      const name = `${row.pitcherFirstName ?? ''} ${row.pitcherLastName ?? ''}`.trim() || 'Unknown';
+                      const inner = row.pitcherSlug ? (
+                        <Link
+                          href={`/players/${row.pitcherSlug}`}
+                          className="font-semibold text-accent hover:text-accent-light hover:underline"
+                        >
+                          {name}
+                        </Link>
+                      ) : (
+                        <span className="font-semibold text-text">{name}</span>
+                      );
+                      return (
+                        <tr key={row.pitcherId} className="border-b border-border last:border-0 hover:bg-surface-alt/50">
+                          <td className="px-2 py-2 text-left text-xs min-w-[10rem]">{inner}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs text-text-muted">
+                            {row.pitcherThrows ? String(row.pitcherThrows).toUpperCase() : '—'}
+                          </td>
+                          <td className="px-2 py-2 text-right font-mono text-xs">{n(row.plateAppearances)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs">{n(row.atBats)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs">{n(row.hits)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs">{n(row.doubles)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs">{n(row.triples)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs">{n(row.homeRuns)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs">{n(row.walks)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs">{n(row.strikeouts)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs">{n(row.hitByPitch)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs">{n(row.rbi)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs">{n(row.runs)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs">{n(row.stolenBases)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs">{n(row.caughtStealing)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs font-bold">{fmtRate(row.battingAvg)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs">{fmtRate(row.onBasePct)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs">{fmtRate(row.sluggingPct)}</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs font-bold">{fmtRate(row.ops)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
 
