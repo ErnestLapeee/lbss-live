@@ -29,4 +29,5 @@ export async function apiFetch<T>(path: string, options?: RequestInit): Promise<
 export function apiGet<T>(path: string) { return apiFetch<T>(path); }
 export function apiPost<T>(path: string, data: unknown) { return apiFetch<T>(path, { method: 'POST', body: JSON.stringify(data) }); }
 export function apiPut<T>(path: string, data: unknown) { return apiFetch<T>(path, { method: 'PUT', body: JSON.stringify(data) }); }
+export function apiPatch<T>(path: string, data: unknown) { return apiFetch<T>(path, { method: 'PATCH', body: JSON.stringify(data) }); }
 export function apiDelete<T>(path: string) { return apiFetch<T>(path, { method: 'DELETE' }); }

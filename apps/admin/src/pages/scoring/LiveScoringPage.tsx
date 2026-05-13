@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
+import { apiGet, apiPost, apiPut, apiPatch, apiDelete } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 
 /* ── Types ── */
@@ -319,6 +319,59 @@ function computeMinDestinations(
   return mins;
 }
 
+function JerseyQuickInput({
+  gameId,
+  teamId,
+  player,
+  onSaved,
+}: {
+  gameId: number;
+  teamId: number;
+  player: Player;
+  onSaved: (teamId: number, playerId: number, jerseyNumber: string | undefined) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const save = async (raw: string) => {
+    const next = raw.replace(/\D/g, '').slice(0, 5);
+    const prev = (player.jerseyNumber ?? '').replace(/\D/g, '');
+    if (next === prev) return;
+    setBusy(true);
+    try {
+      await apiPatch<{ playerId: number; teamId: number; jerseyNumber?: string }>(
+        `/admin/scoring/${gameId}/roster/jersey`,
+        { playerId: player.playerId, teamId, jerseyNumber: next || null },
+      );
+      onSaved(teamId, player.playerId, next || undefined);
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : 'Could not save jersey #');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <input
+      type="text"
+      inputMode="numeric"
+      pattern="[0-9]*"
+      maxLength={5}
+      disabled={busy}
+      title="Jersey # — blur or Enter to save"
+      aria-label={`Jersey number for ${player.firstName} ${player.lastName}`}
+      placeholder="—"
+      defaultValue={player.jerseyNumber ?? ''}
+      key={`jersey-${player.playerId}-${player.jerseyNumber ?? ''}`}
+      className="w-[3.5rem] shrink-0 rounded border border-white/25 bg-black/40 px-1 py-1 text-center font-mono text-xs text-white [color-scheme:dark] outline-none focus:border-white/45 disabled:opacity-40"
+      onClick={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
+      onPointerDown={(e) => e.stopPropagation()}
+      onBlur={(e) => void save(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+      }}
+    />
+  );
+}
+
 export function LiveScoringPage() {
   const { gameId: gameIdStr } = useParams<{ gameId: string }>();
   const navigate = useNavigate();
@@ -492,6 +545,15 @@ export function LiveScoringPage() {
       setHomeRoster(data.home || []); setAwayRoster(data.away || []);
     } catch {}
   }, [gameId]);
+
+  const applyJerseyToRosters = useCallback((teamId: number, playerId: number, jerseyNumber: string | undefined) => {
+    const patch = (list: Player[]) =>
+      list.map((pl) =>
+        pl.playerId === playerId && pl.teamId === teamId ? { ...pl, jerseyNumber } : pl,
+      );
+    setHomeRoster(patch);
+    setAwayRoster(patch);
+  }, []);
 
   useEffect(() => { loadState(); loadRosters(); }, [loadState, loadRosters]);
   useEffect(() => {
@@ -1867,20 +1929,29 @@ function needsRunnerAdvanceErrorFieldingPrompt(
               </div>
               <div className="space-y-1">
                 {availableSorted.map((p) => (
-                  <button
+                  <div
                     key={p.playerId}
-                    type="button"
-                    onClick={() => addToSetup(setupTeam, p.playerId)}
-                    className="flex min-h-[44px] w-full items-center gap-2 rounded-lg bg-white/5 px-3 py-2 text-left text-sm hover:bg-white/10 sm:min-h-0"
+                    className="flex min-h-[44px] w-full items-center gap-2 rounded-lg bg-white/5 px-2 py-2 sm:min-h-0 sm:px-3"
                   >
-                    {p.jerseyNumber && <span className="text-white/30 font-mono">#{p.jerseyNumber}</span>}
-                    <span className="flex-1">
-                      {p.firstName.charAt(0)}. {p.lastName}
-                    </span>
-                    <span
-                      className={`w-2 h-2 rounded-full shrink-0 ${p.licensePaid === 'paid' ? 'bg-green-500' : 'bg-red-500'}`}
+                    <JerseyQuickInput
+                      gameId={gameId}
+                      teamId={setupTeam === 'home' ? game.homeTeamId : game.awayTeamId}
+                      player={p}
+                      onSaved={applyJerseyToRosters}
                     />
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => addToSetup(setupTeam, p.playerId)}
+                      className="flex min-h-0 min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-1 text-left text-sm hover:bg-white/10"
+                    >
+                      <span className="min-w-0 flex-1 truncate">
+                        {p.firstName.charAt(0)}. {p.lastName}
+                      </span>
+                      <span
+                        className={`h-2 w-2 shrink-0 rounded-full ${p.licensePaid === 'paid' ? 'bg-green-500' : 'bg-red-500'}`}
+                      />
+                    </button>
+                  </div>
                 ))}
               </div>
             </div>
@@ -1921,6 +1992,14 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                           ⋮⋮
                         </span>
                         <span className="w-6 shrink-0 font-bold text-white/30">{idx + 1}</span>
+                        {player && (
+                          <JerseyQuickInput
+                            gameId={gameId}
+                            teamId={setupTeam === 'home' ? game.homeTeamId : game.awayTeamId}
+                            player={player}
+                            onSaved={applyJerseyToRosters}
+                          />
+                        )}
                         {player && (
                           <span
                             className={`h-2 w-2 shrink-0 rounded-full ${player.licensePaid === 'paid' ? 'bg-green-500' : 'bg-red-500'}`}

@@ -941,6 +941,75 @@ export async function adminScoringRoutes(app: FastifyInstance) {
     }
   });
 
+  // ── PATCH /:gameId/roster/jersey ── Update jersey on season roster (lineup setup)
+  app.patch<{
+    Params: { gameId: string };
+    Body: { playerId?: number; teamId?: number; jerseyNumber?: string | null };
+  }>('/:gameId/roster/jersey', async (request, reply) => {
+    try {
+      const gameId = parseInt(request.params.gameId, 10);
+      if (Number.isNaN(gameId)) {
+        return reply.status(400).send({ message: 'Invalid game id' });
+      }
+      const game = await getGameCore(gameId);
+      if (!game) return reply.status(404).send({ message: 'Game not found' });
+
+      const body = request.body ?? {};
+      const playerId = Number(body.playerId);
+      const teamId = Number(body.teamId);
+      if (!Number.isFinite(playerId) || playerId <= 0) {
+        return reply.status(400).send({ message: 'playerId is required' });
+      }
+      if (!Number.isFinite(teamId) || teamId <= 0) {
+        return reply.status(400).send({ message: 'teamId is required' });
+      }
+      if (teamId !== game.homeTeamId && teamId !== game.awayTeamId) {
+        return reply.status(400).send({ message: 'teamId must be home or away for this game' });
+      }
+
+      const jerseyRaw = body.jerseyNumber != null ? String(body.jerseyNumber).trim() : '';
+      if (jerseyRaw !== '' && !/^\d{1,5}$/.test(jerseyRaw)) {
+        return reply.status(400).send({ message: 'Jersey number must be digits only (max 5)' });
+      }
+      const jerseyNumber = jerseyRaw === '' ? null : jerseyRaw.slice(0, 5);
+
+      const [leagueRow] = await db
+        .select({ seasonId: leagues.seasonId })
+        .from(leagues)
+        .where(eq(leagues.id, game.leagueId))
+        .limit(1);
+      const seasonId = leagueRow?.seasonId ?? null;
+      if (seasonId == null) {
+        return reply.status(400).send({ message: 'League has no season' });
+      }
+
+      const updated = await db
+        .update(playerSeasons)
+        .set({ jerseyNumber })
+        .where(
+          and(
+            eq(playerSeasons.playerId, playerId),
+            eq(playerSeasons.teamId, teamId),
+            eq(playerSeasons.seasonId, seasonId),
+          ),
+        )
+        .returning({ id: playerSeasons.id, jerseyNumber: playerSeasons.jerseyNumber });
+
+      if (updated.length === 0) {
+        return reply.status(404).send({ message: 'Player not on roster for this game season' });
+      }
+
+      return reply.send({
+        playerId,
+        teamId,
+        jerseyNumber: updated[0]!.jerseyNumber ?? undefined,
+      });
+    } catch (err) {
+      request.log.error(err);
+      return reply.status(500).send({ message: 'Failed to update jersey' });
+    }
+  });
+
   // ── GET /:gameId/most-common-lineup/:teamId ── Mode starter lineup (same season) for quick entry
   app.get<{ Params: { gameId: string; teamId: string } }>(
     '/:gameId/most-common-lineup/:teamId',
