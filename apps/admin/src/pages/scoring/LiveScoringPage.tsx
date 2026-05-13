@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, memo, startTransition } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { apiGet, apiPost, apiPut, apiPatch, apiDelete } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -212,6 +212,15 @@ const getRunnerOutTypesForOuts = (currentOuts: number) => {
   });
 };
 
+/** Runner-only / between-PA events that do not add a "pitch" to pitch count (see pitcherPitchCounts). */
+const PITCH_COUNT_RUNNER_EVENTS = new Set([
+  'stolen_base', 'caught_stealing', 'picked_off', 'wild_pitch', 'passed_ball', 'balk', 'advance', 'advance_on_error',
+  'defensive_indifference', 'runner_interference', 'appeal_play', 'tagged_out', 'force_out', 'hit_by_ball', 'missed_base',
+  'left_base_early', 'left_base_path', 'offensive_interference', 'passed_runner', 'hesitation', 'double_play',
+  'triple_play', 'end_half_inning', 'illegal_pitch', 'place_runner_second',
+]);
+const PITCH_COUNT_WALK_TYPES = new Set(['walk', 'intentional_walk']);
+
 /* ── (Field positions are defined inline in the SVG) ── */
 
 type ScoringStep = 'pitch' | 'strikeout_type' | 'out_type' | 'safe_type' | 'fielding' | 'hit_location' | 'runner' | 'batter_advance' | 'runner_out_detail' | 'runner_out_fielding' | 'runner_advance_error_fielding' | 'runner_action' | 'sub_defense' | 'sub_offense' | 'swap_position' | 'swap_position_pick' | 'misc' | 'misc_runner_second' | 'adjust_score';
@@ -319,7 +328,7 @@ function computeMinDestinations(
   return mins;
 }
 
-function JerseyQuickInput({
+const JerseyQuickInput = memo(function JerseyQuickInput({
   gameId,
   teamId,
   player,
@@ -369,7 +378,7 @@ function JerseyQuickInput({
       }}
     />
   );
-}
+});
 
 export function LiveScoringPage() {
   const { gameId: gameIdStr } = useParams<{ gameId: string }>();
@@ -468,8 +477,6 @@ export function LiveScoringPage() {
   const pitcherPitchCounts = useMemo(() => {
     const counts: Record<number, { total: number; balls: number; strikes: number }> = {};
     if (!game) return counts;
-    const RUNNER_EVENTS = new Set(['stolen_base','caught_stealing','picked_off','wild_pitch','passed_ball','balk','advance','advance_on_error','defensive_indifference','runner_interference','appeal_play','tagged_out','force_out','hit_by_ball','missed_base','left_base_early','left_base_path','offensive_interference','passed_runner','hesitation','double_play','triple_play','end_half_inning','illegal_pitch','place_runner_second']);
-    const WALK_TYPES = new Set(['walk','intentional_walk']);
     const activePitcherId = (lineup: LineupEntry[]) =>
       lineup.find((l) => l.isActive && l.position === 1 && l.playerId != null)?.playerId ?? null;
     const isTopHalf = (half: string | undefined) => {
@@ -482,6 +489,7 @@ export function LiveScoringPage() {
     const sorted = [...events].sort((a, b) => a.eventNumber - b.eventNumber);
 
     for (const e of sorted) {
+      if ((e as { isDeleted?: boolean }).isDeleted) continue;
       if (e.eventType === 'substitution') {
         try {
           const d = JSON.parse(e.eventDetail || '{}') as {
@@ -513,9 +521,9 @@ export function LiveScoringPage() {
         const d = (e.eventDetail || '').toLowerCase();
         if (d === 'ball') counts[pid].balls++;
         else counts[pid].strikes++;
-      } else if (!RUNNER_EVENTS.has(e.eventType)) {
+      } else if (!PITCH_COUNT_RUNNER_EVENTS.has(e.eventType)) {
         counts[pid].total++;
-        if (WALK_TYPES.has(e.eventType) || e.eventType === 'hit_by_pitch' || e.eventType === 'catcher_obstruction' || e.eventType === 'catcher_interference') {
+        if (PITCH_COUNT_WALK_TYPES.has(e.eventType) || e.eventType === 'hit_by_pitch' || e.eventType === 'catcher_obstruction' || e.eventType === 'catcher_interference') {
           counts[pid].balls++;
         } else {
           counts[pid].strikes++;
@@ -529,9 +537,16 @@ export function LiveScoringPage() {
     setLoadError(null);
     try {
       const data: any = await apiGet(`/admin/scoring/${gameId}/state`);
-      setGame(data.game); setGameState(data.state); setEvents(data.events || []);
-      setHomeLineup(data.lineups?.home || []); setAwayLineup(data.lineups?.away || []);
-      if (data.game.status === 'live' || data.game.status === 'suspended' || data.game.status === 'final') setPhase('scoring');
+      startTransition(() => {
+        setGame(data.game);
+        setGameState(data.state);
+        setEvents(data.events || []);
+        setHomeLineup(data.lineups?.home || []);
+        setAwayLineup(data.lineups?.away || []);
+        if (data.game.status === 'live' || data.game.status === 'suspended' || data.game.status === 'final') {
+          setPhase('scoring');
+        }
+      });
     } catch (err: any) {
       console.error(err);
       setLoadError(err?.message || 'Failed to load game');
@@ -573,6 +588,7 @@ export function LiveScoringPage() {
     let awayABs = 0;
     let homeABs = 0;
     for (const e of events) {
+      if ((e as { isDeleted?: boolean }).isDeleted) continue;
       if (SCORER_NON_AB_EVENTS.has(e.eventType)) continue;
       if (e.half === 'top') awayABs++;
       else if (e.half === 'bot') homeABs++;
@@ -583,8 +599,11 @@ export function LiveScoringPage() {
   // Derived
   const battingTeamId = gameState?.half === 'top' ? game?.awayTeamId : game?.homeTeamId;
   const fieldingTeamId = gameState?.half === 'top' ? game?.homeTeamId : game?.awayTeamId;
-  const battingLineup = (battingTeamId === game?.homeTeamId ? homeLineup : awayLineup)
-    .filter(l => l.isActive).sort((a, b) => a.battingOrder - b.battingOrder);
+  const battingLineup = useMemo(() => {
+    if (!game || battingTeamId == null) return [];
+    const raw = battingTeamId === game.homeTeamId ? homeLineup : awayLineup;
+    return raw.filter((l) => l.isActive).sort((a, b) => a.battingOrder - b.battingOrder);
+  }, [battingTeamId, game, homeLineup, awayLineup]);
   const fieldingLineupActive = useMemo(
     () => (fieldingTeamId === game?.homeTeamId ? homeLineup : awayLineup).filter(l => l.isActive),
     [homeLineup, awayLineup, fieldingTeamId, game?.homeTeamId],
@@ -599,10 +618,16 @@ export function LiveScoringPage() {
   );
   const defensiveChangeTeamId = subTeamId ?? fieldingTeamId;
   const offensiveChangeTeamId = subTeamId ?? battingTeamId;
-  const defensiveChangeLineup = (defensiveChangeTeamId === game?.homeTeamId ? homeLineup : awayLineup)
-    .filter(l => l.isActive).sort((a, b) => a.battingOrder - b.battingOrder);
-  const offensiveChangeLineup = (offensiveChangeTeamId === game?.homeTeamId ? homeLineup : awayLineup)
-    .filter(l => l.isActive).sort((a, b) => a.battingOrder - b.battingOrder);
+  const defensiveChangeLineup = useMemo(() => {
+    if (!game || defensiveChangeTeamId == null) return [];
+    const raw = defensiveChangeTeamId === game.homeTeamId ? homeLineup : awayLineup;
+    return raw.filter((l) => l.isActive).sort((a, b) => a.battingOrder - b.battingOrder);
+  }, [defensiveChangeTeamId, game, homeLineup, awayLineup]);
+  const offensiveChangeLineup = useMemo(() => {
+    if (!game || offensiveChangeTeamId == null) return [];
+    const raw = offensiveChangeTeamId === game.homeTeamId ? homeLineup : awayLineup;
+    return raw.filter((l) => l.isActive).sort((a, b) => a.battingOrder - b.battingOrder);
+  }, [offensiveChangeTeamId, game, homeLineup, awayLineup]);
   const draftFieldingLineup = useMemo(() => {
     if (pendingPositionChanges.length === 0) return defensiveChangeLineup;
     const nextByPlayerId = new Map(pendingPositionChanges.map(c => [c.playerId, c.newPosition]));
@@ -634,14 +659,31 @@ export function LiveScoringPage() {
     setSwitchBatSide(null);
   }, [currentBatter?.playerId, rawIdx, battingSide]);
 
-  const getPlayerName = (id: number) => {
-    const p = [...homeLineup, ...awayLineup].find(l => l.playerId === id);
-    return p ? `${p.firstName.charAt(0)}. ${p.lastName}` : `#${id}`;
-  };
-  const getPlayerShort = (id: number) => {
-    const p = [...homeLineup, ...awayLineup].find(l => l.playerId === id);
-    return p ? `${p.firstName.charAt(0)}. ${p.lastName}` : '';
-  };
+  const lineupEntryByPlayerId = useMemo(() => {
+    const m = new Map<number, LineupEntry>();
+    for (const l of homeLineup) {
+      if (l.playerId != null) m.set(l.playerId, l);
+    }
+    for (const l of awayLineup) {
+      if (l.playerId != null) m.set(l.playerId, l);
+    }
+    return m;
+  }, [homeLineup, awayLineup]);
+
+  const getPlayerName = useCallback(
+    (id: number) => {
+      const p = lineupEntryByPlayerId.get(id);
+      return p ? `${p.firstName.charAt(0)}. ${p.lastName}` : `#${id}`;
+    },
+    [lineupEntryByPlayerId],
+  );
+  const getPlayerShort = useCallback(
+    (id: number) => {
+      const p = lineupEntryByPlayerId.get(id);
+      return p ? `${p.firstName.charAt(0)}. ${p.lastName}` : '';
+    },
+    [lineupEntryByPlayerId],
+  );
 
   useEffect(() => {
     setStep('pitch'); setSelectedEvent(null); setFieldingPositions([]);
