@@ -37,13 +37,13 @@ function getDotShape(hit: SprayChartHit): 'circle' | 'square' | 'diamond' {
 }
 
 function getDotSize(hit: SprayChartHit, compact: boolean): number {
-  const base = compact ? 2.5 : 3;
-  if (hit.hitHardness === 'hard') return base + 0.75;
-  if (hit.hitHardness === 'soft') return base - 0.75;
+  const base = compact ? 1.55 : 2.05;
+  if (hit.hitHardness === 'hard') return base + 0.45;
+  if (hit.hitHardness === 'soft') return Math.max(1.1, base - 0.45);
   return base;
 }
 
-export function SprayChart({ hits, width = 560, height = 360, compact = false, showLegend = true }: SprayChartProps) {
+export function SprayChart({ hits, width = 720, height = 480, compact = false, showLegend = true }: SprayChartProps) {
   if (hits.length === 0 && !compact) {
     return (
       <div className="flex items-center justify-center text-sm text-[#999] py-8">
@@ -62,7 +62,7 @@ export function SprayChart({ hits, width = 560, height = 360, compact = false, s
         viewBox="0 0 300 200"
         width={width}
         height={height}
-        className="h-auto w-full max-w-2xl mx-auto overflow-hidden rounded-2xl border border-border/70 bg-white"
+        className="h-auto w-full max-w-4xl mx-auto overflow-hidden rounded-2xl border border-border/70 bg-white"
       >
         <rect width="300" height="200" fill="#f8fafc" />
         {/* Outfield grass */}
@@ -107,7 +107,7 @@ export function SprayChart({ hits, width = 560, height = 360, compact = false, s
                 x={hit.hitLocationX - size} y={hit.hitLocationY - size}
                 width={size * 2} height={size * 2}
                 fill={color} opacity="0.82"
-                stroke="#0f172a" strokeWidth="0.35"
+                stroke="#0f172a" strokeWidth="0.28"
               />
             );
           }
@@ -117,7 +117,7 @@ export function SprayChart({ hits, width = 560, height = 360, compact = false, s
                 x={hit.hitLocationX - size} y={hit.hitLocationY - size}
                 width={size * 2} height={size * 2}
                 fill={color} opacity="0.82"
-                stroke="#0f172a" strokeWidth="0.35"
+                stroke="#0f172a" strokeWidth="0.28"
                 transform={`rotate(45 ${hit.hitLocationX} ${hit.hitLocationY})`}
               />
             );
@@ -126,7 +126,7 @@ export function SprayChart({ hits, width = 560, height = 360, compact = false, s
             <circle key={i}
               cx={hit.hitLocationX} cy={hit.hitLocationY}
               r={size} fill={color} opacity="0.82"
-              stroke="#0f172a" strokeWidth="0.35"
+              stroke="#0f172a" strokeWidth="0.28"
             />
           );
         })}
@@ -134,12 +134,12 @@ export function SprayChart({ hits, width = 560, height = 360, compact = false, s
 
       {showLegend && !compact && (
         <div className="mt-3 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[10px] text-text-muted">
-          <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-full bg-green-500" /> Hit ({hitsCount})</span>
-          <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-full bg-red-500" /> Out ({outsCount})</span>
-          <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-full bg-blue-500" /> Error ({errorsCount})</span>
-          <span className="flex items-center gap-1.5"><span className="inline-block w-2.5 h-2.5 bg-[#888] rounded-full" /> Fly</span>
-          <span className="flex items-center gap-1.5"><span className="inline-block w-2.5 h-2.5 bg-[#888]" /> Ground</span>
-          <span className="flex items-center gap-1.5"><span className="inline-block w-2.5 h-2.5 bg-[#888] rotate-45" /> Line</span>
+          <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-full bg-green-500" /> Hit ({hitsCount})</span>
+          <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-full bg-red-500" /> Out ({outsCount})</span>
+          <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-full bg-blue-500" /> Error ({errorsCount})</span>
+          <span className="flex items-center gap-1.5"><span className="inline-block h-2 w-2 rounded-full bg-[#888]" /> Fly</span>
+          <span className="flex items-center gap-1.5"><span className="inline-block h-2 w-2 bg-[#888]" /> Ground</span>
+          <span className="flex items-center gap-1.5"><span className="inline-block h-2 w-2 bg-[#888] rotate-45" /> Line</span>
         </div>
       )}
     </div>

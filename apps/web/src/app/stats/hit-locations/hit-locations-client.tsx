@@ -83,7 +83,7 @@ export function HitLocationsClient({ seasons, teams }: HitLocationsClientProps) 
         </div>
       ) : view === 'team' ? (
         <div className="border border-[#ccc] bg-white p-6">
-          <SprayChart hits={teamHits} width={400} height={290} />
+          <SprayChart hits={teamHits} width={720} height={480} />
         </div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
@@ -91,7 +91,7 @@ export function HitLocationsClient({ seasons, teams }: HitLocationsClientProps) 
             <div key={p.playerId} className="border border-[#ccc] bg-white p-2">
               <div className="text-xs font-bold text-[#111] truncate">{p.name}</div>
               <div className="text-[10px] text-[#888] mb-1">{p.atBats} AB &middot; {p.hits.length} batted</div>
-              <SprayChart hits={p.hits} width={160} height={120} compact showLegend={false} />
+              <SprayChart hits={p.hits} width={200} height={134} compact showLegend={false} />
             </div>
           ))}
           {playerData.length === 0 && (

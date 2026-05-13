@@ -2637,7 +2637,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
             {step === 'hit_location' && (
               <div className="bg-scoring-panel rounded-xl border border-white/10 p-3">
                 <div className="flex justify-center mb-2">
-                  <svg viewBox="0 0 300 200" className="w-full max-w-sm cursor-crosshair"
+                  <svg viewBox="0 0 300 200" className="w-full max-w-xl cursor-crosshair"
                     onClick={(e) => {
                       const svg = e.currentTarget;
                       const rect = svg.getBoundingClientRect();
@@ -2681,7 +2681,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                     {/* Home plate */}
                     <polygon points="150,180 147,184 150,188 153,184" fill="#ddd" />
                     {hitLocationX != null && hitLocationY != null && (
-                      <circle cx={hitLocationX} cy={hitLocationY} r="5" fill="#ef4444" stroke="white" strokeWidth="1.5" opacity="0.9" />
+                      <circle cx={hitLocationX} cy={hitLocationY} r="3.25" fill="#ef4444" stroke="white" strokeWidth="1" opacity="0.92" />
                     )}
                   </svg>
                 </div>
