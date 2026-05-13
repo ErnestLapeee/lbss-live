@@ -539,10 +539,6 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
                 <div className="w-1 h-4 rounded-full bg-gold" />
                 Batting vs pitcher
               </h3>
-              <p className="text-xs text-text-muted mb-3 max-w-2xl">
-                Performance against each opposing pitcher (from the live scoring event log in finalized games). Sorted
-                by plate appearances.
-              </p>
               <div className="rounded-xl border border-border bg-surface overflow-x-auto max-w-5xl">
                 <table className="w-full text-sm min-w-[720px]">
                   <thead>
