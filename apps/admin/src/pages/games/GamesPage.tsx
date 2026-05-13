@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
 import { useAdminSeason } from '@/context/AdminSeasonContext';
 import { useAuth } from '@/lib/auth';
+import { APP_LOCALE, formatShortDateTime } from '@/lib/localeDisplay';
 
 interface Game {
   id: number;
@@ -42,18 +43,6 @@ const STATUS_OPTIONS = [
   'cancelled',
   'suspended',
 ];
-
-function formatDate(iso: string) {
-  try {
-    const d = new Date(iso);
-    return d.toLocaleString(undefined, {
-      dateStyle: 'short',
-      timeStyle: 'short',
-    });
-  } catch {
-    return iso;
-  }
-}
 
 function formatDatetimeLocal(iso: string) {
   try {
@@ -319,7 +308,7 @@ export function GamesPage() {
               key={g.id}
               className="rounded-xl border border-border bg-surface p-4 shadow-sm"
             >
-              <div className="text-xs text-text-muted">{formatDate(g.scheduledAt)}</div>
+              <div className="text-xs text-text-muted">{formatShortDateTime(g.scheduledAt)}</div>
               <div className="mt-1 text-base font-semibold leading-snug">
                 <span className="text-text-muted">{teamMap[g.awayTeamId] ?? `Away #${g.awayTeamId}`}</span>
                 <span className="mx-1 text-text-muted">@</span>
@@ -422,7 +411,7 @@ export function GamesPage() {
             ) : (
               games.map((g) => (
                 <tr key={g.id} className="border-b border-border hover:bg-surface-alt/50">
-                  <td className="px-4 py-3">{formatDate(g.scheduledAt)}</td>
+                  <td className="px-4 py-3">{formatShortDateTime(g.scheduledAt)}</td>
                   <td className="px-4 py-3 font-medium">
                     {teamMap[g.homeTeamId] ?? `Team #${g.homeTeamId}`}
                   </td>
@@ -559,6 +548,7 @@ export function GamesPage() {
                 </label>
                 <input
                   type="datetime-local"
+                  lang={APP_LOCALE}
                   value={form.scheduledAt}
                   onChange={(e) => setForm((f) => ({ ...f, scheduledAt: e.target.value }))}
                   className={inputClass}

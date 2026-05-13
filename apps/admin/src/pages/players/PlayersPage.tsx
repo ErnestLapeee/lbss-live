@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
 import { useAdminSeason } from '@/context/AdminSeasonContext';
+import { APP_LOCALE, formatShortDate } from '@/lib/localeDisplay';
 
 interface Player {
   id: number;
@@ -202,7 +203,7 @@ export function PlayersPage() {
                     <td className="px-4 py-3 font-medium">{p.firstName} {p.lastName}</td>
                     <td className="px-4 py-3 text-text-muted">{p.nationality ?? '—'}</td>
                     <td className="px-4 py-3 text-text-muted">{[p.bats, p.throws].filter(Boolean).join('/') || '—'}</td>
-                    <td className="px-4 py-3 text-text-muted">{p.dateOfBirth ?? '—'}</td>
+                    <td className="px-4 py-3 text-text-muted">{formatShortDate(p.dateOfBirth)}</td>
                     <td className="px-4 py-3 text-center">
                       {!selectedSeasonId ? (
                         <span className="text-xs text-text-muted">—</span>
@@ -277,7 +278,7 @@ export function PlayersPage() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-text-muted mb-1">Date of Birth</label>
-                <input type="date" value={form.dateOfBirth} onChange={e => setForm(f => ({ ...f, dateOfBirth: e.target.value }))} className={inputClass} />
+                <input type="date" lang={APP_LOCALE} value={form.dateOfBirth} onChange={e => setForm(f => ({ ...f, dateOfBirth: e.target.value }))} className={inputClass} />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>

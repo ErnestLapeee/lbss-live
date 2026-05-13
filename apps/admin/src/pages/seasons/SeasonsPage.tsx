@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
 import { useAdminSeason } from '@/context/AdminSeasonContext';
+import { APP_LOCALE, formatShortDate } from '@/lib/localeDisplay';
 
 type SeasonKind = 'regular' | 'playoff';
 
@@ -196,8 +197,8 @@ export function SeasonsPage() {
                   <td className="px-4 py-3 text-text-muted">
                     {item.seasonKind === 'playoff' ? 'Playoff' : 'Regular'}
                   </td>
-                  <td className="px-4 py-3">{item.startDate ?? '—'}</td>
-                  <td className="px-4 py-3">{item.endDate ?? '—'}</td>
+                  <td className="px-4 py-3">{formatShortDate(item.startDate)}</td>
+                  <td className="px-4 py-3">{formatShortDate(item.endDate)}</td>
                   <td className="px-4 py-3">
                     <span
                       className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${
@@ -289,6 +290,7 @@ export function SeasonsPage() {
                 <label className="block text-sm font-medium mb-1.5">Start Date</label>
                 <input
                   type="date"
+                  lang={APP_LOCALE}
                   value={form.startDate}
                   onChange={(e) => setForm({ ...form, startDate: e.target.value })}
                   className="w-full px-3 py-2 border border-border rounded-lg bg-surface-alt text-sm focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent"
@@ -298,6 +300,7 @@ export function SeasonsPage() {
                 <label className="block text-sm font-medium mb-1.5">End Date</label>
                 <input
                   type="date"
+                  lang={APP_LOCALE}
                   value={form.endDate}
                   onChange={(e) => setForm({ ...form, endDate: e.target.value })}
                   className="w-full px-3 py-2 border border-border rounded-lg bg-surface-alt text-sm focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent"

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
 import { useAdminSeason } from '@/context/AdminSeasonContext';
+import { APP_LOCALE } from '@/lib/localeDisplay';
 
 /* ───── types ───── */
 interface RosterPlayer {
@@ -777,7 +778,7 @@ export function TeamsPage() {
               </Field>
             </div>
             <Field label="Date of Birth">
-              <input type="date" value={playerForm.dateOfBirth} onChange={e => setPlayerForm(f => ({ ...f, dateOfBirth: e.target.value }))} className={inputClass} />
+              <input type="date" lang={APP_LOCALE} value={playerForm.dateOfBirth} onChange={e => setPlayerForm(f => ({ ...f, dateOfBirth: e.target.value }))} className={inputClass} />
             </Field>
             <ModalActions onCancel={() => setShowPlayerForm(false)} saving={saving} label="Add Player" />
           </form>
@@ -891,6 +892,7 @@ export function TeamsPage() {
             <Field label="Date of Birth">
               <input
                 type="date"
+                lang={APP_LOCALE}
                 value={directoryPlayerEditForm.dateOfBirth}
                 onChange={(e) => setDirectoryPlayerEditForm((f) => ({ ...f, dateOfBirth: e.target.value }))}
                 className={inputClass}
