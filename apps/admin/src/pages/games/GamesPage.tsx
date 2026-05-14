@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
 import { useAdminSeason } from '@/context/AdminSeasonContext';
 import { useAuth } from '@/lib/auth';
-import { EuropeanDateInput } from '@/components/EuropeanDateInput';
 import { APP_LOCALE, formatShortDateTime } from '@/lib/localeDisplay';
 
 interface Game {
@@ -215,7 +214,7 @@ export function GamesPage() {
     setError(null);
     try {
       if (!form.scheduledDate.trim()) {
-        setError('Pick a scheduled date (DD/MM/YYYY).');
+        setError('Choose a game date in the date field.');
         return;
       }
       const tm = (form.scheduledTime || '00:00').trim();
@@ -562,11 +561,16 @@ export function GamesPage() {
                 <label className="block text-sm font-medium text-text-muted mb-1">Scheduled *</label>
                 <div className="flex flex-wrap items-end gap-3">
                   <div className="min-w-[10.5rem] flex-1">
-                    <EuropeanDateInput
+                    <input
+                      type="date"
+                      lang={APP_LOCALE}
                       value={form.scheduledDate}
-                      onChange={(iso) => setForm((f) => ({ ...f, scheduledDate: iso }))}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, scheduledDate: e.target.value }))
+                      }
                       className={inputClass}
-                      aria-label="Game date, day first"
+                      required
+                      aria-label="Game date"
                     />
                   </div>
                   <div className="w-[8.5rem] shrink-0">
