@@ -559,10 +559,9 @@ export function GamesPage() {
                 </select>
               </div>
               <div>
-                <span className="block text-sm font-medium text-text-muted mb-2">Scheduled *</span>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <div>
-                    <label className="mb-1 block text-xs text-text-muted">Date (DD/MM/YYYY)</label>
+                <label className="block text-sm font-medium text-text-muted mb-1">Scheduled *</label>
+                <div className="flex flex-wrap items-end gap-3">
+                  <div className="min-w-[10.5rem] flex-1">
                     <EuropeanDateInput
                       value={form.scheduledDate}
                       onChange={(iso) => setForm((f) => ({ ...f, scheduledDate: iso }))}
@@ -570,10 +569,7 @@ export function GamesPage() {
                       aria-label="Game date, day first"
                     />
                   </div>
-                  <div>
-                    <label htmlFor="game-scheduled-time" className="mb-1 block text-xs text-text-muted">
-                      Time
-                    </label>
+                  <div className="w-[8.5rem] shrink-0">
                     <input
                       id="game-scheduled-time"
                       type="time"

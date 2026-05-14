@@ -10,6 +10,23 @@ export function isoDateToDdMmYyyy(iso: string): string {
   return `${m[3]}/${m[2]}/${m[1]}`;
 }
 
+/** Strip non-digits and format as DD/MM/YYYY while typing (slashes inserted automatically). */
+export function formatDateDigitsAsEuropeanDisplay(digitsRaw: string): string {
+  const d = String(digitsRaw).replace(/\D/g, '').slice(0, 8);
+  if (!d) return '';
+  if (d.length <= 2) return d;
+  if (d.length <= 4) return `${d.slice(0, 2)}/${d.slice(2)}`;
+  return `${d.slice(0, 2)}/${d.slice(2, 4)}/${d.slice(4)}`;
+}
+
+/** Normalize raw field text to a DD/MM/YYYY display string (handles paste of ISO date). */
+export function userCalendarInputToDdMmDisplay(raw: string): string {
+  const s = raw.trim();
+  if (!s) return '';
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return isoDateToDdMmYyyy(s.slice(0, 10));
+  return formatDateDigitsAsEuropeanDisplay(s);
+}
+
 /**
  * Parse European calendar date: day first, then month, then year.
  * Accepts `DD/MM/YYYY`, `DD.MM.YYYY`, `DD-MM-YYYY`, or already `YYYY-MM-DD`.
@@ -19,7 +36,12 @@ export function isoDateToDdMmYyyy(iso: string): string {
 export function parseEuropeanDateStringToIso(input: string): string | null {
   const s = input.trim();
   if (!s) return '';
-  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  const digits = s.replace(/\D/g, '');
+  if (digits.length === 8 && /^(\d{8})$/.test(digits)) {
+    const synthetic = `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+    return parseEuropeanDateStringToIso(synthetic);
+  }
   const m = /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4}|\d{2})$/.exec(s);
   if (!m) return null;
   const day = parseInt(m[1], 10);

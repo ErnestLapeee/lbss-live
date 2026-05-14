@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { isoDateToDdMmYyyy, parseEuropeanDateStringToIso } from '@/lib/localeDisplay';
+import { isoDateToDdMmYyyy, parseEuropeanDateStringToIso, userCalendarInputToDdMmDisplay } from '@/lib/localeDisplay';
 
 type Props = {
   value: string;
@@ -12,7 +12,7 @@ type Props = {
 
 /**
  * Day-first date field (`DD/MM/YYYY`). Value/onChange use ISO `YYYY-MM-DD` for APIs and storage.
- * Replaces `type="date"`, which follows OS locale (often MM/DD on en-US Windows).
+ * Typing only digits auto-inserts `/`; pasting `YYYY-MM-DD` works. Replaces `type="date"` (OS-locale order issues).
  */
 export function EuropeanDateInput({
   value,
@@ -52,10 +52,10 @@ export function EuropeanDateInput({
       autoComplete={autoComplete}
       placeholder="DD/MM/YYYY"
       aria-label={ariaLabel}
-      title="Day / month / year (European order)"
+      title="Day / month / year — type digits only; slashes are added automatically"
       className={className}
       value={text}
-      onChange={(e) => setText(e.target.value)}
+      onChange={(e) => setText(userCalendarInputToDdMmDisplay(e.target.value))}
       onBlur={commit}
       onKeyDown={(e) => {
         if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
