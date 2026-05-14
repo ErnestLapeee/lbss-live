@@ -44,6 +44,20 @@ export function EuropeanDateInput({
     setText(iso ? isoDateToDdMmYyyy(iso) : '');
   };
 
+  const handleInputChange = (raw: string) => {
+    const next = userCalendarInputToDdMmDisplay(raw);
+    setText(next);
+    const trimmed = next.trim();
+    if (!trimmed) {
+      onChange('');
+      return;
+    }
+    const iso = parseEuropeanDateStringToIso(trimmed);
+    if (iso !== null) {
+      onChange(iso);
+    }
+  };
+
   return (
     <input
       id={id}
@@ -55,7 +69,7 @@ export function EuropeanDateInput({
       title="Day / month / year — type digits only; slashes are added automatically"
       className={className}
       value={text}
-      onChange={(e) => setText(userCalendarInputToDdMmDisplay(e.target.value))}
+      onChange={(e) => handleInputChange(e.target.value)}
       onBlur={commit}
       onKeyDown={(e) => {
         if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
