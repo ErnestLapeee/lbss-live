@@ -9,6 +9,7 @@ import {
   playerSeasonBatting,
   playerGameFielding,
   licenses,
+  games,
 } from '../../db/schema/index.js';
 import { eq, and, sql, inArray, asc } from 'drizzle-orm';
 
@@ -133,7 +134,7 @@ export async function teamsRoutes(app: FastifyInstance) {
         );
 
       const POS_LABELS: Record<number, string> = {
-        1: 'P', 2: 'C', 3: '1B', 4: '2B', 5: '3B', 6: 'SS', 7: 'LF', 8: 'CF', 9: 'RF',
+        1: 'P', 2: 'C', 3: '1B', 4: '2B', 5: '3B', 6: 'SS', 7: 'LF', 8: 'CF', 9: 'RF', 10: 'DH',
       };
 
       const playerIds = roster.map(r => r.playerId);
@@ -147,10 +148,13 @@ export async function teamsRoutes(app: FastifyInstance) {
             games: sql<number>`count(*)`.as('games'),
           })
           .from(playerGameFielding)
+          .innerJoin(games, eq(playerGameFielding.gameId, games.id))
+          .innerJoin(leagues, eq(games.leagueId, leagues.id))
           .where(
             and(
               inArray(playerGameFielding.playerId, playerIds),
               eq(playerGameFielding.teamId, team.id),
+              eq(leagues.seasonId, seasonIdNum),
             )
           )
           .groupBy(playerGameFielding.playerId, playerGameFielding.position)
@@ -176,9 +180,17 @@ export async function teamsRoutes(app: FastifyInstance) {
         }
       }
 
-      const enriched = roster.map(r => ({
+      const seasonPos = (raw: string | null) => {
+        const s = raw?.trim();
+        if (!s) return null;
+        const n = parseInt(s, 10);
+        if (!Number.isNaN(n) && POS_LABELS[n]) return POS_LABELS[n];
+        return s;
+      };
+
+      const enriched = roster.map((r) => ({
         ...r,
-        position: r.position || posMap[r.playerId] || null,
+        position: seasonPos(r.position) || posMap[r.playerId] || null,
       }));
 
       return reply.send(enriched);

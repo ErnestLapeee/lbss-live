@@ -14,10 +14,20 @@ interface RosterPlayer {
 }
 
 const POS_LABELS: Record<number, string> = {
-  1: 'P', 2: 'C', 3: '1B', 4: '2B', 5: '3B', 6: 'SS', 7: 'LF', 8: 'CF', 9: 'RF',
+  1: 'P', 2: 'C', 3: '1B', 4: '2B', 5: '3B', 6: 'SS', 7: 'LF', 8: 'CF', 9: 'RF', 10: 'DH',
 };
 
 export function RosterTable({ roster }: { roster: RosterPlayer[] }) {
+  const formatPos = (position: RosterPlayer['position']) => {
+    if (position == null || position === '') return '—';
+    if (typeof position === 'number') return POS_LABELS[position] || String(position);
+    const s = String(position).trim();
+    if (!s) return '—';
+    const n = parseInt(s, 10);
+    if (!Number.isNaN(n) && POS_LABELS[n]) return POS_LABELS[n];
+    return s;
+  };
+
   return (
     <div className="rounded-xl border border-border bg-surface overflow-hidden">
       <table className="w-full text-sm">
@@ -32,9 +42,7 @@ export function RosterTable({ roster }: { roster: RosterPlayer[] }) {
         </thead>
         <tbody>
           {roster.map((p, i) => {
-            const posStr = typeof p.position === 'number'
-              ? (POS_LABELS[p.position] || String(p.position))
-              : (p.position || '—');
+            const posStr = formatPos(p.position);
             return (
               <tr key={p.playerId || i} className="border-b border-border last:border-0 hover:bg-surface-alt/50 transition-colors">
                 <td className="px-4 py-3 font-mono text-text-faint font-bold">{p.jerseyNumber || '—'}</td>
