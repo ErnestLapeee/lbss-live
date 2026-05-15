@@ -565,6 +565,7 @@ export function GamesPage() {
                 <div className="flex flex-wrap items-end gap-3">
                   <div className="min-w-[10.5rem] flex-1">
                     <EuropeanDateInput
+                      key={editing ? `game-${editing.id}` : 'new-game'}
                       value={form.scheduledDate}
                       onChange={(iso) => setForm((f) => ({ ...f, scheduledDate: iso }))}
                       className={inputClass}
