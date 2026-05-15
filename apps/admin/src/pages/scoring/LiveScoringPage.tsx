@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef, memo, startTransition } from 'react';
+import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, memo, startTransition } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { apiGet, apiPost, apiPut, apiPatch, apiDelete } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -774,6 +774,20 @@ export function LiveScoringPage() {
   };
 
   const [setupDragFrom, setSetupDragFrom] = useState<number | null>(null);
+  /** HTML5 DnD is unreliable on touch; use ↑↓ when pointer is coarse or viewport is narrow. */
+  const [setupLineupCoarsePointer, setSetupLineupCoarsePointer] = useState(false);
+  useLayoutEffect(() => {
+    const mCoarse = window.matchMedia('(pointer: coarse)');
+    const mNarrow = window.matchMedia('(max-width: 639.98px)');
+    const sync = () => setSetupLineupCoarsePointer(mCoarse.matches || mNarrow.matches);
+    sync();
+    mCoarse.addEventListener('change', sync);
+    mNarrow.addEventListener('change', sync);
+    return () => {
+      mCoarse.removeEventListener('change', sync);
+      mNarrow.removeEventListener('change', sync);
+    };
+  }, []);
 
   const moveSetup = (side: 'home' | 'away', fromIdx: number, toIdx: number) => {
     if (fromIdx === toIdx) return;
@@ -2005,18 +2019,21 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                   return (
                     <div
                       key={`slot-${idx}-${entry.playerId ?? 'vacant'}`}
-                      draggable
+                      draggable={!setupLineupCoarsePointer}
                       onDragStart={(e) => {
+                        if (setupLineupCoarsePointer) return;
                         e.dataTransfer.setData('text/plain', String(idx));
                         e.dataTransfer.effectAllowed = 'move';
                         setSetupDragFrom(idx);
                       }}
                       onDragEnd={() => setSetupDragFrom(null)}
                       onDragOver={(e) => {
+                        if (setupLineupCoarsePointer) return;
                         e.preventDefault();
                         e.dataTransfer.dropEffect = 'move';
                       }}
                       onDrop={(e) => {
+                        if (setupLineupCoarsePointer) return;
                         e.preventDefault();
                         const fromStr = e.dataTransfer.getData('text/plain');
                         const from = parseInt(fromStr, 10);
@@ -2024,12 +2041,45 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                         moveSetup(setupTeam, from, idx);
                         setSetupDragFrom(null);
                       }}
-                      className={`flex cursor-grab select-none flex-col gap-2 rounded-lg border border-transparent bg-white/5 px-3 py-2 active:cursor-grabbing sm:flex-row sm:items-center sm:gap-2 ${
+                      className={`flex select-none flex-col gap-2 rounded-lg border border-transparent bg-white/5 px-3 py-2 sm:flex-row sm:items-center sm:gap-2 ${
+                        !setupLineupCoarsePointer ? 'cursor-grab active:cursor-grabbing' : ''
+                      } ${
                         setupDragFrom === idx ? 'border-amber-500/40 opacity-50' : 'hover:border-white/10'
                       }`}
                     >
+                      {setupLineupCoarsePointer && (
+                        <div className="flex shrink-0 flex-row items-center justify-center gap-1 self-start">
+                          <button
+                            type="button"
+                            disabled={idx === 0}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              moveSetup(setupTeam, idx, idx - 1);
+                            }}
+                            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-white/15 bg-white/10 text-lg text-white/90 hover:bg-white/15 disabled:pointer-events-none disabled:opacity-25"
+                            aria-label={`Move batter up from spot ${idx + 1}`}
+                          >
+                            ↑
+                          </button>
+                          <button
+                            type="button"
+                            disabled={idx >= currentSetup.length - 1}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              moveSetup(setupTeam, idx, idx + 1);
+                            }}
+                            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-white/15 bg-white/10 text-lg text-white/90 hover:bg-white/15 disabled:pointer-events-none disabled:opacity-25"
+                            aria-label={`Move batter down from spot ${idx + 1}`}
+                          >
+                            ↓
+                          </button>
+                        </div>
+                      )}
                       <div className="flex min-w-0 flex-1 items-center gap-2">
-                        <span className="text-lg leading-none text-white/40" aria-hidden>
+                        <span
+                          className={`text-lg leading-none text-white/40 ${setupLineupCoarsePointer ? 'hidden' : ''}`}
+                          aria-hidden
+                        >
                           ⋮⋮
                         </span>
                         <span className="w-6 shrink-0 font-bold text-white/30">{idx + 1}</span>
