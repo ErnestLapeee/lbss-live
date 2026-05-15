@@ -19,11 +19,31 @@ export function formatDateDigitsAsEuropeanDisplay(digitsRaw: string): string {
   return `${d.slice(0, 2)}/${d.slice(2, 4)}/${d.slice(4)}`;
 }
 
+/**
+ * When the field already has separators, keep day / month / year as separate segments.
+ * Globbing all digits and re-slicing as DDMMYYYY breaks in-place edits (e.g. `17/05/2026` → `1/05/2026` became `10/52/026`).
+ */
+function normalizeSlashedEuropeanDateDisplay(raw: string): string {
+  const s = String(raw)
+    .replace(/[.-]/g, '/')
+    .replace(/[^\d/]/g, '');
+  const rawParts = s.split('/').map((p) => p.replace(/\D/g, ''));
+  const day = (rawParts[0] ?? '').slice(0, 2);
+  const month = (rawParts[1] ?? '').slice(0, 2);
+  const year = rawParts.slice(2).join('').slice(0, 4);
+  const out: string[] = [];
+  if (rawParts.length >= 1) out.push(day);
+  if (rawParts.length >= 2) out.push(month);
+  if (rawParts.length >= 3) out.push(year);
+  return out.join('/');
+}
+
 /** Normalize raw field text to a DD/MM/YYYY display string (handles paste of ISO date). */
 export function userCalendarInputToDdMmDisplay(raw: string): string {
   const s = raw.trim();
   if (!s) return '';
   if (/^\d{4}-\d{2}-\d{2}/.test(s)) return isoDateToDdMmYyyy(s.slice(0, 10));
+  if (/[/.-]/.test(s)) return normalizeSlashedEuropeanDateDisplay(s);
   return formatDateDigitsAsEuropeanDisplay(s);
 }
 
