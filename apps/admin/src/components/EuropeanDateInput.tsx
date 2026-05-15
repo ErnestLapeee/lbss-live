@@ -69,7 +69,6 @@ export function EuropeanDateInput({
       ref={inputRef}
       id={id}
       type="text"
-      inputMode="numeric"
       autoComplete={autoComplete}
       placeholder="DD/MM/YYYY"
       aria-label={ariaLabel}
