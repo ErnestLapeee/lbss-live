@@ -49,8 +49,7 @@ export function userCalendarInputToDdMmDisplay(raw: string): string {
 
 /**
  * Parse European calendar date: day first, then month, then year.
- * Accepts `DD/MM/YYYY`, `DD.MM.YYYY`, `DD-MM-YYYY`, or already `YYYY-MM-DD`.
- * Two-digit years: 00–49 → 2000–2049, 50–99 → 1950–1999.
+ * Accepts `DD/MM/YYYY`, `DD.MM.YYYY`, `DD-MM-YYYY`, or already `YYYY-MM-DD` (year must be four digits).
  * @returns `YYYY-MM-DD`, empty string if input empty, or `null` if invalid.
  */
 export function parseEuropeanDateStringToIso(input: string): string | null {
@@ -62,12 +61,11 @@ export function parseEuropeanDateStringToIso(input: string): string | null {
     const synthetic = `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
     return parseEuropeanDateStringToIso(synthetic);
   }
-  const m = /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4}|\d{2})$/.exec(s);
+  const m = /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/.exec(s);
   if (!m) return null;
   const day = parseInt(m[1], 10);
   const month = parseInt(m[2], 10);
-  let year = parseInt(m[3], 10);
-  if (m[3].length === 2) year += year >= 50 ? 1900 : 2000;
+  const year = parseInt(m[3], 10);
   if (month < 1 || month > 12 || day < 1 || day > 31) return null;
   const d = new Date(year, month - 1, day);
   if (d.getFullYear() !== year || d.getMonth() !== month - 1 || d.getDate() !== day) return null;
