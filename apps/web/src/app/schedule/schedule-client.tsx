@@ -420,7 +420,7 @@ function FinalCard({ game }: { game: Game }) {
           {/* Date + Final badge */}
           <div className="flex items-center justify-between mb-3">
             <span className="text-[10px] text-text-faint">
-              {date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+              {date.toLocaleDateString('lv-LV', { weekday: 'short', month: 'short', day: 'numeric' })}
               {game.venue && <span className="ml-1 opacity-50">— {game.venue}</span>}
             </span>
             <span className="text-[9px] font-bold uppercase tracking-widest text-text-faint/60">Final</span>
@@ -525,7 +525,7 @@ function UpcomingCard({ game }: { game: Game }) {
     <div className="rounded-xl bg-surface border border-border/60 p-4 flex items-center gap-4">
       {/* Date block */}
       <div className="w-14 h-14 rounded-lg bg-surface-alt flex flex-col items-center justify-center shrink-0 border border-border/50">
-        <span className="text-[9px] font-bold uppercase tracking-wider text-text-faint">{date.toLocaleDateString('en-US', { month: 'short' })}</span>
+        <span className="text-[9px] font-bold uppercase tracking-wider text-text-faint">{date.toLocaleDateString('lv-LV', { month: 'short' })}</span>
         <span className="text-xl font-heading font-black text-text leading-none">{date.getDate()}</span>
       </div>
       {/* Matchup */}
@@ -539,11 +539,11 @@ function UpcomingCard({ game }: { game: Game }) {
       </div>
       {/* Time */}
       <div className="shrink-0 text-right">
-        <div className="text-sm font-heading font-bold text-text-muted">
-          {date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+        <div className="text-sm font-heading font-bold text-text-muted tabular-nums">
+          {date.toLocaleTimeString('lv-LV', { hour: '2-digit', minute: '2-digit', hour12: false })}
         </div>
         <div className="text-[10px] text-text-faint">
-          {date.toLocaleDateString('en-US', { weekday: 'short' })}
+          {date.toLocaleDateString('lv-LV', { weekday: 'short' })}
         </div>
       </div>
     </div>

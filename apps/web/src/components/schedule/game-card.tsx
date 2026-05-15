@@ -29,7 +29,7 @@ export function GameCard({ id, homeTeam, awayTeam, homeScore, awayScore, status,
         <span className="text-xs text-text-muted font-medium">
           {date.toLocaleDateString('lv-LV', { month: 'short', day: 'numeric' })}
           {' '}
-          {date.toLocaleTimeString('lv-LV', { hour: '2-digit', minute: '2-digit' })}
+          {date.toLocaleTimeString('lv-LV', { hour: '2-digit', minute: '2-digit', hour12: false })}
         </span>
         {isLive && <LiveBadge />}
         {isFinal && (

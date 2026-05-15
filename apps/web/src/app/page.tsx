@@ -11,14 +11,21 @@ function toArray<T>(v: unknown): T[] {
 }
 
 export default async function HomePage() {
-  let articles: any[] = [];
   let games: any[] = [];
-  let teams: any[] = [];
   let seasons: any[] = [];
   let activeSeason: any | null = null;
-  let miniStandings: Array<{ teamId: number; teamName: string; teamShortName: string | null; teamLogoUrl: string | null; wins: number; losses: number; ties: number; winPct: any; gamesBehind: any; leagueName: string }> = [];
+  let miniStandings: Array<{
+    teamId: number;
+    teamName: string;
+    teamShortName: string | null;
+    teamLogoUrl: string | null;
+    wins: number;
+    losses: number;
+    ties: number;
+    winPct: any;
+    gamesBehind: any;
+  }> = [];
 
-  try { articles = toArray(await apiFetch('/api/public/articles')); } catch {}
   try { seasons = toArray(await apiFetch('/api/public/seasons', { noCache: true })); } catch {}
   activeSeason = seasons.find((s: any) => s?.isActive) ?? seasons[0] ?? null;
   try {
@@ -26,13 +33,6 @@ export default async function HomePage() {
       activeSeason?.id ? `/api/public/games?seasonId=${activeSeason.id}` : '/api/public/games',
       { noCache: true }
     ));
-  } catch {}
-  try {
-    teams = toArray(
-      await apiFetch(
-        activeSeason?.id ? `/api/public/teams?seasonId=${activeSeason.id}` : '/api/public/teams',
-      ),
-    );
   } catch {}
 
   // Mini-standings: active season -> leagues -> standings rows (include 0-game teams)
@@ -60,7 +60,6 @@ export default async function HomePage() {
               ties: r.ties ?? 0,
               winPct: r.winPct ?? null,
               gamesBehind: r.gamesBehind ?? null,
-              leagueName: lg.name ?? 'League',
             }));
           }),
       );
@@ -74,7 +73,6 @@ export default async function HomePage() {
   const upcomingGames = games
     .filter((g: any) => g.status === 'scheduled')
     .slice(0, 4);
-  const recentArticles = articles.slice(0, 4);
 
   return (
     <div>
@@ -102,11 +100,6 @@ export default async function HomePage() {
               </Link>
             </div>
           </div>
-          <div className="mt-6 grid grid-cols-3 gap-3 max-w-md">
-            <StatBox label="Teams" value={teams.length || '—'} />
-            <StatBox label="Games" value={games.length || '—'} />
-            <StatBox label="Season" value={activeSeason?.year ?? '—'} />
-          </div>
         </div>
       </section>
 
@@ -131,10 +124,10 @@ export default async function HomePage() {
                       >
                         <div className="flex items-center justify-between mb-3">
                           <span className="text-[11px] font-semibold uppercase tracking-wider text-text-faint">
-                            {date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                            {date.toLocaleDateString('lv-LV', { weekday: 'short', month: 'short', day: 'numeric' })}
                           </span>
-                          <span className="text-[11px] font-medium text-text-faint">
-                            {date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                          <span className="text-[11px] font-medium text-text-faint tabular-nums">
+                            {date.toLocaleTimeString('lv-LV', { hour: '2-digit', minute: '2-digit', hour12: false })}
                           </span>
                         </div>
                         <div className="space-y-1.5">
@@ -205,7 +198,7 @@ export default async function HomePage() {
                               <>
                                 <span className="text-[10px] font-bold uppercase text-text-faint tracking-wider">Final</span>
                                 <span className="text-[10px] text-text-faint mt-0.5">
-                                  {date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                  {date.toLocaleDateString('lv-LV', { month: 'short', day: 'numeric' })}
                                 </span>
                               </>
                             )}
@@ -237,12 +230,11 @@ export default async function HomePage() {
                 ) : (
                   <div className="space-y-1">
                     {miniStandings.slice(0, 6).map((row: any, i: number) => (
-                      <div key={`${row.leagueName}-${row.teamId}`} className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-surface-alt transition-colors">
+                      <div key={`${row.teamId}-${i}`} className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-surface-alt transition-colors">
                         <span className="text-[11px] font-bold text-text-faint w-4">{i + 1}</span>
                         <TeamBadge name={row.teamName} shortName={row.teamShortName} logoUrl={row.teamLogoUrl} />
                         <div className="flex-1 min-w-0">
                           <div className="text-sm font-medium truncate">{row.teamName}</div>
-                          <div className="text-[10px] text-text-faint truncate">{row.leagueName}</div>
                         </div>
                         <span className="text-[11px] text-text-faint font-mono">
                           {row.wins}-{row.losses}{row.ties ? `-${row.ties}` : ''}
@@ -261,15 +253,6 @@ export default async function HomePage() {
 }
 
 /* ── Helper Components ── */
-
-function StatBox({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div className="border border-[#ccc] bg-[#fafafa] px-4 py-3">
-      <div className="text-lg font-bold text-[#111] stat-value">{value}</div>
-      <div className="text-[11px] text-[#666] uppercase tracking-wider mt-0.5">{label}</div>
-    </div>
-  );
-}
 
 function TeamBadge({ name, shortName, logoUrl }: { name: string; shortName?: string | null; logoUrl?: string | null }) {
   return (
