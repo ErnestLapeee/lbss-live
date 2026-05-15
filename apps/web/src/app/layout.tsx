@@ -16,7 +16,7 @@ export const metadata: Metadata = {
     default: 'LBSS - Latvijas Beisbola Softbola Savienība',
     template: '%s | LBSS',
   },
-  description: 'Latvijas Beisbola Softbola Savienība - Official website and statistics platform for Latvian baseball.',
+  description: 'Statistika.',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
