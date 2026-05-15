@@ -986,14 +986,7 @@ export function StatsClient({
                     {currentData.length === 0 && (
                       <tr>
                         <td colSpan={displayColumns.length + 1} className="px-4 py-12 text-center text-text-muted">
-                          {currentLeaders && Object.keys(currentLeaders).length > 0 ? (
-                            <span>
-                              No {tab} table data for this season. Leaders above use the same source — try refreshing the page.
-                              {tab === 'batting' && ' If you added new stat columns recently, run the backfill script (see docs) to recompute existing games.'}
-                            </span>
-                          ) : (
-                            `No ${tab} data available for this season.`
-                          )}
+                          No {tab} data for this season.
                         </td>
                       </tr>
                     )}
