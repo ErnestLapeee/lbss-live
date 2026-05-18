@@ -130,6 +130,18 @@ function suggestedGhostRunnerFromPrevOffensiveInning(events: GameEvent[], inning
 
 const POS_LABELS: Record<number, string> = { 1:'P',2:'C',3:'1B',4:'2B',5:'3B',6:'SS',7:'LF',8:'CF',9:'RF',10:'DH' };
 
+function jerseyFromRoster(roster: Player[], playerId: number | null | undefined): string {
+  if (playerId == null) return '';
+  const raw = roster.find((p) => p.playerId === playerId)?.jerseyNumber?.trim() ?? '';
+  const digits = raw.replace(/\D/g, '');
+  return digits ? `#${digits}` : '';
+}
+
+function shortPlayerName(firstName: string, lastName: string, jersey?: string): string {
+  const j = jersey ? `${jersey} ` : '';
+  return `${j}${firstName.charAt(0)}. ${lastName}`.trim();
+}
+
 /** Native `<select>`: solid bg + `color-scheme: dark` so option lists stay readable (Windows/Chrome often default to light popup with invisible text on dark UIs). */
 const ADMIN_SELECT_BASE =
   'rounded border border-white/25 bg-scoring-input text-slate-100 [color-scheme:dark]';
@@ -2248,6 +2260,20 @@ function needsRunnerAdvanceErrorFieldingPrompt(
   const getCurrentPitcherStrikes = (pid: number | null | undefined) =>
     pid != null ? pitcherPitchCounts[pid]?.strikes ?? 0 : 0;
 
+  const rosterByPlayerId = useMemo(() => {
+    const m = new Map<number, Player>();
+    for (const p of [...homeRoster, ...awayRoster]) m.set(p.playerId, p);
+    return m;
+  }, [homeRoster, awayRoster]);
+
+  const jerseyFor = (playerId: number | null | undefined) => {
+    const p = playerId != null ? rosterByPlayerId.get(playerId) : undefined;
+    return jerseyFromRoster(p ? [p] : [], playerId);
+  };
+
+  const nameWithJersey = (playerId: number | null | undefined, firstName: string, lastName: string) =>
+    shortPlayerName(firstName, lastName, jerseyFor(playerId) || undefined);
+
   return (
     <div className="scoring-app min-h-screen bg-scoring-canvas text-white flex flex-col">
       {/* ── Scoreboard bar ── */}
@@ -2303,8 +2329,12 @@ function needsRunnerAdvanceErrorFieldingPrompt(
               setStep('sub_offense');
             }}
               className="text-white font-bold text-sm hover:text-amber-300 transition-colors flex items-center gap-1">
-              <span className="text-white/30 text-xs">#{battingOrderSlot}</span>
-              {currentBatter ? `${currentBatter.firstName.charAt(0)}. ${currentBatter.lastName}` : <span className="text-red-400/60 italic">(empty slot)</span>}
+              <span className="text-white/30 text-xs font-mono">BO {battingOrderSlot}</span>
+              {currentBatter ? (
+                nameWithJersey(currentBatter.playerId, currentBatter.firstName, currentBatter.lastName)
+              ) : (
+                <span className="text-red-400/60 italic">(empty slot)</span>
+              )}
             </button>
           </div>
 
@@ -2314,7 +2344,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
               <div className="text-[9px] text-white/30 font-bold uppercase tracking-wider mb-0.5">Pitching</div>
               <button onClick={() => { setSubTeamId(fieldingTeamId ?? null); setSubPosition(1); setStep('sub_defense'); }}
                 className="text-white font-bold text-sm hover:text-amber-300 transition-colors">
-                {currentPitcher.firstName} {currentPitcher.lastName}
+                {nameWithJersey(currentPitcher.playerId, currentPitcher.firstName, currentPitcher.lastName)}
               </button>
               <div className="flex items-center gap-3 mt-1.5 font-mono text-xs">
                 <div className="text-white/50">P <span className="text-white font-bold">{getCurrentPitcherPitches(currentPitcher.playerId)}</span></div>
@@ -2346,10 +2376,15 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                   className={`flex items-center gap-1.5 px-2 py-1 rounded cursor-pointer text-[11px] ${isCurrent ? 'bg-amber-500/15 border border-amber-500/20' : 'hover:bg-white/5'}`}
                 >
                   {isCurrent && <span className="text-amber-400 text-xs">▸</span>}
-                  <span className={`font-mono w-3 ${isCurrent ? 'text-amber-400' : 'text-white/25'}`}>{slot}</span>
+                  <span className={`font-mono w-4 shrink-0 text-right tabular-nums ${isCurrent ? 'text-amber-400 font-bold' : 'text-white/25'}`}>{slot}</span>
                   {entry ? (
                     <>
-                      <span className={`flex-1 truncate ${isCurrent ? 'text-white font-bold' : 'text-white/60'}`}>{entry.firstName.charAt(0)}. {entry.lastName}</span>
+                      <span className={`min-w-[2rem] shrink-0 font-mono text-[10px] tabular-nums ${isCurrent ? 'text-amber-300/80' : 'text-white/30'}`}>
+                        {jerseyFor(entry.playerId) || '—'}
+                      </span>
+                      <span className={`flex-1 truncate ${isCurrent ? 'text-white font-bold' : 'text-white/60'}`}>
+                        {entry.firstName.charAt(0)}. {entry.lastName}
+                      </span>
                       <span className="text-white/25 text-[10px]">{entry.position != null ? POS_LABELS[entry.position] : '—'}</span>
                     </>
                   ) : <span className="text-white/15 italic text-[10px]">(empty)</span>}
@@ -2367,6 +2402,9 @@ function needsRunnerAdvanceErrorFieldingPrompt(
               <div key={entry.id} onClick={() => { setSubTeamId(fieldingTeamId ?? null); setSubPosition(entry.position); setStep('sub_defense'); }}
                 className="flex items-center gap-1.5 px-2 py-0.5 text-[11px] text-white/40 hover:bg-white/5 rounded cursor-pointer">
                 <span className="text-white/25 font-mono w-5 text-right">{POS_LABELS[entry.position!]}</span>
+                <span className="min-w-[2rem] shrink-0 font-mono text-[10px] tabular-nums text-white/30">
+                  {jerseyFor(entry.playerId) || '—'}
+                </span>
                 <span className="flex-1 truncate">{entry.firstName.charAt(0)}. {entry.lastName}</span>
                 {entry.position === 1 && <span className="text-white/20 font-mono text-[9px]">{getCurrentPitcherPitches(entry.playerId)}p</span>}
               </div>
@@ -3370,8 +3408,16 @@ function needsRunnerAdvanceErrorFieldingPrompt(
               return (
                 <div className="bg-scoring-panel rounded-lg border border-white/10 p-3 max-h-72 overflow-y-auto">
                   <p className="text-[10px] text-white/40 uppercase font-bold text-center mb-2">
-                    {changeTeamName} · {POS_LABELS[subPosition]} — {currentPlayer?.lastName ?? ''}
+                    {changeTeamName} · {POS_LABELS[subPosition]} —{' '}
+                    {currentPlayer
+                      ? nameWithJersey(currentPlayer.playerId, currentPlayer.firstName, currentPlayer.lastName)
+                      : 'open'}
                   </p>
+                  {subPosition === 1 && (
+                    <p className="mb-2 text-[9px] leading-snug text-white/35 text-center px-1">
+                      Records a pitching change in the play-by-play and updates who is P on the field. For past innings, use Log → edit Pitcher on individual plays.
+                    </p>
+                  )}
                   <div className="mb-2 grid grid-cols-2 gap-1">
                     {[
                       { id: game.awayTeamId, label: game.awayTeamName },
@@ -3461,7 +3507,9 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                       .map((entry) => (
                       <button key={entry.playerId!} onClick={() => setSubPosition(entry.position!)}
                         className={`rounded px-1 py-1.5 text-[9px] transition-all ${entry.position === subPosition ? 'bg-amber-500/20 text-amber-200' : 'bg-white/5 text-white/50 hover:bg-white/10'}`}>
-                        <span className="font-bold">{POS_LABELS[entry.position!]}</span> {entry.lastName}
+                        <span className="font-bold">{POS_LABELS[entry.position!]}</span>{' '}
+                        {jerseyFor(entry.playerId) ? `${jerseyFor(entry.playerId)} ` : ''}
+                        {entry.lastName}
                       </button>
                     ))}
                   </div>
@@ -3523,7 +3571,8 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                     <button key={entry.playerId!} onClick={() => { setSubPosition(entry.position!); setStep('swap_position'); }}
                       className="w-full flex items-center gap-2 px-3 py-2 bg-white/5 hover:bg-white/10 rounded text-xs text-left">
                       <span className="text-white/40 font-bold w-6">{POS_LABELS[entry.position!]}</span>
-                      <span className="text-white">{entry.firstName.charAt(0)}. {entry.lastName}</span>
+                      <span className="text-white tabular-nums text-white/35 w-8">{jerseyFor(entry.playerId) || '—'}</span>
+                      <span className="text-white">{nameWithJersey(entry.playerId, entry.firstName, entry.lastName)}</span>
                     </button>
                   ))}
                 </div>
@@ -3538,7 +3587,10 @@ function needsRunnerAdvanceErrorFieldingPrompt(
               return (
                 <div className="bg-scoring-panel rounded-lg border border-white/10 p-3 max-h-64 overflow-y-auto">
                   <p className="text-[10px] text-white/40 uppercase font-bold text-center mb-1">
-                    {offenseTeamName} · #{subBattingSlot} — {phName ? `${phName.firstName.charAt(0)}. ${phName.lastName}` : 'open slot'}
+                    {offenseTeamName} · BO {subBattingSlot} —{' '}
+                    {phName
+                      ? nameWithJersey(phName.playerId, phName.firstName, phName.lastName)
+                      : 'open slot'}
                   </p>
                   <div className="mb-2 grid grid-cols-2 gap-1">
                     {[
@@ -3575,7 +3627,10 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                                 : 'bg-white/[0.03] text-white/15'
                           }`}
                         >
-                          <span className="font-bold">#{slot}</span> {entry ? entry.lastName : 'empty'}
+                          <span className="font-bold tabular-nums">BO {slot}</span>{' '}
+                          {entry
+                            ? `${jerseyFor(entry.playerId) ? `${jerseyFor(entry.playerId)} ` : ''}${entry.lastName}`
+                            : 'empty'}
                         </button>
                       );
                     })}
@@ -3583,7 +3638,9 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                   <div className="space-y-1">
                     {availableBattingSubs.map(p => (
                       <button key={p.playerId} onClick={() => handleOffensiveSub(p.playerId)}
-                        className="w-full text-left px-3 py-2 bg-white/5 hover:bg-white/10 rounded text-xs text-white">{p.firstName.charAt(0)}. {p.lastName}</button>
+                        className="w-full text-left px-3 py-2 bg-white/5 hover:bg-white/10 rounded text-xs text-white">
+                        {shortPlayerName(p.firstName, p.lastName, jerseyFromRoster(offensiveChangeTeamRoster, p.playerId) || undefined)}
+                      </button>
                     ))}
                     {availableBattingSubs.length === 0 && <p className="text-white/30 text-xs text-center py-2">No bench players available</p>}
                   </div>
@@ -3620,7 +3677,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                     } },
                     { label: 'End Half Inning', fn: handleEndHalfInning },
                     { label: 'Adjust Score', fn: openAdjustScore },
-                    { label: 'Adjust starting lineups', fn: openLineupAdjust },
+                    { label: 'Adjust active lineups', fn: openLineupAdjust },
                     { label: 'End Game', fn: handleFinalize },
                   ].map(item => (
                     <button key={item.label} onClick={item.fn}
@@ -3768,9 +3825,10 @@ function needsRunnerAdvanceErrorFieldingPrompt(
       </div>
 
       {/* ── Event Timeline Panel (modal overlay) ── */}
-      {showEventTimeline && (
+      {showEventTimeline && game && (
         <EventTimelinePanel
           gameId={gameId}
+          game={game}
           events={events}
           homeLineup={homeLineup}
           awayLineup={awayLineup}
@@ -3810,6 +3868,9 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                 const pickable = roster.filter((p) => !takenIds.has(p.playerId) || p.playerId === row.playerId);
                 return (
                   <div key={row.id} className="flex flex-col gap-2 rounded-lg border border-white/10 bg-white/[0.04] px-2 py-2 sm:flex-row sm:flex-wrap sm:items-center">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/10 font-mono text-sm font-bold tabular-nums text-white/80 sm:self-center" title="Batting order">
+                      {row.battingOrder}
+                    </span>
                     <label className="flex min-w-0 flex-[2] flex-col gap-0.5 text-[10px] text-white/40 sm:min-w-[140px]">
                       <span>Player</span>
                       <select
@@ -3920,6 +3981,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
 
 interface TimelinePanelProps {
   gameId: number;
+  game: GameData;
   events: GameEvent[];
   homeLineup: LineupEntry[];
   awayLineup: LineupEntry[];
@@ -3927,7 +3989,9 @@ interface TimelinePanelProps {
   onRefresh: () => Promise<void>;
 }
 
-function EventTimelinePanel({ gameId, events, homeLineup, awayLineup, onClose, onRefresh }: TimelinePanelProps) {
+function EventTimelinePanel({ gameId, game, events, homeLineup, awayLineup, onClose, onRefresh }: TimelinePanelProps) {
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editForm, setEditForm] = useState<Record<string, any>>({});
   const [previewState, setPreviewState] = useState<{ eventNumber: number; state: any } | null>(null);
@@ -3937,6 +4001,10 @@ function EventTimelinePanel({ gameId, events, homeLineup, awayLineup, onClose, o
   const [statsLoading, setStatsLoading] = useState(false);
   const [gameStats, setGameStats] = useState<{ batting: any[]; pitching: any[]; fielding: any[] } | null>(null);
   const [statsEdits, setStatsEdits] = useState<Record<string, Record<string, any>>>({});
+  const [pitcherFixFrom, setPitcherFixFrom] = useState('');
+  const [pitcherFixTo, setPitcherFixTo] = useState('');
+  const [pitcherFixWrong, setPitcherFixWrong] = useState('');
+  const [pitcherFixCorrect, setPitcherFixCorrect] = useState('');
 
   const allPlayers = useMemo(() => {
     const map = new Map<number, string>();
@@ -4084,6 +4152,52 @@ function EventTimelinePanel({ gameId, events, homeLineup, awayLineup, onClose, o
     });
   };
 
+  const runBulkPitcherFix = async () => {
+    const fromEventNumber = parseInt(pitcherFixFrom, 10);
+    const wrongPitcherId = parseInt(pitcherFixWrong, 10);
+    const correctPitcherId = parseInt(pitcherFixCorrect, 10);
+    const toEventNumber = pitcherFixTo.trim() ? parseInt(pitcherFixTo, 10) : undefined;
+    if (!Number.isFinite(fromEventNumber) || fromEventNumber < 1) {
+      alert('Enter the first event number where the new pitcher should be credited (see list below).');
+      return;
+    }
+    if (!Number.isFinite(wrongPitcherId) || !Number.isFinite(correctPitcherId)) {
+      alert('Choose both the wrong and correct pitcher.');
+      return;
+    }
+    const wrongName = allPlayers.get(wrongPitcherId) ?? `#${wrongPitcherId}`;
+    const correctName = allPlayers.get(correctPitcherId) ?? `#${correctPitcherId}`;
+    if (
+      !confirm(
+        `Reassign pitcher on plays from event #${fromEventNumber}${toEventNumber != null ? ` through #${toEventNumber}` : ' through end'} from ${wrongName} to ${correctName}? Official stats will be recomputed.`,
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await apiPost<{ updatedEventCount: number; recomputedStats: boolean }>(
+        `/admin/scoring/${gameId}/correct-pitcher-attribution`,
+        {
+          fromEventNumber,
+          toEventNumber,
+          wrongPitcherId,
+          correctPitcherId,
+        },
+      );
+      alert(
+        `Updated ${res.updatedEventCount} play(s).${res.recomputedStats ? ' Box score stats were recomputed.' : ''}`,
+      );
+      setPitcherFixFrom('');
+      setPitcherFixTo('');
+      await onRefresh();
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Failed to correct pitcher');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const saveEdit = async () => {
     if (!editingId) return;
     setBusy(true);
@@ -4139,6 +4253,76 @@ function EventTimelinePanel({ gameId, events, homeLineup, awayLineup, onClose, o
           </div>
           <button onClick={onClose} className="text-white/40 hover:text-white text-lg font-bold">&times;</button>
         </div>
+
+        {mode === 'log' && isAdmin && game.isFinalized && (
+          <div className="border-b border-amber-500/25 bg-amber-500/10 px-4 py-3 text-[10px] text-amber-100/90">
+            <p className="font-bold uppercase tracking-wider text-amber-200 mb-1.5">Missed pitching change</p>
+            <p className="text-white/60 mb-2 leading-snug">
+              Find the first play where the reliever should have been credited (event # in the list). Plays with no pitcher set, or the wrong pitcher, are reassigned; stats rebuild automatically.
+            </p>
+            <div className="grid grid-cols-2 gap-2 mb-2">
+              <label className="block">
+                <span className="text-white/40">From event #</span>
+                <input
+                  type="number"
+                  min={1}
+                  value={pitcherFixFrom}
+                  onChange={(e) => setPitcherFixFrom(e.target.value)}
+                  className="mt-0.5 w-full rounded border border-white/15 bg-black/30 px-2 py-1 text-white"
+                />
+              </label>
+              <label className="block">
+                <span className="text-white/40">Through event # (optional)</span>
+                <input
+                  type="number"
+                  min={1}
+                  value={pitcherFixTo}
+                  onChange={(e) => setPitcherFixTo(e.target.value)}
+                  placeholder="End"
+                  className="mt-0.5 w-full rounded border border-white/15 bg-black/30 px-2 py-1 text-white placeholder:text-white/25"
+                />
+              </label>
+              <label className="block col-span-2">
+                <span className="text-white/40">Wrong pitcher (stats went here)</span>
+                <select
+                  value={pitcherFixWrong}
+                  onChange={(e) => setPitcherFixWrong(e.target.value)}
+                  className={`${ADMIN_SELECT_ROW} text-[11px]`}
+                >
+                  <option value="">Select…</option>
+                  {playerOptions.map(([id, name]) => (
+                    <option key={id} value={id}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block col-span-2">
+                <span className="text-white/40">Correct pitcher</span>
+                <select
+                  value={pitcherFixCorrect}
+                  onChange={(e) => setPitcherFixCorrect(e.target.value)}
+                  className={`${ADMIN_SELECT_ROW} text-[11px]`}
+                >
+                  <option value="">Select…</option>
+                  {playerOptions.map(([id, name]) => (
+                    <option key={id} value={id}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void runBulkPitcherFix()}
+              className="w-full rounded-lg bg-amber-600 py-2 text-[10px] font-bold uppercase text-white hover:bg-amber-500 disabled:opacity-40"
+            >
+              Reassign pitcher &amp; recompute stats
+            </button>
+          </div>
+        )}
 
         {/* State preview bar */}
         {mode === 'log' && previewState && (

@@ -19,7 +19,12 @@ import { finalizeGame } from '../../services/finalize-game.js';
 import { firstRowFromExecute } from '../../lib/pg-result.js';
 import { gamesTableHasOfficialColumns } from '../../lib/games-official-columns.js';
 import { slugify } from '../../utils/slugify.js';
-import { isBetweenPitchEvent, isKnownEventType, remapBasesForSubstitutionDetail } from '@lbss/shared';
+import {
+  isBetweenPitchEvent,
+  isKnownEventType,
+  isPlateAppearanceEvent,
+  remapBasesForSubstitutionDetail,
+} from '@lbss/shared';
 import { isStatistician } from '../../lib/statistician-guards.js';
 
 /** JSONB array columns — normalize without `as any` on DB rows. */
@@ -2482,6 +2487,133 @@ export async function adminScoringRoutes(app: FastifyInstance) {
     } catch (err) {
       request.log.error(err);
       return reply.status(500).send({ message: 'Failed to update active lineup' });
+    }
+  });
+
+  // ── POST /:gameId/correct-pitcher-attribution ── Admin: reassign pitcher on plays after finalize (stats recompute)
+  app.post<{
+    Params: { gameId: string };
+    Body: {
+      correctPitcherId: number;
+      wrongPitcherId: number;
+      fromEventNumber: number;
+      toEventNumber?: number;
+    };
+  }>('/:gameId/correct-pitcher-attribution', async (request, reply) => {
+    try {
+      if (isStatistician(request)) {
+        return reply.status(403).send({
+          message: 'Only admin accounts can bulk-correct pitcher attribution on finalized games.',
+        });
+      }
+
+      const gameId = parseInt(request.params.gameId, 10);
+      const correctPitcherId = Number(request.body.correctPitcherId);
+      const wrongPitcherId = Number(request.body.wrongPitcherId);
+      const fromEventNumber = Math.max(1, Math.floor(Number(request.body.fromEventNumber)) || 0);
+      const toEventNumberRaw = request.body.toEventNumber;
+
+      if (!Number.isInteger(correctPitcherId) || correctPitcherId <= 0) {
+        return reply.status(400).send({ message: 'correctPitcherId is required' });
+      }
+      if (!Number.isInteger(wrongPitcherId) || wrongPitcherId <= 0) {
+        return reply.status(400).send({ message: 'wrongPitcherId is required' });
+      }
+      if (correctPitcherId === wrongPitcherId) {
+        return reply.status(400).send({ message: 'correctPitcherId and wrongPitcherId must differ' });
+      }
+      if (!Number.isInteger(fromEventNumber) || fromEventNumber <= 0) {
+        return reply.status(400).send({ message: 'fromEventNumber must be a positive integer' });
+      }
+
+      const [game] = await db
+        .select({ homeTeamId: games.homeTeamId, awayTeamId: games.awayTeamId, isFinalized: games.isFinalized })
+        .from(games)
+        .where(eq(games.id, gameId))
+        .limit(1);
+      if (!game) return reply.status(404).send({ message: 'Game not found' });
+
+      const lineupTeams = await db
+        .select({ playerId: gameLineups.playerId, teamId: gameLineups.teamId })
+        .from(gameLineups)
+        .where(and(eq(gameLineups.gameId, gameId), eq(gameLineups.playerId, correctPitcherId)))
+        .limit(1);
+      const correctTeamId = lineupTeams[0]?.teamId;
+      if (!correctTeamId) {
+        return reply.status(400).send({ message: 'correctPitcherId is not on this game lineup' });
+      }
+
+      const allEvents = await db
+        .select()
+        .from(gameEvents)
+        .where(and(eq(gameEvents.gameId, gameId), eq(gameEvents.isDeleted, false)))
+        .orderBy(gameEvents.eventNumber);
+
+      const maxEventNumber = allEvents.reduce((m, e) => Math.max(m, e.eventNumber ?? 0), 0);
+      const toEventNumber =
+        toEventNumberRaw == null || !Number.isFinite(Number(toEventNumberRaw))
+          ? maxEventNumber
+          : Math.min(
+              maxEventNumber,
+              Math.max(fromEventNumber, Math.floor(Number(toEventNumberRaw))),
+            );
+
+      /** Defensive team (and pitcher) by half: away bats top → home pitches; home bats bottom → away pitches. */
+      const pitchingTeamForHalf = (half: string) => {
+        const h = normalizeHalf(half);
+        return h === 'top' ? game.homeTeamId : game.awayTeamId;
+      };
+
+      const shouldAttributePitcher = (eventType: string) =>
+        eventType === 'pitch' || isPlateAppearanceEvent(eventType) || eventType === 'balk' || eventType === 'wild_pitch';
+
+      let updatedCount = 0;
+      const user = request.user;
+
+      await db.transaction(async (tx) => {
+        for (const e of allEvents) {
+          const en = e.eventNumber ?? 0;
+          if (en < fromEventNumber || en > toEventNumber) continue;
+          if (!shouldAttributePitcher(e.eventType)) continue;
+          if (pitchingTeamForHalf(e.half) !== correctTeamId) continue;
+
+          const pid = e.pitcherId;
+          if (pid != null && pid !== wrongPitcherId) continue;
+
+          await tx.update(gameEvents).set({ pitcherId: correctPitcherId }).where(eq(gameEvents.id, e.id));
+          updatedCount++;
+        }
+      });
+
+      if (updatedCount === 0) {
+        return reply.status(400).send({
+          message:
+            'No plays were updated. Check fromEventNumber, wrongPitcherId, and that the pitcher change team matches the defensive half (home pitches in top, away in bottom).',
+        });
+      }
+
+      if (game.isFinalized) {
+        await finalizeGame(gameId, user?.id, { recompute: true });
+      }
+
+      const refreshed = await db
+        .select()
+        .from(gameEvents)
+        .where(and(eq(gameEvents.gameId, gameId), eq(gameEvents.isDeleted, false)))
+        .orderBy(gameEvents.eventNumber);
+      const state = computeGameState(refreshed);
+
+      return reply.send({
+        success: true,
+        updatedEventCount: updatedCount,
+        fromEventNumber,
+        toEventNumber,
+        recomputedStats: Boolean(game.isFinalized),
+        state,
+      });
+    } catch (err) {
+      request.log.error(err);
+      return reply.status(500).send({ message: 'Failed to correct pitcher attribution' });
     }
   });
 
