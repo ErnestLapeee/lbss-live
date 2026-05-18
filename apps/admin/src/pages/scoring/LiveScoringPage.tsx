@@ -4055,8 +4055,6 @@ interface TimelinePanelProps {
 }
 
 function EventTimelinePanel({ gameId, game, events, homeLineup, awayLineup, onClose, onRefresh }: TimelinePanelProps) {
-  const { user } = useAuth();
-  const isAdmin = user?.role === 'admin';
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editForm, setEditForm] = useState<Record<string, any>>({});
   const [previewState, setPreviewState] = useState<{ eventNumber: number; state: any } | null>(null);
@@ -4066,10 +4064,6 @@ function EventTimelinePanel({ gameId, game, events, homeLineup, awayLineup, onCl
   const [statsLoading, setStatsLoading] = useState(false);
   const [gameStats, setGameStats] = useState<{ batting: any[]; pitching: any[]; fielding: any[] } | null>(null);
   const [statsEdits, setStatsEdits] = useState<Record<string, Record<string, any>>>({});
-  const [pitcherFixFrom, setPitcherFixFrom] = useState('');
-  const [pitcherFixTo, setPitcherFixTo] = useState('');
-  const [pitcherFixWrong, setPitcherFixWrong] = useState('');
-  const [pitcherFixCorrect, setPitcherFixCorrect] = useState('');
 
   const allPlayers = useMemo(() => {
     const map = new Map<number, string>();
@@ -4217,52 +4211,6 @@ function EventTimelinePanel({ gameId, game, events, homeLineup, awayLineup, onCl
     });
   };
 
-  const runBulkPitcherFix = async () => {
-    const fromEventNumber = parseInt(pitcherFixFrom, 10);
-    const wrongPitcherId = parseInt(pitcherFixWrong, 10);
-    const correctPitcherId = parseInt(pitcherFixCorrect, 10);
-    const toEventNumber = pitcherFixTo.trim() ? parseInt(pitcherFixTo, 10) : undefined;
-    if (!Number.isFinite(fromEventNumber) || fromEventNumber < 1) {
-      alert('Enter the first event number where the new pitcher should be credited (see list below).');
-      return;
-    }
-    if (!Number.isFinite(wrongPitcherId) || !Number.isFinite(correctPitcherId)) {
-      alert('Choose both the wrong and correct pitcher.');
-      return;
-    }
-    const wrongName = allPlayers.get(wrongPitcherId) ?? `#${wrongPitcherId}`;
-    const correctName = allPlayers.get(correctPitcherId) ?? `#${correctPitcherId}`;
-    if (
-      !confirm(
-        `Reassign pitcher on plays from event #${fromEventNumber}${toEventNumber != null ? ` through #${toEventNumber}` : ' through end'} from ${wrongName} to ${correctName}? Official stats will be recomputed.`,
-      )
-    ) {
-      return;
-    }
-    setBusy(true);
-    try {
-      const res = await apiPost<{ updatedEventCount: number; recomputedStats: boolean }>(
-        `/admin/scoring/${gameId}/correct-pitcher-attribution`,
-        {
-          fromEventNumber,
-          toEventNumber,
-          wrongPitcherId,
-          correctPitcherId,
-        },
-      );
-      alert(
-        `Updated ${res.updatedEventCount} play(s).${res.recomputedStats ? ' Box score stats were recomputed.' : ''}`,
-      );
-      setPitcherFixFrom('');
-      setPitcherFixTo('');
-      await onRefresh();
-    } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : 'Failed to correct pitcher');
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const saveEdit = async () => {
     if (!editingId) return;
     setBusy(true);
@@ -4319,77 +4267,7 @@ function EventTimelinePanel({ gameId, game, events, homeLineup, awayLineup, onCl
           <button onClick={onClose} className="text-white/40 hover:text-white text-lg font-bold">&times;</button>
         </div>
 
-        {mode === 'log' && isAdmin && game.isFinalized && (
-          <div className="border-b border-amber-500/25 bg-amber-500/10 px-4 py-3 text-[10px] text-amber-100/90">
-            <p className="font-bold uppercase tracking-wider text-amber-200 mb-1.5">Missed pitching change</p>
-            <p className="text-white/60 mb-2 leading-snug">
-              Find the first play where the reliever should have been credited (event # in the list). Plays with no pitcher set, or the wrong pitcher, are reassigned; stats rebuild automatically.
-            </p>
-            <div className="grid grid-cols-2 gap-2 mb-2">
-              <label className="block">
-                <span className="text-white/40">From event #</span>
-                <input
-                  type="number"
-                  min={1}
-                  value={pitcherFixFrom}
-                  onChange={(e) => setPitcherFixFrom(e.target.value)}
-                  className="mt-0.5 w-full rounded border border-white/15 bg-black/30 px-2 py-1 text-white"
-                />
-              </label>
-              <label className="block">
-                <span className="text-white/40">Through event # (optional)</span>
-                <input
-                  type="number"
-                  min={1}
-                  value={pitcherFixTo}
-                  onChange={(e) => setPitcherFixTo(e.target.value)}
-                  placeholder="End"
-                  className="mt-0.5 w-full rounded border border-white/15 bg-black/30 px-2 py-1 text-white placeholder:text-white/25"
-                />
-              </label>
-              <label className="block col-span-2">
-                <span className="text-white/40">Wrong pitcher (stats went here)</span>
-                <select
-                  value={pitcherFixWrong}
-                  onChange={(e) => setPitcherFixWrong(e.target.value)}
-                  className={`${ADMIN_SELECT_ROW} text-[11px]`}
-                >
-                  <option value="">Select…</option>
-                  {playerOptions.map(([id, name]) => (
-                    <option key={id} value={id}>
-                      {name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="block col-span-2">
-                <span className="text-white/40">Correct pitcher</span>
-                <select
-                  value={pitcherFixCorrect}
-                  onChange={(e) => setPitcherFixCorrect(e.target.value)}
-                  className={`${ADMIN_SELECT_ROW} text-[11px]`}
-                >
-                  <option value="">Select…</option>
-                  {playerOptions.map(([id, name]) => (
-                    <option key={id} value={id}>
-                      {name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void runBulkPitcherFix()}
-              className="w-full rounded-lg bg-amber-600 py-2 text-[10px] font-bold uppercase text-white hover:bg-amber-500 disabled:opacity-40"
-            >
-              Reassign pitcher &amp; recompute stats
-            </button>
-          </div>
-        )}
-
-        {/* State preview bar */}
+        {/* State preview bar */}        {/* State preview bar */}
         {mode === 'log' && previewState && (
           <div className="px-4 py-2 bg-blue-900/30 border-b border-blue-500/20 text-[10px]">
             <div className="flex items-center gap-3 text-white/70">
