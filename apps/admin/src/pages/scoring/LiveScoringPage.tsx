@@ -2306,6 +2306,8 @@ function needsRunnerAdvanceErrorFieldingPrompt(
 
   const compactRunnerField = RUNNER_WIZARD_STEPS.has(step);
   const compactPlayWizardField = PLAY_WIZARD_STEPS.has(step);
+  /** Runner / in-play wizards scroll in the panel; main pitch view stays grouped (no dead gap on desktop). */
+  const scrollableWizardPanel = compactRunnerField || compactPlayWizardField || step !== 'pitch';
 
   return (
     <div className="scoring-app flex h-[100dvh] max-h-[100dvh] flex-col overflow-hidden bg-scoring-canvas text-white">
@@ -2448,12 +2450,17 @@ function needsRunnerAdvanceErrorFieldingPrompt(
         {/* ── Center: Field + Controls ── */}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           <div
+            className={`flex min-h-0 flex-1 flex-col ${
+              scrollableWizardPanel ? '' : 'items-center justify-center gap-2 px-2'
+            }`}
+          >
+          <div
             className={`relative flex shrink-0 items-start justify-center px-2 pt-0 ${
               compactRunnerField
                 ? 'max-h-[min(22vh,190px)]'
                 : compactPlayWizardField
                   ? 'max-h-[min(30vh,250px)]'
-                  : 'max-h-[min(34vh,270px)] xl:max-h-[min(38vh,300px)]'
+                  : 'max-h-[min(36vh,320px)] lg:max-h-[min(50vh,460px)] xl:max-h-[min(52vh,500px)]'
             }`}
           >
             {/*
@@ -2470,7 +2477,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                   ? 'max-h-[min(22vh,190px)] max-w-[min(100%,300px)]'
                   : compactPlayWizardField
                     ? 'max-h-[min(30vh,250px)] max-w-[min(100%,400px)]'
-                    : 'max-h-[min(34vh,270px)] max-w-[min(100%,480px)] xl:max-h-[min(38vh,300px)]'
+                    : 'max-h-[min(36vh,320px)] max-w-[min(100%,480px)] lg:max-h-[min(50vh,460px)] lg:max-w-[min(100%,560px)] xl:max-h-[min(52vh,500px)]'
               }`}
             >
               <defs>
@@ -2580,8 +2587,14 @@ function needsRunnerAdvanceErrorFieldingPrompt(
             </svg>
           </div>
 
-          {/* ── Wizard panels (scroll here on laptop — field stays compact above) ── */}
-          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-1 sm:px-3">
+          {/* ── Wizard panels: scroll on runner steps; pitch buttons stay tight under field on desktop ── */}
+          <div
+            className={`w-full max-w-xl px-2 pb-1 sm:max-w-2xl sm:px-3 ${
+              scrollableWizardPanel
+                ? 'min-h-0 flex-1 overflow-y-auto overscroll-contain'
+                : 'shrink-0'
+            }`}
+          >
             {/* EMPTY SLOT — automatic out */}
             {step === 'pitch' && isEmptySlot && (
               <div className="bg-scoring-panel rounded-xl border border-white/10 overflow-hidden p-4 text-center">
@@ -3825,6 +3838,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                 </div>
               </div>
             )}
+          </div>
           </div>
 
           {/* ── Bottom bar ── */}
