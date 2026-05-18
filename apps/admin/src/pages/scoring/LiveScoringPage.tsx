@@ -714,6 +714,20 @@ export function LiveScoringPage() {
     [lineupEntryByPlayerId],
   );
 
+  const rosterByPlayerId = useMemo(() => {
+    const m = new Map<number, Player>();
+    for (const p of [...homeRoster, ...awayRoster]) m.set(p.playerId, p);
+    return m;
+  }, [homeRoster, awayRoster]);
+
+  const jerseyFor = (playerId: number | null | undefined) => {
+    const p = playerId != null ? rosterByPlayerId.get(playerId) : undefined;
+    return jerseyFromRoster(p ? [p] : [], playerId);
+  };
+
+  const nameWithJersey = (playerId: number | null | undefined, firstName: string, lastName: string) =>
+    shortPlayerName(firstName, lastName, jerseyFor(playerId) || undefined);
+
   useEffect(() => {
     setStep('pitch'); setSelectedEvent(null); setFieldingPositions([]);
     setRunnerQuestions([]); setCurrentRunnerIdx(0); setActiveRunnerBase(null);
@@ -2251,7 +2265,20 @@ function needsRunnerAdvanceErrorFieldingPrompt(
   }
 
   // ── SCORING ──
-  if (!gameState) return null;
+  if (!gameState) {
+    return (
+      <div className="scoring-app flex h-[100dvh] max-h-[100dvh] flex-col items-center justify-center overflow-hidden bg-scoring-canvas text-white">
+        <span className="text-lg text-white/80">Loading game state…</span>
+        <button
+          type="button"
+          onClick={() => navigate('/games')}
+          className="mt-4 rounded-lg bg-white/10 px-4 py-2 text-sm hover:bg-white/20"
+        >
+          Back to games
+        </button>
+      </div>
+    );
+  }
 
   // Roster for subs (players not in current lineup)
   const defensiveChangeTeamRoster = defensiveChangeTeamId === game.homeTeamId ? homeRoster : awayRoster;
@@ -2276,20 +2303,6 @@ function needsRunnerAdvanceErrorFieldingPrompt(
     pid != null ? pitcherPitchCounts[pid]?.balls ?? 0 : 0;
   const getCurrentPitcherStrikes = (pid: number | null | undefined) =>
     pid != null ? pitcherPitchCounts[pid]?.strikes ?? 0 : 0;
-
-  const rosterByPlayerId = useMemo(() => {
-    const m = new Map<number, Player>();
-    for (const p of [...homeRoster, ...awayRoster]) m.set(p.playerId, p);
-    return m;
-  }, [homeRoster, awayRoster]);
-
-  const jerseyFor = (playerId: number | null | undefined) => {
-    const p = playerId != null ? rosterByPlayerId.get(playerId) : undefined;
-    return jerseyFromRoster(p ? [p] : [], playerId);
-  };
-
-  const nameWithJersey = (playerId: number | null | undefined, firstName: string, lastName: string) =>
-    shortPlayerName(firstName, lastName, jerseyFor(playerId) || undefined);
 
   const compactRunnerField = RUNNER_WIZARD_STEPS.has(step);
   const compactPlayWizardField = PLAY_WIZARD_STEPS.has(step);
