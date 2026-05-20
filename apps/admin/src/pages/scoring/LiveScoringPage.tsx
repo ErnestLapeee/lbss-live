@@ -254,25 +254,6 @@ const PLAY_WIZARD_STEPS = new Set<ScoringStep>([
   'hit_location',
 ]);
 
-const FIELD_SIZE_STORAGE_KEY = 'lbss-scoring-field-size';
-/** Persisted diamond scale: index 0 (smallest) … 4 (largest). */
-const FIELD_SIZE_SCALES = [0.85, 1, 1.15, 1.3, 1.5] as const;
-const DEFAULT_FIELD_SIZE_INDEX = 2;
-
-function loadFieldSizeIndex(): number {
-  try {
-    const v = parseInt(localStorage.getItem(FIELD_SIZE_STORAGE_KEY) ?? '', 10);
-    if (Number.isFinite(v) && v >= 0 && v < FIELD_SIZE_SCALES.length) return v;
-  } catch {
-    /* ignore */
-  }
-  return DEFAULT_FIELD_SIZE_INDEX;
-}
-
-function scaleFieldCap(px: number, vh: number, scale: number): string {
-  return `min(${(vh * scale).toFixed(2)}vh, ${Math.round(px * scale)}px)`;
-}
-
 const BATTED_BALL_EVENTS = new Set([
   'single', 'double', 'triple', 'home_run', 'inside_park_hr', 'ground_rule_double',
   'ground_out', 'fly_out', 'line_out', 'pop_out', 'bunt_out', 'bunt_single',
@@ -519,15 +500,19 @@ export function LiveScoringPage() {
 
   // Event timeline panel
   const [showEventTimeline, setShowEventTimeline] = useState(false);
-  const [fieldSizeIndex, setFieldSizeIndex] = useState(loadFieldSizeIndex);
+  const scoringWizardRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(FIELD_SIZE_STORAGE_KEY, String(fieldSizeIndex));
-    } catch {
-      /* ignore */
-    }
-  }, [fieldSizeIndex]);
+  const snapScoringWizardIntoView = useCallback((inner: 'top' | 'bottom' = 'top') => {
+    requestAnimationFrame(() => {
+      const el = scoringWizardRef.current;
+      if (!el) return;
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      requestAnimationFrame(() => {
+        if (inner === 'bottom') el.scrollTop = el.scrollHeight;
+        else if (el.scrollHeight > el.clientHeight) el.scrollTop = 0;
+      });
+    });
+  }, []);
 
   // Per-pitcher pitch count derived from events. When scorer had no P in the lineup, events often have
   // pitcherId null — infer fielding pitcher per half from active lineup P + pitching-change subs so counts match reality.
@@ -1020,13 +1005,21 @@ export function LiveScoringPage() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
 
+  useEffect(() => {
+    if (step === 'pitch') return;
+    const inner = RUNNER_WIZARD_STEPS.has(step) ? 'bottom' : 'top';
+    snapScoringWizardIntoView(inner);
+  }, [step, currentRunnerIdx, snapScoringWizardIntoView]);
+
   const handleOut = () => {
     if (currentBatter && (currentBatter.bats || '').trim().toUpperCase() === 'S' && !switchBatSide) return;
-    setOutSafeTab('out'); setStep('out_type');
+    setOutSafeTab('out');
+    setStep('out_type');
   };
   const handleInPlay = () => {
     if (currentBatter && (currentBatter.bats || '').trim().toUpperCase() === 'S' && !switchBatSide) return;
-    setOutSafeTab('safe'); setStep('safe_type');
+    setOutSafeTab('safe');
+    setStep('safe_type');
   };
 
   const ERROR_EVENTS = new Set(['error', 'sac_bunt_error', 'sac_fly_error']);
@@ -2336,17 +2329,6 @@ function needsRunnerAdvanceErrorFieldingPrompt(
   const compactPlayWizardField = PLAY_WIZARD_STEPS.has(step);
   /** Runner / in-play wizards scroll in the panel; main pitch view stays grouped (no dead gap on desktop). */
   const scrollableWizardPanel = compactRunnerField || compactPlayWizardField || step !== 'pitch';
-  const fieldScale = FIELD_SIZE_SCALES[fieldSizeIndex];
-  const fieldWrapperMaxHeight = compactRunnerField
-    ? scaleFieldCap(190, 22, fieldScale)
-    : compactPlayWizardField
-      ? scaleFieldCap(280, 32, fieldScale)
-      : scaleFieldCap(520, 54, fieldScale);
-  const fieldSvgMaxWidth = compactRunnerField
-    ? Math.round(300 * fieldScale)
-    : compactPlayWizardField
-      ? Math.round(420 * fieldScale)
-      : Math.round(600 * fieldScale);
 
   return (
     <div className="scoring-app flex h-[100dvh] max-h-[100dvh] flex-col overflow-hidden bg-scoring-canvas text-white">
@@ -2493,33 +2475,14 @@ function needsRunnerAdvanceErrorFieldingPrompt(
               scrollableWizardPanel ? '' : 'items-center justify-center gap-2 px-2'
             }`}
           >
-          <div className="flex w-full max-w-xl shrink-0 items-center justify-end gap-1 self-center px-2 pb-0.5 sm:max-w-2xl">
-            <span className="text-[9px] font-bold uppercase tracking-wider text-white/35">Field size</span>
-            <button
-              type="button"
-              aria-label="Smaller field"
-              disabled={fieldSizeIndex <= 0}
-              onClick={() => setFieldSizeIndex((i) => Math.max(0, i - 1))}
-              className="h-7 w-7 rounded bg-white/10 text-sm font-bold text-white hover:bg-white/15 disabled:opacity-30"
-            >
-              −
-            </button>
-            <span className="min-w-[2.5rem] text-center text-[10px] tabular-nums text-white/55">
-              {Math.round(fieldScale * 100)}%
-            </span>
-            <button
-              type="button"
-              aria-label="Larger field"
-              disabled={fieldSizeIndex >= FIELD_SIZE_SCALES.length - 1}
-              onClick={() => setFieldSizeIndex((i) => Math.min(FIELD_SIZE_SCALES.length - 1, i + 1))}
-              className="h-7 w-7 rounded bg-white/10 text-sm font-bold text-white hover:bg-white/15 disabled:opacity-30"
-            >
-              +
-            </button>
-          </div>
           <div
-            className="relative flex shrink-0 items-start justify-center px-2 pt-0"
-            style={{ maxHeight: fieldWrapperMaxHeight }}
+            className={`relative flex shrink-0 items-start justify-center px-2 pt-0 ${
+              compactRunnerField
+                ? 'max-h-[min(24vh,200px)]'
+                : compactPlayWizardField
+                  ? 'max-h-[min(32vh,270px)]'
+                  : 'max-h-[min(40vh,380px)] lg:max-h-[min(48vh,480px)]'
+            }`}
           >
             {/*
               Clean baseball diamond with proper 90° foul lines.
@@ -2530,11 +2493,13 @@ function needsRunnerAdvanceErrorFieldingPrompt(
             <svg
               viewBox="0 0 400 400"
               preserveAspectRatio="xMidYMid meet"
-              className="h-full w-full"
-              style={{
-                maxHeight: fieldWrapperMaxHeight,
-                maxWidth: `min(100%, ${fieldSvgMaxWidth}px)`,
-              }}
+              className={`h-full w-full ${
+                compactRunnerField
+                  ? 'max-h-[min(24vh,200px)] max-w-[min(100%,320px)]'
+                  : compactPlayWizardField
+                    ? 'max-h-[min(32vh,270px)] max-w-[min(100%,420px)]'
+                    : 'max-h-[min(40vh,380px)] max-w-[min(100%,520px)] lg:max-h-[min(48vh,480px)]'
+              }`}
             >
               <defs>
                 <radialGradient id="fg" cx="50%" cy="82%" r="58%">
@@ -2645,9 +2610,10 @@ function needsRunnerAdvanceErrorFieldingPrompt(
 
           {/* ── Wizard panels: scroll on runner steps; pitch buttons stay tight under field on desktop ── */}
           <div
+            ref={scoringWizardRef}
             className={`w-full max-w-xl px-2 pb-1 sm:max-w-2xl sm:px-3 ${
               scrollableWizardPanel
-                ? 'min-h-0 flex-1 overflow-y-auto overscroll-contain'
+                ? 'min-h-0 flex-1 overflow-y-auto overscroll-contain scroll-smooth'
                 : 'shrink-0'
             }`}
           >
