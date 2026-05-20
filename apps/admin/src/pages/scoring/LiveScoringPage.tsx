@@ -2327,14 +2327,38 @@ function needsRunnerAdvanceErrorFieldingPrompt(
               </div>
             </div>
           </div>
+          {/* Phone: at-bat + pitcher in scoreboard so the diamond keeps vertical room */}
+          <div className="flex flex-col gap-1 border-t border-white/10 pt-1.5 text-[11px] lg:hidden">
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="shrink-0 font-bold uppercase text-white/40">At bat</span>
+              <span className="min-w-0 truncate font-semibold text-white">
+                {currentBatter
+                  ? nameWithJersey(currentBatter.playerId, currentBatter.firstName, currentBatter.lastName)
+                  : '(empty)'}
+              </span>
+            </div>
+            {currentPitcher && (
+              <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 font-mono text-[10px]">
+                <span className="font-bold uppercase text-white/40">Pitch</span>
+                <span className="truncate text-white/90">
+                  {nameWithJersey(currentPitcher.playerId, currentPitcher.firstName, currentPitcher.lastName)}
+                </span>
+                <span className="text-white/50">
+                  P {getCurrentPitcherPitches(currentPitcher.playerId)}
+                  {' · '}B {getCurrentPitcherBalls(currentPitcher.playerId)}
+                  {' · '}S {getCurrentPitcherStrikes(currentPitcher.playerId)}
+                </span>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
       {/* ── Main content: stack on phone/tablet, row on lg+ ── */}
       <div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col overflow-hidden lg:flex-row">
         {/* ── Lineups: compact cards on phone; full sidebar on lg ── */}
-        <div className="w-full shrink-0 border-b border-white/10 px-2 py-2 lg:max-h-none lg:w-52 lg:overflow-y-auto lg:border-b-0 lg:border-r lg:border-white/5">
-          <div className="mb-2 grid grid-cols-1 gap-2 min-[420px]:grid-cols-2 lg:mb-3 lg:grid-cols-1">
+        <div className="hidden w-full shrink-0 border-b border-white/10 px-2 py-2 lg:block lg:max-h-none lg:w-52 lg:overflow-y-auto lg:border-b-0 lg:border-r lg:border-white/5">
+          <div className="mb-3 grid grid-cols-1 gap-2">
           {/* Current batter highlight */}
           <div className="bg-scoring-card rounded-lg px-3 py-2 border border-white/5 lg:mb-0">
             <div className="text-[9px] text-white/30 font-bold uppercase tracking-wider mb-0.5">At Bat</div>
@@ -2372,16 +2396,8 @@ function needsRunnerAdvanceErrorFieldingPrompt(
           )}
           </div>
 
-          <button
-            type="button"
-            onClick={() => setMobileLineupOpen((v) => !v)}
-            className="mb-2 w-full rounded-lg border border-white/10 bg-white/5 py-2 text-[10px] font-bold uppercase tracking-wide text-white/60 hover:bg-white/10 hover:text-white lg:hidden"
-          >
-            {mobileLineupOpen ? 'Hide lineups' : 'Show lineups'}
-          </button>
-
-          {/* Batting + defensive lineups: always on lg; collapsible on phone */}
-          <div className={`overflow-y-auto overscroll-contain lg:block ${mobileLineupOpen ? 'max-h-[38vh]' : 'hidden'}`}>
+          {/* Batting + defensive lineups (desktop sidebar) */}
+          <div className="overflow-y-auto overscroll-contain">
           {/* Batting lineup */}
           <div className="mb-3">
             <div className="text-[9px] text-white/30 font-bold uppercase tracking-wider px-1 mb-0.5">
@@ -2442,8 +2458,8 @@ function needsRunnerAdvanceErrorFieldingPrompt(
         </div>
 
         {/* ── Center: Field + Controls ── */}
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-          <div className="relative min-h-0 flex-1 px-2 py-1">
+        <div className="grid min-h-0 min-w-0 flex-1 grid-rows-[minmax(0,1fr)_auto_auto] overflow-hidden lg:flex lg:flex-col">
+          <div className="flex min-h-0 items-center justify-center overflow-hidden px-1 py-0.5 max-lg:min-h-[42dvh] lg:flex-1">
             {/*
               Clean baseball diamond with proper 90° foul lines.
               Home=(200,310), 1B=(270,240), 2B=(200,170), 3B=(130,240)
@@ -2453,7 +2469,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
             <svg
               viewBox="0 0 400 400"
               preserveAspectRatio="xMidYMid meet"
-              className="absolute inset-0 m-auto h-full w-full max-h-full max-w-[600px]"
+              className="aspect-square h-full w-full max-h-full max-w-full lg:max-w-[600px]"
             >
               <defs>
                 <radialGradient id="fg" cx="50%" cy="82%" r="58%">
@@ -2616,39 +2632,39 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                     </div>
                   </div>
                 )}
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-5 sm:gap-1.5">
+                <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-5 sm:gap-1.5">
                   <button
                     onClick={handleBall}
                     disabled={submitting || ((currentBatter.bats || '').trim().toUpperCase() === 'S' && !switchBatSide)}
-                    className="col-span-1 py-4 bg-[#1a6b3a] hover:bg-[#20804a] text-white font-bold text-sm sm:text-base rounded-lg transition-all disabled:opacity-30 border border-[#20804a]/50"
+                    className="col-span-1 rounded-lg border border-[#20804a]/50 bg-[#1a6b3a] py-3 text-sm font-bold text-white transition-all hover:bg-[#20804a] disabled:opacity-30 sm:py-4 sm:text-base"
                   >
                     BALL
                   </button>
                   <button
                     onClick={handleStrike}
                     disabled={submitting || ((currentBatter.bats || '').trim().toUpperCase() === 'S' && !switchBatSide)}
-                    className="col-span-1 py-4 bg-[#8b2020] hover:bg-[#a02828] text-white font-bold text-sm sm:text-base rounded-lg transition-all disabled:opacity-30 border border-[#a02828]/50"
+                    className="col-span-1 rounded-lg border border-[#a02828]/50 bg-[#8b2020] py-3 text-sm font-bold text-white transition-all hover:bg-[#a02828] disabled:opacity-30 sm:py-4 sm:text-base"
                   >
                     STRIKE
                   </button>
                   <button
                     onClick={handleFoul}
                     disabled={submitting || ((currentBatter.bats || '').trim().toUpperCase() === 'S' && !switchBatSide)}
-                    className="col-span-1 py-4 bg-[#8b7020] hover:bg-[#a08428] text-white font-bold text-sm sm:text-base rounded-lg transition-all disabled:opacity-30 border border-[#a08428]/50"
+                    className="col-span-1 rounded-lg border border-[#a08428]/50 bg-[#8b7020] py-3 text-sm font-bold text-white transition-all hover:bg-[#a08428] disabled:opacity-30 sm:py-4 sm:text-base"
                   >
                     FOUL
                   </button>
                   <button
                     onClick={handleOut}
                     disabled={submitting || ((currentBatter.bats || '').trim().toUpperCase() === 'S' && !switchBatSide)}
-                    className="col-span-1 py-4 bg-[#1a5c3a] hover:bg-[#237548] text-white font-bold text-sm sm:text-base rounded-lg transition-all disabled:opacity-30 border border-[#237548]/50"
+                    className="col-span-1 rounded-lg border border-[#237548]/50 bg-[#1a5c3a] py-3 text-sm font-bold text-white transition-all hover:bg-[#237548] disabled:opacity-30 sm:py-4 sm:text-base"
                   >
                     OUT
                   </button>
                   <button
                     onClick={handleInPlay}
                     disabled={submitting || ((currentBatter.bats || '').trim().toUpperCase() === 'S' && !switchBatSide)}
-                    className="col-span-2 py-4 bg-[#1a3a8b] hover:bg-[#2248a0] text-white font-bold text-sm sm:text-base rounded-lg transition-all disabled:opacity-30 border border-[#2248a0]/50 sm:col-span-1"
+                    className="col-span-2 rounded-lg border border-[#2248a0]/50 bg-[#1a3a8b] py-3 text-sm font-bold text-white transition-all hover:bg-[#2248a0] disabled:opacity-30 sm:col-span-1 sm:py-4 sm:text-base"
                   >
                     IN PLAY
                   </button>
@@ -3819,7 +3835,94 @@ function needsRunnerAdvanceErrorFieldingPrompt(
               <button type="button" onClick={cancelWizard} className="min-h-[44px] rounded px-1 py-2 text-white/40 hover:text-white sm:min-h-0 sm:px-3">Reset</button>
               <button type="button" onClick={() => setStep('misc')} className="min-h-[44px] rounded px-1 py-2 text-white/40 hover:text-white sm:min-h-0 sm:px-3">Misc</button>
             </div>
+            <button
+              type="button"
+              onClick={() => setMobileLineupOpen((v) => !v)}
+              className="mt-1.5 w-full rounded border border-white/10 py-1.5 text-[10px] font-bold uppercase tracking-wide text-white/50 hover:bg-white/5 hover:text-white/80 lg:hidden"
+            >
+              {mobileLineupOpen ? 'Hide lineups' : 'Lineups'}
+            </button>
           </div>
+          {mobileLineupOpen && (
+            <div className="fixed inset-0 z-50 flex flex-col bg-scoring-canvas/98 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] lg:hidden">
+              <div className="flex shrink-0 items-center justify-between border-b border-white/10 px-3 py-2">
+                <span className="text-xs font-bold uppercase tracking-wide text-white/70">Lineups</span>
+                <button
+                  type="button"
+                  onClick={() => setMobileLineupOpen(false)}
+                  className="rounded px-3 py-1.5 text-xs font-bold uppercase text-white/60 hover:bg-white/10 hover:text-white"
+                >
+                  Done
+                </button>
+              </div>
+              <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
+                <div className="mb-3">
+                  <div className="text-[9px] text-white/30 font-bold uppercase tracking-wider px-1 mb-0.5">
+                    {battingSide === 'away' ? game.awayTeamName : game.homeTeamName}
+                  </div>
+                  {Array.from({ length: 9 }, (_, i) => {
+                    const slot = i + 1;
+                    const entry = battingLineup.find(l => l.battingOrder === slot);
+                    const isCurrent = slot === battingOrderSlot;
+                    return (
+                      <div
+                        key={slot}
+                        onClick={() => {
+                          if (!entry) return;
+                          setSubTeamId(battingTeamId ?? null);
+                          setSubPosition(null);
+                          setSubBattingSlot(slot);
+                          setStep('sub_offense');
+                          setMobileLineupOpen(false);
+                        }}
+                        className={`flex items-center gap-1.5 px-2 py-1.5 rounded cursor-pointer text-[12px] ${isCurrent ? 'bg-amber-500/15 border border-amber-500/20' : 'hover:bg-white/5'}`}
+                      >
+                        {isCurrent && <span className="text-amber-400 text-xs">▸</span>}
+                        <span className={`font-mono w-4 shrink-0 text-right tabular-nums ${isCurrent ? 'text-amber-400 font-bold' : 'text-white/25'}`}>{slot}</span>
+                        {entry ? (
+                          <>
+                            <span className={`min-w-[2rem] shrink-0 font-mono text-[10px] tabular-nums ${isCurrent ? 'text-amber-300/80' : 'text-white/30'}`}>
+                              {jerseyFor(entry.playerId) || '—'}
+                            </span>
+                            <span className={`flex-1 truncate ${isCurrent ? 'text-white font-bold' : 'text-white/60'}`}>
+                              {entry.firstName.charAt(0)}. {entry.lastName}
+                            </span>
+                            <span className="text-white/25 text-[10px]">{entry.position != null ? POS_LABELS[entry.position] : '—'}</span>
+                          </>
+                        ) : <span className="text-white/15 italic text-[10px]">(empty)</span>}
+                      </div>
+                    );
+                  })}
+                </div>
+                <div>
+                  <div className="text-[9px] text-white/30 font-bold uppercase tracking-wider px-1 mb-1.5">
+                    {battingSide === 'away' ? game.homeTeamName : game.awayTeamName}
+                  </div>
+                  {fieldingLineupForSidebar.map(entry => (
+                    <div
+                      key={entry.id}
+                      onClick={() => {
+                        setSubTeamId(fieldingTeamId ?? null);
+                        setSubPosition(entry.position);
+                        setStep('sub_defense');
+                        setMobileLineupOpen(false);
+                      }}
+                      className="flex items-center gap-1.5 px-2 py-1 text-[12px] text-white/40 hover:bg-white/5 rounded cursor-pointer"
+                    >
+                      <span className="text-white/25 font-mono w-5 text-right">{POS_LABELS[entry.position!]}</span>
+                      <span className="min-w-[2rem] shrink-0 font-mono text-[10px] tabular-nums text-white/30">
+                        {jerseyFor(entry.playerId) || '—'}
+                      </span>
+                      <span className="flex-1 truncate">{entry.firstName.charAt(0)}. {entry.lastName}</span>
+                      {entry.position === 1 && (
+                        <span className="text-white/20 font-mono text-[9px]">{getCurrentPitcherPitches(entry.playerId)}p</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Right sidebar: line score + play-by-play */}
