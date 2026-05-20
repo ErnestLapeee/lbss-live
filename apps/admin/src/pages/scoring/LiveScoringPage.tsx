@@ -2458,8 +2458,9 @@ function needsRunnerAdvanceErrorFieldingPrompt(
         </div>
 
         {/* ── Center: Field + Controls ── */}
-        <div className="grid min-h-0 min-w-0 flex-1 grid-rows-[minmax(0,1fr)_auto_auto] overflow-hidden lg:flex lg:flex-col">
-          <div className="flex min-h-0 items-center justify-center overflow-hidden px-1 py-0.5 max-lg:min-h-[42dvh] lg:flex-1">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+          {/* Phone: explicit square stage (h-full on SVG collapses in Safari when buttons sit below). */}
+          <div className="flex w-full shrink-0 items-center justify-center px-2 py-1 max-lg:min-h-0 lg:min-h-0 lg:flex-1">
             {/*
               Clean baseball diamond with proper 90° foul lines.
               Home=(200,310), 1B=(270,240), 2B=(200,170), 3B=(130,240)
@@ -2469,7 +2470,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
             <svg
               viewBox="0 0 400 400"
               preserveAspectRatio="xMidYMid meet"
-              className="aspect-square h-full w-full max-h-full max-w-full lg:max-w-[600px]"
+              className="mx-auto block aspect-square w-full max-w-[min(100%,42dvh)] max-h-[min(42dvh,calc(100vw-1rem))] h-auto lg:h-full lg:max-h-full lg:max-w-[600px] lg:w-full"
             >
               <defs>
                 <radialGradient id="fg" cx="50%" cy="82%" r="58%">
