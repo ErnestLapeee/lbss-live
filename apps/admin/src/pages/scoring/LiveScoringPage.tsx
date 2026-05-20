@@ -237,23 +237,6 @@ const PITCH_COUNT_WALK_TYPES = new Set(['walk', 'intentional_walk']);
 
 type ScoringStep = 'pitch' | 'strikeout_type' | 'out_type' | 'safe_type' | 'fielding' | 'hit_location' | 'runner' | 'batter_advance' | 'runner_out_detail' | 'runner_out_fielding' | 'runner_advance_error_fielding' | 'runner_action' | 'sub_defense' | 'sub_offense' | 'swap_position' | 'swap_position_pick' | 'misc' | 'misc_runner_second' | 'adjust_score';
 
-/** Shrink the diamond so runner / play wizard panels fit on laptop without scrolling past pitch buttons. */
-const RUNNER_WIZARD_STEPS = new Set<ScoringStep>([
-  'runner',
-  'runner_out_detail',
-  'runner_out_fielding',
-  'runner_advance_error_fielding',
-  'batter_advance',
-  'runner_action',
-]);
-const PLAY_WIZARD_STEPS = new Set<ScoringStep>([
-  'strikeout_type',
-  'out_type',
-  'safe_type',
-  'fielding',
-  'hit_location',
-]);
-
 const BATTED_BALL_EVENTS = new Set([
   'single', 'double', 'triple', 'home_run', 'inside_park_hr', 'ground_rule_double',
   'ground_out', 'fly_out', 'line_out', 'pop_out', 'bunt_out', 'bunt_single',
@@ -500,19 +483,7 @@ export function LiveScoringPage() {
 
   // Event timeline panel
   const [showEventTimeline, setShowEventTimeline] = useState(false);
-  const scoringWizardRef = useRef<HTMLDivElement>(null);
-
-  const snapScoringWizardIntoView = useCallback((inner: 'top' | 'bottom' = 'top') => {
-    requestAnimationFrame(() => {
-      const el = scoringWizardRef.current;
-      if (!el) return;
-      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      requestAnimationFrame(() => {
-        if (inner === 'bottom') el.scrollTop = el.scrollHeight;
-        else if (el.scrollHeight > el.clientHeight) el.scrollTop = 0;
-      });
-    });
-  }, []);
+  const [mobileLineupOpen, setMobileLineupOpen] = useState(false);
 
   // Per-pitcher pitch count derived from events. When scorer had no P in the lineup, events often have
   // pitcherId null — infer fielding pitcher per half from active lineup P + pitching-change subs so counts match reality.
@@ -1004,12 +975,6 @@ export function LiveScoringPage() {
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
-
-  useEffect(() => {
-    if (step === 'pitch') return;
-    const inner = RUNNER_WIZARD_STEPS.has(step) ? 'bottom' : 'top';
-    snapScoringWizardIntoView(inner);
-  }, [step, currentRunnerIdx, snapScoringWizardIntoView]);
 
   const handleOut = () => {
     if (currentBatter && (currentBatter.bats || '').trim().toUpperCase() === 'S' && !switchBatSide) return;
@@ -2288,7 +2253,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
   // ── SCORING ──
   if (!gameState) {
     return (
-      <div className="scoring-app flex h-[100dvh] max-h-[100dvh] flex-col items-center justify-center overflow-hidden bg-scoring-canvas text-white">
+      <div className="scoring-app flex min-h-screen flex-col items-center justify-center bg-scoring-canvas text-white">
         <span className="text-lg text-white/80">Loading game state…</span>
         <button
           type="button"
@@ -2325,29 +2290,24 @@ function needsRunnerAdvanceErrorFieldingPrompt(
   const getCurrentPitcherStrikes = (pid: number | null | undefined) =>
     pid != null ? pitcherPitchCounts[pid]?.strikes ?? 0 : 0;
 
-  const compactRunnerField = RUNNER_WIZARD_STEPS.has(step);
-  const compactPlayWizardField = PLAY_WIZARD_STEPS.has(step);
-  /** Runner / in-play wizards scroll in the panel; main pitch view stays grouped (no dead gap on desktop). */
-  const scrollableWizardPanel = compactRunnerField || compactPlayWizardField || step !== 'pitch';
-
   return (
     <div className="scoring-app flex h-[100dvh] max-h-[100dvh] flex-col overflow-hidden bg-scoring-canvas text-white">
       {/* ── Scoreboard bar ── */}
-      <div className="shrink-0 bg-scoring-footer border-b border-white/20 px-3 py-2 sm:px-4 sm:py-2.5">
-        <div className="mx-auto flex max-w-6xl flex-col gap-3 font-mono text-sm font-bold sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 sm:gap-6">
-            <div className="flex min-w-0 flex-1 items-center gap-2 sm:flex-initial">
-              <span className="w-12 shrink-0 text-xs uppercase text-white/70">Visitor</span>
-              <span className="min-w-0 truncate font-semibold text-white">{game.awayTeamName}</span>
-              <span className="ml-auto shrink-0 text-3xl tabular-nums text-white sm:ml-1">{gameState.awayScore}</span>
+      <div className="shrink-0 bg-scoring-footer border-b border-white/20 px-2 py-1.5 sm:px-4 sm:py-2.5">
+        <div className="mx-auto flex max-w-6xl flex-col gap-2 font-mono text-sm font-bold sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+          <div className="grid grid-cols-2 gap-x-3 gap-y-1 sm:flex sm:flex-wrap sm:items-center sm:gap-6">
+            <div className="flex min-w-0 items-center gap-1.5 sm:gap-2">
+              <span className="w-9 shrink-0 text-[10px] uppercase text-white/70 sm:w-12 sm:text-xs">Visitor</span>
+              <span className="min-w-0 truncate text-xs font-semibold text-white sm:text-sm">{game.awayTeamName}</span>
+              <span className="ml-auto shrink-0 text-2xl tabular-nums text-white sm:text-3xl">{gameState.awayScore}</span>
             </div>
-            <div className="flex min-w-0 flex-1 items-center gap-2 sm:flex-initial">
-              <span className="w-12 shrink-0 text-xs uppercase text-white/70">Home</span>
-              <span className="min-w-0 truncate font-semibold text-white">{game.homeTeamName}</span>
-              <span className="ml-auto shrink-0 text-3xl tabular-nums text-white sm:ml-1">{gameState.homeScore}</span>
+            <div className="flex min-w-0 items-center gap-1.5 sm:gap-2">
+              <span className="w-9 shrink-0 text-[10px] uppercase text-white/70 sm:w-12 sm:text-xs">Home</span>
+              <span className="min-w-0 truncate text-xs font-semibold text-white sm:text-sm">{game.homeTeamName}</span>
+              <span className="ml-auto shrink-0 text-2xl tabular-nums text-white sm:text-3xl">{gameState.homeScore}</span>
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-4 border-t border-white/10 pt-2 sm:border-t-0 sm:pt-0">
+          <div className="flex flex-wrap items-center gap-3 sm:gap-4">
             <div className="flex items-center gap-1.5">
               <span className="text-white/70 text-xs">INN</span>
               <span className="text-white text-base">{gameState.half === 'top' ? '▲' : '▼'} {gameState.inning}</span>
@@ -2370,12 +2330,13 @@ function needsRunnerAdvanceErrorFieldingPrompt(
         </div>
       </div>
 
-      {/* ── Main content: stack on phone, row on large screens ── */}
+      {/* ── Main content: stack on phone/tablet, row on lg+ ── */}
       <div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col overflow-hidden lg:flex-row">
-        {/* ── Lineups: scroll strip on phone; sidebar on lg ── */}
-        <div className="max-h-[min(34vh,300px)] w-full shrink-0 overflow-y-auto border-b border-white/10 px-2 py-2 sm:max-h-[38vh] lg:max-h-none lg:w-52 lg:border-b-0 lg:border-r lg:border-white/5">
+        {/* ── Lineups: compact cards on phone; full sidebar on lg ── */}
+        <div className="w-full shrink-0 border-b border-white/10 px-2 py-2 lg:max-h-none lg:w-52 lg:overflow-y-auto lg:border-b-0 lg:border-r lg:border-white/5">
+          <div className="mb-2 grid grid-cols-1 gap-2 min-[420px]:grid-cols-2 lg:mb-3 lg:grid-cols-1">
           {/* Current batter highlight */}
-          <div className="bg-scoring-card rounded-lg px-3 py-2 mb-3 border border-white/5">
+          <div className="bg-scoring-card rounded-lg px-3 py-2 border border-white/5 lg:mb-0">
             <div className="text-[9px] text-white/30 font-bold uppercase tracking-wider mb-0.5">At Bat</div>
             <button onClick={() => {
               if (!currentBatter) return;
@@ -2396,7 +2357,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
 
           {/* Pitcher info with pitch count */}
           {currentPitcher && (
-            <div className="bg-scoring-card rounded-lg px-3 py-2 mb-3 border border-white/5">
+            <div className="bg-scoring-card rounded-lg px-3 py-2 border border-white/5 lg:mb-0">
               <div className="text-[9px] text-white/30 font-bold uppercase tracking-wider mb-0.5">Pitching</div>
               <button onClick={() => { setSubTeamId(fieldingTeamId ?? null); setSubPosition(1); setStep('sub_defense'); }}
                 className="text-white font-bold text-sm hover:text-amber-300 transition-colors">
@@ -2409,7 +2370,18 @@ function needsRunnerAdvanceErrorFieldingPrompt(
               </div>
             </div>
           )}
+          </div>
 
+          <button
+            type="button"
+            onClick={() => setMobileLineupOpen((v) => !v)}
+            className="mb-2 w-full rounded-lg border border-white/10 bg-white/5 py-2 text-[10px] font-bold uppercase tracking-wide text-white/60 hover:bg-white/10 hover:text-white lg:hidden"
+          >
+            {mobileLineupOpen ? 'Hide lineups' : 'Show lineups'}
+          </button>
+
+          {/* Batting + defensive lineups: always on lg; collapsible on phone */}
+          <div className={`overflow-y-auto overscroll-contain lg:block ${mobileLineupOpen ? 'max-h-[38vh]' : 'hidden'}`}>
           {/* Batting lineup */}
           <div className="mb-3">
             <div className="text-[9px] text-white/30 font-bold uppercase tracking-wider px-1 mb-0.5">
@@ -2466,24 +2438,12 @@ function needsRunnerAdvanceErrorFieldingPrompt(
               </div>
             ))}
           </div>
+          </div>
         </div>
 
         {/* ── Center: Field + Controls ── */}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-          <div
-            className={`flex min-h-0 flex-1 flex-col ${
-              scrollableWizardPanel ? '' : 'items-center justify-center gap-2 px-2'
-            }`}
-          >
-          <div
-            className={`relative flex shrink-0 items-start justify-center px-2 pt-0 ${
-              compactRunnerField
-                ? 'max-h-[min(24vh,200px)]'
-                : compactPlayWizardField
-                  ? 'max-h-[min(32vh,270px)]'
-                  : 'max-h-[min(40vh,380px)] lg:max-h-[min(48vh,480px)]'
-            }`}
-          >
+          <div className="relative min-h-0 flex-1 px-2 py-1">
             {/*
               Clean baseball diamond with proper 90° foul lines.
               Home=(200,310), 1B=(270,240), 2B=(200,170), 3B=(130,240)
@@ -2493,13 +2453,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
             <svg
               viewBox="0 0 400 400"
               preserveAspectRatio="xMidYMid meet"
-              className={`h-full w-full ${
-                compactRunnerField
-                  ? 'max-h-[min(24vh,200px)] max-w-[min(100%,320px)]'
-                  : compactPlayWizardField
-                    ? 'max-h-[min(32vh,270px)] max-w-[min(100%,420px)]'
-                    : 'max-h-[min(40vh,380px)] max-w-[min(100%,520px)] lg:max-h-[min(48vh,480px)]'
-              }`}
+              className="absolute inset-0 m-auto h-full w-full max-h-full max-w-[600px]"
             >
               <defs>
                 <radialGradient id="fg" cx="50%" cy="82%" r="58%">
@@ -2608,15 +2562,8 @@ function needsRunnerAdvanceErrorFieldingPrompt(
             </svg>
           </div>
 
-          {/* ── Wizard panels: scroll on runner steps; pitch buttons stay tight under field on desktop ── */}
-          <div
-            ref={scoringWizardRef}
-            className={`w-full max-w-xl px-2 pb-1 sm:max-w-2xl sm:px-3 ${
-              scrollableWizardPanel
-                ? 'min-h-0 flex-1 overflow-y-auto overscroll-contain scroll-smooth'
-                : 'shrink-0'
-            }`}
-          >
+          {/* ── Wizard panels ── */}
+          <div className="shrink-0 overflow-y-auto overscroll-contain px-2 pb-1 sm:px-3">
             {/* EMPTY SLOT — automatic out */}
             {step === 'pitch' && isEmptySlot && (
               <div className="bg-scoring-panel rounded-xl border border-white/10 overflow-hidden p-4 text-center">
@@ -2673,35 +2620,35 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                   <button
                     onClick={handleBall}
                     disabled={submitting || ((currentBatter.bats || '').trim().toUpperCase() === 'S' && !switchBatSide)}
-                    className="col-span-1 rounded-lg border border-[#20804a]/50 bg-[#1a6b3a] py-3 text-sm font-bold text-white transition-all hover:bg-[#20804a] disabled:opacity-30 sm:text-base xl:py-3.5"
+                    className="col-span-1 py-4 bg-[#1a6b3a] hover:bg-[#20804a] text-white font-bold text-sm sm:text-base rounded-lg transition-all disabled:opacity-30 border border-[#20804a]/50"
                   >
                     BALL
                   </button>
                   <button
                     onClick={handleStrike}
                     disabled={submitting || ((currentBatter.bats || '').trim().toUpperCase() === 'S' && !switchBatSide)}
-                    className="col-span-1 rounded-lg border border-[#a02828]/50 bg-[#8b2020] py-3 text-sm font-bold text-white transition-all hover:bg-[#a02828] disabled:opacity-30 sm:text-base xl:py-3.5"
+                    className="col-span-1 py-4 bg-[#8b2020] hover:bg-[#a02828] text-white font-bold text-sm sm:text-base rounded-lg transition-all disabled:opacity-30 border border-[#a02828]/50"
                   >
                     STRIKE
                   </button>
                   <button
                     onClick={handleFoul}
                     disabled={submitting || ((currentBatter.bats || '').trim().toUpperCase() === 'S' && !switchBatSide)}
-                    className="col-span-1 rounded-lg border border-[#a08428]/50 bg-[#8b7020] py-3 text-sm font-bold text-white transition-all hover:bg-[#a08428] disabled:opacity-30 sm:text-base xl:py-3.5"
+                    className="col-span-1 py-4 bg-[#8b7020] hover:bg-[#a08428] text-white font-bold text-sm sm:text-base rounded-lg transition-all disabled:opacity-30 border border-[#a08428]/50"
                   >
                     FOUL
                   </button>
                   <button
                     onClick={handleOut}
                     disabled={submitting || ((currentBatter.bats || '').trim().toUpperCase() === 'S' && !switchBatSide)}
-                    className="col-span-1 rounded-lg border border-[#237548]/50 bg-[#1a5c3a] py-3 text-sm font-bold text-white transition-all hover:bg-[#237548] disabled:opacity-30 sm:text-base xl:py-3.5"
+                    className="col-span-1 py-4 bg-[#1a5c3a] hover:bg-[#237548] text-white font-bold text-sm sm:text-base rounded-lg transition-all disabled:opacity-30 border border-[#237548]/50"
                   >
                     OUT
                   </button>
                   <button
                     onClick={handleInPlay}
                     disabled={submitting || ((currentBatter.bats || '').trim().toUpperCase() === 'S' && !switchBatSide)}
-                    className="col-span-2 rounded-lg border border-[#2248a0]/50 bg-[#1a3a8b] py-3 text-sm font-bold text-white transition-all hover:bg-[#2248a0] disabled:opacity-30 sm:col-span-1 sm:text-base xl:py-3.5"
+                    className="col-span-2 py-4 bg-[#1a3a8b] hover:bg-[#2248a0] text-white font-bold text-sm sm:text-base rounded-lg transition-all disabled:opacity-30 border border-[#2248a0]/50 sm:col-span-1"
                   >
                     IN PLAY
                   </button>
@@ -3861,17 +3808,16 @@ function needsRunnerAdvanceErrorFieldingPrompt(
               </div>
             )}
           </div>
-          </div>
 
           {/* ── Bottom bar ── */}
           <div className="shrink-0 bg-scoring-footer border-t border-white/10 px-2 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:px-3 sm:py-1.5">
-            <div className="flex flex-wrap items-center justify-center gap-x-1 gap-y-1 text-[10px] font-bold uppercase sm:flex-nowrap sm:justify-between">
-              <button type="button" onClick={() => navigate('/games')} className="min-h-[40px] min-w-[3.25rem] rounded px-2 py-1.5 text-white/40 hover:text-white sm:min-h-0 sm:px-3">Exit</button>
-              <button type="button" onClick={handleUndo} disabled={historyBusy} className="min-h-[40px] min-w-[3.25rem] rounded px-2 py-1.5 text-white/40 hover:text-white disabled:opacity-30 sm:min-h-0 sm:px-3">Undo</button>
-              <button type="button" onClick={handleRedo} disabled={historyBusy} className="min-h-[40px] min-w-[3.25rem] rounded px-2 py-1.5 text-white/40 hover:text-white disabled:opacity-30 sm:min-h-0 sm:px-3">Redo</button>
-              <button type="button" onClick={() => setShowEventTimeline(v => !v)} className="min-h-[40px] min-w-[3.25rem] rounded px-2 py-1.5 text-white/40 hover:text-white sm:min-h-0 sm:px-3">Log</button>
-              <button type="button" onClick={cancelWizard} className="min-h-[40px] min-w-[3.25rem] rounded px-2 py-1.5 text-white/40 hover:text-white sm:min-h-0 sm:px-3">Reset</button>
-              <button type="button" onClick={() => setStep('misc')} className="min-h-[40px] min-w-[3.25rem] rounded px-2 py-1.5 text-white/40 hover:text-white sm:min-h-0 sm:px-3">Misc</button>
+            <div className="grid grid-cols-3 gap-1 text-[10px] font-bold uppercase sm:flex sm:flex-nowrap sm:items-center sm:justify-between sm:gap-0">
+              <button type="button" onClick={() => navigate('/games')} className="min-h-[44px] rounded px-1 py-2 text-white/40 hover:text-white sm:min-h-0 sm:px-3">Exit</button>
+              <button type="button" onClick={handleUndo} disabled={historyBusy} className="min-h-[44px] rounded px-1 py-2 text-white/40 hover:text-white disabled:opacity-30 sm:min-h-0 sm:px-3">Undo</button>
+              <button type="button" onClick={handleRedo} disabled={historyBusy} className="min-h-[44px] rounded px-1 py-2 text-white/40 hover:text-white disabled:opacity-30 sm:min-h-0 sm:px-3">Redo</button>
+              <button type="button" onClick={() => setShowEventTimeline(v => !v)} className="min-h-[44px] rounded px-1 py-2 text-white/40 hover:text-white sm:min-h-0 sm:px-3">Log</button>
+              <button type="button" onClick={cancelWizard} className="min-h-[44px] rounded px-1 py-2 text-white/40 hover:text-white sm:min-h-0 sm:px-3">Reset</button>
+              <button type="button" onClick={() => setStep('misc')} className="min-h-[44px] rounded px-1 py-2 text-white/40 hover:text-white sm:min-h-0 sm:px-3">Misc</button>
             </div>
           </div>
         </div>
