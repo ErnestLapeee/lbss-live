@@ -151,10 +151,15 @@ const ADMIN_SELECT_ROW = `${ADMIN_SELECT_SM} mt-0.5 w-full`;
 const ADMIN_SELECT_MD = `${ADMIN_SELECT_BASE} text-sm px-3 py-2 w-full outline-none focus:border-white/35`;
 const ADMIN_SELECT_POS = `${ADMIN_SELECT_BASE} px-2 py-1 text-xs shrink-0`;
 
-/** Option grids scroll with the wizard on mobile; height-capped scroll only on lg+. */
-const WIZARD_OPTIONS_BODY = 'p-3 lg:max-h-72 lg:overflow-y-auto';
-const WIZARD_OPTIONS_BODY_SM = 'p-3 lg:max-h-64 lg:overflow-y-auto';
-const MOBILE_WIZARD_SHELL = 'bg-scoring-panel rounded-xl border border-white/10 overflow-hidden max-lg:flex max-lg:min-h-0 max-lg:flex-1 max-lg:flex-col';
+/** Option grids scroll inside full-screen mobile wizards; height-capped on lg+. */
+const WIZARD_OPTIONS_BODY = 'min-h-0 flex-1 overflow-y-auto p-3 lg:max-h-72 lg:flex-none lg:overflow-y-auto';
+const WIZARD_OPTIONS_BODY_SM = 'min-h-0 flex-1 overflow-y-auto p-3 lg:max-h-64 lg:flex-none lg:overflow-y-auto';
+const MOBILE_WIZARD_SHELL = 'bg-scoring-panel flex max-lg:min-h-0 max-lg:flex-1 max-lg:flex-col rounded-xl border border-white/10 overflow-hidden';
+const WIZARD_CANCEL_BTN =
+  'w-full shrink-0 border-t border-white/10 py-3 text-xs font-bold uppercase text-white/40 transition-colors hover:text-white/60 max-lg:pb-[max(0.25rem,env(safe-area-inset-bottom))]';
+const WIZARD_BACK_BTN =
+  'w-full shrink-0 border-t border-white/10 py-3 text-xs font-bold uppercase text-white/40 transition-colors hover:text-white/60';
+const DESKTOP_FIELD_SIZE = 'lg:h-full lg:w-auto lg:max-h-full lg:max-w-[min(100%,min(72vh,800px))]';
 const WIZARD_OPTIONS_PANEL = 'bg-scoring-panel rounded-lg border border-white/10 p-3 lg:max-h-72 lg:overflow-y-auto';
 
 const MOBILE_TOOLBAR_ACTIONS = [
@@ -2531,17 +2536,17 @@ function needsRunnerAdvanceErrorFieldingPrompt(
         </div>
 
         {/* ── Center: Field + Controls ── */}
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden lg:grid lg:grid-rows-[minmax(0,1fr)_auto_auto]">
           <div
-            className={`flex min-h-0 flex-1 flex-col lg:overflow-hidden ${
+            className={`flex min-h-0 flex-1 flex-col lg:min-h-0 lg:overflow-hidden ${
               isMobileWizardFocus
                 ? 'max-lg:overflow-hidden'
                 : 'overflow-y-auto overscroll-y-contain touch-pan-y'
             }`}
           >
-          <div className={isStandardPitchMode ? 'flex min-h-full flex-col lg:contents' : 'flex min-h-0 flex-1 flex-col lg:contents'}>
+          <div className={isStandardPitchMode ? 'flex min-h-full flex-col lg:flex lg:min-h-0 lg:flex-1 lg:flex-col' : 'flex min-h-0 flex-1 flex-col lg:contents'}>
           <div
-            className={`flex w-full items-center justify-center px-2 py-1 lg:min-h-0 lg:flex-1 lg:py-1 ${
+            className={`flex w-full items-center justify-center px-2 py-1 lg:min-h-0 lg:flex-1 lg:overflow-hidden lg:py-2 ${
               isStandardPitchMode
                 ? 'max-lg:min-h-[calc(100dvh-17rem)] max-lg:shrink-0'
                 : step === 'fielding'
@@ -2558,7 +2563,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
             <svg
               viewBox="0 0 400 400"
               preserveAspectRatio="xMidYMid meet"
-              className={`mx-auto block aspect-square lg:h-full lg:max-h-full lg:max-w-[600px] lg:w-full ${mobileFieldSizeClass} lg:w-full lg:h-full`}
+              className={`mx-auto block aspect-square ${mobileFieldSizeClass} ${DESKTOP_FIELD_SIZE}`}
             >
               <defs>
                 <radialGradient id="fg" cx="50%" cy="82%" r="58%">
@@ -2675,10 +2680,10 @@ function needsRunnerAdvanceErrorFieldingPrompt(
           <div
             className={`px-2 pb-2 sm:px-3 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:overscroll-y-contain lg:touch-pan-y lg:pb-[max(0.75rem,env(safe-area-inset-bottom))] ${
               isStandardPitchMode
-                ? 'max-lg:hidden'
+                ? 'hidden'
                 : step === 'fielding'
                   ? 'max-lg:shrink-0 max-lg:px-3 max-lg:pb-[max(0.5rem,env(safe-area-inset-bottom))]'
-                  : 'max-lg:flex max-lg:min-h-0 max-lg:flex-1 max-lg:flex-col max-lg:overflow-y-auto max-lg:overscroll-y-contain max-lg:touch-pan-y max-lg:px-3 max-lg:pb-[max(0.75rem,env(safe-area-inset-bottom))]'
+                  : 'max-lg:flex max-lg:min-h-0 max-lg:flex-1 max-lg:flex-col max-lg:overflow-hidden max-lg:px-2 max-lg:pb-0 max-lg:pt-0'
             }`}
           >
             {/* EMPTY SLOT — automatic out */}
@@ -2709,7 +2714,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
             {/* STRIKEOUT TYPE (strike 3 popup - like iScore) */}
             {step === 'strikeout_type' && (
               <div className={MOBILE_WIZARD_SHELL}>
-                <div className="px-4 py-3 border-b border-white/5 text-center">
+                <div className="shrink-0 px-4 py-3 border-b border-white/5 text-center">
                   <div className="flex justify-center gap-1 mb-2">
                     {(['out', 'safe', 'quick'] as const).map(t => (
                       <button key={t} disabled={t !== 'out'}
@@ -2719,7 +2724,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                     ))}
                   </div>
                 </div>
-                <div className="p-4 space-y-2">
+                <div className={`${WIZARD_OPTIONS_BODY} space-y-2`}>
                   <div className="grid grid-cols-2 gap-2">
                     <button onClick={() => selectOutcome('strikeout_looking')} disabled={submitting}
                       className="py-4 bg-scoring-tile hover:bg-scoring-tile-hover text-white text-sm font-bold rounded-lg uppercase transition-colors border border-white/10">
@@ -2752,7 +2757,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                   </div>
                 </div>
                 <button onClick={() => setStep('pitch')}
-                  className="w-full py-3 text-white/40 text-xs font-bold uppercase border-t border-white/10 hover:text-white/60 transition-colors">
+                  className={WIZARD_CANCEL_BTN}>
                   CANCEL
                 </button>
               </div>
@@ -2761,13 +2766,13 @@ function needsRunnerAdvanceErrorFieldingPrompt(
             {/* OUT / SAFE panels */}
             {(step === 'out_type' || step === 'safe_type') && (
               <div className={MOBILE_WIZARD_SHELL}>
-                <div className="flex border-b border-white/10">
+                <div className="flex shrink-0 border-b border-white/10">
                   <button onClick={() => { setOutSafeTab('out'); setStep('out_type'); setOutSafeMorePage(false); }}
                     className={`flex-1 min-h-[44px] py-2.5 text-sm font-bold transition-colors lg:min-h-0 ${outSafeTab === 'out' ? 'bg-white/10 text-white border-b-2 border-white' : 'text-white/40 hover:text-white/60'}`}>Out</button>
                   <button onClick={() => { setOutSafeTab('safe'); setStep('safe_type'); setOutSafeMorePage(false); }}
                     className={`flex-1 min-h-[44px] py-2.5 text-sm font-bold transition-colors lg:min-h-0 ${outSafeTab === 'safe' ? 'bg-white/10 text-white border-b-2 border-white' : 'text-white/40 hover:text-white/60'}`}>Safe</button>
                 </div>
-                <div className="p-3">
+                <div className={WIZARD_OPTIONS_BODY}>
                   <div className="grid grid-cols-2 gap-2">
                     {(outSafeTab === 'safe'
                       ? (outSafeMorePage ? SAFE_OUTCOMES_P2 : SAFE_OUTCOMES_P1)
@@ -2784,7 +2789,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                     </button>
                   </div>
                 </div>
-                <button onClick={cancelWizard} className="w-full py-3 text-white/40 text-xs font-bold uppercase border-t border-white/10 hover:text-white/60 transition-colors">CANCEL</button>
+                <button onClick={cancelWizard} className={WIZARD_CANCEL_BTN}>CANCEL</button>
               </div>
             )}
 
@@ -2979,7 +2984,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                     </button>
                   </div>
                   <button type="button" onClick={() => { setRunnerAdvanceErrorPending(null); setRunnerAdvanceErrorFielding([]); setStep('runner'); }}
-                    className="w-full py-3 text-white/40 text-xs font-bold uppercase border-t border-white/10 hover:text-white/60 transition-colors">← BACK</button>
+                    className={WIZARD_BACK_BTN}>← BACK</button>
                 </div>
               );
             })()}
@@ -3089,9 +3094,9 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                     </div>
 
                     <button onClick={() => { setRunnerOutPendingType(null); setRunnerOutFielding([]); setStep('runner_out_detail'); }}
-                      className="w-full py-3 text-white/40 text-xs font-bold uppercase border-t border-white/10 hover:text-white/60 transition-colors">← Back</button>
+                      className={WIZARD_BACK_BTN}>← Back</button>
                     <button onClick={cancelWizard}
-                      className="w-full py-3 text-white/40 text-xs font-bold uppercase border-t border-white/10 hover:text-white/60 transition-colors">Cancel play</button>
+                      className={WIZARD_BACK_BTN}>Cancel play</button>
                   </div>
                 );
               }
@@ -3258,7 +3263,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                     </div>
                   )}
 
-                  <button onClick={cancelWizard} className="w-full py-3 text-white/40 text-xs font-bold uppercase border-t border-white/10 hover:text-white/60 transition-colors">CANCEL</button>
+                  <button onClick={cancelWizard} className={WIZARD_CANCEL_BTN}>CANCEL</button>
                 </div>
               );
             })()}
@@ -3337,7 +3342,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                     </div>
 
                     <button onClick={() => { setActiveRunnerBase(null); setRunnerActionType(null); setRunnerActionDest(null); setStep('pitch'); }}
-                      className="w-full py-3 text-white/40 text-xs font-bold uppercase border-t border-white/10 hover:text-white/60 transition-colors">CANCEL</button>
+                      className={WIZARD_CANCEL_BTN}>CANCEL</button>
                   </div>
                 );
               }
@@ -3392,9 +3397,9 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                       </div>
 
                       <button onClick={() => { setRunnerActionOutType(null); setRunnerActionFielding([]); }}
-                        className="w-full py-3 text-white/40 text-xs font-bold uppercase border-t border-white/10 hover:text-white/60 transition-colors">← Back</button>
+                        className={WIZARD_BACK_BTN}>← Back</button>
                       <button onClick={() => { setActiveRunnerBase(null); setRunnerActionType(null); setRunnerActionDest(null); setRunnerActionOutType(null); setRunnerActionFielding([]); setStep('pitch'); }}
-                        className="w-full py-3 text-white/40 text-xs font-bold uppercase border-t border-white/10 hover:text-white/60 transition-colors">Cancel play</button>
+                        className={WIZARD_BACK_BTN}>Cancel play</button>
                     </div>
                   );
                 }
@@ -3428,7 +3433,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                     </div>
 
                     <button onClick={() => { setActiveRunnerBase(null); setRunnerActionType(null); setStep('pitch'); }}
-                      className="w-full py-3 text-white/40 text-xs font-bold uppercase border-t border-white/10 hover:text-white/60 transition-colors">CANCEL</button>
+                      className={WIZARD_CANCEL_BTN}>CANCEL</button>
                   </div>
                 );
               }
@@ -3480,7 +3485,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                     </div>
 
                     <button onClick={() => { setRunnerActionType(null); setRunnerActionFielding([]); }}
-                      className="w-full py-3 text-white/40 text-xs font-bold uppercase border-t border-white/10 hover:text-white/60 transition-colors">← BACK</button>
+                      className={WIZARD_BACK_BTN}>← BACK</button>
                   </div>
                 );
               }
