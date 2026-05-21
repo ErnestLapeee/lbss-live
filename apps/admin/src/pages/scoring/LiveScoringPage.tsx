@@ -151,10 +151,10 @@ const ADMIN_SELECT_ROW = `${ADMIN_SELECT_SM} mt-0.5 w-full`;
 const ADMIN_SELECT_MD = `${ADMIN_SELECT_BASE} text-sm px-3 py-2 w-full outline-none focus:border-white/35`;
 const ADMIN_SELECT_POS = `${ADMIN_SELECT_BASE} px-2 py-1 text-xs shrink-0`;
 
-/** Option grids scroll inside full-screen mobile wizards; height-capped on lg+. */
-const WIZARD_OPTIONS_BODY = 'min-h-0 flex-1 overflow-y-auto p-3 lg:max-h-72 lg:flex-none lg:overflow-y-auto';
-const WIZARD_OPTIONS_BODY_SM = 'min-h-0 flex-1 overflow-y-auto p-3 lg:max-h-64 lg:flex-none lg:overflow-y-auto';
-const MOBILE_WIZARD_SHELL = 'bg-scoring-panel flex max-lg:min-h-0 max-lg:flex-1 max-lg:flex-col rounded-xl border border-white/10 overflow-hidden';
+/** Option grids scroll inside full-screen wizards. */
+const WIZARD_OPTIONS_BODY = 'min-h-0 flex-1 overflow-y-auto p-3';
+const WIZARD_OPTIONS_BODY_SM = 'min-h-0 flex-1 overflow-y-auto p-3';
+const WIZARD_SHELL = 'bg-scoring-panel flex min-h-0 flex-1 flex-col rounded-xl border border-white/10 overflow-hidden';
 const WIZARD_CANCEL_BTN =
   'w-full shrink-0 border-t border-white/10 py-3 text-xs font-bold uppercase text-white/40 transition-colors hover:text-white/60 max-lg:pb-[max(0.25rem,env(safe-area-inset-bottom))]';
 const WIZARD_BACK_BTN =
@@ -2315,9 +2315,8 @@ function needsRunnerAdvanceErrorFieldingPrompt(
 
   const isStandardPitchMode =
     step === 'pitch' && !isEmptySlot && currentBatter?.playerId != null;
-  /** Field stays visible for pitch and batted-ball fielding (tap positions on diamond). */
-  const showMobileField = isStandardPitchMode || step === 'fielding';
-  const isMobileWizardFocus = !isStandardPitchMode;
+  const showField = isStandardPitchMode || step === 'fielding';
+  const isWizardFocus = !isStandardPitchMode;
 
   const mobilePitchFieldSize =
     'max-lg:size-[min(calc(100vw-2rem),calc(100dvh-17rem))] max-lg:shrink-0';
@@ -2433,9 +2432,9 @@ function needsRunnerAdvanceErrorFieldingPrompt(
       </div>
 
       {/* ── Main content: stack on phone/tablet, row on lg+ ── */}
-      <div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col overflow-hidden lg:flex-row">
-        {/* ── Lineups: compact cards on phone; full sidebar on lg ── */}
-        <div className="hidden w-full shrink-0 border-b border-white/10 px-2 py-2 lg:block lg:max-h-none lg:w-52 lg:overflow-y-auto lg:border-b-0 lg:border-r lg:border-white/5">
+      <div className={`mx-auto flex min-h-0 w-full flex-1 flex-col overflow-hidden lg:flex-row ${isWizardFocus ? 'max-w-none' : 'max-w-6xl'}`}>
+        {/* ── Lineups sidebar (hidden during wizards on desktop) ── */}
+        <div className={`hidden w-full shrink-0 border-b border-white/10 px-2 py-2 lg:max-h-none lg:w-52 lg:overflow-y-auto lg:border-b-0 lg:border-r lg:border-white/5 ${isWizardFocus ? '' : 'lg:block'}`}>
           <div className="mb-3 grid grid-cols-1 gap-2">
           {/* Current batter highlight */}
           <div className="bg-scoring-card rounded-lg px-3 py-2 border border-white/5 lg:mb-0">
@@ -2538,21 +2537,21 @@ function needsRunnerAdvanceErrorFieldingPrompt(
         {/* ── Center: Field + Controls ── */}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden lg:grid lg:grid-rows-[minmax(0,1fr)_auto_auto]">
           <div
-            className={`flex min-h-0 flex-1 flex-col lg:min-h-0 lg:overflow-hidden ${
-              isMobileWizardFocus
-                ? 'max-lg:overflow-hidden'
-                : 'overflow-y-auto overscroll-y-contain touch-pan-y'
+            className={`flex min-h-0 flex-1 flex-col lg:min-h-0 ${
+              isWizardFocus
+                ? 'overflow-hidden'
+                : 'overflow-y-auto overscroll-y-contain touch-pan-y lg:overflow-hidden'
             }`}
           >
-          <div className={isStandardPitchMode ? 'flex min-h-full flex-col lg:flex lg:min-h-0 lg:flex-1 lg:flex-col' : 'flex min-h-0 flex-1 flex-col lg:contents'}>
+          <div className={isStandardPitchMode ? 'flex min-h-full flex-col lg:flex lg:min-h-0 lg:flex-1 lg:flex-col' : 'flex min-h-0 flex-1 flex-col'}>
           <div
-            className={`flex w-full items-center justify-center px-2 py-1 lg:min-h-0 lg:flex-1 lg:overflow-hidden lg:py-2 ${
-              isStandardPitchMode
-                ? 'max-lg:min-h-[calc(100dvh-17rem)] max-lg:shrink-0'
-                : step === 'fielding'
-                  ? 'max-lg:min-h-0 max-lg:flex-1 max-lg:shrink-0'
-                  : 'max-lg:hidden'
-            } ${!showMobileField ? 'max-lg:hidden' : ''}`}
+            className={`flex w-full items-center justify-center px-2 py-1 lg:min-h-0 lg:overflow-hidden lg:py-2 ${
+              !showField
+                ? 'hidden'
+                : isStandardPitchMode
+                  ? 'max-lg:min-h-[calc(100dvh-17rem)] max-lg:shrink-0 lg:flex-1'
+                  : 'max-lg:min-h-0 max-lg:flex-1 max-lg:shrink-0 lg:flex-1'
+            }`}
           >
             {/*
               Clean baseball diamond with proper 90° foul lines.
@@ -2676,15 +2675,15 @@ function needsRunnerAdvanceErrorFieldingPrompt(
             </svg>
           </div>
 
-          {/* ── Wizard panels — full screen on phone (except fielding keeps diamond above) ── */}
+          {/* ── Wizard panels — full screen when not on standard pitch (fielding keeps diamond above) ── */}
           <div
-            className={`px-2 pb-2 sm:px-3 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:overscroll-y-contain lg:touch-pan-y lg:pb-[max(0.75rem,env(safe-area-inset-bottom))] ${
+            className={
               isStandardPitchMode
                 ? 'hidden'
                 : step === 'fielding'
-                  ? 'max-lg:shrink-0 max-lg:px-3 max-lg:pb-[max(0.5rem,env(safe-area-inset-bottom))]'
-                  : 'max-lg:flex max-lg:min-h-0 max-lg:flex-1 max-lg:flex-col max-lg:overflow-hidden max-lg:px-2 max-lg:pb-0 max-lg:pt-0'
-            }`}
+                  ? 'shrink-0 px-2 pb-2 sm:px-3 max-lg:pb-[max(0.5rem,env(safe-area-inset-bottom))] lg:px-3 lg:pb-2'
+                  : 'flex min-h-0 flex-1 flex-col overflow-hidden px-2 pb-0 pt-0 lg:px-4 lg:pb-2'
+            }
           >
             {/* EMPTY SLOT — automatic out */}
             {step === 'pitch' && isEmptySlot && (
@@ -2713,7 +2712,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
 
             {/* STRIKEOUT TYPE (strike 3 popup - like iScore) */}
             {step === 'strikeout_type' && (
-              <div className={MOBILE_WIZARD_SHELL}>
+              <div className={WIZARD_SHELL}>
                 <div className="shrink-0 px-4 py-3 border-b border-white/5 text-center">
                   <div className="flex justify-center gap-1 mb-2">
                     {(['out', 'safe', 'quick'] as const).map(t => (
@@ -2765,7 +2764,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
 
             {/* OUT / SAFE panels */}
             {(step === 'out_type' || step === 'safe_type') && (
-              <div className={MOBILE_WIZARD_SHELL}>
+              <div className={WIZARD_SHELL}>
                 <div className="flex shrink-0 border-b border-white/10">
                   <button onClick={() => { setOutSafeTab('out'); setStep('out_type'); setOutSafeMorePage(false); }}
                     className={`flex-1 min-h-[44px] py-2.5 text-sm font-bold transition-colors lg:min-h-0 ${outSafeTab === 'out' ? 'bg-white/10 text-white border-b-2 border-white' : 'text-white/40 hover:text-white/60'}`}>Out</button>
@@ -2894,7 +2893,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
 
             {/* BATTER ADVANCE — where batter ends up on ROE (after fielding + runner resolution if any) */}
             {step === 'batter_advance' && selectedEvent && ERROR_EVENTS.has(selectedEvent) && currentBatter && (
-              <div className={MOBILE_WIZARD_SHELL}>
+              <div className={WIZARD_SHELL}>
                 <div className="px-4 py-3 border-b border-white/5 text-center">
                   <p className="text-[10px] text-amber-400 font-bold uppercase mb-1 tracking-widest">Batter on same error</p>
                   <p className="text-xs text-white/80 font-bold tracking-wide">
@@ -2949,7 +2948,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
               ];
               const reasonLabel = runnerAdvanceErrorPending.reason === 'advance_on_error' ? 'ADVANCED ON ERROR' : 'ERROR ON ADVANCE';
               return (
-                <div className={`${MOBILE_WIZARD_SHELL} border-amber-500/30`}>
+                <div className={`${WIZARD_SHELL} border-amber-500/30`}>
                   <div className="px-4 py-3 border-b border-white/5 text-center">
                     <p className="text-[10px] text-amber-400 font-bold uppercase mb-1 tracking-widest">{reasonLabel}</p>
                     <p className="text-xs text-white/80 font-bold tracking-wide">{q.playerName}</p>
@@ -3055,7 +3054,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                   { pos: 7, label: 'LF' }, { pos: 8, label: 'CF' }, { pos: 9, label: 'RF' },
                 ];
                 return (
-                  <div className={MOBILE_WIZARD_SHELL}>
+                  <div className={WIZARD_SHELL}>
                     <div className="px-4 py-3 border-b border-white/5 text-center">
                       <p className="text-[10px] text-red-400 font-bold uppercase mb-1 tracking-widest">{runnerOutPendingType.replace(/_/g, ' ')}</p>
                       <p className="text-xs text-white/80 font-bold tracking-wide">
@@ -3102,7 +3101,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
               }
 
               return (
-                <div className={MOBILE_WIZARD_SHELL}>
+                <div className={WIZARD_SHELL}>
                   {/* Title */}
                   <div className="px-4 py-3 border-b border-white/5 text-center">
                     {betweenPitchEvent && (
@@ -3281,7 +3280,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
               // Step 1: choose action type (Safe view)
               if (!runnerActionType) {
                 return (
-                  <div className={MOBILE_WIZARD_SHELL}>
+                  <div className={WIZARD_SHELL}>
                     {/* Title */}
                     <div className="px-4 py-3 border-b border-white/5 text-center">
                       <p className="text-xs text-white/50 uppercase font-bold tracking-wide">
@@ -3359,7 +3358,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                   ];
                   const outLabel = runnerActionOutType.replace(/_/g, ' ').toUpperCase();
                   return (
-                    <div className={MOBILE_WIZARD_SHELL}>
+                    <div className={WIZARD_SHELL}>
                       <div className="px-4 py-3 border-b border-white/5 text-center">
                         <p className="text-xs text-white/50 uppercase font-bold tracking-wide">
                           {outLabel}
@@ -3406,7 +3405,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
 
                 // Step 1: Choose out type
                 return (
-                  <div className={MOBILE_WIZARD_SHELL}>
+                  <div className={WIZARD_SHELL}>
                     <div className="px-4 py-3 border-b border-white/5 text-center">
                       <p className="text-xs text-white/50 uppercase font-bold tracking-wide">
                         What happened to the runner on {baseLabel} base,
@@ -3446,7 +3445,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                   { pos: 7, label: 'LF' }, { pos: 8, label: 'CF' }, { pos: 9, label: 'RF' },
                 ];
                 return (
-                  <div className={MOBILE_WIZARD_SHELL}>
+                  <div className={WIZARD_SHELL}>
                     <div className="px-4 py-3 border-b border-white/5 text-center">
                         <p className="text-xs text-red-400/70 uppercase font-bold tracking-wide">
                         ERROR
@@ -4065,8 +4064,8 @@ function needsRunnerAdvanceErrorFieldingPrompt(
           )}
         </div>
 
-        {/* Right sidebar: line score + play-by-play */}
-        <div className="w-52 shrink-0 border-l border-white/5 overflow-y-auto py-2 px-2 text-[9px] hidden lg:block">
+        {/* Right sidebar: line score + play-by-play (hidden during wizards) */}
+        <div className={`w-52 shrink-0 border-l border-white/5 overflow-y-auto py-2 px-2 text-[9px] hidden ${isWizardFocus ? '' : 'lg:block'}`}>
           {/* Line score */}
           <table className="w-full font-mono mb-3">
             <thead><tr className="text-white/20">
