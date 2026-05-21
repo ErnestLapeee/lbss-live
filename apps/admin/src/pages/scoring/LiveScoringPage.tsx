@@ -2307,11 +2307,13 @@ function needsRunnerAdvanceErrorFieldingPrompt(
   const getCurrentPitcherStrikes = (pid: number | null | undefined) =>
     pid != null ? pitcherPitchCounts[pid]?.strikes ?? 0 : 0;
 
-  /** On phone: fill available height on pitch; modest cap when wizard is open. */
+  /** Mobile pitch: size from viewport minus chrome; wizard: modest cap. */
   const mobileCompactField = step !== 'pitch';
+  const mobilePitchFieldSize =
+    'max-lg:size-[min(calc(100vw-2rem),calc(100dvh-17rem))] max-lg:shrink-0';
   const mobileFieldSizeClass = mobileCompactField
-    ? 'max-w-[min(100%,calc(100vw-1rem))] max-h-[min(calc(100vw-1rem),32dvh)]'
-    : 'max-lg:max-h-full max-lg:w-auto max-lg:max-w-[min(calc(100vw-1rem),100%)]';
+    ? 'max-w-[min(100%,calc(100vw-1rem))] max-h-[min(calc(100vw-1rem),28dvh)]'
+    : mobilePitchFieldSize;
 
   const handleMobileToolbar = (action: (typeof MOBILE_TOOLBAR_ACTIONS)[number]['onClick']) => {
     if (action === 'exit') navigate('/games');
@@ -2521,9 +2523,16 @@ function needsRunnerAdvanceErrorFieldingPrompt(
 
         {/* ── Center: Field + Controls ── */}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-          {/* Phone: scroll field + wizard together; desktop: field grows, wizard scrolls */}
+          {/* Phone: scroll field + wizard; More section below the fold on pitch */}
           <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-y-contain touch-pan-y lg:overflow-hidden">
-          <div className={`flex w-full shrink-0 items-center justify-center px-2 py-1 lg:min-h-0 lg:flex-1 lg:py-1 ${step === 'pitch' ? 'max-lg:min-h-0 max-lg:flex-1' : 'max-lg:min-h-[min(calc(100vw-1rem),32dvh)]'}`}>
+          <div className={step === 'pitch' ? 'flex min-h-full flex-col lg:contents' : 'lg:contents'}>
+          <div
+            className={`flex w-full items-center justify-center px-2 py-1 lg:min-h-0 lg:flex-1 lg:py-1 ${
+              step === 'pitch'
+                ? 'max-lg:min-h-[calc(100dvh-17rem)] max-lg:shrink-0'
+                : 'max-lg:min-h-[min(calc(100vw-1rem),28dvh)] shrink-0'
+            }`}
+          >
             {/*
               Clean baseball diamond with proper 90° foul lines.
               Home=(200,310), 1B=(270,240), 2B=(200,170), 3B=(130,240)
@@ -2533,7 +2542,9 @@ function needsRunnerAdvanceErrorFieldingPrompt(
             <svg
               viewBox="0 0 400 400"
               preserveAspectRatio="xMidYMid meet"
-              className={`mx-auto block aspect-square w-full h-auto lg:h-full lg:max-h-full lg:max-w-[600px] lg:w-full ${mobileFieldSizeClass}`}
+              className={`mx-auto block aspect-square lg:h-full lg:max-h-full lg:max-w-[600px] lg:w-full ${
+                step === 'pitch' ? `${mobileFieldSizeClass} lg:w-full lg:h-full` : `h-auto w-full ${mobileFieldSizeClass}`
+              }`}
             >
               <defs>
                 <radialGradient id="fg" cx="50%" cy="82%" r="58%">
@@ -2647,7 +2658,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
           </div>
 
           {/* ── Wizard panels ── */}
-          <div className="px-2 pb-2 sm:px-3 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:overscroll-y-contain lg:touch-pan-y lg:pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+          <div className={`px-2 pb-2 sm:px-3 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:overscroll-y-contain lg:touch-pan-y lg:pb-[max(0.75rem,env(safe-area-inset-bottom))] ${step === 'pitch' && !isEmptySlot ? 'max-lg:hidden' : ''}`}>
             {/* EMPTY SLOT — automatic out */}
             {step === 'pitch' && isEmptySlot && (
               <div className="bg-scoring-panel rounded-xl border border-white/10 overflow-hidden p-4 text-center">
@@ -3849,6 +3860,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
             >
               {mobileLineupOpen ? 'Hide lineups' : 'Lineups'}
             </button>
+          </div>
           </div>
           </div>
 
