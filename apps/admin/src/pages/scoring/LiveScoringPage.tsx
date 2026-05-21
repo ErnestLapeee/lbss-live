@@ -2307,11 +2307,11 @@ function needsRunnerAdvanceErrorFieldingPrompt(
   const getCurrentPitcherStrikes = (pid: number | null | undefined) =>
     pid != null ? pitcherPitchCounts[pid]?.strikes ?? 0 : 0;
 
-  /** On phone: full-width diamond on pitch; modest shrink when wizard is open so options stay scrollable. */
+  /** On phone: fill available height on pitch; modest cap when wizard is open. */
   const mobileCompactField = step !== 'pitch';
   const mobileFieldSizeClass = mobileCompactField
     ? 'max-w-[min(100%,calc(100vw-1rem))] max-h-[min(calc(100vw-1rem),32dvh)]'
-    : 'max-w-[min(100%,calc(100vw-1rem))] max-h-[min(calc(100vw-1rem),100%)]';
+    : 'max-lg:max-h-full max-lg:w-auto max-lg:max-w-[min(calc(100vw-1rem),100%)]';
 
   const handleMobileToolbar = (action: (typeof MOBILE_TOOLBAR_ACTIONS)[number]['onClick']) => {
     if (action === 'exit') navigate('/games');
@@ -2323,7 +2323,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
   };
 
   return (
-    <div className="scoring-app flex h-[100dvh] max-h-[100dvh] flex-col overflow-hidden bg-scoring-canvas text-white max-lg:pb-[env(safe-area-inset-bottom)]">
+    <div className="scoring-app flex h-[100dvh] max-h-[100dvh] flex-col overflow-hidden bg-scoring-canvas text-white">
       {/* ── Scoreboard: compact strip on phone, full bar on lg+ ── */}
       <div className="shrink-0 bg-scoring-footer border-b border-white/20 lg:hidden">
         <div className="px-2 py-1.5 font-mono">
@@ -2523,7 +2523,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           {/* Phone: scroll field + wizard together; desktop: field grows, wizard scrolls */}
           <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-y-contain touch-pan-y lg:overflow-hidden">
-          <div className="flex w-full shrink-0 items-center justify-center px-2 py-1 max-lg:min-h-[min(calc(100vw-1rem),38dvh)] lg:min-h-0 lg:flex-1 lg:py-1">
+          <div className={`flex w-full shrink-0 items-center justify-center px-2 py-1 lg:min-h-0 lg:flex-1 lg:py-1 ${step === 'pitch' ? 'max-lg:min-h-0 max-lg:flex-1' : 'max-lg:min-h-[min(calc(100vw-1rem),32dvh)]'}`}>
             {/*
               Clean baseball diamond with proper 90° foul lines.
               Home=(200,310), 1B=(270,240), 2B=(200,170), 3B=(130,240)
@@ -3825,11 +3825,36 @@ function needsRunnerAdvanceErrorFieldingPrompt(
               </div>
             )}
           </div>
+
+          {/* Mobile secondary actions — scroll past field / wizard to reach */}
+          <div className="shrink-0 border-t border-white/10 px-2 pt-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] lg:hidden">
+            <p className="mb-2 text-center text-[10px] font-bold uppercase tracking-wide text-white/25">More</p>
+            <div className="grid grid-cols-3 gap-1.5">
+              {MOBILE_TOOLBAR_ACTIONS.map((action) => (
+                <button
+                  key={action.key}
+                  type="button"
+                  disabled={action.onClick === 'undo' || action.onClick === 'redo' ? historyBusy : false}
+                  onClick={() => handleMobileToolbar(action.onClick)}
+                  className="min-h-[44px] rounded-lg border border-white/10 bg-white/[0.06] px-2 text-[11px] font-bold uppercase tracking-wide text-white/75 active:bg-white/12"
+                >
+                  {action.label}
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => setMobileLineupOpen((v) => !v)}
+              className="mt-2 w-full min-h-[44px] rounded-lg border border-white/15 bg-white/[0.04] text-[11px] font-bold uppercase tracking-wide text-white/70 active:bg-white/10"
+            >
+              {mobileLineupOpen ? 'Hide lineups' : 'Lineups'}
+            </button>
+          </div>
           </div>
 
-          {/* Pitch action dock — fixed above toolbar so primary controls stay on screen */}
+          {/* Pitch action dock — BALL/STRIKE/FOUL/OUT + IN PLAY pinned at bottom on phone */}
           {step === 'pitch' && currentBatter && currentBatter.playerId != null && (
-            <div className="shrink-0 border-t border-white/10 bg-scoring-footer/95 px-2 py-2 backdrop-blur-sm sm:px-3">
+            <div className="shrink-0 border-t border-white/10 bg-scoring-footer/95 px-2 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] backdrop-blur-sm sm:px-3">
               {(currentBatter.bats || '').trim().toUpperCase() === 'S' && (
                 <div className="mb-2 rounded-lg border border-amber-500/35 bg-amber-950/35 px-3 py-2">
                   <div className="flex gap-2">
@@ -3854,7 +3879,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                   </div>
                 </div>
               )}
-              <div className="grid grid-cols-3 gap-2 lg:grid-cols-5 lg:gap-1.5">
+              <div className="grid grid-cols-2 gap-2 lg:grid-cols-5 lg:gap-1.5">
                 <button
                   onClick={handleBall}
                   disabled={submitting || ((currentBatter.bats || '').trim().toUpperCase() === 'S' && !switchBatSide)}
@@ -3886,17 +3911,24 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                 <button
                   onClick={handleInPlay}
                   disabled={submitting || ((currentBatter.bats || '').trim().toUpperCase() === 'S' && !switchBatSide)}
-                  className={`${MOBILE_PITCH_BTN} col-span-3 border-[#2248a0]/50 bg-[#1a3a8b] hover:bg-[#2248a0] lg:col-span-1`}
+                  className={`${MOBILE_PITCH_BTN} hidden border-[#2248a0]/50 bg-[#1a3a8b] hover:bg-[#2248a0] lg:block`}
                 >
                   IN PLAY
                 </button>
               </div>
+              <button
+                onClick={handleInPlay}
+                disabled={submitting || ((currentBatter.bats || '').trim().toUpperCase() === 'S' && !switchBatSide)}
+                className={`${MOBILE_PITCH_BTN} mt-2 w-full border-[#2248a0]/50 bg-[#1a3a8b] hover:bg-[#2248a0] lg:hidden`}
+              >
+                IN PLAY
+              </button>
             </div>
           )}
 
-          {/* ── Bottom bar ── */}
-          <div className="shrink-0 border-t border-white/10 bg-scoring-footer px-2 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-3 lg:py-1.5">
-            <div className="hidden lg:flex lg:flex-nowrap lg:items-center lg:justify-between lg:gap-0">
+          {/* ── Bottom bar (desktop only; mobile actions live in scroll area) ── */}
+          <div className="hidden shrink-0 border-t border-white/10 bg-scoring-footer px-2 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-3 lg:block lg:py-1.5">
+            <div className="flex flex-nowrap items-center justify-between gap-0">
               <button type="button" onClick={() => navigate('/games')} className="min-h-[44px] rounded px-3 py-2 text-[10px] font-bold uppercase text-white/40 hover:text-white lg:min-h-0">Exit</button>
               <button type="button" onClick={handleUndo} disabled={historyBusy} className="min-h-[44px] rounded px-3 py-2 text-[10px] font-bold uppercase text-white/40 hover:text-white disabled:opacity-30 lg:min-h-0">Undo</button>
               <button type="button" onClick={handleRedo} disabled={historyBusy} className="min-h-[44px] rounded px-3 py-2 text-[10px] font-bold uppercase text-white/40 hover:text-white disabled:opacity-30 lg:min-h-0">Redo</button>
@@ -3904,26 +3936,6 @@ function needsRunnerAdvanceErrorFieldingPrompt(
               <button type="button" onClick={cancelWizard} className="min-h-[44px] rounded px-3 py-2 text-[10px] font-bold uppercase text-white/40 hover:text-white lg:min-h-0">Reset</button>
               <button type="button" onClick={() => setStep('misc')} className="min-h-[44px] rounded px-3 py-2 text-[10px] font-bold uppercase text-white/40 hover:text-white lg:min-h-0">Misc</button>
             </div>
-            <div className="grid grid-cols-3 gap-1.5 lg:hidden">
-              {MOBILE_TOOLBAR_ACTIONS.map((action) => (
-                <button
-                  key={action.key}
-                  type="button"
-                  disabled={action.onClick === 'undo' || action.onClick === 'redo' ? historyBusy : false}
-                  onClick={() => handleMobileToolbar(action.onClick)}
-                  className="min-h-[44px] rounded-lg border border-white/10 bg-white/[0.06] px-2 text-[11px] font-bold uppercase tracking-wide text-white/75 active:bg-white/12"
-                >
-                  {action.label}
-                </button>
-              ))}
-            </div>
-            <button
-              type="button"
-              onClick={() => setMobileLineupOpen((v) => !v)}
-              className="mt-2 w-full min-h-[44px] rounded-lg border border-white/15 bg-white/[0.04] text-[11px] font-bold uppercase tracking-wide text-white/70 active:bg-white/10 lg:hidden"
-            >
-              {mobileLineupOpen ? 'Hide lineups' : 'Lineups'}
-            </button>
           </div>
           {mobileLineupOpen && (
             <div className="fixed inset-0 z-50 flex flex-col bg-scoring-canvas/98 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] lg:hidden">
