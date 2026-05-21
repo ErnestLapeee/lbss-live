@@ -155,6 +155,18 @@ const ADMIN_SELECT_POS = `${ADMIN_SELECT_BASE} px-2 py-1 text-xs shrink-0`;
 const WIZARD_OPTIONS_BODY = 'p-3 lg:max-h-72 lg:overflow-y-auto';
 const WIZARD_OPTIONS_BODY_SM = 'p-3 lg:max-h-64 lg:overflow-y-auto';
 const WIZARD_OPTIONS_PANEL = 'bg-scoring-panel rounded-lg border border-white/10 p-3 lg:max-h-72 lg:overflow-y-auto';
+
+const MOBILE_TOOLBAR_ACTIONS = [
+  { key: 'exit', label: 'Exit', onClick: 'exit' as const },
+  { key: 'undo', label: 'Undo', onClick: 'undo' as const },
+  { key: 'redo', label: 'Redo', onClick: 'redo' as const },
+  { key: 'log', label: 'Log', onClick: 'log' as const },
+  { key: 'reset', label: 'Reset', onClick: 'reset' as const },
+  { key: 'misc', label: 'Misc', onClick: 'misc' as const },
+] as const;
+
+const MOBILE_PITCH_BTN =
+  'min-h-[3.25rem] rounded-xl border text-sm font-bold text-white transition-all active:scale-[0.98] disabled:opacity-30 sm:min-h-0 sm:rounded-lg sm:py-4 sm:text-base';
 const OUT_EVENTS = ['ground_out','fly_out','line_out','pop_out','strikeout_swinging','strikeout_looking','sacrifice_fly','sacrifice_bunt','bunt_out','infield_fly','dropped_third_strike_out','caught_foul_tip','bunt_foul','hit_by_batted_ball','runner_interference_batter','offensive_interference_batter','batting_out_of_turn','fan_interference','thrown_bat','out_of_box','left_base_path_batter','other_out'];
 
 const SAFE_OUTCOMES_P1 = [
@@ -2295,13 +2307,79 @@ function needsRunnerAdvanceErrorFieldingPrompt(
   const getCurrentPitcherStrikes = (pid: number | null | undefined) =>
     pid != null ? pitcherPitchCounts[pid]?.strikes ?? 0 : 0;
 
-  /** Shrink the diamond on phone when a tall wizard is open so options stay scrollable. */
+  /** On phone: full-width diamond on pitch; modest shrink when wizard is open so options stay scrollable. */
   const mobileCompactField = step !== 'pitch';
+  const mobileFieldSizeClass = mobileCompactField
+    ? 'max-w-[min(100%,calc(100vw-1rem))] max-h-[min(calc(100vw-1rem),32dvh)]'
+    : 'max-w-[min(100%,calc(100vw-1rem))] max-h-[min(calc(100vw-1rem),100%)]';
+
+  const handleMobileToolbar = (action: (typeof MOBILE_TOOLBAR_ACTIONS)[number]['onClick']) => {
+    if (action === 'exit') navigate('/games');
+    else if (action === 'undo') void handleUndo();
+    else if (action === 'redo') void handleRedo();
+    else if (action === 'log') setShowEventTimeline((v) => !v);
+    else if (action === 'reset') cancelWizard();
+    else if (action === 'misc') setStep('misc');
+  };
 
   return (
-    <div className="scoring-app flex h-[100dvh] max-h-[100dvh] flex-col overflow-hidden bg-scoring-canvas text-white">
-      {/* ── Scoreboard bar ── */}
-      <div className="shrink-0 bg-scoring-footer border-b border-white/20 px-2 py-1.5 sm:px-4 sm:py-2.5">
+    <div className="scoring-app flex h-[100dvh] max-h-[100dvh] flex-col overflow-hidden bg-scoring-canvas text-white max-lg:pb-[env(safe-area-inset-bottom)]">
+      {/* ── Scoreboard: compact strip on phone, full bar on lg+ ── */}
+      <div className="shrink-0 bg-scoring-footer border-b border-white/20 lg:hidden">
+        <div className="px-2 py-1.5 font-mono">
+          <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+            <div className="min-w-0">
+              <div className="text-[9px] uppercase tracking-wide text-white/45">Visitor</div>
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-xl font-bold tabular-nums leading-none">{gameState.awayScore}</span>
+                <span className="truncate text-[11px] font-semibold text-white/90">{game.awayTeamName}</span>
+              </div>
+            </div>
+            <div className="shrink-0 text-center px-1">
+              <div className="text-xs font-bold text-white">{gameState.half === 'top' ? '▲' : '▼'} {gameState.inning}</div>
+              <div className="mt-0.5 flex justify-center gap-0.5">
+                {[0, 1, 2].map((i) => (
+                  <div
+                    key={i}
+                    className={`h-2 w-2 rounded-full border ${i < gameState.outs ? 'border-red-300 bg-red-500' : 'border-white/30'}`}
+                  />
+                ))}
+              </div>
+              <div className="mt-0.5 flex items-center justify-center gap-1.5 text-[9px] text-white/55">
+                <span>B{balls}</span>
+                <span>S{strikes}</span>
+              </div>
+            </div>
+            <div className="min-w-0 text-right">
+              <div className="text-[9px] uppercase tracking-wide text-white/45">Home</div>
+              <div className="flex items-baseline justify-end gap-1.5">
+                <span className="truncate text-[11px] font-semibold text-white/90">{game.homeTeamName}</span>
+                <span className="text-xl font-bold tabular-nums leading-none">{gameState.homeScore}</span>
+              </div>
+            </div>
+          </div>
+          <div className="mt-1 flex items-center justify-between gap-2 border-t border-white/10 pt-1 text-[10px]">
+            <span className="min-w-0 truncate">
+              <span className="font-bold uppercase text-white/40">AB </span>
+              {currentBatter
+                ? nameWithJersey(currentBatter.playerId, currentBatter.firstName, currentBatter.lastName)
+                : '(empty)'}
+            </span>
+            {currentPitcher && (
+              <span className="shrink-0 truncate text-right text-white/55">
+                <span className="font-bold uppercase text-white/40">P </span>
+                {nameWithJersey(currentPitcher.playerId, currentPitcher.firstName, currentPitcher.lastName)}
+                {' · '}
+                {getCurrentPitcherPitches(currentPitcher.playerId)}-
+                {getCurrentPitcherBalls(currentPitcher.playerId)}-
+                {getCurrentPitcherStrikes(currentPitcher.playerId)}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="hidden shrink-0 border-b border-white/20 bg-scoring-footer px-4 py-2.5 lg:block">
         <div className="mx-auto flex max-w-6xl flex-col gap-2 font-mono text-sm font-bold sm:flex-row sm:items-center sm:justify-between sm:gap-4">
           <div className="grid grid-cols-2 gap-x-3 gap-y-1 sm:flex sm:flex-wrap sm:items-center sm:gap-6">
             <div className="flex min-w-0 items-center gap-1.5 sm:gap-2">
@@ -2334,30 +2412,6 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                 {[0,1,2].map(i => <div key={i} className={`w-3 h-3 rounded-full ${i < strikes ? 'bg-yellow-300' : 'bg-white/25'}`} />)}
               </div>
             </div>
-          </div>
-          {/* Phone: at-bat + pitcher in scoreboard so the diamond keeps vertical room */}
-          <div className="flex flex-col gap-1 border-t border-white/10 pt-1.5 text-[11px] lg:hidden">
-            <div className="flex min-w-0 items-center gap-2">
-              <span className="shrink-0 font-bold uppercase text-white/40">At bat</span>
-              <span className="min-w-0 truncate font-semibold text-white">
-                {currentBatter
-                  ? nameWithJersey(currentBatter.playerId, currentBatter.firstName, currentBatter.lastName)
-                  : '(empty)'}
-              </span>
-            </div>
-            {currentPitcher && (
-              <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 font-mono text-[10px]">
-                <span className="font-bold uppercase text-white/40">Pitch</span>
-                <span className="truncate text-white/90">
-                  {nameWithJersey(currentPitcher.playerId, currentPitcher.firstName, currentPitcher.lastName)}
-                </span>
-                <span className="text-white/50">
-                  P {getCurrentPitcherPitches(currentPitcher.playerId)}
-                  {' · '}B {getCurrentPitcherBalls(currentPitcher.playerId)}
-                  {' · '}S {getCurrentPitcherStrikes(currentPitcher.playerId)}
-                </span>
-              </div>
-            )}
           </div>
         </div>
       </div>
@@ -2467,8 +2521,9 @@ function needsRunnerAdvanceErrorFieldingPrompt(
 
         {/* ── Center: Field + Controls ── */}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-          {/* Phone: explicit square stage (h-full on SVG collapses in Safari when buttons sit below). */}
-          <div className="flex w-full shrink-0 items-center justify-center px-2 py-1 max-lg:min-h-0 lg:min-h-0 lg:flex-1">
+          {/* Phone: scroll field + wizard together; desktop: field grows, wizard scrolls */}
+          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-y-contain touch-pan-y lg:overflow-hidden">
+          <div className="flex w-full shrink-0 items-center justify-center px-2 py-1 max-lg:min-h-[min(calc(100vw-1rem),38dvh)] lg:min-h-0 lg:flex-1 lg:py-1">
             {/*
               Clean baseball diamond with proper 90° foul lines.
               Home=(200,310), 1B=(270,240), 2B=(200,170), 3B=(130,240)
@@ -2478,11 +2533,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
             <svg
               viewBox="0 0 400 400"
               preserveAspectRatio="xMidYMid meet"
-              className={`mx-auto block aspect-square w-full h-auto lg:h-full lg:max-h-full lg:max-w-[600px] lg:w-full ${
-                mobileCompactField
-                  ? 'max-w-[min(100%,30dvh)] max-h-[min(30dvh,calc(100vw-1rem))]'
-                  : 'max-w-[min(100%,42dvh)] max-h-[min(42dvh,calc(100vw-1rem))]'
-              }`}
+              className={`mx-auto block aspect-square w-full h-auto lg:h-full lg:max-h-full lg:max-w-[600px] lg:w-full ${mobileFieldSizeClass}`}
             >
               <defs>
                 <radialGradient id="fg" cx="50%" cy="82%" r="58%">
@@ -2517,21 +2568,24 @@ function needsRunnerAdvanceErrorFieldingPrompt(
               {/* Outfield fence arc */}
               <path d="M 62,168 Q 200,-5 338,168" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="6" />
 
-              {/* ── Bases (small diamonds, clickable when occupied) ── */}
+              {/* ── Bases (large touch targets when occupied) ── */}
               <g onClick={() => { if (gameState.bases.second && step === 'pitch') { setActiveRunnerBase('second'); setRunnerActionType(null); setRunnerActionDest(null); setStep('runner_action'); } }}
                 style={{ cursor: gameState.bases.second ? 'pointer' : 'default' }}>
+                <circle cx="200" cy="170" r="28" fill="transparent" />
                 <rect x="194" y="164" width="12" height="12" rx="1" transform="rotate(45 200 170)"
-                  fill={gameState.bases.second ? '#f97316' : '#ffffff20'} stroke="white" strokeWidth="0.8" />
+                  fill={gameState.bases.second ? '#f97316' : '#ffffff20'} stroke="white" strokeWidth="0.8" pointerEvents="none" />
               </g>
               <g onClick={() => { if (gameState.bases.first && step === 'pitch') { setActiveRunnerBase('first'); setRunnerActionType(null); setRunnerActionDest(null); setStep('runner_action'); } }}
                 style={{ cursor: gameState.bases.first ? 'pointer' : 'default' }}>
+                <circle cx="270" cy="240" r="28" fill="transparent" />
                 <rect x="264" y="234" width="12" height="12" rx="1" transform="rotate(45 270 240)"
-                  fill={gameState.bases.first ? '#f97316' : '#ffffff20'} stroke="white" strokeWidth="0.8" />
+                  fill={gameState.bases.first ? '#f97316' : '#ffffff20'} stroke="white" strokeWidth="0.8" pointerEvents="none" />
               </g>
               <g onClick={() => { if (gameState.bases.third && step === 'pitch') { setActiveRunnerBase('third'); setRunnerActionType(null); setRunnerActionDest(null); setStep('runner_action'); } }}
                 style={{ cursor: gameState.bases.third ? 'pointer' : 'default' }}>
+                <circle cx="130" cy="240" r="28" fill="transparent" />
                 <rect x="124" y="234" width="12" height="12" rx="1" transform="rotate(45 130 240)"
-                  fill={gameState.bases.third ? '#f97316' : '#ffffff20'} stroke="white" strokeWidth="0.8" />
+                  fill={gameState.bases.third ? '#f97316' : '#ffffff20'} stroke="white" strokeWidth="0.8" pointerEvents="none" />
               </g>
               {/* Home plate */}
               <polygon points="200,307 196,313 200,318 204,313" fill="#ddd" />
@@ -2555,6 +2609,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                   const isSel = fieldingPositions.includes(pn);
                   return (
                     <g key={pn} onClick={() => setFieldingPositions(prev => [...prev, pn])} style={{ cursor: 'pointer' }}>
+                      <rect x={pos.x - 24} y={pos.y - 14} width="48" height="28" rx="4" fill="transparent" />
                       <rect x={pos.x - 18} y={pos.y - 10} width="36" height="22" rx="4"
                         fill={isSel ? '#daa520' : 'rgba(200,200,180,0.92)'}
                         stroke={isSel ? '#f0c040' : 'rgba(100,100,80,0.4)'} strokeWidth="1" />
@@ -2592,7 +2647,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
           </div>
 
           {/* ── Wizard panels ── */}
-          <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain touch-pan-y px-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-3">
+          <div className="px-2 pb-2 sm:px-3 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:overscroll-y-contain lg:touch-pan-y lg:pb-[max(0.75rem,env(safe-area-inset-bottom))]">
             {/* EMPTY SLOT — automatic out */}
             {step === 'pitch' && isEmptySlot && (
               <div className="bg-scoring-panel rounded-xl border border-white/10 overflow-hidden p-4 text-center">
@@ -2615,73 +2670,6 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                     className="w-full py-3 bg-red-900 hover:bg-red-800 text-white text-xs font-bold rounded-lg uppercase transition-colors disabled:opacity-30">
                     AUTOMATIC OUT
                   </button>
-              </div>
-            )}
-
-            {/* PITCH step */}
-            {step === 'pitch' && currentBatter && currentBatter.playerId != null && (
-              <div className="space-y-2">
-                {(currentBatter.bats || '').trim().toUpperCase() === 'S' && (
-                  <div className="rounded-lg border border-amber-500/35 bg-amber-950/35 px-3 py-2">
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setSwitchBatSide('L')}
-                        className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition-colors ${
-                          switchBatSide === 'L' ? 'bg-amber-500 text-black' : 'bg-white/10 text-white/75 hover:bg-white/15'
-                        }`}
-                      >
-                        LHB
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setSwitchBatSide('R')}
-                        className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition-colors ${
-                          switchBatSide === 'R' ? 'bg-amber-500 text-black' : 'bg-white/10 text-white/75 hover:bg-white/15'
-                        }`}
-                      >
-                        RHB
-                      </button>
-                    </div>
-                  </div>
-                )}
-                <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-5 sm:gap-1.5">
-                  <button
-                    onClick={handleBall}
-                    disabled={submitting || ((currentBatter.bats || '').trim().toUpperCase() === 'S' && !switchBatSide)}
-                    className="col-span-1 rounded-lg border border-[#20804a]/50 bg-[#1a6b3a] py-3 text-sm font-bold text-white transition-all hover:bg-[#20804a] disabled:opacity-30 sm:py-4 sm:text-base"
-                  >
-                    BALL
-                  </button>
-                  <button
-                    onClick={handleStrike}
-                    disabled={submitting || ((currentBatter.bats || '').trim().toUpperCase() === 'S' && !switchBatSide)}
-                    className="col-span-1 rounded-lg border border-[#a02828]/50 bg-[#8b2020] py-3 text-sm font-bold text-white transition-all hover:bg-[#a02828] disabled:opacity-30 sm:py-4 sm:text-base"
-                  >
-                    STRIKE
-                  </button>
-                  <button
-                    onClick={handleFoul}
-                    disabled={submitting || ((currentBatter.bats || '').trim().toUpperCase() === 'S' && !switchBatSide)}
-                    className="col-span-1 rounded-lg border border-[#a08428]/50 bg-[#8b7020] py-3 text-sm font-bold text-white transition-all hover:bg-[#a08428] disabled:opacity-30 sm:py-4 sm:text-base"
-                  >
-                    FOUL
-                  </button>
-                  <button
-                    onClick={handleOut}
-                    disabled={submitting || ((currentBatter.bats || '').trim().toUpperCase() === 'S' && !switchBatSide)}
-                    className="col-span-1 rounded-lg border border-[#237548]/50 bg-[#1a5c3a] py-3 text-sm font-bold text-white transition-all hover:bg-[#237548] disabled:opacity-30 sm:py-4 sm:text-base"
-                  >
-                    OUT
-                  </button>
-                  <button
-                    onClick={handleInPlay}
-                    disabled={submitting || ((currentBatter.bats || '').trim().toUpperCase() === 'S' && !switchBatSide)}
-                    className="col-span-2 rounded-lg border border-[#2248a0]/50 bg-[#1a3a8b] py-3 text-sm font-bold text-white transition-all hover:bg-[#2248a0] disabled:opacity-30 sm:col-span-1 sm:py-4 sm:text-base"
-                  >
-                    IN PLAY
-                  </button>
-                </div>
               </div>
             )}
 
@@ -2742,9 +2730,9 @@ function needsRunnerAdvanceErrorFieldingPrompt(
               <div className="bg-scoring-panel rounded-xl border border-white/10 overflow-hidden">
                 <div className="flex border-b border-white/10">
                   <button onClick={() => { setOutSafeTab('out'); setStep('out_type'); setOutSafeMorePage(false); }}
-                    className={`flex-1 py-2.5 text-sm font-bold transition-colors ${outSafeTab === 'out' ? 'bg-white/10 text-white border-b-2 border-white' : 'text-white/40 hover:text-white/60'}`}>Out</button>
+                    className={`flex-1 min-h-[44px] py-2.5 text-sm font-bold transition-colors lg:min-h-0 ${outSafeTab === 'out' ? 'bg-white/10 text-white border-b-2 border-white' : 'text-white/40 hover:text-white/60'}`}>Out</button>
                   <button onClick={() => { setOutSafeTab('safe'); setStep('safe_type'); setOutSafeMorePage(false); }}
-                    className={`flex-1 py-2.5 text-sm font-bold transition-colors ${outSafeTab === 'safe' ? 'bg-white/10 text-white border-b-2 border-white' : 'text-white/40 hover:text-white/60'}`}>Safe</button>
+                    className={`flex-1 min-h-[44px] py-2.5 text-sm font-bold transition-colors lg:min-h-0 ${outSafeTab === 'safe' ? 'bg-white/10 text-white border-b-2 border-white' : 'text-white/40 hover:text-white/60'}`}>Safe</button>
                 </div>
                 <div className="p-3">
                   <div className="grid grid-cols-2 gap-2">
@@ -3101,7 +3089,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                           }
                         }
                       }}
-                        className={`flex-1 py-2.5 text-sm font-bold capitalize transition-colors ${
+                        className={`flex-1 min-h-[44px] py-2.5 text-sm font-bold capitalize transition-colors lg:min-h-0 ${
                           (t === 'out' && runnerOutSafeTab === 'out') || (t === 'safe' && runnerOutSafeTab === 'safe')
                             ? 'bg-white/10 text-white border-b-2 border-white'
                             : 'text-white/40 hover:text-white/60'
@@ -3117,7 +3105,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                         <button key={dest}
                           onClick={() => { if (isAvailable) setRunnerSafeDest(dest); }}
                           disabled={!isAvailable}
-                          className={`flex-1 py-2.5 text-xs font-bold capitalize transition-colors border-r border-white/5 last:border-r-0 ${
+                          className={`flex-1 min-h-[44px] py-2.5 text-xs font-bold capitalize transition-colors border-r border-white/5 last:border-r-0 lg:min-h-0 ${
                             isSelected
                               ? 'bg-blue-600/30 text-white border-b-2 border-blue-400'
                               : isAvailable
@@ -3264,9 +3252,9 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                     {/* Out / Safe tabs */}
                     <div className="flex border-b border-white/10">
                       <button onClick={() => setRunnerActionType('__out__')}
-                        className="flex-1 py-2.5 text-sm font-bold text-white/40 hover:text-white/60 transition-colors">Out</button>
+                        className="flex-1 min-h-[44px] py-2.5 text-sm font-bold text-white/40 transition-colors hover:text-white/60 lg:min-h-0">Out</button>
                       <button
-                        className="flex-1 py-2.5 text-sm font-bold bg-white/10 text-white border-b-2 border-white">Safe</button>
+                        className="flex-1 min-h-[44px] py-2.5 text-sm font-bold border-b-2 border-white bg-white/10 text-white lg:min-h-0">Safe</button>
                     </div>
 
                     {/* Base selector - click to SELECT, not submit */}
@@ -3274,7 +3262,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                       {availBases.map(b => (
                         <button key={b.key}
                           onClick={() => setRunnerActionDest(b.key)}
-                          className={`flex-1 py-2.5 text-xs font-bold capitalize transition-colors border-r border-white/5 last:border-r-0 ${
+                          className={`flex-1 min-h-[44px] py-2.5 text-xs font-bold capitalize transition-colors border-r border-white/5 last:border-r-0 lg:min-h-0 ${
                             selectedDest === b.key
                               ? 'bg-blue-600/30 text-white border-b-2 border-blue-400'
                               : 'text-white/50 hover:bg-white/5 hover:text-white'
@@ -3385,9 +3373,9 @@ function needsRunnerAdvanceErrorFieldingPrompt(
 
                     <div className="flex border-b border-white/10">
                       <button
-                        className="flex-1 py-2.5 text-sm font-bold bg-white/10 text-white border-b-2 border-white">Out</button>
+                        className="flex-1 min-h-[44px] py-2.5 text-sm font-bold border-b-2 border-white bg-white/10 text-white lg:min-h-0">Out</button>
                       <button onClick={() => setRunnerActionType(null)}
-                        className="flex-1 py-2.5 text-sm font-bold text-white/40 hover:text-white/60 transition-colors">Safe</button>
+                        className="flex-1 min-h-[44px] py-2.5 text-sm font-bold text-white/40 transition-colors hover:text-white/60 lg:min-h-0">Safe</button>
                     </div>
 
                     <div className={WIZARD_OPTIONS_BODY}>
@@ -3837,21 +3825,102 @@ function needsRunnerAdvanceErrorFieldingPrompt(
               </div>
             )}
           </div>
+          </div>
+
+          {/* Pitch action dock — fixed above toolbar so primary controls stay on screen */}
+          {step === 'pitch' && currentBatter && currentBatter.playerId != null && (
+            <div className="shrink-0 border-t border-white/10 bg-scoring-footer/95 px-2 py-2 backdrop-blur-sm sm:px-3">
+              {(currentBatter.bats || '').trim().toUpperCase() === 'S' && (
+                <div className="mb-2 rounded-lg border border-amber-500/35 bg-amber-950/35 px-3 py-2">
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setSwitchBatSide('L')}
+                      className={`flex-1 min-h-[44px] rounded-lg text-sm font-bold transition-colors lg:min-h-0 lg:py-2.5 ${
+                        switchBatSide === 'L' ? 'bg-amber-500 text-black' : 'bg-white/10 text-white/75 hover:bg-white/15'
+                      }`}
+                    >
+                      LHB
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSwitchBatSide('R')}
+                      className={`flex-1 min-h-[44px] rounded-lg text-sm font-bold transition-colors lg:min-h-0 lg:py-2.5 ${
+                        switchBatSide === 'R' ? 'bg-amber-500 text-black' : 'bg-white/10 text-white/75 hover:bg-white/15'
+                      }`}
+                    >
+                      RHB
+                    </button>
+                  </div>
+                </div>
+              )}
+              <div className="grid grid-cols-3 gap-2 lg:grid-cols-5 lg:gap-1.5">
+                <button
+                  onClick={handleBall}
+                  disabled={submitting || ((currentBatter.bats || '').trim().toUpperCase() === 'S' && !switchBatSide)}
+                  className={`${MOBILE_PITCH_BTN} border-[#20804a]/50 bg-[#1a6b3a] hover:bg-[#20804a]`}
+                >
+                  BALL
+                </button>
+                <button
+                  onClick={handleStrike}
+                  disabled={submitting || ((currentBatter.bats || '').trim().toUpperCase() === 'S' && !switchBatSide)}
+                  className={`${MOBILE_PITCH_BTN} border-[#a02828]/50 bg-[#8b2020] hover:bg-[#a02828]`}
+                >
+                  STRIKE
+                </button>
+                <button
+                  onClick={handleFoul}
+                  disabled={submitting || ((currentBatter.bats || '').trim().toUpperCase() === 'S' && !switchBatSide)}
+                  className={`${MOBILE_PITCH_BTN} border-[#a08428]/50 bg-[#8b7020] hover:bg-[#a08428]`}
+                >
+                  FOUL
+                </button>
+                <button
+                  onClick={handleOut}
+                  disabled={submitting || ((currentBatter.bats || '').trim().toUpperCase() === 'S' && !switchBatSide)}
+                  className={`${MOBILE_PITCH_BTN} border-[#237548]/50 bg-[#1a5c3a] hover:bg-[#237548]`}
+                >
+                  OUT
+                </button>
+                <button
+                  onClick={handleInPlay}
+                  disabled={submitting || ((currentBatter.bats || '').trim().toUpperCase() === 'S' && !switchBatSide)}
+                  className={`${MOBILE_PITCH_BTN} col-span-3 border-[#2248a0]/50 bg-[#1a3a8b] hover:bg-[#2248a0] lg:col-span-1`}
+                >
+                  IN PLAY
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* ── Bottom bar ── */}
-          <div className="shrink-0 bg-scoring-footer border-t border-white/10 px-2 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:px-3 sm:py-1.5">
-            <div className="grid grid-cols-3 gap-1 text-[10px] font-bold uppercase sm:flex sm:flex-nowrap sm:items-center sm:justify-between sm:gap-0">
-              <button type="button" onClick={() => navigate('/games')} className="min-h-[44px] rounded px-1 py-2 text-white/40 hover:text-white sm:min-h-0 sm:px-3">Exit</button>
-              <button type="button" onClick={handleUndo} disabled={historyBusy} className="min-h-[44px] rounded px-1 py-2 text-white/40 hover:text-white disabled:opacity-30 sm:min-h-0 sm:px-3">Undo</button>
-              <button type="button" onClick={handleRedo} disabled={historyBusy} className="min-h-[44px] rounded px-1 py-2 text-white/40 hover:text-white disabled:opacity-30 sm:min-h-0 sm:px-3">Redo</button>
-              <button type="button" onClick={() => setShowEventTimeline(v => !v)} className="min-h-[44px] rounded px-1 py-2 text-white/40 hover:text-white sm:min-h-0 sm:px-3">Log</button>
-              <button type="button" onClick={cancelWizard} className="min-h-[44px] rounded px-1 py-2 text-white/40 hover:text-white sm:min-h-0 sm:px-3">Reset</button>
-              <button type="button" onClick={() => setStep('misc')} className="min-h-[44px] rounded px-1 py-2 text-white/40 hover:text-white sm:min-h-0 sm:px-3">Misc</button>
+          <div className="shrink-0 border-t border-white/10 bg-scoring-footer px-2 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-3 lg:py-1.5">
+            <div className="hidden lg:flex lg:flex-nowrap lg:items-center lg:justify-between lg:gap-0">
+              <button type="button" onClick={() => navigate('/games')} className="min-h-[44px] rounded px-3 py-2 text-[10px] font-bold uppercase text-white/40 hover:text-white lg:min-h-0">Exit</button>
+              <button type="button" onClick={handleUndo} disabled={historyBusy} className="min-h-[44px] rounded px-3 py-2 text-[10px] font-bold uppercase text-white/40 hover:text-white disabled:opacity-30 lg:min-h-0">Undo</button>
+              <button type="button" onClick={handleRedo} disabled={historyBusy} className="min-h-[44px] rounded px-3 py-2 text-[10px] font-bold uppercase text-white/40 hover:text-white disabled:opacity-30 lg:min-h-0">Redo</button>
+              <button type="button" onClick={() => setShowEventTimeline(v => !v)} className="min-h-[44px] rounded px-3 py-2 text-[10px] font-bold uppercase text-white/40 hover:text-white lg:min-h-0">Log</button>
+              <button type="button" onClick={cancelWizard} className="min-h-[44px] rounded px-3 py-2 text-[10px] font-bold uppercase text-white/40 hover:text-white lg:min-h-0">Reset</button>
+              <button type="button" onClick={() => setStep('misc')} className="min-h-[44px] rounded px-3 py-2 text-[10px] font-bold uppercase text-white/40 hover:text-white lg:min-h-0">Misc</button>
+            </div>
+            <div className="grid grid-cols-3 gap-1.5 lg:hidden">
+              {MOBILE_TOOLBAR_ACTIONS.map((action) => (
+                <button
+                  key={action.key}
+                  type="button"
+                  disabled={action.onClick === 'undo' || action.onClick === 'redo' ? historyBusy : false}
+                  onClick={() => handleMobileToolbar(action.onClick)}
+                  className="min-h-[44px] rounded-lg border border-white/10 bg-white/[0.06] px-2 text-[11px] font-bold uppercase tracking-wide text-white/75 active:bg-white/12"
+                >
+                  {action.label}
+                </button>
+              ))}
             </div>
             <button
               type="button"
               onClick={() => setMobileLineupOpen((v) => !v)}
-              className="mt-1.5 w-full rounded border border-white/10 py-1.5 text-[10px] font-bold uppercase tracking-wide text-white/50 hover:bg-white/5 hover:text-white/80 lg:hidden"
+              className="mt-2 w-full min-h-[44px] rounded-lg border border-white/15 bg-white/[0.04] text-[11px] font-bold uppercase tracking-wide text-white/70 active:bg-white/10 lg:hidden"
             >
               {mobileLineupOpen ? 'Hide lineups' : 'Lineups'}
             </button>
