@@ -150,6 +150,11 @@ const ADMIN_SELECT_SM_FLEX = `${ADMIN_SELECT_SM} flex-1 min-w-0`;
 const ADMIN_SELECT_ROW = `${ADMIN_SELECT_SM} mt-0.5 w-full`;
 const ADMIN_SELECT_MD = `${ADMIN_SELECT_BASE} text-sm px-3 py-2 w-full outline-none focus:border-white/35`;
 const ADMIN_SELECT_POS = `${ADMIN_SELECT_BASE} px-2 py-1 text-xs shrink-0`;
+
+/** Option grids scroll with the wizard on mobile; height-capped scroll only on lg+. */
+const WIZARD_OPTIONS_BODY = 'p-3 lg:max-h-72 lg:overflow-y-auto';
+const WIZARD_OPTIONS_BODY_SM = 'p-3 lg:max-h-64 lg:overflow-y-auto';
+const WIZARD_OPTIONS_PANEL = 'bg-scoring-panel rounded-lg border border-white/10 p-3 lg:max-h-72 lg:overflow-y-auto';
 const OUT_EVENTS = ['ground_out','fly_out','line_out','pop_out','strikeout_swinging','strikeout_looking','sacrifice_fly','sacrifice_bunt','bunt_out','infield_fly','dropped_third_strike_out','caught_foul_tip','bunt_foul','hit_by_batted_ball','runner_interference_batter','offensive_interference_batter','batting_out_of_turn','fan_interference','thrown_bat','out_of_box','left_base_path_batter','other_out'];
 
 const SAFE_OUTCOMES_P1 = [
@@ -2290,6 +2295,9 @@ function needsRunnerAdvanceErrorFieldingPrompt(
   const getCurrentPitcherStrikes = (pid: number | null | undefined) =>
     pid != null ? pitcherPitchCounts[pid]?.strikes ?? 0 : 0;
 
+  /** Shrink the diamond on phone when a tall wizard is open so options stay scrollable. */
+  const mobileCompactField = step !== 'pitch';
+
   return (
     <div className="scoring-app flex h-[100dvh] max-h-[100dvh] flex-col overflow-hidden bg-scoring-canvas text-white">
       {/* ── Scoreboard bar ── */}
@@ -2470,7 +2478,11 @@ function needsRunnerAdvanceErrorFieldingPrompt(
             <svg
               viewBox="0 0 400 400"
               preserveAspectRatio="xMidYMid meet"
-              className="mx-auto block aspect-square w-full max-w-[min(100%,42dvh)] max-h-[min(42dvh,calc(100vw-1rem))] h-auto lg:h-full lg:max-h-full lg:max-w-[600px] lg:w-full"
+              className={`mx-auto block aspect-square w-full h-auto lg:h-full lg:max-h-full lg:max-w-[600px] lg:w-full ${
+                mobileCompactField
+                  ? 'max-w-[min(100%,30dvh)] max-h-[min(30dvh,calc(100vw-1rem))]'
+                  : 'max-w-[min(100%,42dvh)] max-h-[min(42dvh,calc(100vw-1rem))]'
+              }`}
             >
               <defs>
                 <radialGradient id="fg" cx="50%" cy="82%" r="58%">
@@ -2580,7 +2592,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
           </div>
 
           {/* ── Wizard panels ── */}
-          <div className="shrink-0 overflow-y-auto overscroll-contain px-2 pb-1 sm:px-3">
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain touch-pan-y px-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-3">
             {/* EMPTY SLOT — automatic out */}
             {step === 'pitch' && isEmptySlot && (
               <div className="bg-scoring-panel rounded-xl border border-white/10 overflow-hidden p-4 text-center">
@@ -3120,7 +3132,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
 
                   {runnerOutSafeTab === 'out' ? (
                     /* OUT tab - iScore layout */
-                    <div className="p-3 max-h-72 overflow-y-auto">
+                    <div className={WIZARD_OPTIONS_BODY}>
                       <div className="grid grid-cols-2 gap-2">
                         {getRunnerOutTypesForOuts(gameState.outs).map(t => (
                           <button key={t.key} onClick={() => startRunnerOutFielding(t.key)}
@@ -3132,7 +3144,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                     </div>
                   ) : (
                     /* SAFE tab - iScore layout */
-                    <div className="p-3 max-h-72 overflow-y-auto">
+                    <div className={WIZARD_OPTIONS_BODY}>
                       <div className="grid grid-cols-2 gap-2">
                         {(() => {
                           const isBatterError = ERROR_EVENTS.has(selectedEvent || '') || ERROR_EVENTS.has(betweenPitchEvent || '');
@@ -3273,7 +3285,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                     </div>
 
                     {/* Safe action buttons - iScore style */}
-                    <div className="p-3 max-h-72 overflow-y-auto">
+                    <div className={WIZARD_OPTIONS_BODY}>
                       <div className="grid grid-cols-2 gap-2">
                         {[
                           { key: 'stolen_base', label: 'STOLEN BASE' },
@@ -3378,7 +3390,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                         className="flex-1 py-2.5 text-sm font-bold text-white/40 hover:text-white/60 transition-colors">Safe</button>
                     </div>
 
-                    <div className="p-3 max-h-72 overflow-y-auto">
+                    <div className={WIZARD_OPTIONS_BODY}>
                       <div className="grid grid-cols-2 gap-2">
                         {getRunnerOutTypesForOuts(gameState.outs).map(a => (
                           <button key={a.key} onClick={() => { setRunnerActionOutType(a.key); setRunnerActionFielding([]); }}
@@ -3456,7 +3468,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
               const currentPlayer = draftFieldingLineup.find(l => l.position === subPosition);
               const changeTeamName = defensiveChangeTeamId === game.homeTeamId ? game.homeTeamName : game.awayTeamName;
               return (
-                <div className="bg-scoring-panel rounded-lg border border-white/10 p-3 max-h-72 overflow-y-auto">
+                <div className={WIZARD_OPTIONS_PANEL}>
                   <p className="text-[10px] text-white/40 uppercase font-bold text-center mb-2">
                     {changeTeamName} · {POS_LABELS[subPosition]} —{' '}
                     {currentPlayer
@@ -3529,7 +3541,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
               const currentPlayer = draftFieldingLineup.find(l => l.position === subPosition);
               const changeTeamName = defensiveChangeTeamId === game.homeTeamId ? game.homeTeamName : game.awayTeamName;
               return (
-                <div className="bg-scoring-panel rounded-lg border border-white/10 p-3 max-h-72 overflow-y-auto">
+                <div className={WIZARD_OPTIONS_PANEL}>
                   <p className="text-[10px] text-white/40 uppercase font-bold text-center mb-1">
                     {changeTeamName}: move {currentPlayer?.lastName ?? ''} ({POS_LABELS[subPosition]}) to:
                   </p>
@@ -3593,7 +3605,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
 
             {/* PICK PLAYER FOR POSITION CHANGE (from Misc) */}
             {step === 'swap_position_pick' && (
-              <div className="bg-scoring-panel rounded-lg border border-white/10 p-3 max-h-72 overflow-y-auto">
+              <div className={WIZARD_OPTIONS_PANEL}>
                 <p className="text-[10px] text-white/40 uppercase font-bold text-center mb-2">
                   {defensiveChangeTeamId === game.homeTeamId ? game.homeTeamName : game.awayTeamName} defense
                 </p>
@@ -3635,7 +3647,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
               const offenseTeamName = offensiveChangeTeamId === game.homeTeamId ? game.homeTeamName : game.awayTeamName;
               const phName = offensiveChangeLineup.find(l => l.battingOrder === subBattingSlot);
               return (
-                <div className="bg-scoring-panel rounded-lg border border-white/10 p-3 max-h-64 overflow-y-auto">
+                <div className={WIZARD_OPTIONS_BODY_SM + ' bg-scoring-panel rounded-lg border border-white/10'}>
                   <p className="text-[10px] text-white/40 uppercase font-bold text-center mb-1">
                     {offenseTeamName} · BO {subBattingSlot} —{' '}
                     {phName
@@ -3701,7 +3713,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
 
             {/* MISC - iScore style vertical list */}
             {step === 'misc' && (
-              <div className="bg-scoring-panel rounded-lg border border-white/10 overflow-hidden max-h-80 flex flex-col">
+              <div className="bg-scoring-panel rounded-lg border border-white/10 overflow-hidden lg:max-h-80 flex flex-col">
                 <div className="overflow-y-auto divide-y divide-white/5">
                   {[
                     { label: 'Pitching Change', fn: () => { setSubTeamId(fieldingTeamId ?? null); setSubPosition(1); setStep('sub_defense'); } },
