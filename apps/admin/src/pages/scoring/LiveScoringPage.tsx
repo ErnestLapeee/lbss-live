@@ -2307,13 +2307,15 @@ function needsRunnerAdvanceErrorFieldingPrompt(
   const getCurrentPitcherStrikes = (pid: number | null | undefined) =>
     pid != null ? pitcherPitchCounts[pid]?.strikes ?? 0 : 0;
 
-  /** Mobile pitch: size from viewport minus chrome; wizard: modest cap. */
-  const mobileCompactField = step !== 'pitch';
+  const isStandardPitchMode =
+    step === 'pitch' && !isEmptySlot && currentBatter?.playerId != null;
+
+  /** Mobile pitch: size from viewport minus scoreboard + pitch dock; wizard: nearly full screen. */
   const mobilePitchFieldSize =
     'max-lg:size-[min(calc(100vw-2rem),calc(100dvh-17rem))] max-lg:shrink-0';
-  const mobileFieldSizeClass = mobileCompactField
-    ? 'max-w-[min(100%,calc(100vw-1rem))] max-h-[min(calc(100vw-1rem),28dvh)]'
-    : mobilePitchFieldSize;
+  const mobileWizardFieldSize =
+    'max-lg:size-[min(calc(100vw-2rem),calc(100dvh-7.5rem))] max-lg:shrink-0';
+  const mobileFieldSizeClass = isStandardPitchMode ? mobilePitchFieldSize : mobileWizardFieldSize;
 
   const handleMobileToolbar = (action: (typeof MOBILE_TOOLBAR_ACTIONS)[number]['onClick']) => {
     if (action === 'exit') navigate('/games');
@@ -2525,12 +2527,12 @@ function needsRunnerAdvanceErrorFieldingPrompt(
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           {/* Phone: scroll field + wizard; More section below the fold on pitch */}
           <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-y-contain touch-pan-y lg:overflow-hidden">
-          <div className={step === 'pitch' ? 'flex min-h-full flex-col lg:contents' : 'lg:contents'}>
+          <div className={isStandardPitchMode ? 'flex min-h-full flex-col lg:contents' : 'lg:contents'}>
           <div
             className={`flex w-full items-center justify-center px-2 py-1 lg:min-h-0 lg:flex-1 lg:py-1 ${
-              step === 'pitch'
+              isStandardPitchMode
                 ? 'max-lg:min-h-[calc(100dvh-17rem)] max-lg:shrink-0'
-                : 'max-lg:min-h-[min(calc(100vw-1rem),28dvh)] shrink-0'
+                : 'max-lg:min-h-[calc(100dvh-7.5rem)] shrink-0'
             }`}
           >
             {/*
@@ -2542,9 +2544,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
             <svg
               viewBox="0 0 400 400"
               preserveAspectRatio="xMidYMid meet"
-              className={`mx-auto block aspect-square lg:h-full lg:max-h-full lg:max-w-[600px] lg:w-full ${
-                step === 'pitch' ? `${mobileFieldSizeClass} lg:w-full lg:h-full` : `h-auto w-full ${mobileFieldSizeClass}`
-              }`}
+              className={`mx-auto block aspect-square lg:h-full lg:max-h-full lg:max-w-[600px] lg:w-full ${mobileFieldSizeClass} lg:w-full lg:h-full`}
             >
               <defs>
                 <radialGradient id="fg" cx="50%" cy="82%" r="58%">
@@ -2658,7 +2658,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
           </div>
 
           {/* ── Wizard panels ── */}
-          <div className={`px-2 pb-2 sm:px-3 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:overscroll-y-contain lg:touch-pan-y lg:pb-[max(0.75rem,env(safe-area-inset-bottom))] ${step === 'pitch' && !isEmptySlot ? 'max-lg:hidden' : ''}`}>
+          <div className={`px-2 pb-2 sm:px-3 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:overscroll-y-contain lg:touch-pan-y lg:pb-[max(0.75rem,env(safe-area-inset-bottom))] ${isStandardPitchMode ? 'max-lg:hidden' : ''}`}>
             {/* EMPTY SLOT — automatic out */}
             {step === 'pitch' && isEmptySlot && (
               <div className="bg-scoring-panel rounded-xl border border-white/10 overflow-hidden p-4 text-center">
@@ -2776,9 +2776,10 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                 )}
                 <div className="text-xl font-bold font-mono text-white mb-2">{fieldingPositions.length > 0 ? fieldingPositions.join('-') : '—'}</div>
                 <div className="flex gap-2 justify-center">
-                  <button onClick={() => setFieldingPositions(p => p.slice(0, -1))} className="px-3 py-1.5 bg-white/10 hover:bg-white/20 rounded text-[10px] font-bold">UNDO</button>
-                  <button onClick={finishFielding} disabled={fieldingPositions.length === 0} className="px-4 py-1.5 bg-green-700 hover:bg-green-600 disabled:opacity-30 rounded text-[10px] font-bold">DONE</button>
+                  <button onClick={() => setFieldingPositions(p => p.slice(0, -1))} className="min-h-[44px] flex-1 max-w-[8rem] rounded-lg bg-white/10 px-3 py-2 text-[10px] font-bold uppercase hover:bg-white/20 lg:min-h-0 lg:py-1.5">Undo</button>
+                  <button onClick={finishFielding} disabled={fieldingPositions.length === 0} className="min-h-[44px] flex-1 max-w-[8rem] rounded-lg bg-green-700 px-4 py-2 text-[10px] font-bold uppercase hover:bg-green-600 disabled:opacity-30 lg:min-h-0 lg:py-1.5">Done</button>
                 </div>
+                <button onClick={cancelWizard} className="mt-2 w-full min-h-[44px] py-2.5 text-xs font-bold uppercase text-white/40 transition-colors hover:text-white/60 lg:min-h-0">Cancel play</button>
               </div>
             )}
 
@@ -3066,7 +3067,9 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                     </div>
 
                     <button onClick={() => { setRunnerOutPendingType(null); setRunnerOutFielding([]); setStep('runner_out_detail'); }}
-                      className="w-full py-3 text-white/40 text-xs font-bold uppercase border-t border-white/10 hover:text-white/60 transition-colors">← BACK</button>
+                      className="w-full py-3 text-white/40 text-xs font-bold uppercase border-t border-white/10 hover:text-white/60 transition-colors">← Back</button>
+                    <button onClick={cancelWizard}
+                      className="w-full py-3 text-white/40 text-xs font-bold uppercase border-t border-white/10 hover:text-white/60 transition-colors">Cancel play</button>
                   </div>
                 );
               }
@@ -3367,7 +3370,9 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                       </div>
 
                       <button onClick={() => { setRunnerActionOutType(null); setRunnerActionFielding([]); }}
-                        className="w-full py-3 text-white/40 text-xs font-bold uppercase border-t border-white/10 hover:text-white/60 transition-colors">← BACK</button>
+                        className="w-full py-3 text-white/40 text-xs font-bold uppercase border-t border-white/10 hover:text-white/60 transition-colors">← Back</button>
+                      <button onClick={() => { setActiveRunnerBase(null); setRunnerActionType(null); setRunnerActionDest(null); setRunnerActionOutType(null); setRunnerActionFielding([]); setStep('pitch'); }}
+                        className="w-full py-3 text-white/40 text-xs font-bold uppercase border-t border-white/10 hover:text-white/60 transition-colors">Cancel play</button>
                     </div>
                   );
                 }
@@ -3837,7 +3842,8 @@ function needsRunnerAdvanceErrorFieldingPrompt(
             )}
           </div>
 
-          {/* Mobile secondary actions — scroll past field / wizard to reach */}
+          {/* Mobile secondary actions — only on standard pitch screen; scroll to reach */}
+          {isStandardPitchMode && (
           <div className="shrink-0 border-t border-white/10 px-2 pt-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] lg:hidden">
             <p className="mb-2 text-center text-[10px] font-bold uppercase tracking-wide text-white/25">More</p>
             <div className="grid grid-cols-3 gap-1.5">
@@ -3861,11 +3867,12 @@ function needsRunnerAdvanceErrorFieldingPrompt(
               {mobileLineupOpen ? 'Hide lineups' : 'Lineups'}
             </button>
           </div>
+          )}
           </div>
           </div>
 
           {/* Pitch action dock — BALL/STRIKE/FOUL/OUT + IN PLAY pinned at bottom on phone */}
-          {step === 'pitch' && currentBatter && currentBatter.playerId != null && (
+          {isStandardPitchMode && currentBatter && currentBatter.playerId != null && (
             <div className="shrink-0 border-t border-white/10 bg-scoring-footer/95 px-2 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] backdrop-blur-sm sm:px-3">
               {(currentBatter.bats || '').trim().toUpperCase() === 'S' && (
                 <div className="mb-2 rounded-lg border border-amber-500/35 bg-amber-950/35 px-3 py-2">
