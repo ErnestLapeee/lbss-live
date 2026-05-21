@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { playerProfilePath } from '@/lib/player-profile-nav';
 
 interface RosterPlayer {
   playerId: number;
@@ -17,7 +18,7 @@ const POS_LABELS: Record<number, string> = {
   1: 'P', 2: 'C', 3: '1B', 4: '2B', 5: '3B', 6: 'SS', 7: 'LF', 8: 'CF', 9: 'RF', 10: 'DH',
 };
 
-export function RosterTable({ roster }: { roster: RosterPlayer[] }) {
+export function RosterTable({ roster, returnTo }: { roster: RosterPlayer[]; returnTo?: string }) {
   const formatPos = (position: RosterPlayer['position']) => {
     if (position == null || position === '') return '—';
     if (typeof position === 'number') return POS_LABELS[position] || String(position);
@@ -48,7 +49,7 @@ export function RosterTable({ roster }: { roster: RosterPlayer[] }) {
                 <td className="px-4 py-3 font-mono text-text-faint font-bold">{p.jerseyNumber || '—'}</td>
                 <td className="px-4 py-3">
                   <Link
-                    href={`/players/${p.playerSlug || p.slug || '#'}`}
+                    href={playerProfilePath(p.playerSlug || p.slug || '#', returnTo)}
                     className="font-semibold text-[#111] hover:text-[#136cb2] hover:underline transition-colors"
                   >
                     {p.firstName} {p.lastName}

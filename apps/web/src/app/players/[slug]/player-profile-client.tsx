@@ -2,9 +2,11 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { SprayChart } from '@/components/stats/spray-chart';
 import { TeamMark } from '@/components/ui/team-mark';
 import { getStatAbbreviationMeaning } from '@/lib/stat-abbreviations';
+import { playerProfilePath } from '@/lib/player-profile-nav';
 import { POS_LABELS } from '@/lib/derive-primary-position';
 
 
@@ -269,6 +271,13 @@ const COUNT_SPLIT_ROWS = [
 ] as const;
 
 export function PlayerProfileClient({ slug, initialBattingStats, seasons }: PlayerProfileClientProps) {
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const profileReturnTo = useMemo(() => {
+    const qs = searchParams.toString();
+    return qs ? `${pathname}?${qs}` : pathname;
+  }, [pathname, searchParams]);
+
   async function fetchJson(path: string) {
     const proxyPath = path.replace(/^\/api\//, '/api/proxy/');
     const res = await fetch(proxyPath);
@@ -556,7 +565,7 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
                       const name = `${row.pitcherFirstName ?? ''} ${row.pitcherLastName ?? ''}`.trim() || 'Unknown';
                       const inner = row.pitcherSlug ? (
                         <Link
-                          href={`/players/${row.pitcherSlug}`}
+                          href={playerProfilePath(row.pitcherSlug, profileReturnTo)}
                           className="font-semibold text-accent hover:text-accent-light hover:underline"
                         >
                           {name}

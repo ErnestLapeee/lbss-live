@@ -30,11 +30,15 @@ export default async function TeamDetailPage({ params, searchParams }: Props) {
   } catch {
     notFound();
   }
+  const paramsSp = searchParams ? await searchParams : undefined;
+  const seasonFromUrl = paramsSp?.season;
+  const teamReturnTo =
+    seasonFromUrl != null && seasonFromUrl !== ''
+      ? `/teams/${slug}?season=${encodeURIComponent(seasonFromUrl)}`
+      : `/teams/${slug}`;
+
   try {
-    // Use the same seasons source as the stats and players pages
     const seasons: any[] = await apiFetch('/api/public/stats/seasons');
-    const paramsSp = searchParams ? await searchParams : undefined;
-    const seasonFromUrl = paramsSp?.season;
     const explicit = seasons.find((s: any) => String(s.id) === seasonFromUrl);
     const activeSeason = explicit || seasons.find((s: any) => s.isActive) || seasons[0];
     if (activeSeason?.id) {
@@ -73,7 +77,7 @@ export default async function TeamDetailPage({ params, searchParams }: Props) {
             <p className="text-sm text-text-muted">No players on the roster yet.</p>
           </div>
         ) : (
-          <RosterTable roster={roster} />
+          <RosterTable roster={roster} returnTo={teamReturnTo} />
         )}
       </div>
     </div>

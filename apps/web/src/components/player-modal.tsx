@@ -3,7 +3,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { SprayChart } from '@/components/stats/spray-chart';
 import { getStatAbbreviationMeaning } from '@/lib/stat-abbreviations';
+import { playerProfilePath } from '@/lib/player-profile-nav';
 import { derivePrimaryPositionLabel, POS_LABELS } from '@/lib/derive-primary-position';
+import { usePathname, useSearchParams } from 'next/navigation';
 
 type Tab = 'batting' | 'pitching' | 'fielding' | 'gamelog' | 'spraychart';
 
@@ -38,6 +40,11 @@ interface PlayerModalProps {
 }
 
 export function PlayerModal({ slug, firstName, lastName, onClose }: PlayerModalProps) {
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const modalReturnTo =
+    searchParams.toString() ? `${pathname}?${searchParams.toString()}` : pathname;
+
   async function fetchJson(path: string) {
     // Use same-origin proxy to avoid CORS issues with external API
     const proxyPath = path.replace(/^\/api\//, '/api/proxy/');
@@ -295,7 +302,7 @@ export function PlayerModal({ slug, firstName, lastName, onClose }: PlayerModalP
             </button>
           ))}
           <a
-            href={`/players/${resolvedSlug ?? slug}`}
+            href={playerProfilePath(resolvedSlug ?? slug, modalReturnTo)}
             className="ml-auto px-4 py-2.5 text-[10px] text-[#444] hover:text-[#111] transition-colors flex items-center gap-1"
           >
             Full Profile →

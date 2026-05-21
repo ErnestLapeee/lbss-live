@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { Suspense } from 'react';
 import { PageHeader } from '@/components/ui/page-header';
 import { apiFetch } from '@/lib/api';
 import { StatsClient } from './stats-client';
@@ -55,16 +56,18 @@ export default async function StatsPage({ searchParams }: Props) {
   return (
     <div>
       <PageHeader title="Statistics" />
-      <StatsClient
-        initialSeasons={seasons}
-        initialSeasonId={seasonId ?? null}
-        initialIncludePlayoffsAllTime={includePlayoffsAllTime}
-        initialBatting={initialBatting}
-        initialPitching={initialPitching}
-        initialFielding={initialFielding}
-        initialBattingLeaders={initialBattingLeaders}
-        initialPitchingLeaders={initialPitchingLeaders}
-      />
+      <Suspense fallback={null}>
+        <StatsClient
+          initialSeasons={seasons}
+          initialSeasonId={seasonId ?? null}
+          initialIncludePlayoffsAllTime={includePlayoffsAllTime}
+          initialBatting={initialBatting}
+          initialPitching={initialPitching}
+          initialFielding={initialFielding}
+          initialBattingLeaders={initialBattingLeaders}
+          initialPitchingLeaders={initialPitchingLeaders}
+        />
+      </Suspense>
     </div>
   );
 }

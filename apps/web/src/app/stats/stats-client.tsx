@@ -2,8 +2,9 @@
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import Link from 'next/link';
-import { useRouter, usePathname } from 'next/navigation';
+import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { getStatAbbreviationMeaning } from '@/lib/stat-abbreviations';
+import { playerProfilePath } from '@/lib/player-profile-nav';
 import { HorizontalScrollArea } from '@/components/stats/horizontal-scroll-area';
 import { TeamMark } from '@/components/ui/team-mark';
 
@@ -386,6 +387,11 @@ export function StatsClient({
   };
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const statsReturnTo = useMemo(() => {
+    const qs = searchParams.toString();
+    return qs ? `${pathname}?${qs}` : pathname;
+  }, [pathname, searchParams]);
   const [tab, setTab] = useState<StatsTab>('batting');
   const [seasons, setSeasons] = useState<Season[]>(initialSeasons);
   const [selectedSeasonId, setSelectedSeasonId] = useState<number | null>(initialSeasonId); // null = All time
@@ -941,7 +947,7 @@ export function StatsClient({
                                   />
                                 )}
                                 <Link
-                                  href={`/players/${stat.playerSlug || stat.slug || '#'}`}
+                                  href={playerProfilePath(stat.playerSlug || stat.slug || '#', statsReturnTo)}
                                   className="font-semibold text-[#111] hover:text-[#136cb2] hover:underline transition-colors"
                                 >
                                   {stat.firstName} {stat.lastName}

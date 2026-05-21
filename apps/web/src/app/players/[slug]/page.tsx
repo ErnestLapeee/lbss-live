@@ -1,8 +1,9 @@
 import type { Metadata } from 'next';
-import Link from 'next/link';
+import { Suspense } from 'react';
 import { apiFetch } from '@/lib/api';
 import { notFound } from 'next/navigation';
 import { derivePrimaryPositionLabel } from '@/lib/derive-primary-position';
+import { PlayerProfileBackLink } from '@/components/player-profile-back-link';
 import { PlayerProfileClient } from './player-profile-client';
 
 type Props = { params: Promise<{ slug: string }> };
@@ -58,9 +59,9 @@ export default async function PlayerProfilePage({ params }: Props) {
       {/* Player header */}
       <div className="bg-surface border-b border-border">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
-          <Link href="/players" className="text-xs text-text-muted hover:text-text transition-colors mb-5 inline-block">
-            &larr; All Players
-          </Link>
+          <Suspense fallback={null}>
+            <PlayerProfileBackLink />
+          </Suspense>
           <div className="flex flex-col sm:flex-row sm:items-start gap-6">
             {player.photoUrl ? (
               <img
@@ -88,7 +89,9 @@ export default async function PlayerProfilePage({ params }: Props) {
       </div>
 
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
-        <PlayerProfileClient slug={slug} initialBattingStats={battingStats} seasons={seasons} />
+        <Suspense fallback={null}>
+          <PlayerProfileClient slug={slug} initialBattingStats={battingStats} seasons={seasons} />
+        </Suspense>
 
         {player.bio && (
           <div className="mt-8">
