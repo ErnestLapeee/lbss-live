@@ -22,7 +22,6 @@ export default async function HomePage() {
     teamLogoUrl: string | null;
     wins: number;
     losses: number;
-    ties: number;
     winPct: any;
     gamesBehind: any;
   }> = [];
@@ -58,7 +57,6 @@ export default async function HomePage() {
               teamLogoUrl: r.teamLogoUrl ?? null,
               wins: r.wins ?? 0,
               losses: r.losses ?? 0,
-              ties: r.ties ?? 0,
               winPct: r.winPct ?? null,
               gamesBehind: r.gamesBehind ?? null,
             }));
@@ -234,7 +232,7 @@ export default async function HomePage() {
                           <div className="text-sm font-medium truncate">{row.teamName}</div>
                         </div>
                         <span className="text-[11px] text-text-faint font-mono">
-                          {row.wins}-{row.losses}{row.ties ? `-${row.ties}` : ''}
+                          {row.wins}-{row.losses}
                         </span>
                       </div>
                     ))}

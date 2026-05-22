@@ -15,8 +15,7 @@ export function formatInningHalf(inning: number, half: 'top' | 'bot'): string {
   return `${arrow}${inning}`;
 }
 
-export function formatRecord(wins: number, losses: number, ties?: number): string {
-  if (ties && ties > 0) return `${wins}-${losses}-${ties}`;
+export function formatRecord(wins: number, losses: number): string {
   return `${wins}-${losses}`;
 }
 

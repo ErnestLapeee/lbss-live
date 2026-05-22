@@ -20,7 +20,6 @@ type StandingsRow = {
   teamName: string;
   wins: number;
   losses: number;
-  ties?: number;
   gamesPlayed: number;
   winPct?: string;
   gamesBehind?: string;
@@ -42,7 +41,6 @@ type PlayoffsData = {
       logoUrl?: string | null;
       wins: number;
       losses: number;
-      ties: number;
       winPct: number;
       gamesBehind: number;
     }>;
@@ -319,12 +317,11 @@ export function StandingsClient() {
                   const recordFromSeeds = (teamName: string) => {
                     const s = lg.seeds.find((x) => String(x.teamName ?? '').trim() === String(teamName ?? '').trim());
                     if (!s) return '';
-                    const t = s.ties ?? 0;
                     const gb =
                       typeof s.gamesBehind === 'number' && Number.isFinite(s.gamesBehind)
                         ? s.gamesBehind.toFixed(1)
                         : '—';
-                    return `${s.wins}-${s.losses}${t ? `-${t}` : ''} • GB ${gb}`;
+                    return `${s.wins}-${s.losses} • GB ${gb}`;
                   };
                   return (
                     <section key={lg.leagueId} className="mx-auto w-full max-w-5xl space-y-3">
@@ -377,9 +374,6 @@ export function StandingsClient() {
                           L
                         </th>
                         <th className="px-4 py-3 text-right text-[11px] font-bold uppercase tracking-wider text-text-faint">
-                          T
-                        </th>
-                        <th className="px-4 py-3 text-right text-[11px] font-bold uppercase tracking-wider text-text-faint">
                           GP
                         </th>
                         <th className="px-4 py-3 text-right text-[11px] font-bold uppercase tracking-wider text-text-faint">
@@ -406,7 +400,6 @@ export function StandingsClient() {
                           <td className="px-4 py-3 font-semibold">{row.teamName || '—'}</td>
                           <td className="stat-value px-4 py-3 text-right font-mono">{row.wins}</td>
                           <td className="stat-value px-4 py-3 text-right font-mono">{row.losses}</td>
-                          <td className="stat-value px-4 py-3 text-right font-mono">{row.ties ?? 0}</td>
                           <td className="stat-value px-4 py-3 text-right font-mono">{row.gamesPlayed}</td>
                           <td className="stat-value px-4 py-3 text-right font-mono font-semibold">
                             {row.winPct ?? '.000'}
@@ -433,9 +426,8 @@ export function StandingsClient() {
                   const recordText = (teamName: string) => {
                     const r = rowByTeam.get(String(teamName || '').trim());
                     if (!r) return '';
-                    const t = r.ties ?? 0;
                     const gb = r.gamesBehind === '0' || r.gamesBehind === '0.0' ? '—' : (r.gamesBehind ?? '—');
-                    return `${r.wins}-${r.losses}${t ? `-${t}` : ''} • GB ${gb}`;
+                    return `${r.wins}-${r.losses} • GB ${gb}`;
                   };
 
                   return (
