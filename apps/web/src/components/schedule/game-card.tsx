@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { formatGameDateMonthDay, formatGameTime } from '@/lib/game-datetime';
 import { LiveBadge } from './live-badge';
 import { cn } from '@/lib/utils';
 
@@ -16,7 +17,6 @@ interface GameCardProps {
 export function GameCard({ id, homeTeam, awayTeam, homeScore, awayScore, status, scheduledAt, venue }: GameCardProps) {
   const isLive = status === 'live';
   const isFinal = status === 'final';
-  const date = new Date(scheduledAt);
 
   const content = (
     <div
@@ -27,9 +27,9 @@ export function GameCard({ id, homeTeam, awayTeam, homeScore, awayScore, status,
     >
       <div className="flex items-center justify-between mb-3">
         <span className="text-xs text-text-muted font-medium">
-          {date.toLocaleDateString('lv-LV', { month: 'short', day: 'numeric' })}
+          {formatGameDateMonthDay(scheduledAt)}
           {' '}
-          {date.toLocaleTimeString('lv-LV', { hour: '2-digit', minute: '2-digit', hour12: false })}
+          {formatGameTime(scheduledAt)}
         </span>
         {isLive && <LiveBadge />}
         {isFinal && (

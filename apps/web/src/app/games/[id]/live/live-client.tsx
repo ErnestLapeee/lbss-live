@@ -7,6 +7,7 @@ import { formatPlayByPlay } from '@/lib/format-play';
 import { useApiBase } from '@/lib/api-context';
 import { getStatAbbreviationMeaning } from '@/lib/stat-abbreviations';
 import { aggregatePitchingStatsByPitcher, inningsFromOuts, boundsFromEvents, buildPublicLineScores, formatLineScoreCell, computePlayerGameBattingLinesFromEvents, type PlayerGameBattingCounts } from '@lbss/shared';
+import { formatGameDateLong } from '@/lib/game-datetime';
 import { normalizeGameEvents, tryExtractEventArray } from '@/lib/normalize-game-events';
 import { buildPositionMapsByEvent } from '@/lib/position-maps-by-event';
 
@@ -1938,7 +1939,7 @@ export function LiveGameClient({
           {game.venue && <p>{game.venue}</p>}
           {game.umpire && <p>Umpire: {game.umpire}</p>}
           {game.officialScorer && <p>Scorer: {game.officialScorer}</p>}
-          <p>{new Date(game.scheduledAt).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
+          <p>{formatGameDateLong(game.scheduledAt)}</p>
         </div>
       </div>
     </div>

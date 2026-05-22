@@ -6,6 +6,13 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { PageHeader } from '@/components/ui/page-header';
 import { TeamMark } from '@/components/ui/team-mark';
 import { formatLineScoreCell } from '@lbss/shared';
+import {
+  formatGameDateShort,
+  formatGameDayOfMonth,
+  formatGameMonthShort,
+  formatGameTime,
+  formatGameWeekdayShort,
+} from '@/lib/game-datetime';
 
 
 interface Game {
@@ -408,7 +415,6 @@ function LiveCard({ game }: { game: Game }) {
 function FinalCard({ game }: { game: Game }) {
   const awayWon = (game.awayScore ?? 0) > (game.homeScore ?? 0);
   const homeWon = (game.homeScore ?? 0) > (game.awayScore ?? 0);
-  const date = new Date(game.scheduledAt);
   const awayLS = game.awayLineScore ?? [];
   const homeLS = game.homeLineScore ?? [];
   const maxInn = Math.max(awayLS.length, homeLS.length, 1);
@@ -420,7 +426,7 @@ function FinalCard({ game }: { game: Game }) {
           {/* Date + Final badge */}
           <div className="flex items-center justify-between mb-3">
             <span className="text-[10px] text-text-faint">
-              {date.toLocaleDateString('lv-LV', { weekday: 'short', month: 'short', day: 'numeric' })}
+              {formatGameDateShort(game.scheduledAt)}
               {game.venue && <span className="ml-1 opacity-50">— {game.venue}</span>}
             </span>
             <span className="text-[9px] font-bold uppercase tracking-widest text-text-faint/60">Final</span>
@@ -520,13 +526,12 @@ function FinalCard({ game }: { game: Game }) {
    UPCOMING CARD — calendar-like, time dominant
    ═══════════════════════════════════════════ */
 function UpcomingCard({ game }: { game: Game }) {
-  const date = new Date(game.scheduledAt);
   return (
     <div className="rounded-xl bg-surface border border-border/60 p-4 flex items-center gap-4">
       {/* Date block */}
       <div className="w-14 h-14 rounded-lg bg-surface-alt flex flex-col items-center justify-center shrink-0 border border-border/50">
-        <span className="text-[9px] font-bold uppercase tracking-wider text-text-faint">{date.toLocaleDateString('lv-LV', { month: 'short' })}</span>
-        <span className="text-xl font-heading font-black text-text leading-none">{date.getDate()}</span>
+        <span className="text-[9px] font-bold uppercase tracking-wider text-text-faint">{formatGameMonthShort(game.scheduledAt)}</span>
+        <span className="text-xl font-heading font-black text-text leading-none">{formatGameDayOfMonth(game.scheduledAt)}</span>
       </div>
       {/* Matchup */}
       <div className="flex-1 min-w-0">
@@ -540,10 +545,10 @@ function UpcomingCard({ game }: { game: Game }) {
       {/* Time */}
       <div className="shrink-0 text-right">
         <div className="text-sm font-heading font-bold text-text-muted tabular-nums">
-          {date.toLocaleTimeString('lv-LV', { hour: '2-digit', minute: '2-digit', hour12: false })}
+          {formatGameTime(game.scheduledAt)}
         </div>
         <div className="text-[10px] text-text-faint">
-          {date.toLocaleDateString('lv-LV', { weekday: 'short' })}
+          {formatGameWeekdayShort(game.scheduledAt)}
         </div>
       </div>
     </div>

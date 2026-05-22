@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { apiFetch } from '@/lib/api';
+import { formatGameDateMonthDay, formatGameDateShort, formatGameTime } from '@/lib/game-datetime';
 import { SectionHeader } from '@/components/ui/section-header';
 import { TeamMark } from '@/components/ui/team-mark';
 
@@ -115,19 +116,17 @@ export default async function HomePage() {
                 <EmptyCard message="No upcoming games scheduled yet." />
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {upcomingGames.map((game: any) => {
-                    const date = new Date(game.scheduledAt);
-                    return (
+                  {upcomingGames.map((game: any) => (
                       <div
                         key={game.id}
                         className="rounded-xl border border-border bg-surface p-4 hover:border-accent/30 hover:shadow-sm transition-all"
                       >
                         <div className="flex items-center justify-between mb-3">
                           <span className="text-[11px] font-semibold uppercase tracking-wider text-text-faint">
-                            {date.toLocaleDateString('lv-LV', { weekday: 'short', month: 'short', day: 'numeric' })}
+                            {formatGameDateShort(game.scheduledAt)}
                           </span>
                           <span className="text-[11px] font-medium text-text-faint tabular-nums">
-                            {date.toLocaleTimeString('lv-LV', { hour: '2-digit', minute: '2-digit', hour12: false })}
+                            {formatGameTime(game.scheduledAt)}
                           </span>
                         </div>
                         <div className="space-y-1.5">
@@ -144,8 +143,7 @@ export default async function HomePage() {
                           <div className="mt-2.5 text-[11px] text-text-faint">{game.venue}</div>
                         )}
                       </div>
-                    );
-                  })}
+                    ))}
                 </div>
               )}
             </section>
@@ -156,7 +154,6 @@ export default async function HomePage() {
                 <SectionHeader title="Recent Results" href="/schedule" linkLabel="Full Schedule" />
                 <div className="space-y-2">
                   {recentGames.slice(0, 4).map((game: any) => {
-                    const date = new Date(game.scheduledAt);
                     const isLive = game.status === 'live';
                     const awayWon = (game.awayScore ?? 0) > (game.homeScore ?? 0);
                     const homeWon = (game.homeScore ?? 0) > (game.awayScore ?? 0);
@@ -198,7 +195,7 @@ export default async function HomePage() {
                               <>
                                 <span className="text-[10px] font-bold uppercase text-text-faint tracking-wider">Final</span>
                                 <span className="text-[10px] text-text-faint mt-0.5">
-                                  {date.toLocaleDateString('lv-LV', { month: 'short', day: 'numeric' })}
+                                  {formatGameDateMonthDay(game.scheduledAt)}
                                 </span>
                               </>
                             )}

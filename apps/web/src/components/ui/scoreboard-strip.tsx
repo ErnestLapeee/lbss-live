@@ -1,3 +1,5 @@
+import { formatGameDateMonthDay } from '@/lib/game-datetime';
+
 interface ScoreGame {
   id: number;
   homeTeamName: string | null;
@@ -20,7 +22,6 @@ export function ScoreboardStrip({ games }: { games: ScoreGame[] }) {
             const isLive = g.status === 'live';
             const isFinal = g.status === 'final';
             const isScheduled = g.status === 'scheduled';
-            const date = new Date(g.scheduledAt);
 
             const away = g.awayTeamName || 'TBD';
             const home = g.homeTeamName || 'TBD';
@@ -55,7 +56,7 @@ export function ScoreboardStrip({ games }: { games: ScoreGame[] }) {
                 <div className="flex flex-col items-center">
                   {isLive && <span className="text-[9px] font-bold uppercase text-[#0a7d0a] tracking-wider">Live</span>}
                   {isFinal && <span className="text-[9px] text-[#666] uppercase tracking-wider">Final</span>}
-                  {isScheduled && <span className="text-[9px] text-[#666]">{date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>}
+                  {isScheduled && <span className="text-[9px] text-[#666]">{formatGameDateMonthDay(g.scheduledAt)}</span>}
                 </div>
               </div>
             );
