@@ -131,6 +131,45 @@ export async function adminTeamsRoutes(app: FastifyInstance) {
     }
   });
 
+  // PATCH /roster/:rosterId - update roster fields (jersey number, etc.)
+  app.patch<{
+    Params: { rosterId: string };
+    Body: { jerseyNumber?: string | null };
+  }>('/roster/:rosterId', async (request, reply) => {
+    try {
+      const rosterId = parseInt(request.params.rosterId, 10);
+      if (isNaN(rosterId)) {
+        return reply.status(400).send({ message: 'Invalid roster id' });
+      }
+
+      const body = request.body ?? {};
+      if (!('jerseyNumber' in body)) {
+        return reply.status(400).send({ message: 'No fields to update' });
+      }
+
+      const jerseyRaw = body.jerseyNumber != null ? String(body.jerseyNumber).trim() : '';
+      const jerseyNumber = jerseyRaw === '' ? null : jerseyRaw.slice(0, 5);
+
+      const updated = await db
+        .update(playerSeasons)
+        .set({ jerseyNumber })
+        .where(eq(playerSeasons.id, rosterId))
+        .returning({
+          id: playerSeasons.id,
+          jerseyNumber: playerSeasons.jerseyNumber,
+        });
+
+      if (updated.length === 0) {
+        return reply.status(404).send({ message: 'Roster entry not found' });
+      }
+
+      return reply.send(updated[0]);
+    } catch (err) {
+      request.log.error(err);
+      return reply.status(500).send({ message: 'Failed to update roster entry' });
+    }
+  });
+
   // PUT /roster/:rosterId/transfer - add a player to another team for the same season
   app.put<{
     Params: { rosterId: string };

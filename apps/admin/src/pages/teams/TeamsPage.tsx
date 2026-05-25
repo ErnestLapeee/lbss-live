@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
+import { apiGet, apiPost, apiPut, apiPatch, apiDelete } from '@/lib/api';
 import { useAdminSeason } from '@/context/AdminSeasonContext';
 import { EuropeanDateInput } from '@/components/EuropeanDateInput';
 
@@ -91,6 +91,7 @@ export function TeamsPage() {
 
   const [showDirectoryPlayerEdit, setShowDirectoryPlayerEdit] = useState(false);
   const [directoryPlayerEditId, setDirectoryPlayerEditId] = useState<number | null>(null);
+  const [directoryPlayerEditRosterId, setDirectoryPlayerEditRosterId] = useState<number | null>(null);
   const [directoryPlayerEditForm, setDirectoryPlayerEditForm] = useState({
     firstName: '',
     lastName: '',
@@ -101,6 +102,7 @@ export function TeamsPage() {
     heightCm: '',
     weightKg: '',
     bio: '',
+    jerseyNumber: '',
   });
 
   const [saving, setSaving] = useState(false);
@@ -369,6 +371,7 @@ export function TeamsPage() {
       return;
     }
     setDirectoryPlayerEditId(d.id);
+    setDirectoryPlayerEditRosterId(rosterPlayer.rosterId);
     setDirectoryPlayerEditForm({
       firstName: d.firstName,
       lastName: d.lastName,
@@ -379,6 +382,7 @@ export function TeamsPage() {
       heightCm: d.heightCm != null ? String(d.heightCm) : '',
       weightKg: d.weightKg != null ? String(d.weightKg) : '',
       bio: d.bio ?? '',
+      jerseyNumber: rosterPlayer.jerseyNumber ?? '',
     });
     setShowDirectoryPlayerEdit(true);
   };
@@ -386,6 +390,7 @@ export function TeamsPage() {
   const closeDirectoryPlayerEdit = () => {
     setShowDirectoryPlayerEdit(false);
     setDirectoryPlayerEditId(null);
+    setDirectoryPlayerEditRosterId(null);
   };
 
   const handleDirectoryPlayerEditSubmit = async (e: React.FormEvent) => {
@@ -404,6 +409,11 @@ export function TeamsPage() {
         weightKg: directoryPlayerEditForm.weightKg ? parseInt(directoryPlayerEditForm.weightKg, 10) : undefined,
         bio: directoryPlayerEditForm.bio.trim() || undefined,
       });
+      if (directoryPlayerEditRosterId != null) {
+        await apiPatch(`/admin/teams/roster/${directoryPlayerEditRosterId}`, {
+          jerseyNumber: directoryPlayerEditForm.jerseyNumber.trim() || null,
+        });
+      }
       closeDirectoryPlayerEdit();
       await loadRosters({ background: true });
     } catch (err: any) {
@@ -856,6 +866,15 @@ export function TeamsPage() {
                 />
               </Field>
             </div>
+            <Field label="Jersey #">
+              <input
+                type="text"
+                value={directoryPlayerEditForm.jerseyNumber}
+                onChange={(e) => setDirectoryPlayerEditForm((f) => ({ ...f, jerseyNumber: e.target.value }))}
+                className={inputClass}
+                placeholder="e.g. 7"
+              />
+            </Field>
             <div className="grid grid-cols-3 gap-4">
               <Field label="Nationality">
                 <input
