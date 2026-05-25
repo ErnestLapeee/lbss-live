@@ -5,10 +5,11 @@ import {
   API_REVALIDATE_SEASONS,
   API_REVALIDATE_STANDINGS,
 } from '@/lib/api';
-import { formatGameDateMonthDay, formatGameDateShort, formatGameTime } from '@/lib/game-datetime';
+import { RecentGameCard, UpcomingGameCard } from '@/components/home/home-game-cards';
 import { HomeLiveScores } from '@/components/home/home-live-scores';
 import { SectionHeader } from '@/components/ui/section-header';
 import { TeamMark } from '@/components/ui/team-mark';
+import { buildTeamMatchupSpotlight } from '@/lib/home-matchup-spotlight';
 
 function toArray<T>(v: unknown): T[] {
   if (Array.isArray(v)) return v;
@@ -100,6 +101,27 @@ export default async function HomePage() {
     .filter((g: any) => g.status === 'scheduled')
     .slice(0, 4);
 
+  const recordByTeamId = new Map(
+    miniStandings.map((r) => [r.teamId, `${r.wins}-${r.losses}`]),
+  );
+
+  let battingStats: any[] = [];
+  let pitchingStats: any[] = [];
+  if (upcomingGames.length > 0 && activeSeason?.id) {
+    try {
+      const [batting, pitching] = await Promise.all([
+        apiFetch(`/api/public/stats/batting?seasonId=${activeSeason.id}`, {
+          revalidate: API_REVALIDATE_STANDINGS,
+        }).catch(() => []),
+        apiFetch(`/api/public/stats/pitching?seasonId=${activeSeason.id}`, {
+          revalidate: API_REVALIDATE_STANDINGS,
+        }).catch(() => []),
+      ]);
+      battingStats = Array.isArray(batting) ? batting : [];
+      pitchingStats = Array.isArray(pitching) ? pitching : [];
+    } catch {}
+  }
+
   return (
     <div>
       {liveGames.length > 0 && (
@@ -158,33 +180,23 @@ export default async function HomePage() {
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {upcomingGames.map((game: any) => (
-                      <div
-                        key={game.id}
-                        className="rounded-xl border border-border bg-surface p-4 hover:border-accent/30 hover:shadow-sm transition-all"
-                      >
-                        <div className="flex items-center justify-between mb-3">
-                          <span className="text-[11px] font-semibold uppercase tracking-wider text-text-faint">
-                            {formatGameDateShort(game.scheduledAt)}
-                          </span>
-                          <span className="text-[11px] font-medium text-text-faint tabular-nums">
-                            {formatGameTime(game.scheduledAt)}
-                          </span>
-                        </div>
-                        <div className="space-y-1.5">
-                          <div className="flex items-center gap-2">
-                            <TeamBadge name={game.awayTeamName || 'TBD'} shortName={game.awayTeamShort} logoUrl={game.awayTeamLogoUrl} />
-                            <span className="font-semibold text-sm">{game.awayTeamName || 'TBD'}</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <TeamBadge name={game.homeTeamName || 'TBD'} shortName={game.homeTeamShort} logoUrl={game.homeTeamLogoUrl} />
-                            <span className="font-semibold text-sm">{game.homeTeamName || 'TBD'}</span>
-                          </div>
-                        </div>
-                        {game.venue && (
-                          <div className="mt-2.5 text-[11px] text-text-faint">{game.venue}</div>
-                        )}
-                      </div>
-                    ))}
+                    <UpcomingGameCard
+                      key={game.id}
+                      game={game}
+                      awaySpotlight={buildTeamMatchupSpotlight(
+                        battingStats,
+                        pitchingStats,
+                        game.awayTeamId,
+                      )}
+                      homeSpotlight={buildTeamMatchupSpotlight(
+                        battingStats,
+                        pitchingStats,
+                        game.homeTeamId,
+                      )}
+                      awayRecord={recordByTeamId.get(game.awayTeamId) ?? null}
+                      homeRecord={recordByTeamId.get(game.homeTeamId) ?? null}
+                    />
+                  ))}
                 </div>
               )}
             </section>
@@ -194,57 +206,9 @@ export default async function HomePage() {
               <section>
                 <SectionHeader title="Recent Results" href="/schedule" linkLabel="Full Schedule" />
                 <div className="space-y-2">
-                  {recentGames.slice(0, 4).map((game: any) => {
-                    const isLive = game.status === 'live';
-                    const awayWon = (game.awayScore ?? 0) > (game.homeScore ?? 0);
-                    const homeWon = (game.homeScore ?? 0) > (game.awayScore ?? 0);
-
-                    return (
-                      <div
-                        key={game.id}
-                        className={`rounded-xl border p-4 transition-all ${
-                          isLive
-                            ? 'border-live/30 bg-live/[0.03] shadow-[0_0_20px_rgba(34,197,94,0.06)]'
-                            : 'border-border bg-surface hover:bg-surface-alt'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="flex-1 space-y-1">
-                            <div className="flex items-center gap-2">
-                              <TeamBadge name={game.awayTeamName || 'TBD'} shortName={game.awayTeamShort} logoUrl={game.awayTeamLogoUrl} />
-                              <span className={`text-sm font-semibold ${awayWon ? '' : 'text-text-muted'}`}>
-                                {game.awayTeamName || 'TBD'}
-                              </span>
-                              <span className={`ml-auto font-heading text-lg font-bold stat-value ${awayWon ? '' : 'text-text-muted'}`}>
-                                {game.awayScore ?? 0}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <TeamBadge name={game.homeTeamName || 'TBD'} shortName={game.homeTeamShort} logoUrl={game.homeTeamLogoUrl} />
-                              <span className={`text-sm font-semibold ${homeWon ? '' : 'text-text-muted'}`}>
-                                {game.homeTeamName || 'TBD'}
-                              </span>
-                              <span className={`ml-auto font-heading text-lg font-bold stat-value ${homeWon ? '' : 'text-text-muted'}`}>
-                                {game.homeScore ?? 0}
-                              </span>
-                            </div>
-                          </div>
-                          <div className="ml-4 flex flex-col items-center">
-                            {isLive ? (
-                              <span className="text-[10px] font-bold uppercase text-live tracking-wider live-badge px-2 py-0.5 rounded-full bg-live/10">Live</span>
-                            ) : (
-                              <>
-                                <span className="text-[10px] font-bold uppercase text-text-faint tracking-wider">Final</span>
-                                <span className="text-[10px] text-text-faint mt-0.5">
-                                  {formatGameDateMonthDay(game.scheduledAt)}
-                                </span>
-                              </>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
+                  {recentGames.slice(0, 4).map((game: any) => (
+                    <RecentGameCard key={game.id} game={game} />
+                  ))}
                 </div>
               </section>
             )}
@@ -307,7 +271,7 @@ function TeamBadge({ name, shortName, logoUrl }: { name: string; shortName?: str
 function EmptyCard({ message }: { message: string }) {
   return (
     <div className="rounded-xl border border-dashed border-border bg-surface-alt p-8 text-center">
-      <p className="text-sm text-text-muted">{''}</p>
+      <p className="text-sm text-text-muted">{message}</p>
     </div>
   );
 }
