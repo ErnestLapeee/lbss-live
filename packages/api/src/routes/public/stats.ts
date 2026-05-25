@@ -84,7 +84,61 @@ function computePitchingRates(t: {
   };
 }
 
+function parseOverviewQuery(query: { seasonId?: string; includePlayoffs?: string }) {
+  const seasonId = query.seasonId;
+  const q =
+    !seasonId || seasonId === ALL_TIME
+      ? 'seasonId=all'
+      : `seasonId=${encodeURIComponent(seasonId)}`;
+  const playoffQ =
+    query.includePlayoffs != null && String(query.includePlayoffs).trim() !== ''
+      ? `&includePlayoffs=${encodeURIComponent(String(query.includePlayoffs))}`
+      : '';
+  return `${q}${playoffQ}`;
+}
+
 export async function statsRoutes(app: FastifyInstance) {
+  // GET /overview — batting, pitching, fielding + leaderboards in one response (fewer HTTP round-trips)
+  app.get<{
+    Querystring: { seasonId?: string; includePlayoffs?: string };
+  }>('/overview', async (request, reply) => {
+    try {
+      const qs = parseOverviewQuery(request.query);
+      const base = '/api/public/stats';
+      const paths = ['batting', 'leaders', 'pitching', 'pitching-leaders', 'fielding'] as const;
+      const responses = await Promise.all(
+        paths.map((p) =>
+          request.server.inject({ method: 'GET', url: `${base}/${p}?${qs}` }),
+        ),
+      );
+      const parseJson = (res: { statusCode: number; payload: string | Buffer }) => {
+        if (res.statusCode !== 200) return null;
+        try {
+          return JSON.parse(typeof res.payload === 'string' ? res.payload : res.payload.toString());
+        } catch {
+          return null;
+        }
+      };
+      const [batting, battingLeaders, pitching, pitchingLeaders, fielding] = responses.map(parseJson);
+      return reply.send({
+        batting: Array.isArray(batting) ? batting : [],
+        battingLeaders:
+          battingLeaders && typeof battingLeaders === 'object' && !Array.isArray(battingLeaders)
+            ? battingLeaders
+            : null,
+        pitching: Array.isArray(pitching) ? pitching : [],
+        pitchingLeaders:
+          pitchingLeaders && typeof pitchingLeaders === 'object' && !Array.isArray(pitchingLeaders)
+            ? pitchingLeaders
+            : null,
+        fielding: Array.isArray(fielding) ? fielding : [],
+      });
+    } catch (err) {
+      request.log.error(err);
+      return reply.status(500).send({ message: 'Failed to fetch stats overview' });
+    }
+  });
+
   // GET /batting?seasonId=X or omit for all-time — optional includePlayoffs=1 for all-time (includes playoff-season rows)
   app.get<{
     Querystring: { seasonId?: string; includePlayoffs?: string };

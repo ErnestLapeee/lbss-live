@@ -33,6 +33,11 @@ export async function ensureOptionalSchemaColumns(): Promise<void> {
   /** Migration 0012 — lineup / scoring officials on games row (backup export selects these). */
   await db.execute(sql`ALTER TABLE games ADD COLUMN IF NOT EXISTS umpire varchar(200)`);
   await db.execute(sql`ALTER TABLE games ADD COLUMN IF NOT EXISTS official_scorer varchar(200)`);
+
+  /** Migration 0014 — linescore / PBP list queries by game + active + event order. */
+  await db.execute(
+    sql`CREATE INDEX IF NOT EXISTS game_events_game_active_number_idx ON game_events (game_id, is_deleted, event_number)`,
+  );
 }
 
 /**

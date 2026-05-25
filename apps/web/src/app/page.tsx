@@ -6,6 +6,7 @@ import {
   API_REVALIDATE_STANDINGS,
 } from '@/lib/api';
 import { formatGameDateMonthDay, formatGameDateShort, formatGameTime } from '@/lib/game-datetime';
+import { HomeLiveScores } from '@/components/home/home-live-scores';
 import { SectionHeader } from '@/components/ui/section-header';
 import { TeamMark } from '@/components/ui/team-mark';
 
@@ -101,6 +102,22 @@ export default async function HomePage() {
 
   return (
     <div>
+      {liveGames.length > 0 && (
+        <HomeLiveScores
+          initialGames={liveGames.map((g: any) => ({
+            id: g.id,
+            awayTeamName: g.awayTeamName,
+            homeTeamName: g.homeTeamName,
+            awayTeamShort: g.awayTeamShort,
+            homeTeamShort: g.homeTeamShort,
+            awayTeamLogoUrl: g.awayTeamLogoUrl,
+            homeTeamLogoUrl: g.homeTeamLogoUrl,
+            awayScore: g.awayScore ?? 0,
+            homeScore: g.homeScore ?? 0,
+          }))}
+          seasonId={activeSeason?.id ?? null}
+        />
+      )}
       {/* ── Hero ── */}
       <section className="bg-white border-b border-[#ccc]">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-10">

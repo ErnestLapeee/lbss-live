@@ -1,9 +1,14 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
-import { SprayChart } from '@/components/stats/spray-chart';
+
+const SprayChart = dynamic(
+  () => import('@/components/stats/spray-chart').then((m) => ({ default: m.SprayChart })),
+  { loading: () => <p className="text-sm text-text-muted py-8 text-center">Loading chart…</p> },
+);
 import { TeamMark } from '@/components/ui/team-mark';
 import { getStatAbbreviationMeaning } from '@/lib/stat-abbreviations';
 import { playerProfilePath } from '@/lib/player-profile-nav';

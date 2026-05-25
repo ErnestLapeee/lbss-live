@@ -423,23 +423,57 @@ export function StatsClient({
     }
     setLoading(true);
 
-    Promise.all([
-      fetch(`/api/proxy/public/stats/batting?${seasonParam}`).then(r => r.json()).catch(() => []),
-      fetch(`/api/proxy/public/stats/leaders?${seasonParam}`).then(r => r.json()).catch(() => null),
-      fetch(`/api/proxy/public/stats/pitching?${seasonParam}`).then(r => r.json()).catch(() => []),
-      fetch(`/api/proxy/public/stats/pitching-leaders?${seasonParam}`).then(r => r.json()).catch(() => null),
-      fetch(`/api/proxy/public/stats/fielding?${seasonParam}`).then(r => r.json()).catch(() => []),
-    ])
-      .then(([batting, bLeaders, pitching, pLeaders, fielding]) => {
-        setBattingStats(Array.isArray(batting) ? enrichBattingRates(batting) : []);
+    fetch(`/api/proxy/public/stats/overview?${seasonParam}`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error('overview failed'))))
+      .then((data: {
+        batting?: unknown[];
+        battingLeaders?: LeadersData | null;
+        pitching?: unknown[];
+        pitchingLeaders?: LeadersData | null;
+        fielding?: unknown[];
+      }) => {
+        const batting = data?.batting;
+        const bLeaders = data?.battingLeaders;
+        const pitching = data?.pitching;
+        const pLeaders = data?.pitchingLeaders;
+        const fielding = data?.fielding;
+        setBattingStats(Array.isArray(batting) ? enrichBattingRates(batting as BattingStat[]) : []);
         setBattingLeaders(bLeaders && typeof bLeaders === 'object' && !Array.isArray(bLeaders) ? bLeaders : null);
-        setPitchingStats(Array.isArray(pitching) ? pitching : []);
+        setPitchingStats(Array.isArray(pitching) ? (pitching as PitchingStat[]) : []);
         setPitchingLeaders(pLeaders && typeof pLeaders === 'object' && !Array.isArray(pLeaders) ? pLeaders : null);
-        setFieldingStats(Array.isArray(fielding) ? fielding.map((f: any) => ({
-          ...f,
-          sba: (f.catcherStolenBases || 0) + (f.catcherCaughtStealing || 0),
-        })) : []);
+        setFieldingStats(
+          Array.isArray(fielding)
+            ? fielding.map((f: any) => ({
+                ...f,
+                sba: (f.catcherStolenBases || 0) + (f.catcherCaughtStealing || 0),
+              }))
+            : [],
+        );
       })
+      .catch(() =>
+        Promise.all([
+          fetch(`/api/proxy/public/stats/batting?${seasonParam}`).then((r) => r.json()).catch(() => []),
+          fetch(`/api/proxy/public/stats/leaders?${seasonParam}`).then((r) => r.json()).catch(() => null),
+          fetch(`/api/proxy/public/stats/pitching?${seasonParam}`).then((r) => r.json()).catch(() => []),
+          fetch(`/api/proxy/public/stats/pitching-leaders?${seasonParam}`)
+            .then((r) => r.json())
+            .catch(() => null),
+          fetch(`/api/proxy/public/stats/fielding?${seasonParam}`).then((r) => r.json()).catch(() => []),
+        ]).then(([batting, bLeaders, pitching, pLeaders, fielding]) => {
+          setBattingStats(Array.isArray(batting) ? enrichBattingRates(batting) : []);
+          setBattingLeaders(bLeaders && typeof bLeaders === 'object' && !Array.isArray(bLeaders) ? bLeaders : null);
+          setPitchingStats(Array.isArray(pitching) ? pitching : []);
+          setPitchingLeaders(pLeaders && typeof pLeaders === 'object' && !Array.isArray(pLeaders) ? pLeaders : null);
+          setFieldingStats(
+            Array.isArray(fielding)
+              ? fielding.map((f: any) => ({
+                  ...f,
+                  sba: (f.catcherStolenBases || 0) + (f.catcherCaughtStealing || 0),
+                }))
+              : [],
+          );
+        }),
+      )
       .finally(() => setLoading(false));
   }, [seasonParam]);
 

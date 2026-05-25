@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { Suspense } from 'react';
 import { PageHeader } from '@/components/ui/page-header';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, API_REVALIDATE_SEASONS, API_REVALIDATE_STANDINGS } from '@/lib/api';
 import { StatsClient } from './stats-client';
 
 export const metadata: Metadata = {
@@ -9,20 +9,28 @@ export const metadata: Metadata = {
   description: 'Batting and pitching statistics for the Latvijas Beisbola Liga',
 };
 
+export const revalidate = 60;
+
 type Props = { searchParams: Promise<{ season?: string }> };
+
+type StatsOverview = {
+  batting?: unknown[];
+  battingLeaders?: unknown;
+  pitching?: unknown[];
+  pitchingLeaders?: unknown;
+  fielding?: unknown[];
+};
 
 export default async function StatsPage({ searchParams }: Props) {
   const params = await searchParams;
   const seasonFromUrl = params.season;
 
-  // Fetch seasons server-side so the page isn't blank
   let seasons: any[] = [];
   try {
-    const data = await apiFetch('/api/public/stats/seasons');
+    const data = await apiFetch('/api/public/stats/seasons', { revalidate: API_REVALIDATE_SEASONS });
     seasons = Array.isArray(data) ? data : [];
   } catch {}
 
-  // Season from URL (?season=all or ?season=123), else active season
   const activeSeason = seasons.find((s: any) => s.isActive) || seasons[0];
   let seasonId: number | null;
   if (seasonFromUrl === 'all' || seasonFromUrl === '') seasonId = null;
@@ -38,18 +46,49 @@ export default async function StatsPage({ searchParams }: Props) {
   let initialBattingLeaders: any = null;
   let initialPitchingLeaders: any = null;
 
-  const [batting, bLeaders, pitching, pLeaders, fielding] = await Promise.all([
-    apiFetch(`/api/public/stats/batting?${initialSeasonParam}`).catch(() => []),
-    apiFetch(`/api/public/stats/leaders?${initialSeasonParam}`).catch(() => null),
-    apiFetch(`/api/public/stats/pitching?${initialSeasonParam}`).catch(() => []),
-    apiFetch(`/api/public/stats/pitching-leaders?${initialSeasonParam}`).catch(() => null),
-    apiFetch(`/api/public/stats/fielding?${initialSeasonParam}`).catch(() => []),
-  ]);
-  initialBatting = Array.isArray(batting) ? batting : [];
-  initialPitching = Array.isArray(pitching) ? pitching : [];
-  initialFielding = Array.isArray(fielding) ? fielding : [];
-  initialBattingLeaders = bLeaders && typeof bLeaders === 'object' && !Array.isArray(bLeaders) ? bLeaders : null;
-  initialPitchingLeaders = pLeaders && typeof pLeaders === 'object' && !Array.isArray(pLeaders) ? pLeaders : null;
+  try {
+    const overview = await apiFetch<StatsOverview>(
+      `/api/public/stats/overview?${initialSeasonParam}`,
+      { revalidate: API_REVALIDATE_STANDINGS },
+    );
+    initialBatting = Array.isArray(overview.batting) ? overview.batting : [];
+    initialPitching = Array.isArray(overview.pitching) ? overview.pitching : [];
+    initialFielding = Array.isArray(overview.fielding) ? overview.fielding : [];
+    initialBattingLeaders =
+      overview.battingLeaders && typeof overview.battingLeaders === 'object' && !Array.isArray(overview.battingLeaders)
+        ? overview.battingLeaders
+        : null;
+    initialPitchingLeaders =
+      overview.pitchingLeaders &&
+      typeof overview.pitchingLeaders === 'object' &&
+      !Array.isArray(overview.pitchingLeaders)
+        ? overview.pitchingLeaders
+        : null;
+  } catch {
+    const [batting, bLeaders, pitching, pLeaders, fielding] = await Promise.all([
+      apiFetch(`/api/public/stats/batting?${initialSeasonParam}`, { revalidate: API_REVALIDATE_STANDINGS }).catch(
+        () => [],
+      ),
+      apiFetch(`/api/public/stats/leaders?${initialSeasonParam}`, { revalidate: API_REVALIDATE_STANDINGS }).catch(
+        () => null,
+      ),
+      apiFetch(`/api/public/stats/pitching?${initialSeasonParam}`, { revalidate: API_REVALIDATE_STANDINGS }).catch(
+        () => [],
+      ),
+      apiFetch(`/api/public/stats/pitching-leaders?${initialSeasonParam}`, {
+        revalidate: API_REVALIDATE_STANDINGS,
+      }).catch(() => null),
+      apiFetch(`/api/public/stats/fielding?${initialSeasonParam}`, { revalidate: API_REVALIDATE_STANDINGS }).catch(
+        () => [],
+      ),
+    ]);
+    initialBatting = Array.isArray(batting) ? batting : [];
+    initialPitching = Array.isArray(pitching) ? pitching : [];
+    initialFielding = Array.isArray(fielding) ? fielding : [];
+    initialBattingLeaders = bLeaders && typeof bLeaders === 'object' && !Array.isArray(bLeaders) ? bLeaders : null;
+    initialPitchingLeaders =
+      pLeaders && typeof pLeaders === 'object' && !Array.isArray(pLeaders) ? pLeaders : null;
+  }
 
   return (
     <div>

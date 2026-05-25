@@ -14,7 +14,7 @@ import {
   players,
   gameEvents,
 } from '../../db/schema/index.js';
-import { eq, and, gte, lte, sql, desc, sum, inArray } from 'drizzle-orm';
+import { eq, and, gte, lte, sql, desc, sum, inArray, or, gt } from 'drizzle-orm';
 import { rowsFromExecute } from '../../lib/pg-result.js';
 import { gamesTableHasOfficialColumns } from '../../lib/games-official-columns.js';
 import { buildPublicLineScores } from '@lbss/shared';
@@ -112,6 +112,7 @@ export async function gamesRoutes(app: FastifyInstance) {
       for (const id of scoredIds) boundsMap[id] = { maxTop: 0, maxBot: 0 };
 
       if (scoredIds.length > 0) {
+        // Skip pitch rows — line scores only need scoring plays and inning boundaries (much smaller for final games).
         const allEvts = await db.select({
           gameId: gameEvents.gameId,
           inning: gameEvents.inning,
@@ -122,6 +123,10 @@ export async function gamesRoutes(app: FastifyInstance) {
           .where(and(
             sql`${gameEvents.gameId} = ANY(${sql.raw(`ARRAY[${scoredIds.join(',')}]`)})`,
             eq(gameEvents.isDeleted, false),
+            or(
+              eq(gameEvents.eventType, 'end_half_inning'),
+              gt(gameEvents.runsScored, 0),
+            ),
           ))
           .orderBy(gameEvents.eventNumber);
 

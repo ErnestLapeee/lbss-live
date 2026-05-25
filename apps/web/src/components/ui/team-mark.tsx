@@ -1,3 +1,4 @@
+import Image from 'next/image';
 import { clsx } from 'clsx';
 
 type Variant = 'tableSm' | 'tableMd' | 'final' | 'live' | 'card' | 'bracket';
@@ -49,9 +50,18 @@ export function TeamMark({
   );
 
   if (logoUrl) {
+    const px = variant === 'card' ? 56 : variant === 'bracket' ? 48 : variant === 'live' ? 40 : 20;
     return (
       <div className={imgWrap}>
-        <img src={logoUrl} alt={name} className="max-h-full max-w-full object-contain p-0.5" />
+        <Image
+          src={logoUrl}
+          alt={name}
+          width={px}
+          height={px}
+          className="max-h-full max-w-full object-contain p-0.5"
+          loading="lazy"
+          unoptimized
+        />
       </div>
     );
   }
