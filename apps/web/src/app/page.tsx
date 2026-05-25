@@ -9,7 +9,6 @@ import { RecentGameCard, UpcomingGameCard } from '@/components/home/home-game-ca
 import { HomeLiveScores } from '@/components/home/home-live-scores';
 import { SectionHeader } from '@/components/ui/section-header';
 import { TeamMark } from '@/components/ui/team-mark';
-import { buildTeamMatchupSpotlight } from '@/lib/home-matchup-spotlight';
 
 function toArray<T>(v: unknown): T[] {
   if (Array.isArray(v)) return v;
@@ -105,23 +104,6 @@ export default async function HomePage() {
     miniStandings.map((r) => [r.teamId, `${r.wins}-${r.losses}`]),
   );
 
-  let battingStats: any[] = [];
-  let pitchingStats: any[] = [];
-  if (upcomingGames.length > 0 && activeSeason?.id) {
-    try {
-      const [batting, pitching] = await Promise.all([
-        apiFetch(`/api/public/stats/batting?seasonId=${activeSeason.id}`, {
-          revalidate: API_REVALIDATE_STANDINGS,
-        }).catch(() => []),
-        apiFetch(`/api/public/stats/pitching?seasonId=${activeSeason.id}`, {
-          revalidate: API_REVALIDATE_STANDINGS,
-        }).catch(() => []),
-      ]);
-      battingStats = Array.isArray(batting) ? batting : [];
-      pitchingStats = Array.isArray(pitching) ? pitching : [];
-    } catch {}
-  }
-
   return (
     <div>
       {liveGames.length > 0 && (
@@ -183,16 +165,6 @@ export default async function HomePage() {
                     <UpcomingGameCard
                       key={game.id}
                       game={game}
-                      awaySpotlight={buildTeamMatchupSpotlight(
-                        battingStats,
-                        pitchingStats,
-                        game.awayTeamId,
-                      )}
-                      homeSpotlight={buildTeamMatchupSpotlight(
-                        battingStats,
-                        pitchingStats,
-                        game.homeTeamId,
-                      )}
                       awayRecord={recordByTeamId.get(game.awayTeamId) ?? null}
                       homeRecord={recordByTeamId.get(game.homeTeamId) ?? null}
                     />

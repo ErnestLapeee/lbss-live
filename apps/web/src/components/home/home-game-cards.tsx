@@ -1,6 +1,5 @@
 import Link from 'next/link';
 import { formatGameDateMonthDay, formatGameDateShort, formatGameTime } from '@/lib/game-datetime';
-import type { TeamMatchupSpotlight } from '@/lib/home-matchup-spotlight';
 import { TeamMark } from '@/components/ui/team-mark';
 
 export function gamePagePath(gameId: number) {
@@ -27,42 +26,8 @@ function TeamBadge({
   );
 }
 
-function SpotlightColumn({
-  label,
-  spotlight,
-}: {
-  label: string;
-  spotlight: TeamMatchupSpotlight;
-}) {
-  const lines = [
-    spotlight.batter ? { role: 'Hitting', ...spotlight.batter } : null,
-    spotlight.pitcher ? { role: 'Pitching', ...spotlight.pitcher } : null,
-  ].filter(Boolean) as { role: string; name: string; line: string }[];
-
-  return (
-    <div className="min-w-0">
-      <p className="text-[10px] font-bold uppercase tracking-wider text-text-faint mb-1 truncate">{label}</p>
-      {lines.length === 0 ? (
-        <p className="text-[11px] text-text-faint">—</p>
-      ) : (
-        <ul className="space-y-1">
-          {lines.map((row) => (
-            <li key={row.role} className="text-[11px] leading-snug">
-              <span className="text-text-faint">{row.role}: </span>
-              <span className="font-medium text-text">{row.name}</span>
-              <span className="text-text-muted"> · {row.line}</span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
-
 export function UpcomingGameCard({
   game,
-  awaySpotlight,
-  homeSpotlight,
   awayRecord,
   homeRecord,
 }: {
@@ -77,17 +42,9 @@ export function UpcomingGameCard({
     awayTeamLogoUrl?: string | null;
     homeTeamLogoUrl?: string | null;
   };
-  awaySpotlight: TeamMatchupSpotlight;
-  homeSpotlight: TeamMatchupSpotlight;
   awayRecord?: string | null;
   homeRecord?: string | null;
 }) {
-  const hasSpotlight =
-    awaySpotlight.batter ||
-    awaySpotlight.pitcher ||
-    homeSpotlight.batter ||
-    homeSpotlight.pitcher;
-
   return (
     <Link
       href={gamePagePath(game.id)}
@@ -124,24 +81,6 @@ export function UpcomingGameCard({
         </div>
       </div>
       {game.venue && <div className="mt-2 text-[11px] text-text-faint truncate">{game.venue}</div>}
-      {hasSpotlight && (
-        <div className="mt-3 pt-3 border-t border-border/80">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-text-faint mb-2">Players to watch</p>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <SpotlightColumn
-              label={game.awayTeamShort || game.awayTeamName || 'Away'}
-              spotlight={awaySpotlight}
-            />
-            <SpotlightColumn
-              label={game.homeTeamShort || game.homeTeamName || 'Home'}
-              spotlight={homeSpotlight}
-            />
-          </div>
-        </div>
-      )}
-      <p className="mt-3 text-[10px] font-semibold text-accent opacity-0 group-hover:opacity-100 transition-opacity">
-        View matchup →
-      </p>
     </Link>
   );
 }
