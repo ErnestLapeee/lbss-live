@@ -1,8 +1,11 @@
 import type { Metadata } from 'next';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, API_REVALIDATE_GAMES, API_REVALIDATE_SEASONS } from '@/lib/api';
 import { ScheduleClient } from './schedule-client';
 
 export const metadata: Metadata = { title: 'Schedule & Scores' };
+
+/** ISR for initial schedule; client polls with no-store when live games exist. */
+export const revalidate = 20;
 
 type SchedulePageProps = { searchParams: Promise<{ season?: string }> };
 
@@ -11,7 +14,7 @@ export default async function SchedulePage({ searchParams }: SchedulePageProps) 
   let seasons: { id: number; name: string; year: number; isActive?: boolean; seasonKind?: string }[] = [];
   let initialGames: any[] = [];
   try {
-    seasons = await apiFetch('/api/public/stats/seasons');
+    seasons = await apiFetch('/api/public/stats/seasons', { revalidate: API_REVALIDATE_SEASONS });
     seasons = Array.isArray(seasons) ? seasons : [];
   } catch {}
   const activeSeason = seasons.find((s) => s.isActive) || seasons[0];
@@ -29,7 +32,7 @@ export default async function SchedulePage({ searchParams }: SchedulePageProps) 
     const url = defaultSeasonId
       ? `/api/public/games?seasonId=${defaultSeasonId}`
       : '/api/public/games';
-    const data = await apiFetch(url, { noCache: true });
+    const data = await apiFetch(url, { revalidate: API_REVALIDATE_GAMES });
     if (Array.isArray(data)) initialGames = data;
   } catch {}
 

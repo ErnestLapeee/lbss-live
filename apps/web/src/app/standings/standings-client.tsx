@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { PageHeader } from '@/components/ui/page-header';
 import { PlayoffBracket } from '@/components/playoffs/playoff-bracket';
@@ -26,7 +26,13 @@ type StandingsRow = {
   runsScored?: number;
   runsAllowed?: number;
 };
-type LeagueStandings = { leagueName: string; leagueId: number; rows: StandingsRow[] };
+export type LeagueStandings = { leagueName: string; leagueId: number; rows: StandingsRow[] };
+
+type StandingsClientProps = {
+  initialSeasons?: Season[];
+  initialSeasonId?: number | null;
+  initialStandings?: LeagueStandings[];
+};
 type PlayoffsData = {
   seasonId: number;
   playoffs: { id: number; name: string; isActive: boolean; config: any } | null;
@@ -81,21 +87,30 @@ function seasonSelectLabel(s: Season): string {
   return `Season ${s.id}`;
 }
 
-export function StandingsClient() {
+export function StandingsClient({
+  initialSeasons = [],
+  initialSeasonId = null,
+  initialStandings = [],
+}: StandingsClientProps = {}) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const [seasons, setSeasons] = useState<Season[]>([]);
-  const [selectedSeasonId, setSelectedSeasonId] = useState<number | null>(null);
-  const [standings, setStandings] = useState<LeagueStandings[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [seasons, setSeasons] = useState<Season[]>(initialSeasons);
+  const [selectedSeasonId, setSelectedSeasonId] = useState<number | null>(initialSeasonId);
+  const [standings, setStandings] = useState<LeagueStandings[]>(initialStandings);
+  const [loading, setLoading] = useState(initialSeasons.length === 0);
+  const skipInitialStandingsFetch = useRef(initialStandings.length > 0);
   const [loadingStandings, setLoadingStandings] = useState(false);
   const [playoffs, setPlayoffs] = useState<PlayoffsData | null>(null);
   const [loadingPlayoffs, setLoadingPlayoffs] = useState(false);
   const [playoffsFetchError, setPlayoffsFetchError] = useState<string | null>(null);
 
-  // Load seasons once (client-side so dropdown always appears)
+  // Load seasons once (skip when SSR provided the list)
   useEffect(() => {
+    if (initialSeasons.length > 0) {
+      setLoading(false);
+      return;
+    }
     let cancelled = false;
     setLoading(true);
     fetch(proxy('/api/public/stats/seasons'))
@@ -120,7 +135,7 @@ export function StandingsClient() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [initialSeasons.length]);
 
   // Sync selected season from URL on mount and when URL changes
   useEffect(() => {
@@ -146,19 +161,27 @@ export function StandingsClient() {
       }
       setLoadingStandings(true);
       try {
-        const seasonDetail: { leagues?: { id: number; name: string }[] } = await fetch(
-          proxy(`/api/public/seasons/by-id/${seasonId}`)
-        ).then((r) => (r.ok ? r.json() : { leagues: [] }));
-        const leagueList = seasonDetail.leagues || [];
-        const results: LeagueStandings[] = await Promise.all(
-          leagueList.map(async (league) => {
-            const rows: StandingsRow[] = await fetch(proxy(`/api/public/standings/${league.id}`)).then((r) =>
-              r.ok ? r.json() : [],
-            );
-            return { leagueName: league.name, leagueId: league.id, rows };
-          }),
-        );
-        setStandings(results);
+        const res = await fetch(proxy(`/api/public/standings/by-season/${seasonId}`));
+        if (res.ok) {
+          const data: { leagues?: LeagueStandings[] } = await res.json();
+          setStandings(Array.isArray(data.leagues) ? data.leagues : []);
+        } else if (res.status === 404) {
+          const seasonDetail: { leagues?: { id: number; name: string }[] } = await fetch(
+            proxy(`/api/public/seasons/by-id/${seasonId}`),
+          ).then((r) => (r.ok ? r.json() : { leagues: [] }));
+          const leagueList = seasonDetail.leagues || [];
+          const results: LeagueStandings[] = await Promise.all(
+            leagueList.map(async (league) => {
+              const rows: StandingsRow[] = await fetch(proxy(`/api/public/standings/${league.id}`)).then(
+                (r) => (r.ok ? r.json() : []),
+              );
+              return { leagueName: league.name, leagueId: league.id, rows };
+            }),
+          );
+          setStandings(results);
+        } else {
+          setStandings([]);
+        }
       } catch {
         setStandings([]);
       } finally {
@@ -169,6 +192,10 @@ export function StandingsClient() {
   );
 
   useEffect(() => {
+    if (skipInitialStandingsFetch.current) {
+      skipInitialStandingsFetch.current = false;
+      return;
+    }
     loadStandings(selectedSeasonId);
   }, [selectedSeasonId, loadStandings]);
 

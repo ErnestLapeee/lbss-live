@@ -1,5 +1,10 @@
 import Link from 'next/link';
-import { apiFetch } from '@/lib/api';
+import {
+  apiFetch,
+  API_REVALIDATE_GAMES,
+  API_REVALIDATE_SEASONS,
+  API_REVALIDATE_STANDINGS,
+} from '@/lib/api';
 import { formatGameDateMonthDay, formatGameDateShort, formatGameTime } from '@/lib/game-datetime';
 import { SectionHeader } from '@/components/ui/section-header';
 import { TeamMark } from '@/components/ui/team-mark';
@@ -10,6 +15,9 @@ function toArray<T>(v: unknown): T[] {
     return (v as { data: T[] }).data;
   return [];
 }
+
+/** ISR: cache homepage HTML; live scores refresh on next revalidate or via schedule/live pages. */
+export const revalidate = 20;
 
 export default async function HomePage() {
   let games: any[] = [];
@@ -26,43 +34,61 @@ export default async function HomePage() {
     gamesBehind: any;
   }> = [];
 
-  try { seasons = toArray(await apiFetch('/api/public/seasons', { noCache: true })); } catch {}
-  activeSeason = seasons.find((s: any) => s?.isActive) ?? seasons[0] ?? null;
   try {
-    games = toArray(await apiFetch(
-      activeSeason?.id ? `/api/public/games?seasonId=${activeSeason.id}` : '/api/public/games',
-      { noCache: true }
-    ));
+    seasons = toArray(await apiFetch('/api/public/seasons', { revalidate: API_REVALIDATE_SEASONS }));
   } catch {}
+  activeSeason = seasons.find((s: any) => s?.isActive) ?? seasons[0] ?? null;
 
-  // Mini-standings: active season -> leagues -> standings rows (include 0-game teams)
+  const gamesUrl = activeSeason?.id
+    ? `/api/public/games?seasonId=${activeSeason.id}`
+    : '/api/public/games';
+  const standingsUrl = activeSeason?.id
+    ? `/api/public/standings/by-season/${activeSeason.id}?includeZeroGames=1`
+    : null;
+
   try {
-    if (activeSeason?.id) {
-      const seasonDetail = await apiFetch(`/api/public/seasons/by-id/${activeSeason.id}`, { noCache: true });
-      const leagues = (seasonDetail && typeof seasonDetail === 'object' && 'leagues' in seasonDetail)
-        ? ((seasonDetail as any).leagues ?? [])
-        : [];
-
-      const standingsByLeague = await Promise.all(
-        leagues
-          .filter((lg: any) => lg?.id)
-          .map(async (lg: any) => {
-            const lgRows = toArray<any>(
-              await apiFetch(`/api/public/standings/${lg.id}?includeZeroGames=1`, { noCache: true }),
-            );
-            return lgRows.map((r) => ({
-              teamId: r.teamId,
-              teamName: r.teamName,
-              teamShortName: r.teamShortName ?? null,
-              teamLogoUrl: r.teamLogoUrl ?? null,
-              wins: r.wins ?? 0,
-              losses: r.losses ?? 0,
-              winPct: r.winPct ?? null,
-              gamesBehind: r.gamesBehind ?? null,
-            }));
-          }),
+    const [gamesResult, standingsResult] = await Promise.all([
+      apiFetch(gamesUrl, { revalidate: API_REVALIDATE_GAMES }).catch(() => []),
+      standingsUrl
+        ? apiFetch<{ leagues?: Array<{ rows?: any[] }> }>(standingsUrl, {
+            revalidate: API_REVALIDATE_STANDINGS,
+          }).catch(async () => {
+            try {
+              const seasonDetail = await apiFetch<{ leagues?: { id: number }[] }>(
+                `/api/public/seasons/by-id/${activeSeason!.id}`,
+                { revalidate: API_REVALIDATE_STANDINGS },
+              );
+              const leagues = seasonDetail?.leagues ?? [];
+              const rowsByLeague = await Promise.all(
+                leagues
+                  .filter((lg) => lg?.id)
+                  .map((lg) =>
+                    apiFetch<any[]>(`/api/public/standings/${lg.id}?includeZeroGames=1`, {
+                      revalidate: API_REVALIDATE_STANDINGS,
+                    }).then((rows) => ({ rows: Array.isArray(rows) ? rows : [] })),
+                  ),
+              );
+              return { leagues: rowsByLeague };
+            } catch {
+              return null;
+            }
+          })
+        : Promise.resolve(null),
+    ]);
+    games = toArray(gamesResult);
+    if (standingsResult?.leagues) {
+      miniStandings = standingsResult.leagues.flatMap((lg) =>
+        (lg.rows ?? []).map((r: any) => ({
+          teamId: r.teamId,
+          teamName: r.teamName,
+          teamShortName: r.teamShortName ?? null,
+          teamLogoUrl: r.teamLogoUrl ?? null,
+          wins: r.wins ?? 0,
+          losses: r.losses ?? 0,
+          winPct: r.winPct ?? null,
+          gamesBehind: r.gamesBehind ?? null,
+        })),
       );
-      miniStandings = standingsByLeague.flat();
     }
   } catch {}
 
