@@ -224,7 +224,7 @@ export function ScheduleClient({
                   {upcoming.length > 0 && (
                     <>
                       <SectionLabel color="muted">Upcoming</SectionLabel>
-                      <div className="space-y-3">
+                      <div className="space-y-2">
                         {upcoming.map(g => (
                           <UpcomingCard key={g.id} game={g} recordByTeamId={recordForGame(g, recordByTeamId)} />
                         ))}
@@ -256,7 +256,7 @@ export function ScheduleClient({
             {upcomingGames.length > 0 && (
               <section>
                 <SectionLabel color="muted">Upcoming</SectionLabel>
-                <div className="space-y-3">
+                <div className="space-y-2">
                   {upcomingGames.map(g => (
                     <UpcomingCard key={g.id} game={g} recordByTeamId={recordForGame(g, recordByTeamId)} />
                   ))}
@@ -560,7 +560,7 @@ function FinalCard({ game }: { game: Game }) {
 }
 
 /* ═══════════════════════════════════════════
-   UPCOMING CARD — matchup rows, date rail, linkable
+   UPCOMING CARD — compact list row
    ═══════════════════════════════════════════ */
 function recordForGame(
   game: Game,
@@ -580,61 +580,35 @@ function UpcomingCard({
   recordByTeamId?: { away?: string; home?: string };
 }) {
   return (
-    <Link href={`/games/${game.id}/live`} className="block group">
-      <article className="flex overflow-hidden rounded-xl border border-border bg-surface transition-all group-hover:border-accent/35 group-hover:shadow-md group-hover:shadow-black/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50">
-        {/* Date rail */}
-        <div className="flex w-[4.25rem] shrink-0 flex-col items-center justify-center border-r border-border/60 bg-surface-alt/90 py-4">
-          <span className="text-[9px] font-bold uppercase tracking-wider text-accent">
-            {formatGameMonthShort(game.scheduledAt)}
-          </span>
-          <span className="font-heading text-[1.65rem] font-black leading-none text-text tabular-nums">
-            {formatGameDayOfMonth(game.scheduledAt)}
-          </span>
-          <span className="mt-1 text-[9px] font-medium text-text-faint">
-            {formatGameWeekdayShort(game.scheduledAt)}
-          </span>
-        </div>
+    <Link
+      href={`/games/${game.id}/live`}
+      className="flex items-center gap-3 rounded-lg border border-border bg-surface px-3 py-2.5 transition-colors hover:bg-surface-alt focus:outline-none focus-visible:ring-1 focus-visible:ring-border"
+    >
+      <div className="flex w-11 shrink-0 flex-col items-center leading-none">
+        <span className="text-[8px] font-semibold uppercase text-text-faint">{formatGameMonthShort(game.scheduledAt)}</span>
+        <span className="font-heading text-lg font-bold tabular-nums text-text">{formatGameDayOfMonth(game.scheduledAt)}</span>
+        <span className="text-[8px] text-text-faint">{formatGameWeekdayShort(game.scheduledAt)}</span>
+      </div>
 
-        <div className="flex min-w-0 flex-1 flex-col">
-          <div className="flex items-start gap-3 px-4 py-3">
-            <div className="min-w-0 flex-1 space-y-2">
-              <UpcomingTeamRow
-                name={game.awayTeamName}
-                short={game.awayTeamShort}
-                logoUrl={game.awayTeamLogoUrl}
-                record={recordByTeamId?.away}
-              />
-              <UpcomingTeamRow
-                name={game.homeTeamName}
-                short={game.homeTeamShort}
-                logoUrl={game.homeTeamLogoUrl}
-                record={recordByTeamId?.home}
-                isHome
-              />
-            </div>
-            <div className="shrink-0 pt-0.5 text-right">
-              <div className="font-heading text-lg font-black tabular-nums leading-none text-text">
-                {formatGameTime(game.scheduledAt)}
-              </div>
-              <span className="mt-1 inline-block rounded-full bg-surface-alt px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-text-faint">
-                Upcoming
-              </span>
-            </div>
-          </div>
+      <div className="min-w-0 flex-1">
+        <UpcomingTeamRow
+          name={game.awayTeamName}
+          short={game.awayTeamShort}
+          logoUrl={game.awayTeamLogoUrl}
+          record={recordByTeamId?.away}
+        />
+        <UpcomingTeamRow
+          name={game.homeTeamName}
+          short={game.homeTeamShort}
+          logoUrl={game.homeTeamLogoUrl}
+          record={recordByTeamId?.home}
+        />
+        {game.venue && <p className="mt-1 truncate text-[10px] text-text-faint">{game.venue}</p>}
+      </div>
 
-          <div className="flex items-center justify-between gap-3 border-t border-border/50 px-4 py-2">
-            <span className="min-w-0 truncate text-[10px] text-text-faint">
-              {game.venue || formatGameDateShort(game.scheduledAt)}
-            </span>
-            <span className="flex shrink-0 items-center gap-1 text-[10px] font-medium text-text-faint transition-colors group-hover:text-accent">
-              Preview
-              <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
-              </svg>
-            </span>
-          </div>
-        </div>
-      </article>
+      <div className="shrink-0 text-right">
+        <span className="text-sm font-semibold tabular-nums text-text">{formatGameTime(game.scheduledAt)}</span>
+      </div>
     </Link>
   );
 }
@@ -644,31 +618,18 @@ function UpcomingTeamRow({
   short,
   logoUrl,
   record,
-  isHome,
 }: {
   name: string | null;
   short: string | null;
   logoUrl?: string | null;
   record?: string;
-  isHome?: boolean;
 }) {
   const label = name || 'TBD';
   return (
-    <div className="flex items-center gap-2.5 min-w-0">
-      <TeamMark variant="final" name={label} shortName={short} logoUrl={logoUrl} />
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="truncate text-sm font-semibold text-text transition-colors group-hover:text-accent">
-            {label}
-          </span>
-          {record && (
-            <span className="shrink-0 font-mono text-[10px] tabular-nums text-text-faint">{record}</span>
-          )}
-        </div>
-        {isHome && (
-          <span className="text-[8px] font-bold uppercase tracking-[0.12em] text-text-faint/80">Home</span>
-        )}
-      </div>
+    <div className="flex items-center gap-1.5 min-w-0 py-px">
+      <TeamMark variant="tableSm" name={label} shortName={short} logoUrl={logoUrl} />
+      <span className="truncate text-xs font-medium text-text">{label}</span>
+      {record && <span className="shrink-0 text-[10px] tabular-nums text-text-faint">{record}</span>}
     </div>
   );
 }
