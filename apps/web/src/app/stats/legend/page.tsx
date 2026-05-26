@@ -93,8 +93,8 @@ function LegendTable({ title, rows }: { title: string; rows: { abbr: string; nam
         <span className="w-1 h-5 rounded-full bg-accent" />
         {title}
       </h2>
-      <div className="rounded-xl border border-border bg-surface overflow-hidden">
-        <table className="w-full text-sm">
+      <div className="rounded-xl border border-border bg-surface overflow-x-auto overscroll-x-contain">
+        <table className="w-full min-w-[28rem] text-sm">
           <thead>
             <tr className="bg-surface-alt border-b border-border">
               <th className="px-4 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider text-text-faint w-20">Abbr.</th>

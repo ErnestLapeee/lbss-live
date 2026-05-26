@@ -7,6 +7,7 @@ type StandingsRowDto = {
   id: number;
   leagueId: number;
   teamId: number;
+  teamSlug: string;
   teamName: string;
   teamShortName: string | null;
   teamLogoUrl: string | null;
@@ -30,6 +31,7 @@ async function fetchStandingsRows(leagueIds: number[], includeZero: boolean): Pr
       id: standings.id,
       leagueId: standings.leagueId,
       teamId: standings.teamId,
+      teamSlug: teams.slug,
       teamName: teams.name,
       teamShortName: teams.shortName,
       teamLogoUrl: teams.logoUrl,

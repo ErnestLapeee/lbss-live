@@ -9,6 +9,7 @@ import { RecentGameCard, UpcomingGameCard } from '@/components/home/home-game-ca
 import { HomeLiveScores } from '@/components/home/home-live-scores';
 import { SectionHeader } from '@/components/ui/section-header';
 import { TeamMark } from '@/components/ui/team-mark';
+import { sortStandingsRows } from '@/lib/standings-sort';
 
 function toArray<T>(v: unknown): T[] {
   if (Array.isArray(v)) return v;
@@ -26,6 +27,7 @@ export default async function HomePage() {
   let activeSeason: any | null = null;
   let miniStandings: Array<{
     teamId: number;
+    teamSlug: string | null;
     teamName: string;
     teamShortName: string | null;
     teamLogoUrl: string | null;
@@ -36,7 +38,7 @@ export default async function HomePage() {
   }> = [];
 
   try {
-    seasons = toArray(await apiFetch('/api/public/seasons', { revalidate: API_REVALIDATE_SEASONS }));
+    seasons = toArray(await apiFetch('/api/public/stats/seasons', { revalidate: API_REVALIDATE_SEASONS }));
   } catch {}
   activeSeason = seasons.find((s: any) => s?.isActive) ?? seasons[0] ?? null;
 
@@ -78,17 +80,20 @@ export default async function HomePage() {
     ]);
     games = toArray(gamesResult);
     if (standingsResult?.leagues) {
-      miniStandings = standingsResult.leagues.flatMap((lg) =>
-        (lg.rows ?? []).map((r: any) => ({
-          teamId: r.teamId,
-          teamName: r.teamName,
-          teamShortName: r.teamShortName ?? null,
-          teamLogoUrl: r.teamLogoUrl ?? null,
-          wins: r.wins ?? 0,
-          losses: r.losses ?? 0,
-          winPct: r.winPct ?? null,
-          gamesBehind: r.gamesBehind ?? null,
-        })),
+      miniStandings = sortStandingsRows(
+        standingsResult.leagues.flatMap((lg) =>
+          (lg.rows ?? []).map((r: any) => ({
+            teamId: r.teamId,
+            teamSlug: r.teamSlug ?? null,
+            teamName: r.teamName,
+            teamShortName: r.teamShortName ?? null,
+            teamLogoUrl: r.teamLogoUrl ?? null,
+            wins: r.wins ?? 0,
+            losses: r.losses ?? 0,
+            winPct: r.winPct ?? null,
+            gamesBehind: r.gamesBehind ?? null,
+          })),
+        ),
       );
     }
   } catch {}
@@ -208,7 +213,16 @@ export default async function HomePage() {
                         <span className="text-[11px] font-bold text-text-faint w-4">{i + 1}</span>
                         <TeamBadge name={row.teamName} shortName={row.teamShortName} logoUrl={row.teamLogoUrl} />
                         <div className="flex-1 min-w-0">
-                          <div className="text-sm font-medium truncate">{row.teamName}</div>
+                          {row.teamSlug ? (
+                            <Link
+                              href={`/teams/${row.teamSlug}`}
+                              className="text-sm font-medium truncate block hover:text-accent transition-colors"
+                            >
+                              {row.teamName}
+                            </Link>
+                          ) : (
+                            <div className="text-sm font-medium truncate">{row.teamName}</div>
+                          )}
                         </div>
                         <span className="text-[11px] text-text-faint font-mono">
                           {row.wins}-{row.losses}

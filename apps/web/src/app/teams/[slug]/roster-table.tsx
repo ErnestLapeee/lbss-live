@@ -30,8 +30,8 @@ export function RosterTable({ roster, returnTo }: { roster: RosterPlayer[]; retu
   };
 
   return (
-    <div className="rounded-xl border border-border bg-surface overflow-hidden">
-      <table className="w-full text-sm">
+    <div className="rounded-xl border border-border bg-surface overflow-x-auto overscroll-x-contain">
+      <table className="w-full min-w-[28rem] text-sm">
         <thead>
           <tr className="border-b border-border bg-surface-alt">
             <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-text-faint w-12">#</th>

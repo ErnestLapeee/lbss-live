@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { PageHeader } from '@/components/ui/page-header';
@@ -17,6 +18,7 @@ type Season = {
 type StandingsRow = {
   id: number;
   teamId?: number;
+  teamSlug?: string;
   teamName: string;
   wins: number;
   losses: number;
@@ -384,8 +386,8 @@ export function StandingsClient({
             {standings.map((league) => (
               <div key={league.leagueId}>
                 <h2 className="mb-3 text-lg font-bold">{league.leagueName}</h2>
-                <div className="overflow-hidden rounded-xl border border-border bg-surface">
-                  <table className="w-full text-sm">
+                <div className="overflow-x-auto overscroll-x-contain rounded-xl border border-border bg-surface">
+                  <table className="w-full min-w-[36rem] text-sm">
                     <thead>
                       <tr className="border-b border-border bg-surface-alt">
                         <th className="w-8 px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-text-faint">
@@ -424,7 +426,15 @@ export function StandingsClient({
                           className="border-b border-border last:border-0 transition-colors hover:bg-surface-alt/50"
                         >
                           <td className="px-4 py-3 font-bold text-text-faint">{i + 1}</td>
-                          <td className="px-4 py-3 font-semibold">{row.teamName || '—'}</td>
+                          <td className="px-4 py-3 font-semibold">
+                            {row.teamSlug ? (
+                              <Link href={`/teams/${row.teamSlug}`} className="hover:text-accent transition-colors">
+                                {row.teamName || '—'}
+                              </Link>
+                            ) : (
+                              row.teamName || '—'
+                            )}
+                          </td>
                           <td className="stat-value px-4 py-3 text-right font-mono">{row.wins}</td>
                           <td className="stat-value px-4 py-3 text-right font-mono">{row.losses}</td>
                           <td className="stat-value px-4 py-3 text-right font-mono">{row.gamesPlayed}</td>

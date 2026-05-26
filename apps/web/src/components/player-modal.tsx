@@ -322,8 +322,8 @@ export function PlayerModal({ slug, firstName, lastName, onClose }: PlayerModalP
                 const rows = battingStats;
                 const total = sumBattingRows(rows);
                 return (
-                  <div className="space-y-3">
-                    <table className="w-full text-[11px] border-collapse">
+                  <div className="space-y-3 overflow-x-auto overscroll-x-contain">
+                    <table className="w-full min-w-[52rem] text-[11px] border-collapse">
                       <thead>
                         <tr className="bg-[#e5e7eb] text-[#333] border-b border-[#ccc]">
                           {['Season','Team','G','PA','AB','R','H','2B','3B','HR','RBI','BB','SO','SB','CS','AVG','OBP','SLG','OPS'].map(col => (
@@ -401,8 +401,8 @@ export function PlayerModal({ slug, firstName, lastName, onClose }: PlayerModalP
                 const rows = pitchingStats;
                 const total = sumPitchingRows(rows);
                 return (
-                  <div className="space-y-3">
-                    <table className="w-full text-[11px] border-collapse">
+                  <div className="space-y-3 overflow-x-auto overscroll-x-contain">
+                    <table className="w-full min-w-[48rem] text-[11px] border-collapse">
                       <thead>
                         <tr className="bg-[#e5e7eb] text-[#333] border-b border-[#ccc]">
                           {['Season','Team','G','GS','W','L','SV','IP','H','R','ER','BB','SO','HR','ERA','WHIP','OBA'].map(col => (
@@ -485,8 +485,8 @@ export function PlayerModal({ slug, firstName, lastName, onClose }: PlayerModalP
                 const totalInnStr = totalInnOuts > 0 ? outsToIp(totalInnOuts) : '—';
 
                 return (
-                  <div className="space-y-3">
-                    <table className="w-full text-[11px] border-collapse">
+                  <div className="space-y-3 overflow-x-auto overscroll-x-contain">
+                    <table className="w-full min-w-[32rem] text-[11px] border-collapse">
                       <thead>
                         <tr className="bg-[#e5e7eb] text-[#333] border-b border-[#ccc]">
                           {['Season','Team','Pos','G','Inn','PO','A','E','DP','FP%'].map(col => (
