@@ -13,6 +13,7 @@ import {
   formatGameTime,
   formatGameWeekdayShort,
 } from '@/lib/game-datetime';
+import { buildRecordByTeamIdFromStandings } from '@/lib/standings-records';
 
 
 interface Game {
@@ -61,14 +62,21 @@ interface ScheduleClientProps {
   initialGames: Game[];
   seasons: Season[];
   defaultSeasonId: number | null;
+  initialRecordByTeamId?: Record<number, string>;
 }
 
-export function ScheduleClient({ initialGames, seasons, defaultSeasonId }: ScheduleClientProps) {
+export function ScheduleClient({
+  initialGames,
+  seasons,
+  defaultSeasonId,
+  initialRecordByTeamId = {},
+}: ScheduleClientProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [games, setGames] = useState<Game[]>(initialGames);
   const [selectedSeasonId, setSelectedSeasonId] = useState<number | null>(defaultSeasonId);
+  const [recordByTeamId, setRecordByTeamId] = useState<Record<number, string>>(initialRecordByTeamId);
   const isFirstRun = useRef(true);
 
   useEffect(() => {
@@ -105,6 +113,31 @@ export function ScheduleClient({ initialGames, seasons, defaultSeasonId }: Sched
     }
     fetchData();
   }, [selectedSeasonId, fetchData]);
+
+  useEffect(() => {
+    if (selectedSeasonId == null) {
+      setRecordByTeamId({});
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(
+          `/api/proxy/public/standings/by-season/${selectedSeasonId}?includeZeroGames=1`,
+          { cache: 'no-store' },
+        );
+        const data = await res.json();
+        if (!cancelled && res.ok) {
+          setRecordByTeamId(buildRecordByTeamIdFromStandings(data));
+        }
+      } catch {
+        if (!cancelled) setRecordByTeamId({});
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedSeasonId]);
 
   // Auto-refresh every 12s when live games exist
   useEffect(() => {
@@ -191,8 +224,10 @@ export function ScheduleClient({ initialGames, seasons, defaultSeasonId }: Sched
                   {upcoming.length > 0 && (
                     <>
                       <SectionLabel color="muted">Upcoming</SectionLabel>
-                      <div className="space-y-2">
-                        {upcoming.map(g => <UpcomingCard key={g.id} game={g} />)}
+                      <div className="space-y-3">
+                        {upcoming.map(g => (
+                          <UpcomingCard key={g.id} game={g} recordByTeamId={recordForGame(g, recordByTeamId)} />
+                        ))}
                       </div>
                     </>
                   )}
@@ -221,8 +256,10 @@ export function ScheduleClient({ initialGames, seasons, defaultSeasonId }: Sched
             {upcomingGames.length > 0 && (
               <section>
                 <SectionLabel color="muted">Upcoming</SectionLabel>
-                <div className="space-y-2">
-                  {upcomingGames.map(g => <UpcomingCard key={g.id} game={g} />)}
+                <div className="space-y-3">
+                  {upcomingGames.map(g => (
+                    <UpcomingCard key={g.id} game={g} recordByTeamId={recordForGame(g, recordByTeamId)} />
+                  ))}
                 </div>
               </section>
             )}
@@ -523,33 +560,114 @@ function FinalCard({ game }: { game: Game }) {
 }
 
 /* ═══════════════════════════════════════════
-   UPCOMING CARD — calendar-like, time dominant
+   UPCOMING CARD — matchup rows, date rail, linkable
    ═══════════════════════════════════════════ */
-function UpcomingCard({ game }: { game: Game }) {
+function recordForGame(
+  game: Game,
+  records: Record<number, string>,
+): { away?: string; home?: string } | undefined {
+  const away = records[game.awayTeamId];
+  const home = records[game.homeTeamId];
+  if (!away && !home) return undefined;
+  return { away, home };
+}
+
+function UpcomingCard({
+  game,
+  recordByTeamId,
+}: {
+  game: Game;
+  recordByTeamId?: { away?: string; home?: string };
+}) {
   return (
-    <div className="rounded-xl bg-surface border border-border/60 p-4 flex items-center gap-4">
-      {/* Date block */}
-      <div className="w-14 h-14 rounded-lg bg-surface-alt flex flex-col items-center justify-center shrink-0 border border-border/50">
-        <span className="text-[9px] font-bold uppercase tracking-wider text-text-faint">{formatGameMonthShort(game.scheduledAt)}</span>
-        <span className="text-xl font-heading font-black text-text leading-none">{formatGameDayOfMonth(game.scheduledAt)}</span>
-      </div>
-      {/* Matchup */}
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 text-sm font-bold text-text">
-          <span className="truncate">{game.awayTeamName || 'TBD'}</span>
-          <span className="text-text-faint text-xs font-normal">at</span>
-          <span className="truncate">{game.homeTeamName || 'TBD'}</span>
+    <Link href={`/games/${game.id}/live`} className="block group">
+      <article className="flex overflow-hidden rounded-xl border border-border bg-surface transition-all group-hover:border-accent/35 group-hover:shadow-md group-hover:shadow-black/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50">
+        {/* Date rail */}
+        <div className="flex w-[4.25rem] shrink-0 flex-col items-center justify-center border-r border-border/60 bg-surface-alt/90 py-4">
+          <span className="text-[9px] font-bold uppercase tracking-wider text-accent">
+            {formatGameMonthShort(game.scheduledAt)}
+          </span>
+          <span className="font-heading text-[1.65rem] font-black leading-none text-text tabular-nums">
+            {formatGameDayOfMonth(game.scheduledAt)}
+          </span>
+          <span className="mt-1 text-[9px] font-medium text-text-faint">
+            {formatGameWeekdayShort(game.scheduledAt)}
+          </span>
         </div>
-        {game.venue && <p className="text-[10px] text-text-faint mt-0.5 truncate">{game.venue}</p>}
-      </div>
-      {/* Time */}
-      <div className="shrink-0 text-right">
-        <div className="text-sm font-heading font-bold text-text-muted tabular-nums">
-          {formatGameTime(game.scheduledAt)}
+
+        <div className="flex min-w-0 flex-1 flex-col">
+          <div className="flex items-start gap-3 px-4 py-3">
+            <div className="min-w-0 flex-1 space-y-2">
+              <UpcomingTeamRow
+                name={game.awayTeamName}
+                short={game.awayTeamShort}
+                logoUrl={game.awayTeamLogoUrl}
+                record={recordByTeamId?.away}
+              />
+              <UpcomingTeamRow
+                name={game.homeTeamName}
+                short={game.homeTeamShort}
+                logoUrl={game.homeTeamLogoUrl}
+                record={recordByTeamId?.home}
+                isHome
+              />
+            </div>
+            <div className="shrink-0 pt-0.5 text-right">
+              <div className="font-heading text-lg font-black tabular-nums leading-none text-text">
+                {formatGameTime(game.scheduledAt)}
+              </div>
+              <span className="mt-1 inline-block rounded-full bg-surface-alt px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-text-faint">
+                Upcoming
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between gap-3 border-t border-border/50 px-4 py-2">
+            <span className="min-w-0 truncate text-[10px] text-text-faint">
+              {game.venue || formatGameDateShort(game.scheduledAt)}
+            </span>
+            <span className="flex shrink-0 items-center gap-1 text-[10px] font-medium text-text-faint transition-colors group-hover:text-accent">
+              Preview
+              <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
+              </svg>
+            </span>
+          </div>
         </div>
-        <div className="text-[10px] text-text-faint">
-          {formatGameWeekdayShort(game.scheduledAt)}
+      </article>
+    </Link>
+  );
+}
+
+function UpcomingTeamRow({
+  name,
+  short,
+  logoUrl,
+  record,
+  isHome,
+}: {
+  name: string | null;
+  short: string | null;
+  logoUrl?: string | null;
+  record?: string;
+  isHome?: boolean;
+}) {
+  const label = name || 'TBD';
+  return (
+    <div className="flex items-center gap-2.5 min-w-0">
+      <TeamMark variant="final" name={label} shortName={short} logoUrl={logoUrl} />
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="truncate text-sm font-semibold text-text transition-colors group-hover:text-accent">
+            {label}
+          </span>
+          {record && (
+            <span className="shrink-0 font-mono text-[10px] tabular-nums text-text-faint">{record}</span>
+          )}
         </div>
+        {isHome && (
+          <span className="text-[8px] font-bold uppercase tracking-[0.12em] text-text-faint/80">Home</span>
+        )}
       </div>
     </div>
   );

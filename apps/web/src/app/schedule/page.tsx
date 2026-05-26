@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
-import { apiFetch, API_REVALIDATE_GAMES, API_REVALIDATE_SEASONS } from '@/lib/api';
+import { apiFetch, API_REVALIDATE_GAMES, API_REVALIDATE_SEASONS, API_REVALIDATE_STANDINGS } from '@/lib/api';
+import { buildRecordByTeamIdFromStandings } from '@/lib/standings-records';
 import { ScheduleClient } from './schedule-client';
 
 export const metadata: Metadata = { title: 'Schedule & Scores' };
@@ -28,6 +29,7 @@ export default async function SchedulePage({ searchParams }: SchedulePageProps) 
       defaultSeasonId = sid;
     }
   }
+  let initialRecordByTeamId: Record<number, string> = {};
   try {
     const url = defaultSeasonId
       ? `/api/public/games?seasonId=${defaultSeasonId}`
@@ -35,12 +37,22 @@ export default async function SchedulePage({ searchParams }: SchedulePageProps) 
     const data = await apiFetch(url, { revalidate: API_REVALIDATE_GAMES });
     if (Array.isArray(data)) initialGames = data;
   } catch {}
+  if (defaultSeasonId) {
+    try {
+      const standings = await apiFetch<{ leagues?: Array<{ rows?: Array<{ teamId: number; wins?: number; losses?: number }> }> }>(
+        `/api/public/standings/by-season/${defaultSeasonId}?includeZeroGames=1`,
+        { revalidate: API_REVALIDATE_STANDINGS },
+      );
+      initialRecordByTeamId = buildRecordByTeamIdFromStandings(standings);
+    } catch {}
+  }
 
   return (
     <ScheduleClient
       initialGames={initialGames}
       seasons={seasons}
       defaultSeasonId={defaultSeasonId}
+      initialRecordByTeamId={initialRecordByTeamId}
     />
   );
 }
