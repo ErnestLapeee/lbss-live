@@ -10,15 +10,6 @@ import { aggregatePitchingStatsByPitcher, inningsFromOuts, boundsFromEvents, bui
 import { formatGameDateLong } from '@/lib/game-datetime';
 import { normalizeGameEvents, tryExtractEventArray } from '@/lib/normalize-game-events';
 import { buildPositionMapsByEvent } from '@/lib/position-maps-by-event';
-import {
-  buildBaseRunningSummaryLines,
-  buildBattingSummaryLines,
-  buildFieldingErrorLine,
-  buildGameInfoLines,
-  buildPitchesStrikesLine,
-  type SummaryPlayerRow,
-} from '@/lib/box-score-summary';
-import { BoxScoreGameInfo, BoxScoreTeamSummary } from '@/components/game/box-score-summary';
 
 /** Fetch a JSON array from the public proxy; returns null on non-OK or parse errors so callers do not replace state with []. */
 async function fetchPublicJsonArray(url: string): Promise<any[] | null> {
@@ -1041,53 +1032,6 @@ export function LiveGameClient({
     );
   };
 
-  const renderBoxScoreTeamSummary = (teamId: number, batting: BattingBoxScore[], pitchers: PitchingBoxScore[]) => {
-    const players: SummaryPlayerRow[] = batting.map((b) => ({
-      playerId: b.playerId,
-      firstName: b.firstName,
-      lastName: b.lastName,
-    }));
-    const battingMap: Record<number, BattingBoxScore> = {};
-    for (const b of batting) battingMap[b.playerId] = b;
-
-    const getStat = (playerId: number, key: string) =>
-      pickBattingStat(
-        status,
-        battingMap[playerId],
-        liveBattingMap[playerId],
-        key as keyof PlayerGameBattingCounts,
-      );
-
-    const fieldingTeam = fieldingBox.filter((f) => f.teamId === teamId);
-    const fieldingPlayers: SummaryPlayerRow[] = fieldingTeam.map((f) => ({
-      playerId: f.playerId,
-      firstName: f.firstName,
-      lastName: f.lastName,
-    }));
-    const errorLine = buildFieldingErrorLine(fieldingPlayers, (pid) => fieldingTeam.find((f) => f.playerId === pid)?.errors ?? 0);
-
-    const pitchesLine = buildPitchesStrikesLine(
-      pitchers.map((p) => ({
-        firstName: p.firstName,
-        lastName: p.lastName,
-        pitchesThrown: p.pitchesThrown,
-        balls: p.balls,
-        strikes: p.strikes,
-      })),
-    );
-
-    return (
-      <BoxScoreTeamSummary
-        sections={[
-          { title: 'Batting', lines: buildBattingSummaryLines(players, getStat) },
-          { title: 'Fielding', lines: errorLine ? [errorLine] : [] },
-          { title: 'Base Running', lines: buildBaseRunningSummaryLines(players, getStat) },
-          { title: 'Pitching', lines: pitchesLine ? [pitchesLine] : [] },
-        ]}
-      />
-    );
-  };
-
   const baseStateFromEvent = (evt?: GameEvent | null) => ({
     first: Boolean(evt?.runnerFirstId ?? evt?.runnerFirstName),
     second: Boolean(evt?.runnerSecondId ?? evt?.runnerSecondName),
@@ -1964,16 +1908,7 @@ export function LiveGameClient({
           {tab === 'boxscore' && (
             <div>
               {renderBattingTable(game.awayTeamName, awayLineup, awayBatting)}
-              {renderBoxScoreTeamSummary(game.awayTeamId, awayBatting, awayPitching)}
               {renderBattingTable(game.homeTeamName, homeLineup, homeBatting)}
-              {renderBoxScoreTeamSummary(game.homeTeamId, homeBatting, homePitching)}
-              <BoxScoreGameInfo
-                lines={buildGameInfoLines({
-                  venue: game.venue,
-                  officialScorer: game.officialScorer,
-                  umpire: game.umpire,
-                })}
-              />
             </div>
           )}
 
