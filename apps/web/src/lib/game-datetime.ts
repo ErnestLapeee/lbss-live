@@ -14,6 +14,28 @@ function parseInstant(iso: string): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
+/** lv-LV `Intl` often lowercases weekday/month names; Latvian UI copy uses capitals (Svētdiena, Maijs). */
+function capitalizeLvDateDisplay(text: string): string {
+  if (!text || text === '—') return text;
+  const chars = [...text];
+  if (chars.length > 0) {
+    chars[0] = chars[0].toLocaleUpperCase(GAME_DISPLAY_LOCALE);
+  }
+  let result = chars.join('');
+  if (result.includes('gada')) {
+    result = result.replace(
+      /(gada\s+\d{1,2}\.\s+)(\p{Ll})/u,
+      (_, prefix, letter) => prefix + letter.toLocaleUpperCase(GAME_DISPLAY_LOCALE),
+    );
+  } else {
+    result = result.replace(
+      /(,\s*\d{1,2}\.\s+)(\p{Ll})/u,
+      (_, prefix, letter) => prefix + letter.toLocaleUpperCase(GAME_DISPLAY_LOCALE),
+    );
+  }
+  return result;
+}
+
 export function formatGameTime(iso: string): string {
   const d = parseInstant(iso);
   if (!d) return '—';
@@ -23,7 +45,8 @@ export function formatGameTime(iso: string): string {
 export function formatGameDate(iso: string, options: Intl.DateTimeFormatOptions): string {
   const d = parseInstant(iso);
   if (!d) return '—';
-  return d.toLocaleDateString(GAME_DISPLAY_LOCALE, { ...options, timeZone: GAME_DISPLAY_TIMEZONE });
+  const raw = d.toLocaleDateString(GAME_DISPLAY_LOCALE, { ...options, timeZone: GAME_DISPLAY_TIMEZONE });
+  return capitalizeLvDateDisplay(raw);
 }
 
 export function formatGameDayOfMonth(iso: string): string {
