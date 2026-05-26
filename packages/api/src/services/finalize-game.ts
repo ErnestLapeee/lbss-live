@@ -547,7 +547,7 @@ export async function finalizeGame(gameId: number, userId?: number, options?: Fi
   }
 
   /* ── Pitcher Win / Loss decisions ── */
-  await assignPitcherDecisions(gameId, game, eventsForPitching, lineups);
+  await assignPitcherDecisions(gameId, game, eventsForPitching, lineups, pitcherAgg, playerTeamMap);
 
   /* ── Per-game FIELDING stats ── */
 
@@ -824,11 +824,46 @@ export async function finalizeGame(gameId: number, userId?: number, options?: Fi
    Pitcher W/L assignment (simplified MLB Rule 9.17)
    ═══════════════════════════════════════════════════════════════ */
 
+/** Pick a pitcher of record who actually has per-game pitching stats. */
+function resolvePitcherOfRecord(
+  candidateId: number | null,
+  teamId: number,
+  lineups: { teamId: number; playerId: number | null; isStarter: boolean | null; position: number | null }[],
+  pitcherAgg: Map<number, { outsRecorded: number }>,
+  playerTeamMap: Map<number, number>,
+): number | null {
+  if (
+    candidateId != null &&
+    pitcherAgg.has(candidateId) &&
+    playerTeamMap.get(candidateId) === teamId
+  ) {
+    return candidateId;
+  }
+  const starter = lineups.find(
+    (l) => l.teamId === teamId && l.isStarter && l.position === 1 && l.playerId != null,
+  );
+  if (starter?.playerId != null && pitcherAgg.has(starter.playerId)) {
+    return starter.playerId;
+  }
+  let bestId: number | null = null;
+  let bestOuts = -1;
+  for (const [pid, a] of pitcherAgg) {
+    if (playerTeamMap.get(pid) !== teamId) continue;
+    if (a.outsRecorded > bestOuts) {
+      bestOuts = a.outsRecorded;
+      bestId = pid;
+    }
+  }
+  return bestId;
+}
+
 async function assignPitcherDecisions(
   gameId: number,
   game: any,
   events: any[],
   lineups: any[],
+  pitcherAgg: Map<number, { outsRecorded: number }>,
+  playerTeamMap: Map<number, number>,
 ) {
   const homeScore = game.homeScore ?? 0;
   const awayScore = game.awayScore ?? 0;
@@ -913,19 +948,21 @@ async function assignPitcherDecisions(
     }
   }
 
-  // Fallback: if no lead change found, use starters
-  if (!winPitcherId) {
-    const winStarter = lineups.find(l =>
-      l.teamId === winningTeamId && l.isStarter && l.position === 1
-    );
-    winPitcherId = winStarter?.playerId ?? null;
-  }
-  if (!losePitcherId) {
-    const loseStarter = lineups.find(l =>
-      l.teamId === losingTeamId && l.isStarter && l.position === 1
-    );
-    losePitcherId = loseStarter?.playerId ?? null;
-  }
+  // Ensure W/L attach to pitchers who actually threw (lineup P slot can differ from scorer pitcherId).
+  winPitcherId = resolvePitcherOfRecord(
+    winPitcherId,
+    winningTeamId,
+    lineups,
+    pitcherAgg,
+    playerTeamMap,
+  );
+  losePitcherId = resolvePitcherOfRecord(
+    losePitcherId,
+    losingTeamId,
+    lineups,
+    pitcherAgg,
+    playerTeamMap,
+  );
 
   if (winPitcherId) {
     await db.update(playerGamePitching)
