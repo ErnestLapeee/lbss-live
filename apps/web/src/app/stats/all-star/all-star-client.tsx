@@ -62,7 +62,6 @@ interface AllStarClientProps {
   initialData: AllStarData | null;
 }
 
-/** Visual diamond slots: row/col in a 5×3 grid */
 const DIAMOND_LAYOUT: Array<{ slot: string; row: number; col: number }> = [
   { slot: 'LF', row: 1, col: 1 },
   { slot: 'CF', row: 1, col: 2 },
@@ -74,22 +73,49 @@ const DIAMOND_LAYOUT: Array<{ slot: string; row: number; col: number }> = [
   { slot: 'C', row: 4, col: 2 },
 ];
 
+function fmtAvg(v: string | null) {
+  if (!v) return null;
+  return v.replace(/^0(?=\.)/, '');
+}
+
+function FieldDiamond() {
+  return (
+    <svg
+      className="absolute inset-0 w-full h-full pointer-events-none opacity-[0.14]"
+      viewBox="0 0 400 360"
+      preserveAspectRatio="xMidYMid slice"
+      aria-hidden
+    >
+      <path
+        d="M200 40 L340 180 L200 320 L60 180 Z"
+        fill="none"
+        stroke="#fff"
+        strokeWidth="2.5"
+      />
+      <path
+        d="M200 180 L260 240 L200 300 L140 240 Z"
+        fill="rgba(255,255,255,0.06)"
+        stroke="#fff"
+        strokeWidth="1.5"
+      />
+    </svg>
+  );
+}
+
 function PlayerCard({
   slot,
   player,
   returnTo,
-  compact,
 }: {
   slot: string;
   player: AllStarPosition | null;
   returnTo: string;
-  compact?: boolean;
 }) {
   if (!player) {
     return (
-      <div className={`rounded-lg border border-dashed border-border bg-surface-alt/50 ${compact ? 'p-2' : 'p-3'} text-center`}>
-        <div className="text-[10px] font-bold uppercase tracking-wider text-text-faint">{slot}</div>
-        <div className="text-xs text-text-faint mt-1">—</div>
+      <div className="h-full min-h-[88px] rounded-xl border border-dashed border-white/25 bg-white/5 backdrop-blur-sm flex flex-col items-center justify-center px-2 py-3">
+        <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-white/40">{slot}</span>
+        <span className="text-xs text-white/30 mt-1">—</span>
       </div>
     );
   }
@@ -97,10 +123,12 @@ function PlayerCard({
   return (
     <Link
       href={playerProfilePath(player.playerSlug, returnTo)}
-      className={`group block rounded-lg border border-border bg-surface hover:border-gold/40 hover:shadow-sm transition-all ${compact ? 'p-2' : 'p-3'}`}
+      className="group h-full min-h-[88px] flex flex-col rounded-xl border border-white/20 bg-white/95 shadow-md hover:shadow-lg hover:border-gold/60 hover:-translate-y-0.5 transition-all px-3 py-2.5"
     >
-      <div className="flex items-center justify-between gap-1 mb-1">
-        <span className="text-[10px] font-bold uppercase tracking-wider text-gold">{slot}</span>
+      <div className="flex items-start justify-between gap-2 mb-1.5">
+        <span className="inline-flex items-center justify-center min-w-[28px] px-1.5 py-0.5 rounded-md bg-[#1e4d28] text-[10px] font-bold uppercase tracking-wider text-gold-light">
+          {slot}
+        </span>
         <TeamMark
           variant="tableSm"
           name={player.teamName}
@@ -108,44 +136,70 @@ function PlayerCard({
           logoUrl={player.teamLogoUrl}
         />
       </div>
-      <div className={`font-semibold text-text group-hover:text-accent transition-colors truncate ${compact ? 'text-xs' : 'text-sm'}`}>
+      <div className="text-sm font-bold text-text leading-tight truncate group-hover:text-accent transition-colors">
         {player.firstName} {player.lastName}
       </div>
-      {!compact && (
-        <div className="mt-1.5 flex flex-wrap gap-x-2 gap-y-0.5 text-[10px] font-mono text-text-muted">
-          <span>OPS {player.selectionValue}</span>
-          {player.battingAvg && <span>AVG {player.battingAvg.replace(/^0/, '')}</span>}
-          <span>{player.homeRuns} HR</span>
-          {player.fieldingPct && <span>FLD {player.fieldingPct.replace(/^0/, '')}</span>}
-        </div>
-      )}
+      <div className="mt-auto pt-1.5 flex flex-wrap gap-x-2 text-[10px] font-mono text-text-muted">
+        <span className="font-semibold text-gold">{player.selectionValue}</span>
+        <span>OPS</span>
+        {player.battingAvg && <span>AVG {fmtAvg(player.battingAvg)}</span>}
+        <span>{player.homeRuns} HR</span>
+      </div>
     </Link>
   );
 }
 
 function PitcherCard({ pitcher, returnTo }: { pitcher: AllStarPitcher; returnTo: string }) {
+  const isSp = pitcher.role === 'SP';
   return (
     <Link
       href={playerProfilePath(pitcher.playerSlug, returnTo)}
-      className="group flex items-center gap-3 rounded-lg border border-border bg-surface px-3 py-2.5 hover:border-gold/40 hover:shadow-sm transition-all"
+      className={`group flex flex-col sm:flex-row sm:items-center gap-3 rounded-xl border px-4 py-3 transition-all hover:-translate-y-0.5 hover:shadow-md ${
+        isSp
+          ? 'border-gold/40 bg-gradient-to-r from-gold/10 to-surface hover:border-gold/60'
+          : 'border-border bg-surface hover:border-accent/30'
+      }`}
     >
-      <span className="shrink-0 w-7 text-center text-[10px] font-bold uppercase tracking-wider text-gold">
-        {pitcher.role}
-      </span>
-      <TeamMark
-        variant="tableSm"
-        name={pitcher.teamName}
-        shortName={pitcher.teamShortName}
-        logoUrl={pitcher.teamLogoUrl}
-      />
-      <div className="flex-1 min-w-0">
-        <div className="text-sm font-semibold text-text truncate group-hover:text-accent transition-colors">
-          {pitcher.firstName} {pitcher.lastName}
+      <div className="flex items-center gap-3 min-w-0 flex-1">
+        <span
+          className={`shrink-0 flex h-9 w-9 items-center justify-center rounded-lg text-[10px] font-bold uppercase tracking-wider ${
+            isSp ? 'bg-gold/20 text-gold' : 'bg-surface-alt text-text-muted'
+          }`}
+        >
+          {pitcher.role}
+        </span>
+        <TeamMark
+          variant="tableMd"
+          name={pitcher.teamName}
+          shortName={pitcher.teamShortName}
+          logoUrl={pitcher.teamLogoUrl}
+        />
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-bold text-text truncate group-hover:text-accent transition-colors">
+            {pitcher.firstName} {pitcher.lastName}
+          </div>
+          <div className="text-xs text-text-muted truncate">{pitcher.teamName}</div>
         </div>
-        <div className="text-[10px] font-mono text-text-muted">
-          {pitcher.era} ERA · {pitcher.inningsPitched} IP · {pitcher.strikeouts} K
-          {pitcher.saves > 0 ? ` · ${pitcher.saves} SV` : ''}
+      </div>
+      <div className="flex gap-4 sm:gap-5 pl-12 sm:pl-0 text-center sm:text-right">
+        <div>
+          <div className="text-[10px] uppercase tracking-wider text-text-faint">ERA</div>
+          <div className="text-sm font-bold font-mono tabular-nums">{pitcher.era ?? '—'}</div>
         </div>
+        <div>
+          <div className="text-[10px] uppercase tracking-wider text-text-faint">IP</div>
+          <div className="text-sm font-bold font-mono tabular-nums">{pitcher.inningsPitched}</div>
+        </div>
+        <div>
+          <div className="text-[10px] uppercase tracking-wider text-text-faint">K</div>
+          <div className="text-sm font-bold font-mono tabular-nums">{pitcher.strikeouts}</div>
+        </div>
+        {pitcher.saves > 0 && (
+          <div>
+            <div className="text-[10px] uppercase tracking-wider text-text-faint">SV</div>
+            <div className="text-sm font-bold font-mono tabular-nums">{pitcher.saves}</div>
+          </div>
+        )}
       </div>
     </Link>
   );
@@ -162,6 +216,7 @@ export function AllStarClient({ initialSeasons, initialSeasonId, initialData }: 
   const isInitialLoad = useRef(true);
 
   const returnTo = searchParams.toString() ? `${pathname}?${searchParams.toString()}` : pathname;
+  const seasonLabel = seasons.find((s) => s.id === selectedSeasonId)?.name;
 
   useEffect(() => {
     const raw = searchParams?.get('season');
@@ -205,16 +260,21 @@ export function AllStarClient({ initialSeasons, initialSeasonId, initialData }: 
   };
 
   const bySlot = new Map(data?.positions.map((p) => [p.slot, p]) ?? []);
+  const starter = data?.pitchers.find((p) => p.role === 'SP');
+  const relievers = data?.pitchers.filter((p) => p.role === 'RP') ?? [];
 
   return (
-    <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 py-8">
-      <div className="mb-6">
+    <div className="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
         <div className="flex items-center gap-3">
-          <label className="text-sm font-medium text-text-muted">Season:</label>
+          <label htmlFor="all-star-season" className="text-sm font-medium text-text-muted shrink-0">
+            Season:
+          </label>
           <select
+            id="all-star-season"
             value={selectedSeasonId ?? 'all'}
             onChange={(e) => onSeasonChange(e.target.value)}
-            className="rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-accent/50"
+            className="rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-accent/50 min-w-[160px]"
           >
             <option value="all">All time</option>
             {seasons.map((s) => (
@@ -224,45 +284,74 @@ export function AllStarClient({ initialSeasons, initialSeasonId, initialData }: 
             ))}
           </select>
         </div>
+        {seasonLabel && selectedSeasonId != null && !loading && data && (
+          <p className="text-xs uppercase tracking-[0.12em] text-text-faint font-semibold">{seasonLabel}</p>
+        )}
       </div>
 
       {loading ? (
-        <div className="py-16 text-center text-sm text-text-muted">Loading…</div>
+        <div className="py-20 text-center text-sm text-text-muted">Loading…</div>
       ) : selectedSeasonId == null ? (
-        <div className="rounded-xl border border-dashed border-border bg-surface-alt p-10 text-center">
+        <div className="rounded-xl border border-dashed border-border bg-surface-alt p-12 text-center">
           <p className="text-sm text-text-muted">Select a season to view the all-star team.</p>
         </div>
       ) : !data || data.positions.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-border bg-surface-alt p-10 text-center">
+        <div className="rounded-xl border border-dashed border-border bg-surface-alt p-12 text-center">
           <p className="text-sm text-text-muted">Not enough data to build an all-star team for this season yet.</p>
         </div>
       ) : (
         <>
-          <div
-            className="grid grid-cols-3 gap-2 sm:gap-3 mb-8"
-            style={{ gridTemplateRows: 'repeat(4, minmax(0, auto))' }}
-          >
-            {DIAMOND_LAYOUT.map(({ slot, row, col }) => (
-              <div key={slot} style={{ gridRow: row, gridColumn: col }}>
-                <PlayerCard slot={slot} player={bySlot.get(slot) ?? null} returnTo={returnTo} />
-              </div>
-            ))}
-          </div>
-
-          {data.pitchers.length > 0 && (
-            <section>
-              <h2 className="text-sm font-bold uppercase tracking-wider text-text mb-3">Pitching Staff</h2>
-              <div className="space-y-2">
-                {data.pitchers.map((p) => (
-                  <PitcherCard key={`${p.role}-${p.playerId}`} pitcher={p} returnTo={returnTo} />
+          {/* Field */}
+          <div className="relative rounded-2xl overflow-hidden border border-[#1a3d20] shadow-lg mb-8">
+            <div className="absolute inset-0 bg-gradient-to-b from-[#3d8f4a] via-[#2d7340] to-[#1e4d28]" />
+            <FieldDiamond />
+            <div className="relative px-3 py-6 sm:px-6 sm:py-8">
+              <div
+                className="grid grid-cols-3 gap-2 sm:gap-3 max-w-lg mx-auto"
+                style={{ gridTemplateRows: 'repeat(4, minmax(0, auto))' }}
+              >
+                {DIAMOND_LAYOUT.map(({ slot, row, col }) => (
+                  <div key={slot} style={{ gridRow: row, gridColumn: col }}>
+                    <PlayerCard slot={slot} player={bySlot.get(slot) ?? null} returnTo={returnTo} />
+                  </div>
                 ))}
               </div>
+            </div>
+          </div>
+
+          {/* Pitching */}
+          {data.pitchers.length > 0 && (
+            <section className="space-y-3">
+              <div className="flex items-center gap-3">
+                <h2 className="text-xs font-bold uppercase tracking-[0.14em] text-text">Pitching Staff</h2>
+                <div className="flex-1 h-px bg-border" />
+              </div>
+              {starter && (
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-text-faint mb-1.5 pl-1">
+                    Starter
+                  </p>
+                  <PitcherCard pitcher={starter} returnTo={returnTo} />
+                </div>
+              )}
+              {relievers.length > 0 && (
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-text-faint mb-1.5 pl-1">
+                    Bullpen
+                  </p>
+                  <div className="space-y-2">
+                    {relievers.map((p) => (
+                      <PitcherCard key={p.playerId} pitcher={p} returnTo={returnTo} />
+                    ))}
+                  </div>
+                </div>
+              )}
             </section>
           )}
         </>
       )}
 
-      <p className="mt-8 text-center">
+      <p className="mt-10 text-center">
         <Link href="/stats" className="text-xs font-semibold text-accent hover:underline">
           ← Back to Statistics
         </Link>

@@ -10,11 +10,10 @@ import {
 import { eq, and, sql } from 'drizzle-orm';
 
 export const ALL_STAR_CRITERIA = {
-  minAtBats: 10,
-  minGamesAtPosition: 5,
-  minInningsStarted: 10,
-  minGamesStarted: 3,
-  minInningsRelief: 5,
+  minAtBats: 4,
+  minGamesAtPosition: 1,
+  minInningsPitcher: 1,
+  minGamesStarted: 1,
 } as const;
 
 const POSITION_SLOTS = [
@@ -307,12 +306,16 @@ export async function computeAllStarTeam(seasonId: number): Promise<AllStarTeamR
     .filter(
       (p) =>
         Number(p.gamesStarted ?? 0) >= ALL_STAR_CRITERIA.minGamesStarted &&
-        parseIp(p.inningsPitched) >= ALL_STAR_CRITERIA.minInningsStarted &&
+        parseIp(p.inningsPitched) >= ALL_STAR_CRITERIA.minInningsPitcher &&
         p.era != null,
     )
     .sort((a, b) => parseFloat(a.era!) - parseFloat(b.era!));
 
-  const starter = starterCandidates[0] ?? null;
+  const anyPitcherCandidates = pitchingRows
+    .filter((p) => parseIp(p.inningsPitched) >= ALL_STAR_CRITERIA.minInningsPitcher && p.era != null)
+    .sort((a, b) => parseFloat(a.era!) - parseFloat(b.era!));
+
+  const starter = starterCandidates[0] ?? anyPitcherCandidates[0] ?? null;
   const starterId = starter?.playerId ?? null;
 
   const relieverCandidates = pitchingRows
@@ -322,7 +325,7 @@ export async function computeAllStarTeam(seasonId: number): Promise<AllStarTeamR
       const g = Number(p.games ?? 0);
       const ip = parseIp(p.inningsPitched);
       const isReliever = g > gs || (gs === 0 && ip > 0);
-      return isReliever && ip >= ALL_STAR_CRITERIA.minInningsRelief && p.era != null;
+      return isReliever && ip >= ALL_STAR_CRITERIA.minInningsPitcher && p.era != null;
     })
     .sort((a, b) => parseFloat(a.era!) - parseFloat(b.era!));
 
@@ -375,9 +378,9 @@ export async function computeAllStarTeam(seasonId: number): Promise<AllStarTeamR
     pitchers,
     criteria: {
       ...ALL_STAR_CRITERIA,
-      positionPlayers: 'Highest OPS at each position (min. 5 games fielding there, 10 AB)',
-      startingPitcher: 'Lowest ERA among starters (min. 3 GS, 10 IP)',
-      reliefPitchers: 'Lowest ERA among relievers (min. 5 IP)',
+      positionPlayers: 'Highest OPS at each position (min. 1 game there, 4 AB)',
+      startingPitcher: 'Lowest ERA among starters (min. 1 GS, 1 IP)',
+      reliefPitchers: 'Lowest ERA among relievers (min. 1 IP)',
     },
   };
 }
