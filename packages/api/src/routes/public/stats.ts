@@ -1167,6 +1167,7 @@ export async function statsRoutes(app: FastifyInstance) {
           whip: ip > 0 ? ((bb + h) / ip).toFixed(2) : null,
           strikeouts: Number(r.k ?? 0),
           wins: Number(r.wins ?? 0),
+          strikes: Number(r.strikes ?? 0),
           saves: Number(r.saves ?? 0),
           inningsPitched: ip.toFixed(1),
         };
