@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { TeamMark } from '@/components/ui/team-mark';
 import { playerProfilePath } from '@/lib/player-profile-nav';
@@ -78,49 +78,77 @@ function fmtAvg(v: string | null) {
   return v.replace(/^0(?=\.)/, '');
 }
 
-function StatPill({ label, value, highlight }: { label: string; value: string | number; highlight?: boolean }) {
+function StatPill({
+  label,
+  value,
+  highlight,
+  invert,
+}: {
+  label: string;
+  value: string | number;
+  highlight?: boolean;
+  invert?: boolean;
+}) {
   return (
     <div
-      className={`flex flex-col items-center rounded-md px-2 py-1 min-w-[44px] ${
-        highlight ? 'bg-gold/15 ring-1 ring-gold/25' : 'bg-surface-alt/80'
+      className={`flex flex-col items-center rounded-lg px-2.5 py-1.5 min-w-[48px] ${
+        highlight
+          ? invert
+            ? 'bg-white/15 ring-1 ring-white/25'
+            : 'bg-gold/12 ring-1 ring-gold/30'
+          : invert
+            ? 'bg-white/8'
+            : 'bg-surface-alt'
       }`}
     >
-      <span className="text-[9px] font-bold uppercase tracking-wider text-text-faint leading-none">{label}</span>
-      <span className={`text-xs font-bold font-mono tabular-nums mt-0.5 ${highlight ? 'text-gold' : 'text-text'}`}>
+      <span
+        className={`text-[9px] font-bold uppercase tracking-wider leading-none ${
+          invert ? 'text-white/55' : 'text-text-faint'
+        }`}
+      >
+        {label}
+      </span>
+      <span
+        className={`text-xs font-bold font-mono tabular-nums mt-0.5 ${
+          highlight ? (invert ? 'text-gold-light' : 'text-gold') : invert ? 'text-white' : 'text-text'
+        }`}
+      >
         {value}
       </span>
     </div>
   );
 }
 
-function FieldDiamond() {
+function FieldDiamond({ patternId }: { patternId: string }) {
   return (
     <svg
       className="absolute inset-0 w-full h-full pointer-events-none"
-      viewBox="0 0 480 420"
+      viewBox="0 0 480 440"
       preserveAspectRatio="xMidYMid slice"
       aria-hidden
     >
       <defs>
-        <pattern id="grass" width="24" height="24" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-          <rect width="24" height="24" fill="transparent" />
-          <line x1="0" y1="0" x2="0" y2="24" stroke="rgba(255,255,255,0.04)" strokeWidth="12" />
+        <pattern id={patternId} width="20" height="20" patternUnits="userSpaceOnUse" patternTransform="rotate(-12)">
+          <rect width="20" height="20" fill="transparent" />
+          <line x1="0" y1="0" x2="0" y2="20" stroke="rgba(255,255,255,0.035)" strokeWidth="10" />
         </pattern>
       </defs>
-      <rect width="480" height="420" fill="url(#grass)" />
+      <rect width="480" height="440" fill={`url(#${patternId})`} />
       <path
-        d="M240 36 L396 192 L240 348 L84 192 Z"
-        fill="rgba(255,255,255,0.04)"
-        stroke="rgba(255,255,255,0.22)"
+        d="M240 28 L404 192 L240 356 L76 192 Z"
+        fill="rgba(255,255,255,0.03)"
+        stroke="rgba(255,255,255,0.2)"
         strokeWidth="2"
       />
       <path
-        d="M240 192 L300 252 L240 312 L180 252 Z"
-        fill="rgba(255,255,255,0.07)"
-        stroke="rgba(255,255,255,0.18)"
+        d="M240 192 L308 260 L240 328 L172 260 Z"
+        fill="rgba(255,255,255,0.06)"
+        stroke="rgba(255,255,255,0.16)"
         strokeWidth="1.5"
       />
-      <circle cx="240" cy="252" r="18" fill="rgba(180,140,80,0.35)" stroke="rgba(255,255,255,0.12)" strokeWidth="1" />
+      <circle cx="240" cy="260" r="22" fill="rgba(194,154,90,0.4)" stroke="rgba(255,255,255,0.15)" strokeWidth="1.5" />
+      <line x1="240" y1="28" x2="240" y2="356" stroke="rgba(255,255,255,0.06)" strokeWidth="1" />
+      <line x1="76" y1="192" x2="404" y2="192" stroke="rgba(255,255,255,0.06)" strokeWidth="1" />
     </svg>
   );
 }
@@ -136,8 +164,8 @@ function PlayerCard({
 }) {
   if (!player) {
     return (
-      <div className="h-full min-h-[112px] rounded-2xl border border-dashed border-white/20 bg-white/5 flex flex-col items-center justify-center">
-        <span className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/35">{slot}</span>
+      <div className="h-full min-h-[118px] rounded-2xl border border-dashed border-white/18 bg-white/[0.04] flex flex-col items-center justify-center backdrop-blur-[1px]">
+        <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-white/30">{slot}</span>
       </div>
     );
   }
@@ -147,50 +175,61 @@ function PlayerCard({
   return (
     <Link
       href={playerProfilePath(player.playerSlug, returnTo)}
-      className="group h-full min-h-[112px] flex flex-col rounded-2xl bg-white shadow-[0_4px_20px_rgba(0,0,0,0.12)] ring-1 ring-black/5 hover:ring-gold/50 hover:shadow-[0_8px_28px_rgba(0,0,0,0.16)] hover:-translate-y-1 transition-all duration-200 overflow-hidden"
+      className="group relative h-full min-h-[118px] flex flex-col rounded-2xl bg-white overflow-hidden shadow-[0_6px_24px_rgba(0,0,0,0.14)] ring-1 ring-black/[0.06] hover:ring-gold/45 hover:shadow-[0_10px_32px_rgba(0,0,0,0.18)] hover:-translate-y-1 transition-all duration-200"
     >
-      <div className="flex items-center justify-between gap-2 px-3 pt-2.5 pb-1">
-        <span className="inline-flex h-6 min-w-[32px] items-center justify-center rounded-full bg-[#1a3d22] px-2 text-[10px] font-bold uppercase tracking-wider text-gold-light">
+      <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-transparent via-gold/70 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+      <div className="flex items-start justify-between gap-2 px-3.5 pt-3 pb-1">
+        <span className="inline-flex h-7 min-w-[34px] items-center justify-center rounded-full bg-[#163318] px-2.5 text-[10px] font-bold uppercase tracking-wider text-gold-light shadow-sm">
           {slot}
         </span>
         <TeamMark
-          variant="tableSm"
+          variant="tableMd"
           name={player.teamName}
           shortName={player.teamShortName}
           logoUrl={player.teamLogoUrl}
         />
       </div>
-      <div className="px-3 pb-1">
+      <div className="px-3.5 pb-2">
         <div className="text-[15px] font-bold text-text leading-snug truncate group-hover:text-accent transition-colors">
           {player.firstName} {player.lastName}
         </div>
         <div className="text-[11px] text-text-faint truncate mt-0.5">{teamLabel}</div>
       </div>
-      <div className="mt-auto px-2 pb-2.5 flex justify-center gap-1">
+      <div className="mt-auto px-2.5 pb-3 flex justify-center gap-1.5">
         <StatPill label="OPS" value={player.selectionValue} highlight />
         <StatPill label="AVG" value={fmtAvg(player.battingAvg)} />
         <StatPill label="HR" value={player.homeRuns} />
-        <StatPill label="RBI" value={player.rbi} />
       </div>
     </Link>
   );
 }
 
-function PitcherCard({ pitcher, returnTo, featured }: { pitcher: AllStarPitcher; returnTo: string; featured?: boolean }) {
+function PitcherCard({
+  pitcher,
+  returnTo,
+  featured,
+}: {
+  pitcher: AllStarPitcher;
+  returnTo: string;
+  featured?: boolean;
+}) {
   return (
     <Link
       href={playerProfilePath(pitcher.playerSlug, returnTo)}
-      className={`group block rounded-2xl border transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${
+      className={`group relative block rounded-2xl border overflow-hidden transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg ${
         featured
-          ? 'border-gold/35 bg-gradient-to-br from-gold/[0.12] via-surface to-surface hover:border-gold/55'
-          : 'border-border bg-surface hover:border-accent/25'
+          ? 'border-gold/40 bg-[#2a2a2a] text-white hover:border-gold/60'
+          : 'border-border bg-surface hover:border-accent/30'
       }`}
     >
+      {featured && (
+        <div className="absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-gold/30 via-gold to-gold/30" />
+      )}
       <div className="p-4">
         <div className="flex items-start gap-3">
           <span
             className={`shrink-0 flex h-10 w-10 items-center justify-center rounded-xl text-[11px] font-bold uppercase tracking-wider ${
-              featured ? 'bg-gold/25 text-gold' : 'bg-surface-alt text-text-muted'
+              featured ? 'bg-gold/20 text-gold-light' : 'bg-surface-alt text-text-muted'
             }`}
           >
             {pitcher.role}
@@ -202,17 +241,23 @@ function PitcherCard({ pitcher, returnTo, featured }: { pitcher: AllStarPitcher;
             logoUrl={pitcher.teamLogoUrl}
           />
           <div className="min-w-0 flex-1">
-            <div className="text-base font-bold text-text truncate group-hover:text-accent transition-colors">
+            <div
+              className={`text-base font-bold truncate transition-colors ${
+                featured ? 'text-white group-hover:text-gold-light' : 'text-text group-hover:text-accent'
+              }`}
+            >
               {pitcher.firstName} {pitcher.lastName}
             </div>
-            <div className="text-xs text-text-muted truncate">{pitcher.teamName}</div>
+            <div className={`text-xs truncate ${featured ? 'text-white/50' : 'text-text-muted'}`}>
+              {pitcher.teamName}
+            </div>
           </div>
         </div>
         <div className="mt-4 grid grid-cols-4 gap-2">
-          <StatPill label="ERA" value={pitcher.era ?? '—'} highlight={featured} />
-          <StatPill label="IP" value={pitcher.inningsPitched} />
-          <StatPill label="K" value={pitcher.strikeouts} />
-          <StatPill label="WHIP" value={pitcher.whip ?? '—'} />
+          <StatPill label="ERA" value={pitcher.era ?? '—'} highlight={featured} invert={featured} />
+          <StatPill label="IP" value={pitcher.inningsPitched} invert={featured} />
+          <StatPill label="K" value={pitcher.strikeouts} invert={featured} />
+          <StatPill label="WHIP" value={pitcher.whip ?? '—'} invert={featured} />
         </div>
       </div>
     </Link>
@@ -220,6 +265,7 @@ function PitcherCard({ pitcher, returnTo, featured }: { pitcher: AllStarPitcher;
 }
 
 export function AllStarClient({ initialSeasons, initialSeasonId, initialData }: AllStarClientProps) {
+  const grassPatternId = useId().replace(/:/g, '');
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -279,7 +325,7 @@ export function AllStarClient({ initialSeasons, initialSeasonId, initialData }: 
 
   return (
     <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
-      <div className="rounded-xl border border-border bg-surface px-4 py-3 mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shadow-sm">
+      <div className="rounded-2xl border border-border bg-surface px-4 py-3.5 mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shadow-sm">
         <div className="flex items-center gap-3">
           <label htmlFor="all-star-season" className="text-sm font-medium text-text-muted shrink-0">
             Season:
@@ -299,12 +345,18 @@ export function AllStarClient({ initialSeasons, initialSeasonId, initialData }: 
           </select>
         </div>
         {seasonLabel && selectedSeasonId != null && !loading && data && (
-          <span className="text-sm font-semibold text-text-muted">{seasonLabel}</span>
+          <span className="inline-flex items-center gap-2 text-sm font-semibold text-text">
+            <span className="h-1.5 w-1.5 rounded-full bg-gold" aria-hidden />
+            {seasonLabel}
+          </span>
         )}
       </div>
 
       {loading ? (
-        <div className="py-24 text-center text-sm text-text-muted">Loading…</div>
+        <div className="space-y-6 animate-pulse">
+          <div className="rounded-2xl bg-[#327a42] h-[420px]" />
+          <div className="rounded-2xl bg-surface-alt h-32" />
+        </div>
       ) : selectedSeasonId == null ? (
         <div className="rounded-2xl border border-dashed border-border bg-surface-alt p-14 text-center">
           <p className="text-sm text-text-muted">Select a season to view the all-star team.</p>
@@ -314,47 +366,69 @@ export function AllStarClient({ initialSeasons, initialSeasonId, initialData }: 
           <p className="text-sm text-text-muted">Not enough data to build an all-star team for this season yet.</p>
         </div>
       ) : (
-        <>
-          <div className="relative rounded-2xl overflow-hidden border border-[#163318] shadow-xl mb-10">
-            <div className="absolute inset-0 bg-gradient-to-b from-[#4a9f58] via-[#327a42] to-[#1a4528]" />
-            <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-gold/60 via-gold to-gold/60" />
-            <FieldDiamond />
-            <div className="relative px-4 py-8 sm:px-8 sm:py-10">
-              <div
-                className="grid grid-cols-3 gap-3 sm:gap-4 max-w-2xl mx-auto"
-                style={{ gridTemplateRows: 'repeat(4, minmax(0, auto))' }}
-              >
-                {DIAMOND_LAYOUT.map(({ slot, row, col }) => (
-                  <div key={slot} style={{ gridRow: row, gridColumn: col }}>
-                    <PlayerCard slot={slot} player={bySlot.get(slot) ?? null} returnTo={returnTo} />
+        <div className="space-y-8">
+          <section>
+            <div className="flex items-center gap-3 mb-4 px-1">
+              <h2 className="text-xs font-bold uppercase tracking-[0.18em] text-text">Starting Nine</h2>
+              <div className="flex-1 h-px bg-border" />
+            </div>
+            <div className="relative rounded-2xl overflow-hidden border border-[#143016] shadow-xl">
+              <div className="absolute inset-0 bg-gradient-to-b from-[#52a860] via-[#358647] to-[#1a4528]" />
+              <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-transparent via-gold to-transparent opacity-80" />
+              <FieldDiamond patternId={grassPatternId} />
+              <div className="relative px-4 py-8 sm:px-10 sm:py-12">
+                <div
+                  className="grid grid-cols-3 gap-3 sm:gap-5 max-w-2xl mx-auto"
+                  style={{ gridTemplateRows: 'repeat(4, minmax(0, auto))' }}
+                >
+                  {DIAMOND_LAYOUT.map(({ slot, row, col }) => (
+                    <div key={slot} style={{ gridRow: row, gridColumn: col }}>
+                      <PlayerCard slot={slot} player={bySlot.get(slot) ?? null} returnTo={returnTo} />
+                    </div>
+                  ))}
+                  <div
+                    className="flex items-center justify-center pointer-events-none"
+                    style={{ gridRow: 2, gridColumn: 2 }}
+                    aria-hidden
+                  >
+                    <div className="h-10 w-10 sm:h-12 sm:w-12 rounded-full border border-white/10 bg-amber-900/25" />
                   </div>
-                ))}
+                </div>
               </div>
             </div>
-          </div>
+          </section>
 
           {data.pitchers.length > 0 && (
-            <section className="space-y-5">
-              <h2 className="text-sm font-bold uppercase tracking-[0.16em] text-text">Pitching Staff</h2>
-              {starter && (
-                <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-text-faint mb-2">Starter</p>
-                  <PitcherCard pitcher={starter} returnTo={returnTo} featured />
-                </div>
-              )}
-              {relievers.length > 0 && (
-                <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-text-faint mb-2">Bullpen</p>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    {relievers.map((p) => (
-                      <PitcherCard key={p.playerId} pitcher={p} returnTo={returnTo} />
-                    ))}
+            <section>
+              <div className="flex items-center gap-3 mb-4 px-1">
+                <h2 className="text-xs font-bold uppercase tracking-[0.18em] text-text">Pitching Staff</h2>
+                <div className="flex-1 h-px bg-border" />
+              </div>
+              <div className="space-y-4">
+                {starter && (
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-text-faint mb-2 pl-1">
+                      Starter
+                    </p>
+                    <PitcherCard pitcher={starter} returnTo={returnTo} featured />
                   </div>
-                </div>
-              )}
+                )}
+                {relievers.length > 0 && (
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-text-faint mb-2 pl-1">
+                      Bullpen
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      {relievers.map((p) => (
+                        <PitcherCard key={p.playerId} pitcher={p} returnTo={returnTo} />
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
             </section>
           )}
-        </>
+        </div>
       )}
 
       <p className="mt-12 text-center">

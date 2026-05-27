@@ -10,10 +10,10 @@ import {
 import { eq, and, sql } from 'drizzle-orm';
 
 export const ALL_STAR_CRITERIA = {
-  minAtBats: 8,
-  minGamesAtPosition: 3,
-  minInningsPitcher: 5,
-  minGamesStarted: 2,
+  minAtBats: 6,
+  minGamesAtPosition: 2,
+  minInningsPitcher: 3,
+  minGamesStarted: 1,
 } as const;
 
 const POSITION_SLOTS = [
@@ -378,9 +378,9 @@ export async function computeAllStarTeam(seasonId: number): Promise<AllStarTeamR
     pitchers,
     criteria: {
       ...ALL_STAR_CRITERIA,
-      positionPlayers: 'Highest OPS at each position (min. 3 games there, 8 AB)',
-      startingPitcher: 'Lowest ERA among starters (min. 2 GS, 5 IP)',
-      reliefPitchers: 'Lowest ERA among relievers (min. 5 IP)',
+      positionPlayers: 'Highest OPS at each position (min. 2 games there, 6 AB)',
+      startingPitcher: 'Lowest ERA among starters (min. 1 GS, 3 IP)',
+      reliefPitchers: 'Lowest ERA among relievers (min. 3 IP)',
     },
   };
 }
