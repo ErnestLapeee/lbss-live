@@ -6,7 +6,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { TeamMark } from '@/components/ui/team-mark';
 import { playerProfilePath } from '@/lib/player-profile-nav';
 
-type Season = { id: number; year: number; name: string; isActive?: boolean };
+type Season = { id: number; year: number; name: string; isActive?: boolean; seasonKind?: string };
 
 type AllStarPosition = {
   slot: string;
@@ -165,6 +165,11 @@ export function AllStarClient({ initialSeasons, initialSeasonId, initialData }: 
 
   useEffect(() => {
     const raw = searchParams?.get('season');
+    if (raw === 'all' || raw === '') {
+      setSelectedSeasonId(null);
+      setData(null);
+      return;
+    }
     if (raw) {
       const sid = parseInt(raw, 10);
       if (!isNaN(sid) && seasons.some((s) => s.id === sid)) {
@@ -178,7 +183,10 @@ export function AllStarClient({ initialSeasons, initialSeasonId, initialData }: 
       isInitialLoad.current = false;
       return;
     }
-    if (selectedSeasonId == null) return;
+    if (selectedSeasonId == null) {
+      setData(null);
+      return;
+    }
     setLoading(true);
     fetch(`/api/proxy/public/stats/all-star?seasonId=${selectedSeasonId}`)
       .then((r) => (r.ok ? r.json() : null))
@@ -187,53 +195,43 @@ export function AllStarClient({ initialSeasons, initialSeasonId, initialData }: 
       .finally(() => setLoading(false));
   }, [selectedSeasonId]);
 
-  const onSeasonChange = (id: number) => {
-    setSelectedSeasonId(id);
-    const qs = new URLSearchParams(searchParams.toString());
-    qs.set('season', String(id));
-    router.replace(`${pathname}?${qs.toString()}`, { scroll: false });
+  const onSeasonChange = (value: string) => {
+    const newId = value === 'all' ? null : Number(value);
+    setSelectedSeasonId(newId);
+    const sp = new URLSearchParams();
+    if (newId == null) sp.set('season', 'all');
+    else sp.set('season', String(newId));
+    router.replace(`${pathname}?${sp.toString()}`, { scroll: false });
   };
 
   const bySlot = new Map(data?.positions.map((p) => [p.slot, p]) ?? []);
 
   return (
     <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 py-8">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-        <div>
-          <p className="text-xs uppercase tracking-wider text-text-faint mb-1">Season selection</p>
+      <div className="mb-6">
+        <div className="flex items-center gap-3">
+          <label className="text-sm font-medium text-text-muted">Season:</label>
           <select
-            value={selectedSeasonId ?? ''}
-            onChange={(e) => onSeasonChange(parseInt(e.target.value, 10))}
-            className="rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium text-text focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+            value={selectedSeasonId ?? 'all'}
+            onChange={(e) => onSeasonChange(e.target.value)}
+            className="rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-accent/50"
           >
+            <option value="all">All time</option>
             {seasons.map((s) => (
               <option key={s.id} value={s.id}>
-                {s.year} — {s.name}
+                {s.name}{s.seasonKind === 'playoff' ? ' (Playoffs)' : ''}
               </option>
             ))}
           </select>
         </div>
-        {data && (
-          <p className="text-sm text-text-muted">
-            {data.seasonYear} All-Star Team
-          </p>
-        )}
-      </div>
-
-      <div className="mb-8 rounded-xl border border-gold/20 bg-gradient-to-br from-gold/5 to-surface p-4 sm:p-5">
-        <h2 className="text-xs font-bold uppercase tracking-wider text-gold mb-2">How we pick them</h2>
-        <ul className="space-y-1 text-xs text-text-muted leading-relaxed">
-          <li><span className="font-semibold text-text">Position players:</span> {data?.criteria.positionPlayers ?? 'Highest OPS at each position'}</li>
-          <li><span className="font-semibold text-text">Starting pitcher:</span> {data?.criteria.startingPitcher ?? 'Lowest ERA among qualified starters'}</li>
-          <li><span className="font-semibold text-text">Bullpen (×3):</span> {data?.criteria.reliefPitchers ?? 'Lowest ERA among qualified relievers'}</li>
-        </ul>
-        <p className="mt-2 text-[11px] text-text-faint">
-          Offense-first for hitters (OPS), run prevention for pitchers (ERA). Fielding shown for context, not used in selection.
-        </p>
       </div>
 
       {loading ? (
-        <div className="py-16 text-center text-sm text-text-muted">Building all-star roster…</div>
+        <div className="py-16 text-center text-sm text-text-muted">Loading…</div>
+      ) : selectedSeasonId == null ? (
+        <div className="rounded-xl border border-dashed border-border bg-surface-alt p-10 text-center">
+          <p className="text-sm text-text-muted">Select a season to view the all-star team.</p>
+        </div>
       ) : !data || data.positions.length === 0 ? (
         <div className="rounded-xl border border-dashed border-border bg-surface-alt p-10 text-center">
           <p className="text-sm text-text-muted">Not enough data to build an all-star team for this season yet.</p>
@@ -270,55 +268,5 @@ export function AllStarClient({ initialSeasons, initialSeasonId, initialData }: 
         </Link>
       </p>
     </div>
-  );
-}
-
-/** Compact preview for homepage sidebar */
-export function AllStarPreview({
-  data,
-  seasonId,
-}: {
-  data: AllStarData | null;
-  seasonId: number | null;
-}) {
-  if (!data || data.positions.length === 0 || seasonId == null) return null;
-
-  const topHitters = data.positions.slice(0, 4);
-  const sp = data.pitchers.find((p) => p.role === 'SP');
-
-  return (
-    <section className="rounded-xl border border-border bg-surface overflow-hidden">
-      <div className="px-4 py-3 border-b border-border bg-surface-alt">
-        <div className="flex items-center justify-between">
-          <h3 className="font-heading text-sm font-bold uppercase tracking-wider">
-            {data.seasonYear} All-Stars
-          </h3>
-          <Link
-            href={`/stats/all-star?season=${seasonId}`}
-            className="text-[11px] font-semibold text-accent hover:text-accent-light transition-colors"
-          >
-            Full roster &rarr;
-          </Link>
-        </div>
-      </div>
-      <div className="p-3 space-y-1.5">
-        {topHitters.map((p) => (
-          <div key={p.playerId} className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-surface-alt transition-colors">
-            <span className="text-[10px] font-bold text-gold w-6 shrink-0">{p.slot}</span>
-            <TeamMark variant="tableSm" name={p.teamName} shortName={p.teamShortName} logoUrl={p.teamLogoUrl} />
-            <span className="text-sm truncate flex-1">{p.firstName} {p.lastName}</span>
-            <span className="text-[10px] font-mono text-text-faint">{p.selectionValue}</span>
-          </div>
-        ))}
-        {sp && (
-          <div className="flex items-center gap-2 px-2 py-1 rounded-lg border-t border-border/60 mt-2 pt-2">
-            <span className="text-[10px] font-bold text-gold w-6 shrink-0">SP</span>
-            <TeamMark variant="tableSm" name={sp.teamName} shortName={sp.teamShortName} logoUrl={sp.teamLogoUrl} />
-            <span className="text-sm truncate flex-1">{sp.firstName} {sp.lastName}</span>
-            <span className="text-[10px] font-mono text-text-faint">{sp.era}</span>
-          </div>
-        )}
-      </div>
-    </section>
   );
 }

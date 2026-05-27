@@ -17,7 +17,7 @@ export default async function AllStarPage({ searchParams }: Props) {
   const params = await searchParams;
   const seasonFromUrl = params.season;
 
-  let seasons: Array<{ id: number; year: number; name: string; isActive?: boolean }> = [];
+  let seasons: Array<{ id: number; year: number; name: string; isActive?: boolean; seasonKind?: string }> = [];
   try {
     const data = await apiFetch('/api/public/stats/seasons', { revalidate: API_REVALIDATE_SEASONS });
     seasons = Array.isArray(data) ? data : [];
@@ -25,12 +25,11 @@ export default async function AllStarPage({ searchParams }: Props) {
 
   const activeSeason = seasons.find((s) => s.isActive) || seasons[0];
   let seasonId: number | null;
-  if (seasonFromUrl) {
+  if (seasonFromUrl === 'all' || seasonFromUrl === '') seasonId = null;
+  else if (seasonFromUrl) {
     const n = parseInt(seasonFromUrl, 10);
     seasonId = !isNaN(n) && seasons.some((s) => s.id === n) ? n : (activeSeason?.id ?? null);
-  } else {
-    seasonId = activeSeason?.id ?? null;
-  }
+  } else seasonId = activeSeason?.id ?? null;
 
   let initialData: AllStarData | null = null;
   if (seasonId != null) {
@@ -43,10 +42,7 @@ export default async function AllStarPage({ searchParams }: Props) {
 
   return (
     <div>
-      <PageHeader
-        title="All-Star Team"
-        description="The league's best at each position — picked by the numbers"
-      />
+      <PageHeader title="All-Star Team" />
       <Suspense fallback={null}>
         <AllStarClient
           initialSeasons={seasons}

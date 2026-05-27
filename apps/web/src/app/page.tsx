@@ -10,7 +10,6 @@ import { HomeLiveScores } from '@/components/home/home-live-scores';
 import { SectionHeader } from '@/components/ui/section-header';
 import { TeamMark } from '@/components/ui/team-mark';
 import { sortStandingsRows } from '@/lib/standings-sort';
-import { AllStarPreview } from '@/app/stats/all-star/all-star-client';
 
 function toArray<T>(v: unknown): T[] {
   if (Array.isArray(v)) return v;
@@ -37,7 +36,6 @@ export default async function HomePage() {
     winPct: any;
     gamesBehind: any;
   }> = [];
-  let allStarData: any = null;
 
   try {
     seasons = toArray(await apiFetch('/api/public/stats/seasons', { revalidate: API_REVALIDATE_SEASONS }));
@@ -100,14 +98,6 @@ export default async function HomePage() {
     }
   } catch {}
 
-  if (activeSeason?.id) {
-    try {
-      allStarData = await apiFetch(`/api/public/stats/all-star?seasonId=${activeSeason.id}`, {
-        revalidate: API_REVALIDATE_STANDINGS,
-      });
-    } catch {}
-  }
-
   const liveGames = games.filter((g: any) => g.status === 'live');
   const finalGames = games.filter((g: any) => g.status === 'final');
   const recentGames = [...liveGames, ...finalGames].slice(0, 6);
@@ -159,14 +149,6 @@ export default async function HomePage() {
               <Link href="/teams" className="px-4 py-2 border border-[#ccc] text-[#111] text-sm font-medium hover:bg-[#f0f0f0]">
                 Teams
               </Link>
-              {activeSeason?.id && (
-                <Link
-                  href={`/stats/all-star?season=${activeSeason.id}`}
-                  className="px-4 py-2 border border-gold/40 text-[#111] text-sm font-medium hover:bg-gold/5"
-                >
-                  All-Stars
-                </Link>
-              )}
             </div>
           </div>
         </div>
@@ -251,8 +233,6 @@ export default async function HomePage() {
                 )}
               </div>
             </section>
-
-            <AllStarPreview data={allStarData} seasonId={activeSeason?.id ?? null} />
           </div>
         </div>
       </div>
