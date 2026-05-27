@@ -20,7 +20,6 @@ import { seasonWithPlayoffDefaults } from '../../lib/season-playoff-response.js'
 import { getSeasonsColumnFlagsCached } from '../../lib/seasons-playoff-columns-cache.js';
 import { parseIncludePlayoffsAllTime, sqlAllTimeSeasonWhere } from '../../lib/all-time-stats.js';
 import { formatOpponentBattingAvgPitch } from '../../lib/opponent-batting-avg.js';
-import { computeAllStarTeam } from '../../lib/all-star-team.js';
 
 const ALL_TIME = 'all';
 
@@ -1644,28 +1643,6 @@ export async function statsRoutes(app: FastifyInstance) {
     } catch (err) {
       request.log.error(err);
       return reply.status(500).send({ message: 'Failed' });
-    }
-  });
-
-  // GET /all-star?seasonId=X — best player per position + 1 SP + 3 RP
-  app.get<{ Querystring: { seasonId?: string } }>('/all-star', async (request, reply) => {
-    try {
-      const seasonIdStr = request.query.seasonId;
-      if (!seasonIdStr) {
-        return reply.status(400).send({ message: 'seasonId is required' });
-      }
-      const seasonId = parseInt(seasonIdStr, 10);
-      if (isNaN(seasonId) || seasonId <= 0) {
-        return reply.status(400).send({ message: 'Invalid seasonId' });
-      }
-      const result = await computeAllStarTeam(seasonId);
-      if (!result) {
-        return reply.status(404).send({ message: 'Season not found' });
-      }
-      return reply.send(result);
-    } catch (err) {
-      request.log.error(err);
-      return reply.status(500).send({ message: 'Failed to build all-star team' });
     }
   });
 }
