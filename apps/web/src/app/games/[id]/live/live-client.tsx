@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useCallback, useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
 import { useGameSocket } from '@/hooks/useGameSocket';
 import { formatPlayByPlay } from '@/lib/format-play';
@@ -10,6 +10,7 @@ import { aggregatePitchingStatsByPitcher, inningsFromOuts, boundsFromEvents, bui
 import { formatGameDateLong } from '@/lib/game-datetime';
 import { normalizeGameEvents, tryExtractEventArray } from '@/lib/normalize-game-events';
 import { buildPositionMapsByEvent } from '@/lib/position-maps-by-event';
+import { usePollingWhenVisible } from '@/hooks/use-polling-when-visible';
 
 /** Fetch a JSON array from the public proxy; returns null on non-OK or parse errors so callers do not replace state with []. */
 async function fetchPublicJsonArray(url: string): Promise<any[] | null> {
@@ -334,32 +335,33 @@ export function LiveGameClient({
   }, [updateSeq, gameId]);
 
   // Polling: live games when disconnected, OR still no events while connected (recover stuck empty PBP)
-  useEffect(() => {
-    const isLive = game?.status === 'live' && !isFinal;
-    if (!isLive) return;
-    if (connected && events.length > 0) return;
-    const interval = setInterval(async () => {
-      try {
-        const [gData, evts, lineupRows, box, pbox, fbox] = await Promise.all([
-          fetch(`/api/proxy/public/games/${gameId}`)
-            .then(async r => (r.ok ? r.json() : null))
-            .catch(() => null),
-          fetchPublicGameEvents(gameId),
-          fetchPublicJsonArray(`/api/proxy/public/games/${gameId}/lineups`),
-          fetchPublicJsonArray(`/api/proxy/public/games/${gameId}/boxscore`),
-          fetchPublicJsonArray(`/api/proxy/public/games/${gameId}/pitching-boxscore`),
-          fetchPublicJsonArray(`/api/proxy/public/games/${gameId}/fielding-boxscore`),
-        ]);
-        if (gData && typeof gData === 'object' && gData.id) setGame(gData);
-        if (evts !== null) setEvents(normalizeGameEvents(evts) as GameEvent[]);
-        if (lineupRows !== null) setLineups(lineupRows as LineupEntry[]);
-        if (box !== null) setBattingBox(box);
-        if (pbox !== null) setPitchingBox(pbox);
-        if (fbox !== null) setFieldingBox(fbox as FieldingBoxScore[]);
-      } catch {}
-    }, 8000);
-    return () => clearInterval(interval);
-  }, [game?.status, isFinal, connected, gameId, events.length]);
+  const needsLivePolling =
+    game?.status === 'live' && !isFinal && !(connected && events.length > 0);
+
+  const pollLiveGame = useCallback(async () => {
+    try {
+      const [gData, evts, lineupRows, box, pbox, fbox] = await Promise.all([
+        fetch(`/api/proxy/public/games/${gameId}`)
+          .then(async (r) => (r.ok ? r.json() : null))
+          .catch(() => null),
+        fetchPublicGameEvents(gameId),
+        fetchPublicJsonArray(`/api/proxy/public/games/${gameId}/lineups`),
+        fetchPublicJsonArray(`/api/proxy/public/games/${gameId}/boxscore`),
+        fetchPublicJsonArray(`/api/proxy/public/games/${gameId}/pitching-boxscore`),
+        fetchPublicJsonArray(`/api/proxy/public/games/${gameId}/fielding-boxscore`),
+      ]);
+      if (gData && typeof gData === 'object' && gData.id) setGame(gData);
+      if (evts !== null) setEvents(normalizeGameEvents(evts) as GameEvent[]);
+      if (lineupRows !== null) setLineups(lineupRows as LineupEntry[]);
+      if (box !== null) setBattingBox(box);
+      if (pbox !== null) setPitchingBox(pbox);
+      if (fbox !== null) setFieldingBox(fbox as FieldingBoxScore[]);
+    } catch {}
+  }, [gameId]);
+
+  usePollingWhenVisible(() => {
+    void pollLiveGame();
+  }, 8000, needsLivePolling);
 
   const displayScore = {
     home: gameState?.homeScore ?? game?.homeScore ?? 0,

@@ -1,8 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { TeamMark } from '@/components/ui/team-mark';
+import { usePollingWhenVisible } from '@/hooks/use-polling-when-visible';
 
 type LiveGame = {
   id: number;
@@ -29,23 +30,23 @@ export function HomeLiveScores({
     setGames(initialGames);
   }, [initialGames]);
 
-  useEffect(() => {
-    if (games.length === 0) return;
+  const refreshLive = useCallback(() => {
     const url = seasonId
       ? `/api/proxy/public/games?seasonId=${seasonId}&status=live`
       : '/api/proxy/public/games?status=live';
-    const refresh = () => {
-      fetch(url, { cache: 'no-store' })
-        .then((r) => (r.ok ? r.json() : []))
-        .then((data) => {
-          if (Array.isArray(data)) setGames(data);
-        })
-        .catch(() => {});
-    };
-    refresh();
-    const id = setInterval(refresh, 12000);
-    return () => clearInterval(id);
-  }, [seasonId, games.length]);
+    fetch(url, { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data) => {
+        if (Array.isArray(data)) setGames(data);
+      })
+      .catch(() => {});
+  }, [seasonId]);
+
+  useEffect(() => {
+    if (games.length > 0) refreshLive();
+  }, [games.length, refreshLive]);
+
+  usePollingWhenVisible(refreshLive, 12000, games.length > 0);
 
   if (games.length === 0) return null;
 

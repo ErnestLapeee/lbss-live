@@ -34,7 +34,7 @@ function parsePositiveIntId(raw: unknown): number | null {
 export async function buildApp() {
   await ensureOptionalSchemaColumns();
 
-  const app = Fastify({ logger: true, bodyLimit: 100 * 1024 * 1024 });
+  const app = Fastify({ logger: true, bodyLimit: 100 * 1024 * 1024, trustProxy: true });
 
   const corsOrigins = [
     ...parseOriginList(process.env.WEB_URL, 'http://localhost:3000'),

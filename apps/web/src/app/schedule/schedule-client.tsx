@@ -14,6 +14,7 @@ import {
   formatGameWeekdayShort,
 } from '@/lib/game-datetime';
 import { buildRecordByTeamIdFromStandings } from '@/lib/standings-records';
+import { usePollingWhenVisible } from '@/hooks/use-polling-when-visible';
 
 
 interface Game {
@@ -139,12 +140,8 @@ export function ScheduleClient({
     };
   }, [selectedSeasonId]);
 
-  // Auto-refresh every 12s when live games exist
-  useEffect(() => {
-    if (!games.some(g => g.status === 'live')) return;
-    const interval = setInterval(() => fetchData(), 12000);
-    return () => clearInterval(interval);
-  }, [games, fetchData]);
+  const hasLiveGames = games.some((g) => g.status === 'live');
+  usePollingWhenVisible(fetchData, 12000, hasLiveGames);
 
   const liveGames = games.filter(g => g.status === 'live');
   const finishedGames = games.filter(g => g.status === 'final').reverse();

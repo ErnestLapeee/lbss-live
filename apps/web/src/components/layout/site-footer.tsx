@@ -54,18 +54,10 @@ export function SiteFooter() {
           </div>
         </div>
 
-        <div className="mt-10 pt-6 border-t border-white/[0.06] flex flex-col sm:flex-row items-center justify-between gap-3">
+        <div className="mt-10 pt-6 border-t border-white/[0.06] text-center">
           <p className="text-[11px] text-white/30">
             &copy; {new Date().getFullYear()} Latvijas Beisbola Softbola Savieniba. All rights reserved.
           </p>
-          <a
-            href={process.env.NEXT_PUBLIC_ADMIN_URL || '#'}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-[10px] text-white/20 hover:text-white/40 transition-colors"
-          >
-            Admin
-          </a>
         </div>
       </div>
     </footer>
