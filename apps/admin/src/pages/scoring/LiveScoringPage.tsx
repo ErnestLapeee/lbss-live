@@ -2,6 +2,7 @@ import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, mem
 import { useParams, useNavigate } from 'react-router-dom';
 import { apiGet, apiPost, apiPut, apiPatch, apiDelete, isUnreachableError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import { groupScoringLog, normalizeLogHalf, pitchLabel, pitchMark, SCORER_NON_AB_EVENTS, type LogGroup } from '@/lib/scoring-log';
 import {
   discardBook,
   dropLastPending,
@@ -110,17 +111,6 @@ function formatScoringMiniPbpLine(evt: GameEvent, game?: GameData | null): strin
   }
   return evt.eventDetail || evt.eventType;
 }
-
-/** Plate-appearance cursor skips these (must stay aligned with derived batter index). */
-const SCORER_NON_AB_EVENTS = new Set([
-  'pitch', 'stolen_base', 'caught_stealing', 'picked_off', 'wild_pitch', 'passed_ball',
-  'balk', 'advance', 'advance_on_error', 'defensive_indifference',
-  'runner_interference', 'appeal_play', 'tagged_out', 'force_out',
-  'hit_by_ball', 'missed_base', 'left_base_early', 'left_base_path',
-  'offensive_interference', 'passed_runner', 'hesitation',
-  'end_half_inning', 'adjust_score', 'illegal_pitch', 'substitution',
-  'place_runner_second',
-]);
 
 /** Last completed PA batter from this team's previous offensive inning (same half, inning − 1); typical extras tie-break pick. */
 function suggestedGhostRunnerFromPrevOffensiveInning(events: GameEvent[], inning: number, half: string): number | null {
@@ -4695,6 +4685,52 @@ function needsRunnerAdvanceErrorFieldingPrompt(
    Event Timeline Panel – overlay for viewing/editing/deleting events
    ══════════════════════════════════════════════════════════════════════════ */
 
+function logGroupHaystack(group: LogGroup, nameOf: (id?: number | null) => string): string {
+  if (group.kind === 'note') {
+    return `${nameOf(group.event.batterId)} ${formatScoringMiniPbpLine(group.event as GameEvent)}`.toLowerCase();
+  }
+  const bits = [
+    nameOf(group.batterId),
+    group.result ? formatScoringMiniPbpLine(group.result as GameEvent) : '',
+    ...group.notes.map((note) => formatScoringMiniPbpLine(note as GameEvent)),
+    ...group.pitches.map((pitch) => pitchLabel(pitch.eventDetail)),
+  ];
+  return bits.join(' ').toLowerCase();
+}
+
+function shortenLogHeadline(headline: string, batterName: string): string {
+  const name = batterName.trim();
+  if (!name) return headline;
+  const lead = `${name}:`;
+  if (headline.toLowerCase().startsWith(lead.toLowerCase())) {
+    return headline.slice(lead.length).trim() || headline;
+  }
+  return headline;
+}
+
+function PitchMarks({ details }: { details: Array<string | null | undefined> }) {
+  if (details.length === 0) return null;
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1">
+      {details.map((detail, index) => {
+        const mark = pitchMark(detail);
+        const tone = mark === 'B'
+          ? 'bg-emerald-950 text-emerald-200'
+          : mark === 'S'
+            ? 'bg-red-950 text-red-200'
+            : mark === 'F'
+              ? 'bg-amber-950 text-amber-100'
+              : 'bg-white/10 text-white/70';
+        return (
+          <span key={`${mark}-${index}`} className={`inline-flex h-5 min-w-5 items-center justify-center rounded px-1 font-mono text-[11px] font-bold ${tone}`}>
+            {mark}
+          </span>
+        );
+      })}
+    </span>
+  );
+}
+
 interface TimelinePanelProps {
   gameId: number;
   game: GameData;
@@ -4716,6 +4752,9 @@ function EventTimelinePanel({ gameId, game, events, homeLineup, awayLineup, uplo
   const [statsLoading, setStatsLoading] = useState(false);
   const [gameStats, setGameStats] = useState<{ batting: any[]; pitching: any[]; fielding: any[] } | null>(null);
   const [statsEdits, setStatsEdits] = useState<Record<string, Record<string, any>>>({});
+  const [logQuery, setLogQuery] = useState('');
+  const [openLogId, setOpenLogId] = useState<string | null>(null);
+  const logListRef = useRef<HTMLDivElement>(null);
 
   const allPlayers = useMemo(() => {
     const map = new Map<number, string>();
@@ -4726,6 +4765,62 @@ function EventTimelinePanel({ gameId, game, events, homeLineup, awayLineup, uplo
   }, [homeLineup, awayLineup]);
 
   const playerName = (id?: number | null) => id ? (allPlayers.get(id) || `#${id}`) : '';
+  const playerJersey = (id?: number | null) => {
+    if (id == null) return '';
+    const row = [...homeLineup, ...awayLineup].find((p) => p.playerId === id);
+    return formatJersey(row?.jerseyNumber);
+  };
+
+  const logGroups = useMemo(() => groupScoringLog(events), [events]);
+  const logHalves = useMemo(() => {
+    const seen = new Set<string>();
+    const halves: Array<{ id: string; label: string; away: number; home: number }> = [];
+    for (const group of logGroups) {
+      const id = `log-half-${normalizeLogHalf(group.half)}-${group.inning}`;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      halves.push({
+        id,
+        label: `${normalizeLogHalf(group.half) === 'top' ? '▲' : '▼'} ${group.inning}`,
+        away: group.awayBefore,
+        home: group.homeBefore,
+      });
+    }
+    return halves;
+  }, [logGroups]);
+  const logQueryText = logQuery.trim().toLowerCase();
+  const visibleLogGroups = useMemo(() => {
+    if (!logQueryText) return logGroups;
+    return logGroups.filter((group) => logGroupHaystack(group, playerName).includes(logQueryText));
+  }, [logGroups, logQueryText, playerName]);
+
+  const logSections = useMemo(() => {
+    const sections: Array<{ id: string; label: string; away: number; home: number; groups: LogGroup[] }> = [];
+    for (const group of visibleLogGroups) {
+      const id = `log-half-${normalizeLogHalf(group.half)}-${group.inning}`;
+      const known = logHalves.find((half) => half.id === id);
+      const last = sections[sections.length - 1];
+      if (!last || last.id !== id) {
+        sections.push({
+          id,
+          label: known?.label ?? `${normalizeLogHalf(group.half) === 'top' ? '▲' : '▼'} ${group.inning}`,
+          away: known?.away ?? group.awayBefore,
+          home: known?.home ?? group.homeBefore,
+          groups: [group],
+        });
+      } else {
+        last.groups.push(group);
+      }
+    }
+    return sections;
+  }, [visibleLogGroups, logHalves]);
+
+  useEffect(() => {
+    if (mode !== 'log') return;
+    const el = logListRef.current;
+    if (!el || logQueryText) return;
+    el.scrollTop = el.scrollHeight;
+  }, [mode, events.length, logQueryText]);
 
   const EVENT_TYPE_OPTIONS = [
     'pitch', 'single', 'bunt_single', 'double', 'ground_rule_double', 'triple', 'home_run', 'inside_park_hr',
@@ -4908,7 +5003,7 @@ function EventTimelinePanel({ gameId, game, events, homeLineup, awayLineup, uplo
   return (
     <div className="fixed inset-0 z-50 flex">
       <div className="absolute inset-0 bg-black/60" onClick={onClose} />
-      <div className="relative ml-auto flex h-full w-full max-w-lg flex-col overflow-hidden border-l border-white/10 bg-scoring-timeline pt-[env(safe-area-inset-top)]">
+      <div className="relative ml-auto flex h-full w-full max-w-2xl flex-col overflow-hidden border-l border-white/10 bg-scoring-timeline pt-[env(safe-area-inset-top)]">
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
           <div className="flex items-center gap-2">
@@ -4916,13 +5011,13 @@ function EventTimelinePanel({ gameId, game, events, homeLineup, awayLineup, uplo
             <div className="flex gap-1 ml-2">
               <button
                 onClick={() => { setMode('log'); setPreviewState(null); }}
-                className={`px-2 py-1 text-[9px] font-bold rounded uppercase ${mode === 'log' ? 'bg-white/10 text-white' : 'bg-white/5 text-white/40 hover:text-white/70'}`}
+                className={`px-3 py-1.5 text-xs font-bold rounded uppercase ${mode === 'log' ? 'bg-white/15 text-white' : 'bg-white/5 text-white/40 hover:text-white/70'}`}
               >
                 Log
               </button>
               <button
                 onClick={async () => { setMode('stats'); setPreviewState(null); if (!gameStats) await loadStats(); }}
-                className={`px-2 py-1 text-[9px] font-bold rounded uppercase ${mode === 'stats' ? 'bg-white/10 text-white' : 'bg-white/5 text-white/40 hover:text-white/70'}`}
+                className={`px-3 py-1.5 text-xs font-bold rounded uppercase ${mode === 'stats' ? 'bg-white/15 text-white' : 'bg-white/5 text-white/40 hover:text-white/70'}`}
               >
                 Stats
               </button>
@@ -4950,21 +5045,103 @@ function EventTimelinePanel({ gameId, game, events, homeLineup, awayLineup, uplo
           </div>
         )}
 
+        {mode === 'log' && (
+          <div className="shrink-0 space-y-2 border-b border-white/10 px-4 py-3">
+            <input
+              value={logQuery}
+              onChange={(e) => setLogQuery(e.target.value)}
+              placeholder="Find a player or play"
+              className="w-full rounded-md border border-white/15 bg-white/5 px-3 py-2 text-sm text-white outline-none placeholder:text-white/30 focus:border-white/30"
+            />
+            <div className="flex gap-1.5 overflow-x-auto pb-1">
+              {logHalves.map((half) => (
+                <button
+                  key={half.id}
+                  type="button"
+                  onClick={() => {
+                    const list = logListRef.current;
+                    const target = document.getElementById(half.id);
+                    if (list && target) list.scrollTop = target.offsetTop;
+                  }}
+                  className="shrink-0 rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-bold text-white/80 hover:bg-white/20"
+                >
+                  {half.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Event list */}
-        <div className="flex-1 overflow-y-auto">
+        <div ref={logListRef} className="relative flex-1 overflow-y-auto">
           {mode === 'log' && (
             <>
-              {events.length === 0 && <p className="text-white/20 text-center mt-8 text-xs">No events yet</p>}
-              {events.map((evt, i) => {
-            const showInningDivider = i === 0 || evt.inning !== events[i - 1].inning || evt.half !== events[i - 1].half;
-            return (
-              <div key={evt.id}>
-                {showInningDivider && (
-                  <div className="px-4 py-1 bg-white/[0.03] text-[9px] text-white/30 font-bold uppercase tracking-wider border-b border-white/5">
-                    {evt.half === 'top' ? '▲' : '▼'} Inning {evt.inning}
+              {events.length === 0 && <p className="text-white/40 text-center mt-8 text-sm">No plays yet</p>}
+              {logQueryText && visibleLogGroups.length === 0 && (
+                <p className="text-white/40 text-center mt-8 text-sm">Nothing matches “{logQuery.trim()}”.</p>
+              )}
+              {logSections.map((section) => (
+                <div key={section.id} id={section.id}>
+                  <div className="sticky top-0 z-10 flex items-baseline justify-between border-b border-white/10 bg-scoring-timeline px-4 py-2">
+                    <span className="text-xs font-bold uppercase tracking-wider text-white/70">{section.label}</span>
+                    <span className="font-mono text-sm font-bold tabular-nums text-white">{section.away}–{section.home}</span>
                   </div>
-                )}
-                <div className={`px-4 py-1.5 border-b border-white/[0.04] hover:bg-white/[0.03] ${previewState?.eventNumber === evt.eventNumber ? 'bg-blue-900/20' : ''}`}>
+                  {section.groups.map((group) => {
+                const open = openLogId === group.id;
+                const plate = group.kind === 'pa' ? group : null;
+                const note = group.kind === 'note' ? group : null;
+                const summaryEvents: GameEvent[] = (plate
+                  ? [...plate.pitches, ...plate.notes, ...(plate.result ? [plate.result] : [])]
+                  : note ? [note.event] : []
+                ).sort((a, b) => a.eventNumber - b.eventNumber) as GameEvent[];
+                const batterId = plate ? plate.batterId : note?.event.batterId;
+                const rawHeadline = plate
+                  ? (plate.result ? formatScoringMiniPbpLine(plate.result as unknown as GameEvent) : (plate.pitches.length ? 'Still at bat' : 'Plate appearance'))
+                  : formatScoringMiniPbpLine(note?.event as unknown as GameEvent);
+                const headline = shortenLogHeadline(rawHeadline, batterId ? playerName(batterId) : '');
+                const resultEvt = plate?.result;
+                return (
+                  <div key={group.id}>
+                    <button
+                      type="button"
+                      onClick={() => setOpenLogId(open ? null : group.id)}
+                      className={`flex w-full items-start gap-3 border-b border-white/[0.06] px-4 py-3 text-left hover:bg-white/[0.04] ${open ? 'bg-white/[0.04]' : ''}`}
+                    >
+                      <span className="mt-0.5 w-3 shrink-0 text-xs text-white/40">{open ? '▾' : '▸'}</span>
+                      <span className="min-w-0 flex-1">
+                        {batterId ? (
+                          <span className="flex items-center gap-2">
+                            <span className="inline-flex h-6 min-w-9 items-center justify-center rounded bg-amber-400 px-1.5 font-mono text-xs font-bold text-black">
+                              {playerJersey(batterId) || '—'}
+                            </span>
+                            <span className="truncate text-sm font-bold text-white">{playerName(batterId)}</span>
+                          </span>
+                        ) : (
+                          <span className="block break-words text-sm font-bold leading-snug text-sky-300">{headline}</span>
+                        )}
+                        {batterId && (
+                          <span className="mt-1 flex flex-wrap items-center gap-2">
+                            <PitchMarks details={(plate?.pitches ?? []).map((pitch) => pitch.eventDetail)} />
+                            <span className={`min-w-0 break-words text-sm ${resultEvt ? eventColor(resultEvt.eventType) : 'text-white/50'}`}>{headline}</span>
+                          </span>
+                        )}
+                        {plate?.notes.map((item) => (
+                          <span key={item.id} className={`mt-1 block break-words text-xs ${item.eventType === 'substitution' ? 'text-sky-200' : 'text-orange-200'}`}>
+                            {formatScoringMiniPbpLine(item as unknown as GameEvent)}
+                          </span>
+                        ))}
+                        {resultEvt && ((resultEvt.runsScored ?? 0) > 0 || (resultEvt.outsRecorded ?? 0) > 0 || (resultEvt.rbi ?? 0) > 0) && (
+                          <span className="mt-1 flex gap-2 text-xs">
+                            {(resultEvt.runsScored ?? 0) > 0 && <span className="text-emerald-300">{resultEvt.runsScored} R</span>}
+                            {(resultEvt.rbi ?? 0) > 0 && <span className="text-emerald-300">{resultEvt.rbi} RBI</span>}
+                            {(resultEvt.outsRecorded ?? 0) > 0 && <span className="text-red-300">{resultEvt.outsRecorded} out{resultEvt.outsRecorded === 1 ? '' : 's'}</span>}
+                          </span>
+                        )}
+                      </span>
+                    </button>
+                    {open && summaryEvents.map((evt) => (
+              <div key={evt.id}>
+                <div className={`px-4 py-2 border-b border-white/[0.04] hover:bg-white/[0.03] ${previewState?.eventNumber === evt.eventNumber ? 'bg-blue-900/20' : ''}`}>
                   {editingId === evt.id ? (
                     <div className="space-y-1.5 py-1">
                       <div className="rounded border border-amber-500/20 bg-amber-500/10 px-2 py-1 text-[9px] text-amber-100/80">
@@ -5158,28 +5335,34 @@ function EventTimelinePanel({ gameId, game, events, homeLineup, awayLineup, uplo
                     <div className="flex items-start gap-2">
                       <span className="text-white/15 text-[9px] w-5 shrink-0 text-right mt-0.5">#{evt.eventNumber}</span>
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <span className={`text-[10px] font-bold ${eventColor(evt.eventType)}`}>{evt.eventType.replace(/_/g, ' ').toUpperCase()}</span>
-                          {evt.batterId ? <span className="text-white/25 text-[9px]">{playerName(evt.batterId)}</span> : null}
+                        <div className="flex items-center gap-2">
+                          <span className={`text-xs font-bold ${eventColor(evt.eventType)}`}>
+                            {evt.eventType === 'pitch' ? pitchLabel(evt.eventDetail) : evt.eventType.replace(/_/g, ' ')}
+                          </span>
+                          {evt.batterId ? <span className="text-xs text-white/50">{playerName(evt.batterId)}</span> : null}
                         </div>
-                        {evt.eventDetail && <div className="text-white/30 text-[9px] truncate">{evt.eventDetail}</div>}
-                        <div className="flex gap-2 text-[8px] text-white/15 mt-0.5">
-                          {(evt.runsScored ?? 0) > 0 && <span className="text-green-500/60">{evt.runsScored}R</span>}
-                          {(evt.rbi ?? 0) > 0 && <span className="text-green-500/60">{evt.rbi}RBI</span>}
-                          {(evt.outsRecorded ?? 0) > 0 && <span className="text-red-400/60">{evt.outsRecorded}OUT</span>}
+                        {evt.eventDetail && evt.eventType !== 'pitch' && <div className="text-xs text-white/45">{evt.eventDetail}</div>}
+                        <div className="mt-1 flex gap-2 text-xs text-white/40">
+                          {(evt.runsScored ?? 0) > 0 && <span className="text-emerald-300">{evt.runsScored} R</span>}
+                          {(evt.rbi ?? 0) > 0 && <span className="text-emerald-300">{evt.rbi} RBI</span>}
+                          {(evt.outsRecorded ?? 0) > 0 && <span className="text-red-300">{evt.outsRecorded} out</span>}
                         </div>
                       </div>
-                      <div className="flex gap-0.5 shrink-0">
-                        <button onClick={() => handlePreview(evt.eventNumber)} title="Preview state" className={`px-1 py-0.5 text-[8px] rounded ${previewState?.eventNumber === evt.eventNumber ? 'bg-blue-600 text-white' : 'bg-white/5 text-white/30 hover:text-white/60'}`}>&#9654;</button>
-                        <button onClick={() => startEdit(evt)} title="Edit" className="px-1 py-0.5 text-[8px] bg-white/5 text-white/30 hover:text-white/60 rounded">&#9998;</button>
-                        <button onClick={() => handleDelete(evt.id)} title="Delete" disabled={busy} className="px-1 py-0.5 text-[8px] bg-white/5 text-red-400/50 hover:text-red-400 rounded">&times;</button>
+                      <div className="flex shrink-0 gap-1">
+                        <button onClick={() => handlePreview(evt.eventNumber)} className={`rounded px-2 py-1 text-[11px] font-bold ${previewState?.eventNumber === evt.eventNumber ? 'bg-blue-600 text-white' : 'bg-white/10 text-white/70 hover:text-white'}`}>State</button>
+                        <button onClick={() => startEdit(evt)} className="rounded bg-white/10 px-2 py-1 text-[11px] font-bold text-white/80 hover:text-white">Edit</button>
+                        <button onClick={() => handleDelete(evt.id)} disabled={busy} className="rounded bg-white/10 px-2 py-1 text-[11px] font-bold text-red-300 hover:text-red-200">Delete</button>
                       </div>
                     </div>
                   )}
                 </div>
               </div>
-            );
+              ))}
+                    </div>
+                );
               })}
+                </div>
+              ))}
             </>
           )}
 
@@ -5337,9 +5520,9 @@ function EventTimelinePanel({ gameId, game, events, homeLineup, awayLineup, uplo
         </div>
 
         {/* Footer */}
-        <div className="px-4 py-2 border-t border-white/10 text-[9px] text-white/20">
+        <div className="px-4 py-2 border-t border-white/10 text-xs text-white/40">
           {mode === 'log'
-            ? `${events.length} event${events.length !== 1 ? 's' : ''}`
+            ? `${visibleLogGroups.filter((group) => group.kind === 'pa').length} plate appearances · ${events.length} events`
             : `Manual edits: ${Object.keys(statsEdits).length}`}
         </div>
       </div>
