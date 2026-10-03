@@ -38,6 +38,16 @@ export async function ensureOptionalSchemaColumns(): Promise<void> {
   await db.execute(
     sql`CREATE INDEX IF NOT EXISTS game_events_game_active_number_idx ON game_events (game_id, is_deleted, event_number)`,
   );
+
+  /** Lets a phone retry a saved play without recording it twice. */
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS scoring_client_ops (
+      game_id integer NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+      client_op_id varchar(80) NOT NULL,
+      created_at timestamptz DEFAULT now(),
+      PRIMARY KEY (game_id, client_op_id)
+    )
+  `);
 }
 
 /**

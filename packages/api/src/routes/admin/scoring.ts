@@ -349,6 +349,18 @@ function pgUniqueViolationCode(err: unknown): boolean {
   return e?.code === '23505' || e?.cause?.code === '23505';
 }
 
+/** First delivery wins. A phone retry of the same play returns false and must not be applied again. */
+async function claimClientOp(conn: Pick<typeof db, 'execute'>, gameId: number, clientOpId: unknown): Promise<boolean> {
+  if (typeof clientOpId !== 'string' || !/^[A-Za-z0-9_-]{8,80}$/.test(clientOpId)) return true;
+  const inserted = await conn.execute(sql`
+    INSERT INTO scoring_client_ops (game_id, client_op_id)
+    VALUES (${gameId}, ${clientOpId})
+    ON CONFLICT (game_id, client_op_id) DO NOTHING
+    RETURNING client_op_id
+  `);
+  return firstRowFromExecute(inserted) != null;
+}
+
 export async function adminScoringRoutes(app: FastifyInstance) {
   app.addHook('preHandler', async (request, reply) => {
     if (!isStatistician(request)) return;
@@ -791,6 +803,7 @@ export async function adminScoringRoutes(app: FastifyInstance) {
           teamId: playerSeasons.teamId,
           firstName: players.firstName,
           lastName: players.lastName,
+          bats: players.bats,
           jerseyNumber: playerSeasons.jerseyNumber,
           licensePaid: licenses.paymentStatus,
         })
@@ -1483,15 +1496,19 @@ export async function adminScoringRoutes(app: FastifyInstance) {
       const rawSide = body.batterSide;
       const batterSideNorm =
         rawSide === 'L' || rawSide === 'R' ? rawSide : null;
+      const clientOpId = (body as { clientOpId?: unknown }).clientOpId;
 
       const runNorm = normalizeIncomingRunScoring(body);
       if (!runNorm.ok) return reply.status(400).send({ message: runNorm.message });
 
       const outsRecorded = Number(body.outsRecorded ?? 0);
 
-      let result: { event: InferSelectModel<typeof gameEvents>; state: GameState };
+      let result: { event: InferSelectModel<typeof gameEvents>; state: GameState } | { duplicate: true };
       try {
         result = await db.transaction(async (tx) => {
+          if (!(await claimClientOp(tx, gameId, clientOpId))) {
+            return { duplicate: true as const };
+          }
           await clearRedoTail(gameId, tx);
 
           const priorEvents = await tx
@@ -1586,6 +1603,9 @@ export async function adminScoringRoutes(app: FastifyInstance) {
         throw err;
       }
 
+      if ('duplicate' in result) {
+        return reply.send({ success: true, duplicate: true });
+      }
       const { event, state } = result;
 
       try {
@@ -1612,9 +1632,10 @@ export async function adminScoringRoutes(app: FastifyInstance) {
   });
 
   // ── POST /:gameId/undo ── Soft-delete last event
-  app.post<{ Params: { gameId: string } }>('/:gameId/undo', async (request, reply) => {
+  app.post<{ Params: { gameId: string }; Body: { clientOpId?: string; targetEventNumber?: number } }>('/:gameId/undo', async (request, reply) => {
     try {
       const gameId = parseInt(request.params.gameId, 10);
+      const targetEventNumber = Number(request.body?.targetEventNumber);
 
       // Get last non-deleted event
       const [lastEvent] = await db.select()
@@ -1623,12 +1644,23 @@ export async function adminScoringRoutes(app: FastifyInstance) {
         .orderBy(desc(gameEvents.eventNumber))
         .limit(1);
 
-      if (!lastEvent) return reply.status(400).send({ message: 'No events to undo' });
+      if (!lastEvent || (Number.isFinite(targetEventNumber) && targetEventNumber > 0 && lastEvent.eventNumber !== targetEventNumber)) {
+        if (Number.isFinite(targetEventNumber) && targetEventNumber > 0) {
+          const [already] = await db.select({ id: gameEvents.id }).from(gameEvents)
+            .where(and(eq(gameEvents.gameId, gameId), eq(gameEvents.eventNumber, targetEventNumber), eq(gameEvents.isDeleted, true)))
+            .limit(1);
+          if (already) return reply.send({ success: true, duplicate: true });
+        }
+        if (!lastEvent) return reply.status(400).send({ message: 'No events to undo' });
+        return reply.status(409).send({ message: 'The last play does not match this phone. Refresh the game.' });
+      }
 
-      // Soft delete
-      await db.update(gameEvents)
-        .set({ isDeleted: true })
-        .where(eq(gameEvents.id, lastEvent.id));
+      const claimed = await db.transaction(async (tx) => {
+        if (!(await claimClientOp(tx, gameId, request.body?.clientOpId))) return false;
+        await tx.update(gameEvents).set({ isDeleted: true }).where(eq(gameEvents.id, lastEvent.id));
+        return true;
+      });
+      if (!claimed) return reply.send({ success: true, duplicate: true });
 
       if (lastEvent.eventType === 'substitution' && lastEvent.eventDetail) {
         await revertSubstitutionLineupChanges(gameId, lastEvent.eventDetail);
@@ -1664,9 +1696,16 @@ export async function adminScoringRoutes(app: FastifyInstance) {
   });
 
   // ── POST /:gameId/redo ── Un-delete last soft-deleted event
-  app.post<{ Params: { gameId: string } }>('/:gameId/redo', async (request, reply) => {
+  app.post<{ Params: { gameId: string }; Body: { clientOpId?: string; targetEventNumber?: number } }>('/:gameId/redo', async (request, reply) => {
     try {
       const gameId = parseInt(request.params.gameId, 10);
+      const targetEventNumber = Number(request.body?.targetEventNumber);
+      if (Number.isFinite(targetEventNumber) && targetEventNumber > 0) {
+        const [target] = await db.select().from(gameEvents)
+          .where(and(eq(gameEvents.gameId, gameId), eq(gameEvents.eventNumber, targetEventNumber)))
+          .limit(1);
+        if (target && !target.isDeleted) return reply.send({ success: true, duplicate: true });
+      }
 
       // Undo removes from the top, so redo must restore the lowest deleted event above the active tail.
       const [activeTail] = await db.select({ maxNumber: sql<number | null>`MAX(${gameEvents.eventNumber})` })
@@ -1957,6 +1996,7 @@ export async function adminScoringRoutes(app: FastifyInstance) {
       half: string;
       /** Distinguishes pinch-hit / pinch-run style subs from defensive replacements in play-by-play. */
       subKind?: 'offensive' | 'defensive';
+      clientOpId?: string;
     };
   }>('/:gameId/substitute', async (request, reply) => {
     try {
@@ -1993,6 +2033,7 @@ export async function adminScoringRoutes(app: FastifyInstance) {
       });
 
       const newState = await db.transaction(async (tx) => {
+        if (!(await claimClientOp(tx, gameId, request.body.clientOpId))) return { duplicate: true as const };
         await clearRedoTail(gameId, tx);
 
         const allEventsBefore = await tx.select().from(gameEvents)
@@ -2056,6 +2097,8 @@ export async function adminScoringRoutes(app: FastifyInstance) {
         return state;
       });
 
+      if ('duplicate' in newState) return reply.send({ success: true, duplicate: true });
+
       try {
         getIO().to(`game:${gameId}`).emit('game:update', { state: newState });
       } catch {}
@@ -2078,6 +2121,7 @@ export async function adminScoringRoutes(app: FastifyInstance) {
     Params: { gameId: string };
     Body: {
       changes: Array<{ playerId: number; newPosition: number }>;
+      clientOpId?: string;
     };
   }>('/:gameId/swap-positions', async (request, reply) => {
     try {
@@ -2100,6 +2144,7 @@ export async function adminScoringRoutes(app: FastifyInstance) {
 
       const user = request.user;
       const newState = await db.transaction(async (tx) => {
+        if (!(await claimClientOp(tx, gameId, request.body.clientOpId))) return { duplicate: true as const };
         const snapshots: Array<{
           playerId: number;
           teamId: number;
@@ -2239,6 +2284,8 @@ export async function adminScoringRoutes(app: FastifyInstance) {
         return stateAfter;
       });
 
+      if ('duplicate' in newState) return reply.send({ success: true, duplicate: true });
+
       try {
         getIO().to(`game:${gameId}`).emit('game:update', { state: newState });
       } catch {}
@@ -2259,7 +2306,7 @@ export async function adminScoringRoutes(app: FastifyInstance) {
   // ── PUT /:gameId/adjust-score ── Manually adjust the score
   app.put<{
     Params: { gameId: string };
-    Body: { homeScore: number; awayScore: number };
+    Body: { homeScore: number; awayScore: number; clientOpId?: string };
   }>('/:gameId/adjust-score', async (request, reply) => {
     try {
       const gameId = parseInt(request.params.gameId, 10);
@@ -2288,28 +2335,33 @@ export async function adminScoringRoutes(app: FastifyInstance) {
       const eventNumber = ((maxEvt?.maxNum as number) || 0) + 1;
 
       const detail = JSON.stringify({ homeDelta, awayDelta });
-      await db.insert(gameEvents).values({
-        gameId,
-        eventNumber,
-        inning: state.inning,
-        half: state.half,
-        batterId: null,
-        pitcherId: null,
-        eventType: 'adjust_score',
-        eventDetail: detail,
-        rbi: 0,
-        runsScored: 0,
-        outsRecorded: 0,
-        errorsOnPlay: 0,
-        balls: 0,
-        strikes: 0,
-        runnerFirstId: null,
-        runnerSecondId: null,
-        runnerThirdId: null,
-        runnersScored: [],
-        runnerScoredReasons: [],
-        createdBy: user?.id ?? null,
+      const inserted = await db.transaction(async (tx) => {
+        if (!(await claimClientOp(tx, gameId, request.body?.clientOpId))) return false;
+        await tx.insert(gameEvents).values({
+          gameId,
+          eventNumber,
+          inning: state.inning,
+          half: state.half,
+          batterId: null,
+          pitcherId: null,
+          eventType: 'adjust_score',
+          eventDetail: detail,
+          rbi: 0,
+          runsScored: 0,
+          outsRecorded: 0,
+          errorsOnPlay: 0,
+          balls: 0,
+          strikes: 0,
+          runnerFirstId: null,
+          runnerSecondId: null,
+          runnerThirdId: null,
+          runnersScored: [],
+          runnerScoredReasons: [],
+          createdBy: user?.id ?? null,
+        });
+        return true;
       });
+      if (!inserted) return reply.send({ success: true, duplicate: true });
 
       const allAfter = await db.select().from(gameEvents)
         .where(and(eq(gameEvents.gameId, gameId), eq(gameEvents.isDeleted, false)))

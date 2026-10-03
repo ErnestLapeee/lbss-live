@@ -183,5 +183,7 @@ export function mergeBattingStats(statsList: BattingStats[]): BattingStats {
   return merged;
 }
 
+export { applyEvent, initialGameState, reduceGameState } from './reducer.js';
+export type { GameState } from './reducer.js';
 export { remapBasesForSubstitutionDetail } from './remap-bases-for-substitution.js';
 export type { BaseOccupancy } from './remap-bases-for-substitution.js';

@@ -1,14 +1,30 @@
 import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, memo, startTransition } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { apiGet, apiPost, apiPut, apiPatch, apiDelete } from '@/lib/api';
+import { apiGet, apiPost, apiPut, apiPatch, apiDelete, isUnreachableError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import {
+  discardBook,
+  enqueueOp,
+  lastActiveEventNumber,
+  newOpId,
+  nextRedoEventNumber,
+  patchBookRosters,
+  readBook,
+  replayBook,
+  shiftPending,
+  withScoringLock,
+  writeSnapshot,
+  type ScoringOp,
+  type ScoringSnapshot,
+  type ScoringView,
+} from '@/lib/scoring-book';
 
 /* ── Types ── */
-interface Player { playerId: number; firstName: string; lastName: string; jerseyNumber?: string; teamId: number; licensePaid?: string | null }
+interface Player { playerId: number; firstName: string; lastName: string; jerseyNumber?: string; teamId: number; licensePaid?: string | null; bats?: string | null }
 interface LineupEntry { id: number; playerId: number | null; battingOrder: number; position: number | null; isActive: boolean; isStarter: boolean; firstName: string; lastName: string; teamId: number; bats?: string | null; jerseyNumber?: string | null }
 interface LineupAdjustRow { id: number; playerId: number | null; battingOrder: number; position: number | null; firstName: string; lastName: string }
 interface GameState { inning: number; half: 'top' | 'bot'; outs: number; homeScore: number; awayScore: number; bases: { first: number | null; second: number | null; third: number | null }; homeLineScore: number[]; awayLineScore: number[]; eventCount: number; balls: number; strikes: number }
-interface GameEvent { id: number; eventNumber: number; eventType: string; batterId?: number; batterSide?: string | null; pitcherId?: number; inning: number; half: string; balls?: number; strikes?: number; runsScored?: number; rbi?: number; outsRecorded?: number; errorsOnPlay?: number; eventDetail?: string; fieldingSequence?: string; putoutFielderIds?: number[]; assistFielderIds?: number[]; errorFielderIds?: number[]; pitchCount?: number | null; pitchSequence?: string | null; hitLocationX?: string | null; hitLocationY?: string | null; hitType?: string | null; hitHardness?: string | null; runnerFirstId?: number | null; runnerSecondId?: number | null; runnerThirdId?: number | null; runnersScored?: number[] }
+interface GameEvent { id: number; eventNumber: number; eventType: string; batterId?: number; batterSide?: string | null; pitcherId?: number; inning: number; half: string; balls?: number; strikes?: number; runsScored?: number; rbi?: number; outsRecorded?: number; errorsOnPlay?: number; eventDetail?: string; fieldingSequence?: string; putoutFielderIds?: number[]; assistFielderIds?: number[]; errorFielderIds?: number[]; pitchCount?: number | null; pitchSequence?: string | null; hitLocationX?: string | null; hitLocationY?: string | null; hitType?: string | null; hitHardness?: string | null; runnerFirstId?: number | null; runnerSecondId?: number | null; runnerThirdId?: number | null; runnersScored?: number[]; isDeleted?: boolean }
 interface GameData { id: number; status: string; homeTeamId: number; awayTeamId: number; homeTeamName: string; awayTeamName: string; isFinalized: boolean; umpire?: string | null; officialScorer?: string | null }
 type PositionChangeDraft = { playerId: number; oldPosition: number; newPosition: number };
 
@@ -433,6 +449,43 @@ const JerseyQuickInput = memo(function JerseyQuickInput({
   );
 });
 
+type ScoringDraft =
+  | { kind: 'event'; body: Record<string, unknown> }
+  | { kind: 'undo' }
+  | { kind: 'redo' }
+  | { kind: 'substitute'; body: Extract<ScoringOp, { kind: 'substitute' }>['body'] }
+  | { kind: 'swap'; body: Extract<ScoringOp, { kind: 'swap' }>['body'] }
+  | { kind: 'adjust-score'; body: Extract<ScoringOp, { kind: 'adjust-score' }>['body'] };
+
+function materializeOp(draft: ScoringDraft, live: ScoringSnapshot): ScoringOp {
+  const id = newOpId();
+  if (draft.kind === 'undo') {
+    const target = lastActiveEventNumber(live.events);
+    if (target == null) throw new Error('No plays to undo');
+    return { id, kind: 'undo', targetEventNumber: target };
+  }
+  if (draft.kind === 'redo') {
+    const target = nextRedoEventNumber(live.events);
+    if (target == null) throw new Error('No plays to redo');
+    return { id, kind: 'redo', targetEventNumber: target };
+  }
+  if (draft.kind === 'event') return { id, kind: 'event', body: draft.body };
+  if (draft.kind === 'substitute') return { id, kind: 'substitute', body: draft.body };
+  if (draft.kind === 'swap') return { id, kind: 'swap', body: draft.body };
+  return { id, kind: 'adjust-score', body: draft.body };
+}
+
+function snapshotFrom(game: GameData, events: GameEvent[], homeLineup: LineupEntry[], awayLineup: LineupEntry[], homeRoster: Player[], awayRoster: Player[]): ScoringSnapshot {
+  return {
+    game: game as unknown as ScoringSnapshot['game'],
+    events: events as ScoringSnapshot['events'],
+    homeLineup: homeLineup as ScoringSnapshot['homeLineup'],
+    awayLineup: awayLineup as ScoringSnapshot['awayLineup'],
+    homeRoster: homeRoster as ScoringSnapshot['homeRoster'],
+    awayRoster: awayRoster as ScoringSnapshot['awayRoster'],
+  };
+}
+
 export function LiveScoringPage() {
   const { gameId: gameIdStr } = useParams<{ gameId: string }>();
   const navigate = useNavigate();
@@ -447,6 +500,11 @@ export function LiveScoringPage() {
   const [awayLineup, setAwayLineup] = useState<LineupEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [pendingPlays, setPendingPlays] = useState(0);
+  const [uploadProblem, setUploadProblem] = useState<string | null>(null);
+  const liveRef = useRef<ScoringSnapshot | null>(null);
+  const bookSourceRef = useRef<'server' | 'local' | 'none'>('none');
+  const stuckFlushRef = useRef<string | null>(null);
   const [phase, setPhase] = useState<'setup' | 'scoring'>('setup');
 
   const [homeRoster, setHomeRoster] = useState<Player[]>([]);
@@ -588,25 +646,50 @@ export function LiveScoringPage() {
     return counts;
   }, [events, game, homeLineup, awayLineup]);
 
+  const applyLocalBook = useCallback((view: ScoringView) => {
+    bookSourceRef.current = 'local';
+    liveRef.current = view;
+    setPendingPlays(view.pending);
+    startTransition(() => {
+      setGame(view.game as unknown as GameData);
+      setGameState(view.state as GameState);
+      setEvents(view.events as GameEvent[]);
+      setHomeLineup(view.homeLineup as LineupEntry[]);
+      setAwayLineup(view.awayLineup as LineupEntry[]);
+      setHomeRoster(view.homeRoster as Player[]);
+      setAwayRoster(view.awayRoster as Player[]);
+      setPhase('scoring');
+      setLoadError(null);
+    });
+  }, []);
+
   const loadState = useCallback(async () => {
     setLoadError(null);
     try {
       const data: any = await apiGet(`/admin/scoring/${gameId}/state`);
+      if ((readBook(gameId)?.pending.length ?? 0) > 0) return;
+      bookSourceRef.current = 'server';
       startTransition(() => {
         setGame(data.game);
         setGameState(data.state);
         setEvents(data.events || []);
         setHomeLineup(data.lineups?.home || []);
         setAwayLineup(data.lineups?.away || []);
+        setPendingPlays(0);
         if (data.game.status === 'live' || data.game.status === 'suspended' || data.game.status === 'final') {
           setPhase('scoring');
         }
       });
     } catch (err: any) {
+      const book = readBook(gameId);
+      if (isUnreachableError(err) && book) {
+        applyLocalBook(replayBook(book.base, book.pending));
+        return;
+      }
       console.error(err);
       setLoadError(err?.message || 'Failed to load game');
     } finally { setLoading(false); }
-  }, [gameId]);
+  }, [gameId, applyLocalBook]);
 
   const loadRosters = useCallback(async () => {
     try {
@@ -628,7 +711,165 @@ export function LiveScoringPage() {
     setAwayLineup(patchLineup);
   }, []);
 
+  const sendScoringOp = useCallback(async (op: ScoringOp) => {
+    if (op.kind === 'event') {
+      await saveEvent({ ...op.body, clientOpId: op.id });
+    } else if (op.kind === 'undo') {
+      await apiPost(`/admin/scoring/${gameId}/undo`, { clientOpId: op.id, targetEventNumber: op.targetEventNumber });
+    } else if (op.kind === 'redo') {
+      await apiPost(`/admin/scoring/${gameId}/redo`, { clientOpId: op.id, targetEventNumber: op.targetEventNumber });
+    } else if (op.kind === 'substitute') {
+      await apiPut(`/admin/scoring/${gameId}/substitute`, { ...op.body, clientOpId: op.id });
+    } else if (op.kind === 'swap') {
+      await apiPut(`/admin/scoring/${gameId}/swap-positions`, { ...op.body, clientOpId: op.id });
+    } else {
+      await apiPut(`/admin/scoring/${gameId}/adjust-score`, { ...op.body, clientOpId: op.id });
+    }
+  }, [gameId]);
+
+  const flushPending = useCallback(async (): Promise<'empty' | 'synced' | 'offline'> => {
+    let book = readBook(gameId);
+    if (!book || book.pending.length === 0) return 'empty';
+    while (book.pending.length > 0) {
+      try {
+        await sendScoringOp(book.pending[0]);
+      } catch (err) {
+        if (isUnreachableError(err)) return 'offline';
+        throw err;
+      }
+      const next = shiftPending(gameId);
+      if (!next || next.pending.length === 0) return 'synced';
+      book = next;
+    }
+    return 'synced';
+  }, [gameId, sendScoringOp]);
+
+  const saveScoringOp = useCallback(async (draft: ScoringDraft): Promise<'synced' | 'queued'> => {
+    return withScoringLock(async () => {
+      const live = liveRef.current;
+      if (!live) throw new Error('Game is not loaded yet');
+      const queue = (snap: ScoringSnapshot, op: ScoringOp) => {
+        applyLocalBook(enqueueOp(gameId, snap, op));
+      };
+      try {
+        const flushed = await flushPending();
+        if (flushed === 'offline') {
+          queue(live, materializeOp(draft, live));
+          return 'queued';
+        }
+        if (flushed === 'synced') {
+          stuckFlushRef.current = null;
+          setUploadProblem(null);
+          await loadState();
+        }
+      } catch (err) {
+        queue(live, materializeOp(draft, live));
+        if (isUnreachableError(err)) return 'queued';
+        const message = err instanceof Error ? err.message : 'A saved play was rejected';
+        stuckFlushRef.current = message;
+        setUploadProblem(message);
+        throw err;
+      }
+
+      const fresh = liveRef.current ?? live;
+      if (draft.kind === 'redo' && nextRedoEventNumber(fresh.events) == null) {
+        try {
+          await apiPost(`/admin/scoring/${gameId}/redo`, {});
+          await loadState();
+          return 'synced';
+        } catch (err) {
+          if (isUnreachableError(err)) throw new Error('No plays to redo on this phone');
+          throw err;
+        }
+      }
+
+      const op = materializeOp(draft, fresh);
+      try {
+        await sendScoringOp(op);
+        stuckFlushRef.current = null;
+        setUploadProblem(null);
+        await loadState();
+        return 'synced';
+      } catch (err) {
+        if (!isUnreachableError(err)) throw err;
+        queue(fresh, op);
+        return 'queued';
+      }
+    });
+  }, [gameId, applyLocalBook, flushPending, loadState, sendScoringOp]);
+
+  const saveEvent = useCallback(
+    (body: Record<string, unknown>) => saveScoringOp({ kind: 'event', body }),
+    [saveScoringOp],
+  );
+
+  useEffect(() => {
+    const book = readBook(gameId);
+    if (!book || book.pending.length === 0) return;
+    applyLocalBook(replayBook(book.base, book.pending));
+  }, [gameId, applyLocalBook]);
+
   useEffect(() => { loadState(); loadRosters(); }, [loadState, loadRosters]);
+
+  useEffect(() => {
+    if (!game || bookSourceRef.current !== 'server' || pendingPlays > 0) return;
+    const existing = readBook(gameId);
+    if (
+      homeRoster.length + awayRoster.length === 0
+      && existing
+      && existing.base.homeRoster.length + existing.base.awayRoster.length > 0
+    ) {
+      return;
+    }
+    const snap = snapshotFrom(game, events, homeLineup, awayLineup, homeRoster, awayRoster);
+    liveRef.current = snap;
+    writeSnapshot(gameId, snap);
+  }, [game, events, homeLineup, awayLineup, homeRoster, awayRoster, gameId, pendingPlays]);
+
+  useEffect(() => {
+    if (homeRoster.length + awayRoster.length === 0) return;
+    patchBookRosters(gameId, homeRoster, awayRoster);
+    if (liveRef.current && pendingPlays > 0) {
+      liveRef.current = {
+        ...liveRef.current,
+        homeRoster: homeRoster as ScoringSnapshot['homeRoster'],
+        awayRoster: awayRoster as ScoringSnapshot['awayRoster'],
+      };
+    }
+  }, [homeRoster, awayRoster, gameId, pendingPlays]);
+
+  useEffect(() => {
+    let stopped = false;
+    const run = () => {
+      void withScoringLock(async () => {
+        if (stopped) return;
+        try {
+          const result = await flushPending();
+          if (stopped) return;
+          if (result === 'synced') {
+            stuckFlushRef.current = null;
+            setUploadProblem(null);
+            await loadState();
+          }
+        } catch (err) {
+          if (stopped) return;
+          const message = err instanceof Error ? err.message : 'A saved play was rejected';
+          setUploadProblem(message);
+          if (stuckFlushRef.current !== message) {
+            stuckFlushRef.current = message;
+            alert(message);
+          }
+        }
+      });
+    };
+    const timer = window.setInterval(run, 12000);
+    window.addEventListener('online', run);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+      window.removeEventListener('online', run);
+    };
+  }, [flushPending, loadState]);
   useEffect(() => {
     if (!isScorer || !game) return;
     if (game.isFinalized || game.status === 'final') {
@@ -924,7 +1165,7 @@ export function LiveScoringPage() {
   // Helper: create a pitch event in the DB
   const submitPitchEvent = async (detail: string) => {
     if (!currentBatter || currentBatter.playerId == null || !gameState) return;
-    await apiPost(`/admin/scoring/${gameId}/event`, {
+    await saveEvent({
       eventType: 'pitch', eventDetail: detail,
       batterId: currentBatter.playerId, pitcherId: currentPitcher?.playerId,
       inning: gameState.inning, half: gameState.half,
@@ -1307,7 +1548,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
       const errPosSeq = uniqNums(runners.flatMap(r => r.advanceErrorFielding ?? []));
       const fsErr = errPosSeq.length > 0 ? `E${errPosSeq.join('')}` : null;
 
-      await apiPost(`/admin/scoring/${gameId}/event`, {
+      await saveEvent({
         // IMPORTANT: for runner events like stolen_base / caught_stealing we store the initiating runner in batterId
         // so finalize-game can attribute SB/CS to the correct player.
         eventType: action,
@@ -1399,7 +1640,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
         }
       }
 
-      await apiPost(`/admin/scoring/${gameId}/event`, {
+      await saveEvent({
         eventType: action, batterId: runnerId, pitcherId: currentPitcher?.playerId,
         inning: gameState.inning, half: gameState.half, rbi: 0, runsScored,
         outsRecorded, balls, strikes,
@@ -1423,12 +1664,12 @@ function needsRunnerAdvanceErrorFieldingPrompt(
     const outPlayer = defensiveChangeLineup.find(l => l.position === subPosition);
     if (!outPlayer || outPlayer.playerId == null) return;
     try {
-      await apiPut(`/admin/scoring/${gameId}/substitute`, {
+      await saveScoringOp({ kind: 'substitute', body: {
         outPlayerId: outPlayer.playerId, inPlayerId: newPlayerId,
         teamId: outPlayer.teamId, position: subPosition,
         inning: gameState?.inning ?? 1, half: gameState?.half ?? 'top',
         subKind: 'defensive',
-      });
+      } });
       setSubPosition(null); setSubTeamId(null); setStep('pitch');
       await loadState(); await loadRosters();
     } catch (err: any) { alert(err.message || 'Sub failed'); }
@@ -1469,9 +1710,9 @@ function needsRunnerAdvanceErrorFieldingPrompt(
   const handleCommitPositionChanges = async () => {
     if (pendingPositionChanges.length === 0) return;
     try {
-      await apiPut(`/admin/scoring/${gameId}/swap-positions`, {
+      await saveScoringOp({ kind: 'swap', body: {
         changes: pendingPositionChanges.map(({ playerId, newPosition }) => ({ playerId, newPosition })),
-      });
+      } });
       setPendingPositionChanges([]);
       setSubPosition(null);
       setSubTeamId(null);
@@ -1488,12 +1729,12 @@ function needsRunnerAdvanceErrorFieldingPrompt(
       return;
     }
     try {
-      await apiPut(`/admin/scoring/${gameId}/substitute`, {
+      await saveScoringOp({ kind: 'substitute', body: {
         outPlayerId: outPlayer.playerId, inPlayerId: newPlayerId,
         teamId: outPlayer.teamId, position: outPlayer.position,
         inning: gameState?.inning ?? 1, half: gameState?.half ?? 'top',
         subKind: 'offensive',
-      });
+      } });
       setSubBattingSlot(null); setSubTeamId(null); setStep('pitch');
       await loadState(); await loadRosters();
     } catch (err: any) { alert(err.message || 'Sub failed'); }
@@ -1660,7 +1901,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
       const paSide = batterSideForCurrentPa();
       const uniqueErrorFielderIds = uniqNums(errorFielderIds);
       const errorsOnPlay = uniqueErrorFielderIds.length;
-      await apiPost(`/admin/scoring/${gameId}/event`, {
+      await saveEvent({
         eventType, batterId: currentBatter.playerId, pitcherId: currentPitcher?.playerId,
         inning: gameState.inning, half: gameState.half, rbi, runsScored, outsRecorded,
         balls, strikes, runnerFirstId, runnerSecondId, runnerThirdId, runnersScored, runnerScoredReasons, fieldingSequence, eventDetail: detail,
@@ -1717,7 +1958,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
     if (historyBusy) return;
     setHistoryBusy(true);
     try {
-      await apiPost(`/admin/scoring/${gameId}/undo`, {});
+      await saveScoringOp({ kind: 'undo' });
       await loadState();
       cancelWizard();
     } catch (err: any) { alert(err.message); }
@@ -1727,7 +1968,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
     if (historyBusy) return;
     setHistoryBusy(true);
     try {
-      await apiPost(`/admin/scoring/${gameId}/redo`, {});
+      await saveScoringOp({ kind: 'redo' });
       await loadState();
       cancelWizard();
     } catch (err: any) { alert(err.message); }
@@ -1735,7 +1976,17 @@ function needsRunnerAdvanceErrorFieldingPrompt(
   };
   const handleFinalize = async () => {
     if (!confirm('Finalize? Stats and standings will be computed from the event log. Later event edits can recompute official stats.')) return;
-    try { await apiPost(`/admin/scoring/${gameId}/finalize`, {}); alert('Game finalized!'); navigate('/games'); } catch (err: any) { alert(err.message); }
+    try {
+      await withScoringLock(async () => {
+        const flushed = await flushPending();
+        if (flushed === 'offline' || (readBook(gameId)?.pending.length ?? 0) > 0) {
+          throw new Error('Plays saved on this phone are not on the server yet. Finalize after they upload.');
+        }
+        await apiPost(`/admin/scoring/${gameId}/finalize`, {});
+      });
+      alert('Game finalized!');
+      navigate('/games');
+    } catch (err: any) { alert(err.message); }
   };
   const handleEndHalfInning = async () => {
     if (!gameState || submitting) return;
@@ -1746,7 +1997,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
     }
     setSubmitting(true);
     try {
-      await apiPost(`/admin/scoring/${gameId}/event`, {
+      await saveEvent({
         eventType: 'end_half_inning', batterId: null, pitcherId: currentPitcher?.playerId,
         inning: gameState.inning, half: gameState.half, rbi: 0, runsScored: 0,
         outsRecorded: outsToAdd, balls: 0, strikes: 0,
@@ -1764,7 +2015,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
   const submitAdjustScore = async () => {
     try {
       if (!confirm('Adjust the team score only? Player runs, RBIs, and pitcher runs are not changed by this correction.')) return;
-      await apiPut(`/admin/scoring/${gameId}/adjust-score`, { homeScore: adjustHome, awayScore: adjustAway });
+      await saveScoringOp({ kind: 'adjust-score', body: { homeScore: adjustHome, awayScore: adjustAway } });
       cancelWizard(); await loadState();
     } catch (err: any) { alert(err.message || 'Failed to adjust score'); }
   };
@@ -1800,7 +2051,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
             detailParts.push(`${getPlayerName(r3)} scores`);
           }
 
-          await apiPost(`/admin/scoring/${gameId}/event`, {
+          await saveEvent({
             eventType,
             batterId: currentBatter?.playerId ?? null,
             pitcherId: currentPitcher?.playerId,
@@ -1824,7 +2075,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
         }
       }
 
-      await apiPost(`/admin/scoring/${gameId}/event`, {
+      await saveEvent({
         eventType, batterId: currentBatter?.playerId, pitcherId: currentPitcher?.playerId,
         inning: gameState.inning, half: gameState.half, rbi: 0, runsScored: 0,
         outsRecorded: 0, balls, strikes,
@@ -1847,7 +2098,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
     try {
       const miscSide = batterSideForCurrentPa();
       const nm = getPlayerName(miscGhostRunnerId);
-      await apiPost(`/admin/scoring/${gameId}/event`, {
+      await saveEvent({
         eventType: 'place_runner_second',
         batterId: null,
         pitcherId: currentPitcher?.playerId,
@@ -1905,6 +2156,10 @@ function needsRunnerAdvanceErrorFieldingPrompt(
   };
 
   const submitLineupAdjust = async () => {
+    if ((readBook(gameId)?.pending.length ?? 0) > 0) {
+      alert('Upload the plays saved on this phone before changing the lineup here.');
+      return;
+    }
     setLineupAdjustBusy(true);
     try {
       const homePayload = lineupAdjustHome.map(({ id, playerId, battingOrder, position }) => ({
@@ -1934,6 +2189,20 @@ function needsRunnerAdvanceErrorFieldingPrompt(
       setLineupAdjustBusy(false);
     }
   };
+
+  if (game && pendingPlays === 0 && bookSourceRef.current === 'server') {
+    const snap = snapshotFrom(game, events, homeLineup, awayLineup, homeRoster, awayRoster);
+    const prev = liveRef.current;
+    if (
+      snap.homeRoster.length + snap.awayRoster.length === 0
+      && prev
+      && prev.homeRoster.length + prev.awayRoster.length > 0
+    ) {
+      snap.homeRoster = prev.homeRoster;
+      snap.awayRoster = prev.awayRoster;
+    }
+    liveRef.current = snap;
+  }
 
   if (!gameIdStr || Number.isNaN(gameId) || gameId <= 0) {
     return (
@@ -2399,6 +2668,33 @@ function needsRunnerAdvanceErrorFieldingPrompt(
 
   return (
     <div className="scoring-app flex h-[100dvh] max-h-[100dvh] flex-col overflow-hidden bg-scoring-canvas text-white">
+      {(pendingPlays > 0 || uploadProblem) && (
+        <div className="shrink-0 border-b border-amber-400/30 bg-amber-500/15 px-3 py-1.5 text-center text-[11px] font-semibold text-amber-100">
+          {pendingPlays > 0
+            ? `${pendingPlays} ${pendingPlays === 1 ? 'play' : 'plays'} saved on this phone. They upload when the connection is back.`
+            : 'A saved play could not be uploaded.'}
+          {uploadProblem ? ` ${uploadProblem}` : ''}
+          {uploadProblem && (
+            <button
+              type="button"
+              className="ml-2 underline"
+              onClick={() => {
+                if (!confirm('Throw away the plays saved on this phone and load the game from the server?')) return;
+                discardBook(gameId);
+                bookSourceRef.current = 'none';
+                liveRef.current = null;
+                setUploadProblem(null);
+                setPendingPlays(0);
+                setGame(null);
+                setLoading(true);
+                void loadState();
+              }}
+            >
+              Discard phone copy
+            </button>
+          )}
+        </div>
+      )}
       {/* ── Scoreboard: compact strip on phone, full bar on lg+ ── */}
       <div className="shrink-0 bg-scoring-footer border-b border-white/20 lg:hidden">
         <div className="px-2 py-1.5 font-mono">
@@ -2765,7 +3061,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                   <button onClick={async () => {
                     setSubmitting(true);
                     try {
-                      await apiPost(`/admin/scoring/${gameId}/event`, {
+                      await saveEvent({
                         inning: gameState.inning, half: gameState.half,
                         batterId: null, pitcherId: gameState.half === 'top' ? homeLineup.find(l => l.position === 1)?.playerId : awayLineup.find(l => l.position === 1)?.playerId,
                         eventType: 'strikeout', eventDetail: 'automatic_out_empty_slot',
@@ -4227,7 +4523,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
           </table>
           {/* Play-by-play */}
           <div className="border-t border-white/5 pt-2">
-            {[...events].reverse().slice(0, 15).map(evt => (
+            {[...events].filter((evt) => !evt.isDeleted).reverse().slice(0, 15).map(evt => (
               <div key={evt.eventNumber} className="py-0.5 leading-tight text-white/35 border-b border-white/[0.03]">
                 <span className="text-white/20">{evt.half === 'top' ? '▲' : '▼'}{evt.inning}</span>{' '}
                 {formatScoringMiniPbpLine(evt, game)}
@@ -4243,9 +4539,10 @@ function needsRunnerAdvanceErrorFieldingPrompt(
         <EventTimelinePanel
           gameId={gameId}
           game={game}
-          events={events}
+          events={events.filter((evt) => !evt.isDeleted)}
           homeLineup={homeLineup}
           awayLineup={awayLineup}
+          uploadsPending={pendingPlays > 0}
           onClose={() => setShowEventTimeline(false)}
           onRefresh={async () => { await loadState(); cancelWizard(); }}
         />
@@ -4399,11 +4696,12 @@ interface TimelinePanelProps {
   events: GameEvent[];
   homeLineup: LineupEntry[];
   awayLineup: LineupEntry[];
+  uploadsPending?: boolean;
   onClose: () => void;
   onRefresh: () => Promise<void>;
 }
 
-function EventTimelinePanel({ gameId, game, events, homeLineup, awayLineup, onClose, onRefresh }: TimelinePanelProps) {
+function EventTimelinePanel({ gameId, game, events, homeLineup, awayLineup, uploadsPending, onClose, onRefresh }: TimelinePanelProps) {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editForm, setEditForm] = useState<Record<string, any>>({});
   const [previewState, setPreviewState] = useState<{ eventNumber: number; state: any } | null>(null);
@@ -4502,6 +4800,10 @@ function EventTimelinePanel({ gameId, game, events, homeLineup, awayLineup, onCl
   };
 
   const saveRow = async (kind: 'batting' | 'pitching' | 'fielding', playerId: number) => {
+    if (uploadsPending) {
+      alert('Upload the plays saved on this phone before editing stats.');
+      return;
+    }
     const key = `${kind}:${playerId}`;
     const patch = statsEdits[key] || {};
     if (Object.keys(patch).length === 0) return;
@@ -4518,6 +4820,10 @@ function EventTimelinePanel({ gameId, game, events, homeLineup, awayLineup, onCl
   };
 
   const handleDelete = async (eventId: number) => {
+    if (uploadsPending) {
+      alert('Upload the plays saved on this phone before editing the log.');
+      return;
+    }
     if (!confirm('Delete this event? Game state will be recomputed.')) return;
     setBusy(true);
     try {
@@ -4561,6 +4867,10 @@ function EventTimelinePanel({ gameId, game, events, homeLineup, awayLineup, onCl
   };
 
   const saveEdit = async () => {
+    if (uploadsPending) {
+      alert('Upload the plays saved on this phone before editing the log.');
+      return;
+    }
     if (!editingId) return;
     setBusy(true);
     try {
