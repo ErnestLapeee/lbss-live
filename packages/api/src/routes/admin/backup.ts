@@ -171,7 +171,7 @@ export async function adminBackupRoutes(app: FastifyInstance) {
     }
   });
 
-  app.post<{ Body: unknown }>('/import', async (request, reply) => {
+  app.post<{ Body: unknown }>('/import', { bodyLimit: 100 * 1024 * 1024 }, async (request, reply) => {
     try {
       const parsed = importBodySchema.safeParse(request.body);
       if (!parsed.success) {

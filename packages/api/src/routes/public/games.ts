@@ -719,7 +719,7 @@ export async function gamesRoutes(app: FastifyInstance) {
       const seasonId = joined.seasonId;
 
       const lineupRows = await db.select({ playerId: gameLineups.playerId }).from(gameLineups).where(eq(gameLineups.gameId, id));
-      const pids = lineupRows.map(r => r.playerId);
+      const pids = [...new Set(lineupRows.map(r => r.playerId).filter((p): p is number => p != null))];
       if (pids.length === 0) return reply.send({ batting: [], pitching: [] });
 
       const pidArray = sql.raw(`ARRAY[${pids.join(',')}]`);

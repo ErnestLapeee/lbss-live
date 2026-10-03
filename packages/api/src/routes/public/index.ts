@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { cacheControlForPublicPath } from '../../lib/public-rate-limit.js';
+import { cacheControlForPublicPath } from '../../lib/cache-control.js';
 import { seasonsRoutes } from './seasons.js';
 import { leaguesRoutes } from './leagues.js';
 import { teamsRoutes } from './teams.js';

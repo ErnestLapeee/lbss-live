@@ -8,6 +8,10 @@ import { hash } from 'argon2';
 import { validatePasswordStrength } from '../lib/password-policy.js';
 
 async function main() {
+  if (process.env.NODE_ENV === 'production') {
+    console.error('Refusing to seed: this script deletes all data and NODE_ENV is production.');
+    process.exit(1);
+  }
   try {
     // Clear all data
     await db.delete(payments);

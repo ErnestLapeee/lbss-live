@@ -23,7 +23,7 @@ function upstreamFetchOptions(path: string[], searchParams: URLSearchParams): Re
   if (p.startsWith('public/seasons') || p.startsWith('public/teams') || p.startsWith('public/articles')) {
     return { next: { revalidate: 120 } };
   }
-  if (p === 'public/games' || /^public\/games\/\d+$/.test(p)) {
+  if (p === 'public/games') {
     return { next: { revalidate: 20 } };
   }
   if (p.startsWith('public/players')) {
@@ -44,15 +44,22 @@ function responseCacheControl(path: string[], searchParams: URLSearchParams): st
   if (p.startsWith('public/seasons') || p.startsWith('public/teams') || p.startsWith('public/articles')) {
     return 'public, max-age=120, stale-while-revalidate=300';
   }
-  if (p === 'public/games' || /^public\/games\/\d+$/.test(p)) {
+  if (p === 'public/games') {
     return 'public, max-age=20, stale-while-revalidate=60';
   }
-  return 'public, max-age=30, stale-while-revalidate=60';
+  if (p.startsWith('public/players')) {
+    return 'public, max-age=60, stale-while-revalidate=120';
+  }
+  return 'no-store';
 }
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ path: string[] }> }) {
   const { path } = await params;
-  const apiPath = `/api/${path.join('/')}`;
+  // Only the public API may be reached; dot segments would let new URL() resolve into /api/admin.
+  if (path[0] !== 'public' || path.some((s) => s === '.' || s === '..' || /[/\\]/.test(s))) {
+    return NextResponse.json({ message: 'Not found' }, { status: 404 });
+  }
+  const apiPath = `/api/${path.map(encodeURIComponent).join('/')}`;
   const url = new URL(apiPath, API_BASE);
 
   request.nextUrl.searchParams.forEach((value, key) => {

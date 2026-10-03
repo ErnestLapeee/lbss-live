@@ -5,6 +5,8 @@ import { users } from '../../db/schema/index.js';
 import { eq } from 'drizzle-orm';
 import { validatePasswordStrength } from '../../lib/password-policy.js';
 
+const ALLOWED_ROLES = new Set(['public', 'admin', 'league_official', 'statistician']);
+
 export async function adminUsersRoutes(app: FastifyInstance) {
   // GET / - list all users
   app.get('/', async (request, reply) => {
@@ -58,8 +60,7 @@ export async function adminUsersRoutes(app: FastifyInstance) {
         return reply.status(400).send({ message: passwordCheck.message });
       }
 
-      const allowedRoles = new Set(['public', 'admin', 'league_official', 'statistician']);
-      const roleNorm = role != null && allowedRoles.has(String(role)) ? String(role) : 'public';
+      const roleNorm = role != null && ALLOWED_ROLES.has(String(role)) ? String(role) : 'public';
 
       const passwordHash = await hash(password);
 
@@ -102,8 +103,8 @@ export async function adminUsersRoutes(app: FastifyInstance) {
     };
   }>('/:id', async (request, reply) => {
     try {
-      if (request.user?.role === 'statistician') {
-        return reply.status(403).send({ message: 'Scorer accounts cannot manage users.' });
+      if (request.user?.role !== 'admin') {
+        return reply.status(403).send({ message: 'Only administrators can edit users.' });
       }
       const id = parseInt(request.params.id, 10);
       if (isNaN(id)) {
@@ -111,6 +112,9 @@ export async function adminUsersRoutes(app: FastifyInstance) {
       }
 
       const { email, displayName, role } = request.body ?? {};
+      if (role !== undefined && !ALLOWED_ROLES.has(String(role))) {
+        return reply.status(400).send({ message: 'Invalid role' });
+      }
 
       const [user] = await db
         .update(users)
@@ -141,8 +145,8 @@ export async function adminUsersRoutes(app: FastifyInstance) {
   // DELETE /:id - soft delete (set isActive=false)
   app.delete<{ Params: { id: string } }>('/:id', async (request, reply) => {
     try {
-      if (request.user?.role === 'statistician') {
-        return reply.status(403).send({ message: 'Scorer accounts cannot manage users.' });
+      if (request.user?.role !== 'admin') {
+        return reply.status(403).send({ message: 'Only administrators can deactivate users.' });
       }
       const id = parseInt(request.params.id, 10);
       if (isNaN(id)) {

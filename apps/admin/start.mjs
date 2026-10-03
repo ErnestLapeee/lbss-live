@@ -65,7 +65,12 @@ function contentType(filePath) {
 
 /** Resolve URL path to a file under dist; returns null if path escapes dist. */
 function fileUnderDist(urlPath) {
-  const pathname = decodeURIComponent((urlPath ?? '/').split('?')[0] || '/');
+  let pathname;
+  try {
+    pathname = decodeURIComponent((urlPath ?? '/').split('?')[0] || '/');
+  } catch {
+    return null;
+  }
   const rel = pathname === '/' ? 'index.html' : pathname.replace(/^\//, '');
   const root = path.resolve(distDir);
   const abs = path.resolve(root, rel);
@@ -122,6 +127,10 @@ const server = http.createServer((req, res) => {
     proxy.web(req, res);
     return;
   }
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Content-Security-Policy', "frame-ancestors 'none'");
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'same-origin');
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     res.writeHead(405, { 'Content-Type': 'text/plain; charset=utf-8' });
     res.end('Method not allowed');

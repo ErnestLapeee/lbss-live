@@ -3,12 +3,15 @@ import { db } from '../db/index.js';
 import { sessions, users } from '../db/schema/index.js';
 import { eq, and, gt } from 'drizzle-orm';
 
+/** Roles allowed into the admin API at all; `public` accounts are not staff. */
+const STAFF_ROLES = new Set(['admin', 'league_official', 'statistician']);
+
 export async function requireAuth(request: FastifyRequest, reply: FastifyReply) {
   if (request.method === 'OPTIONS') return;
 
-  // Skip auth for login and logout
-  const path = request.url;
-  if (path.includes('/auth/login') || path.includes('/auth/logout')) {
+  // Exact pathname match: a substring check on the full URL let `?x=/auth/login` skip auth on any route.
+  const pathname = request.url.split('?')[0];
+  if (pathname === '/api/admin/auth/login' || pathname === '/api/admin/auth/logout') {
     return;
   }
 
@@ -35,6 +38,10 @@ export async function requireAuth(request: FastifyRequest, reply: FastifyReply) 
 
   if (!user || !user.isActive) {
     return reply.status(401).send({ message: 'User not found or inactive' });
+  }
+
+  if (!STAFF_ROLES.has(user.role ?? '')) {
+    return reply.status(403).send({ message: 'This account does not have admin access.' });
   }
 
   request.user = user;

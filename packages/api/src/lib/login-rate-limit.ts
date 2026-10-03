@@ -8,8 +8,17 @@ const MAX_ATTEMPTS = 8;
 type Bucket = { count: number; windowStart: number };
 const buckets = new Map<string, Bucket>();
 
+const MAX_TRACKED_IPS = 10_000;
+
+function pruneExpired(now: number) {
+  for (const [ip, b] of buckets) {
+    if (now - b.windowStart >= WINDOW_MS) buckets.delete(ip);
+  }
+}
+
 export function checkLoginRateLimit(ip: string): { ok: true } | { ok: false; retryAfterSec: number } {
   const now = Date.now();
+  if (buckets.size > MAX_TRACKED_IPS) pruneExpired(now);
   let b = buckets.get(ip);
   if (!b || now - b.windowStart >= WINDOW_MS) {
     b = { count: 0, windowStart: now };

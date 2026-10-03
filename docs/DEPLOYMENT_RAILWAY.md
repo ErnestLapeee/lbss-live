@@ -33,13 +33,19 @@ On the **API** service in Railway, ensure at least:
 - **`DATABASE_URL`** — PostgreSQL connection string (usually added by linking a PostgreSQL plugin).
 - **`WEB_URL`** — Public URL of your web app (e.g. `https://your-web.up.railway.app`) so CORS allows the frontend.
 - **`ADMIN_URL`** — Public URL of the admin app (if deployed separately).
-- **`SESSION_SECRET`** — A random string for admin session cookies.
+
+Admin sessions are random IDs stored in Postgres, so no session secret is needed.
+
+## Admin service
+
+The admin app (`apps/admin/start.mjs`) serves the dashboard and forwards `/api` to the API so login cookies stay first-party. Set **`API_URL`** on the admin service to the API's URL (e.g. `https://your-api-service.up.railway.app`).
 
 ## Bot / scraper protection
 
-- **`/robots.txt`** tells well-behaved crawlers not to fetch `/api/` (including `/api/proxy/...`).
-- **Cache headers** on stats, standings, and game lists reduce repeat API work when bots or monitors re-hit the same URLs.
-- Aggressive bots are handled by **Railway's browser check** at the edge, not by in-app rate limits.
+- **`/robots.txt`** tells well-behaved crawlers not to fetch `/api/` or duplicate `?from=` player URLs, and disallows AI/SEO crawlers entirely.
+- **`apps/web/src/middleware.ts`** returns an empty 403 to known AI crawlers, SEO bots, and scripted HTTP clients.
+- **Gzip + cache headers** on `/api/proxy` responses keep stats JSON small and avoid rebuilding it on repeat hits.
+- Set a **usage limit** in Railway (workspace → Usage) so a traffic spike can never produce a large bill.
 
 ## Summary
 
@@ -50,6 +56,6 @@ On the **API** service in Railway, ensure at least:
 | API | `DATABASE_URL` | PostgreSQL connection. |
 | API | `WEB_URL` | CORS: allow requests from the web app. |
 | API | `ADMIN_URL` | CORS: allow requests from the admin app. |
-| API | `SESSION_SECRET` | Admin session signing. |
+| **Admin** | `API_URL` | **Required.** API the admin server forwards `/api` to. |
 
 Without `NEXT_PUBLIC_API_URL` on the web service, you will see “No teams registered yet”, empty season dropdowns, and no statistics even if the API and database are working.

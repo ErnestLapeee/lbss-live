@@ -44,6 +44,9 @@ export async function authRoutes(app: FastifyInstance) {
       if (!valid) {
         return reply.status(401).send({ message: 'Invalid credentials' });
       }
+      if (!['admin', 'league_official', 'statistician'].includes(user.role ?? '')) {
+        return reply.status(403).send({ message: 'This account does not have admin access.' });
+      }
 
       const sessionId = nanoid(40);
       const expiresAt = new Date();

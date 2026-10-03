@@ -58,7 +58,7 @@ GitHub Actions runs install, typecheck, and full build on push (see `.github/wor
 
 - **Node.js** 20+
 - **pnpm** 10+
-- **Docker** & **Docker Compose** (for PostgreSQL and Redis)
+- **Docker** & **Docker Compose** (for PostgreSQL)
 
 ### Setup
 
@@ -91,12 +91,11 @@ pnpm dev
 | Admin Panel | http://localhost:3001 | React admin dashboard |
 | API Server | http://localhost:3002 | Fastify REST API |
 | PostgreSQL | localhost:5432 | Database |
-| Redis | localhost:6379 | Session store & pub/sub |
 
-### Default Admin Login
+### Default Admin Login (local dev)
 
 - **Email:** admin@lbss.lv  
-- **Password:** admin123
+- **Password:** the value of `SEED_ADMIN_PASSWORD` when you ran `pnpm db:seed` (the seed prints a dev default if unset)
 
 ## Database
 
