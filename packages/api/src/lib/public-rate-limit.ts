@@ -4,9 +4,9 @@
  */
 const WINDOW_MS = 60 * 1000;
 /** Enough for live-game polling (~45 req/min) with headroom for a second tab. */
-const MAX_GENERAL = 100;
+const MAX_GENERAL = 120;
 /** Heavy endpoints return large payloads; keep tight to limit bot egress. */
-const MAX_HEAVY = 30;
+const MAX_HEAVY = 60;
 
 type Bucket = { general: number; heavy: number; windowStart: number };
 const buckets = new Map<string, Bucket>();
@@ -16,6 +16,14 @@ function isHeavyPublicPath(url: string): boolean {
   if (path.startsWith('/api/public/stats/')) return true;
   if (path === '/api/public/games') return true;
   if (path === '/api/public/players') return true;
+  return false;
+}
+
+/** True when a browser client IP was forwarded (via web proxy). SSR omits this header. */
+export function hasForwardedClientIp(headers: Record<string, unknown>): boolean {
+  const xf = headers['x-forwarded-for'];
+  if (typeof xf === 'string' && xf.trim().length > 0) return true;
+  if (Array.isArray(xf) && xf.length > 0 && String(xf[0]).trim().length > 0) return true;
   return false;
 }
 

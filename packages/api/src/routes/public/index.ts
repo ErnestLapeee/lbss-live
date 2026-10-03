@@ -3,6 +3,7 @@ import {
   cacheControlForPublicPath,
   checkPublicRateLimit,
   clientIpFromRequest,
+  hasForwardedClientIp,
 } from '../../lib/public-rate-limit.js';
 import { seasonsRoutes } from './seasons.js';
 import { leaguesRoutes } from './leagues.js';
@@ -18,7 +19,10 @@ import { playoffsRoutes } from './playoffs.js';
 export async function publicRoutes(app: FastifyInstance) {
   app.addHook('onRequest', async (request, reply) => {
     if (request.method !== 'GET') return;
-    const ip = clientIpFromRequest(request.headers as Record<string, unknown>, request.ip);
+    const headers = request.headers as Record<string, unknown>;
+    // SSR (web → API) shares one egress IP; rate limit only browser traffic via proxy (X-Forwarded-For).
+    if (!hasForwardedClientIp(headers)) return;
+    const ip = clientIpFromRequest(headers, request.ip);
     const result = checkPublicRateLimit(ip, request.url);
     if (!result.ok) {
       reply.header('Retry-After', String(result.retryAfterSec));

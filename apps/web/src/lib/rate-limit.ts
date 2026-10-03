@@ -2,8 +2,8 @@
  * In-memory rate limit for the Next.js API proxy (per client IP).
  */
 const WINDOW_MS = 60 * 1000;
-const MAX_GENERAL = 100;
-const MAX_HEAVY = 30;
+const MAX_GENERAL = 120;
+const MAX_HEAVY = 60;
 
 type Bucket = { general: number; heavy: number; windowStart: number };
 const buckets = new Map<string, Bucket>();
