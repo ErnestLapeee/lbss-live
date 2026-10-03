@@ -1010,8 +1010,23 @@ function sortData<T extends { firstName: string; lastName: string; teamName: str
     return Number.isNaN(n) ? (sortDir === 'asc' ? Infinity : -Infinity) : n;
   };
 
+  const isRateKey = RATE_STAT_KEYS.has(sortKey);
+  const isQualified = (row: any): boolean => {
+    if (typeof row.qualified === 'boolean') return row.qualified;
+    if (row.inningsPitched !== undefined) return parseBaseballInnings(row.inningsPitched) > 0;
+    if (row.atBats !== undefined) return Number(row.atBats ?? 0) >= 10;
+    return true;
+  };
+  const missingSentinel = sortDir === 'asc' ? Infinity : -Infinity;
+
   const sorted = [...data];
   sorted.sort((a, b) => {
+    if (isRateKey) {
+      const qa = isQualified(a);
+      const qb = isQualified(b);
+      if (qa !== qb) return qa ? -1 : 1;
+    }
+
     let aVal: any;
     let bVal: any;
 
@@ -1028,34 +1043,10 @@ function sortData<T extends { firstName: string; lastName: string; teamName: str
         aVal = parseBaseballInnings(aVal);
         bVal = parseBaseballInnings(bVal);
       } else {
-        const ratePitchKeys = new Set(['era', 'whip', 'fip', 'k9', 'bb9', 'h9', 'babip', 'walkRate', 'opponentAvg']);
-        const rateBatKeys = new Set(['battingAvg', 'onBasePct', 'sluggingPct', 'ops', 'babip']);
-        const ipA = parseBaseballInnings((a as any).inningsPitched);
-        const ipB = parseBaseballInnings((b as any).inningsPitched);
-        const abA = Number((a as any).atBats ?? 0);
-        const abB = Number((b as any).atBats ?? 0);
-        const minAb = 10;
-        const missingSentinel = sortDir === 'asc' ? Infinity : -Infinity;
-        const unqualifiedPitch = ratePitchKeys.has(sortKey) && ipA <= 0;
-        const unqualifiedPitchB = ratePitchKeys.has(sortKey) && ipB <= 0;
-        const unqualifiedBat = rateBatKeys.has(sortKey) && abA < minAb;
-        const unqualifiedBatB = rateBatKeys.has(sortKey) && abB < minAb;
-        if (unqualifiedPitch) {
-          aVal = sortDir === 'asc' ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY;
-        } else if (unqualifiedBat) {
-          aVal = sortDir === 'asc' ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY;
-        } else {
-          aVal = aVal !== null && aVal !== undefined ? parseFloat(String(aVal)) : missingSentinel;
-          if (Number.isNaN(aVal)) aVal = missingSentinel;
-        }
-        if (unqualifiedPitchB) {
-          bVal = sortDir === 'asc' ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY;
-        } else if (unqualifiedBatB) {
-          bVal = sortDir === 'asc' ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY;
-        } else {
-          bVal = bVal !== null && bVal !== undefined ? parseFloat(String(bVal)) : missingSentinel;
-          if (Number.isNaN(bVal)) bVal = missingSentinel;
-        }
+        aVal = aVal !== null && aVal !== undefined ? parseFloat(String(aVal)) : missingSentinel;
+        if (Number.isNaN(aVal)) aVal = missingSentinel;
+        bVal = bVal !== null && bVal !== undefined ? parseFloat(String(bVal)) : missingSentinel;
+        if (Number.isNaN(bVal)) bVal = missingSentinel;
       }
     }
 
@@ -1063,7 +1054,14 @@ function sortData<T extends { firstName: string; lastName: string; teamName: str
       return sortDir === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
     }
 
-    return sortDir === 'asc' ? (aVal as number) - (bVal as number) : (bVal as number) - (aVal as number);
+    if (aVal === bVal) return 0;
+    return sortDir === 'asc' ? (aVal < bVal ? -1 : 1) : (aVal > bVal ? -1 : 1);
   });
   return sorted;
 }
+
+/** Rate stats where small samples are ranked after players who meet the minimum (see API `qualified`). */
+const RATE_STAT_KEYS = new Set([
+  'battingAvg', 'onBasePct', 'sluggingPct', 'ops', 'babip', 'gpa',
+  'era', 'whip', 'fip', 'k9', 'bb9', 'h9', 'walkRate', 'strikeoutRate', 'opponentAvg',
+]);

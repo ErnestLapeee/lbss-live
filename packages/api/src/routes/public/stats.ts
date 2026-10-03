@@ -20,6 +20,7 @@ import { seasonWithPlayoffDefaults } from '../../lib/season-playoff-response.js'
 import { getSeasonsColumnFlagsCached } from '../../lib/seasons-playoff-columns-cache.js';
 import { parseIncludePlayoffsAllTime, sqlAllTimeSeasonWhere } from '../../lib/all-time-stats.js';
 import { formatOpponentBattingAvgPitch } from '../../lib/opponent-batting-avg.js';
+import { getQualificationThresholds, outsFromInningsNotation } from '../../lib/stat-qualification.js';
 
 const ALL_TIME = 'all';
 
@@ -36,9 +37,6 @@ function outsFromInningsSql(col: string) {
 function inningsNotationFromOuts(outs: number): string {
   return `${Math.floor(outs / 3)}.${outs % 3}`;
 }
-
-/** Min at-bats to qualify for AVG / OPS leaderboards (avoids 1-for-1 players topping rate boards). */
-const MIN_PA_BATTING_RATE_LEADERS = 10;
 
 function computeBattingRates(t: {
   atBats: number;
@@ -169,6 +167,7 @@ export async function statsRoutes(app: FastifyInstance) {
       if (seasonId && seasonId !== ALL_TIME && (isNaN(seasonIdNum!) || seasonIdNum! <= 0)) {
         return reply.status(400).send({ message: 'Invalid seasonId' });
       }
+      const { minPlateAppearances } = await getQualificationThresholds(isAllTime ? null : seasonIdNum, includePlayoffs);
 
       if (!isAllTime && seasonIdNum) {
         const result = await db
@@ -235,7 +234,12 @@ export async function statsRoutes(app: FastifyInstance) {
             homeRuns: Number(row.homeRuns ?? 0),
             strikeouts: Number(row.strikeouts ?? 0),
           });
-          return { ...row, runsCreated: rates.runsCreated, gpa: rates.gpa };
+          return {
+            ...row,
+            runsCreated: rates.runsCreated,
+            gpa: rates.gpa,
+            qualified: Number(row.plateAppearances ?? 0) >= minPlateAppearances,
+          };
         });
         return reply.send(withRcGpa);
       }
@@ -369,6 +373,7 @@ export async function statsRoutes(app: FastifyInstance) {
           babip: rates.babip,
           runsCreated: rates.runsCreated,
           gpa: rates.gpa,
+          qualified: Number(r.plate_appearances ?? 0) >= minPlateAppearances,
         };
       }) : [];
       return reply.send(result);
@@ -627,6 +632,7 @@ export async function statsRoutes(app: FastifyInstance) {
         { key: 'ops', label: 'OPS', desc: true, getVal: (r: Record<string, unknown>) => r.ops != null ? parseFloat(String(r.ops)) : 0 },
         { key: 'runs', label: 'Runs', desc: true, getVal: (r: Record<string, unknown>) => Number(r.runs ?? 0) },
       ];
+      const { minPlateAppearances } = await getQualificationThresholds(isAllTime ? null : seasonIdNum, includePlayoffs);
 
       if (!isAllTime && seasonIdNum) {
         const baseFields = {
@@ -661,7 +667,7 @@ export async function statsRoutes(app: FastifyInstance) {
               qualifiesRates
                 ? and(
                     eq(playerSeasonBatting.seasonId, seasonIdNum),
-                    gte(playerSeasonBatting.atBats, MIN_PA_BATTING_RATE_LEADERS),
+                    gte(playerSeasonBatting.plateAppearances, minPlateAppearances),
                   )
                 : eq(playerSeasonBatting.seasonId, seasonIdNum),
             )
@@ -702,7 +708,7 @@ export async function statsRoutes(app: FastifyInstance) {
         )
         SELECT p.id AS player_id, p.slug AS player_slug, p.first_name, p.last_name,
           t.name AS team_name, t.short_name AS team_short_name, t.logo_url AS team_logo_url,
-          tot.at_bats, tot.hits, tot.home_runs, tot.rbi, tot.runs, tot.stolen_bases,
+          tot.plate_appearances, tot.at_bats, tot.hits, tot.home_runs, tot.rbi, tot.runs, tot.stolen_bases,
           tot.walks, tot.hit_by_pitch, tot.sacrifice_flies, tot.total_bases, tot.strikeouts
         FROM totals tot
         JOIN latest ls ON tot.player_id = ls.player_id
@@ -726,6 +732,7 @@ export async function statsRoutes(app: FastifyInstance) {
           teamShortName: r.team_short_name,
           teamLogoUrl: r.team_logo_url,
           atBats: ab,
+          plateAppearances: Number(r.plate_appearances ?? 0),
           battingAvg: ab > 0 ? (h / ab).toFixed(3) : null,
           homeRuns: r.home_runs,
           rbi: r.rbi,
@@ -739,7 +746,7 @@ export async function statsRoutes(app: FastifyInstance) {
       for (const cat of categories) {
         const pool =
           cat.key === 'battingAvg' || cat.key === 'ops'
-            ? withRates.filter((r) => Number((r as { atBats?: number }).atBats ?? 0) >= MIN_PA_BATTING_RATE_LEADERS)
+            ? withRates.filter((r) => r.plateAppearances >= minPlateAppearances)
             : withRates;
         const sorted = [...pool].sort((a, b) => {
           const va = cat.getVal(a);
@@ -770,6 +777,7 @@ export async function statsRoutes(app: FastifyInstance) {
       if (seasonId && seasonId !== ALL_TIME && (isNaN(seasonIdNum!) || seasonIdNum! <= 0)) {
         return reply.status(400).send({ message: 'Invalid seasonId' });
       }
+      const { minOuts } = await getQualificationThresholds(isAllTime ? null : seasonIdNum, includePlayoffs);
 
       if (!isAllTime && seasonIdNum) {
         const result = await db
@@ -876,6 +884,7 @@ export async function statsRoutes(app: FastifyInstance) {
             strikePercentage: strikePct,
             firstPitchStrikePct,
             opponentAvg: formatOpponentBattingAvgPitch(row as Record<string, unknown>),
+            qualified: outsFromInningsNotation(row.inningsPitched) >= minOuts,
           };
         });
         return reply.send(withGoAo);
@@ -1052,6 +1061,7 @@ export async function statsRoutes(app: FastifyInstance) {
           babip: rates.babip,
           goAo: Number(r.fly_outs ?? 0) > 0 ? (Number(r.ground_outs ?? 0) / Number(r.fly_outs ?? 0)).toFixed(2) : null,
           opponentAvg: formatOpponentBattingAvgPitch(r as Record<string, unknown>),
+          qualified: outs >= minOuts,
         };
       }) : [];
       return reply.send(result);
@@ -1073,6 +1083,7 @@ export async function statsRoutes(app: FastifyInstance) {
       if (seasonId && seasonId !== ALL_TIME && (isNaN(seasonIdNum!) || seasonIdNum! <= 0)) {
         return reply.status(400).send({ message: 'Invalid seasonId' });
       }
+      const { minOuts } = await getQualificationThresholds(isAllTime ? null : seasonIdNum, includePlayoffs);
 
       if (!isAllTime && seasonIdNum) {
         const baseFields = {
@@ -1084,6 +1095,7 @@ export async function statsRoutes(app: FastifyInstance) {
           teamShortName: teams.shortName,
           teamLogoUrl: teams.logoUrl,
         };
+        const qualifiedPitcherSql = sql`${outsFromInningsSql('player_season_pitching.innings_pitched')} >= ${minOuts}`;
         const eraLeaders = await db
           .select({ ...baseFields, value: playerSeasonPitching.era })
           .from(playerSeasonPitching)
@@ -1092,7 +1104,7 @@ export async function statsRoutes(app: FastifyInstance) {
           .where(
             and(
               eq(playerSeasonPitching.seasonId, seasonIdNum),
-              sql`${playerSeasonPitching.inningsPitched}::numeric > 0`,
+              qualifiedPitcherSql,
             ),
           )
           .orderBy(asc(playerSeasonPitching.era))
@@ -1105,7 +1117,7 @@ export async function statsRoutes(app: FastifyInstance) {
           .where(
             and(
               eq(playerSeasonPitching.seasonId, seasonIdNum),
-              sql`${playerSeasonPitching.inningsPitched}::numeric > 0`,
+              qualifiedPitcherSql,
             ),
           )
           .orderBy(asc(playerSeasonPitching.whip))
@@ -1193,7 +1205,7 @@ export async function statsRoutes(app: FastifyInstance) {
           outs,
         };
       });
-      const qualifiedPitching = withRates.filter((p) => p.outs > 0);
+      const qualifiedPitching = withRates.filter((p) => p.outs >= minOuts);
       const leaders: Record<string, { label: string; players: any[] }> = {};
       const eraSorted = [...qualifiedPitching].sort((a, b) => (parseFloat(a.era ?? '999') - parseFloat(b.era ?? '999')));
       leaders.era = { label: 'ERA', players: eraSorted.slice(0, 5).map(p => ({ ...p, value: p.era })) };
