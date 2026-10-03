@@ -12,9 +12,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Version comes from "packageManager" in package.json; also passing `version` makes the action fail.
       - uses: pnpm/action-setup@v4
-        with:
-          version: 10
 
       - uses: actions/setup-node@v4
         with:
@@ -30,6 +29,12 @@ jobs:
           pnpm --filter @lbss/api exec tsc --noEmit
           pnpm --filter @lbss/admin exec tsc --noEmit
           pnpm --filter @lbss/web exec tsc --noEmit
+
+      - name: Test
+        run: |
+          pnpm --filter @lbss/shared build
+          pnpm --filter @lbss/api test
+          pnpm --filter @lbss/web test
 
       - name: Build
         run: |

@@ -317,21 +317,25 @@ export function LiveGameClient({
   }, [connected, gameId]);
 
   // Re-fetch when the API broadcasts a game update (new event, lineup correction, score adjustment, etc.).
+  // Debounced so a burst of updates (pitch + play + substitution) costs one refetch per viewer, not one each.
   useEffect(() => {
     if (updateSeq === 0) return;
-    Promise.all([
-      fetchPublicGameEvents(gameId),
-      fetchPublicJsonArray(`/api/proxy/public/games/${gameId}/lineups`),
-      fetchPublicJsonArray(`/api/proxy/public/games/${gameId}/boxscore`),
-      fetchPublicJsonArray(`/api/proxy/public/games/${gameId}/pitching-boxscore`),
-      fetchPublicJsonArray(`/api/proxy/public/games/${gameId}/fielding-boxscore`),
-    ]).then(([evts, lineupRows, box, pbox, fbox]) => {
-      if (evts !== null) setEvents(normalizeGameEvents(evts) as GameEvent[]);
-      if (lineupRows !== null) setLineups(lineupRows as LineupEntry[]);
-      if (box !== null) setBattingBox(box);
-      if (pbox !== null) setPitchingBox(pbox);
-      if (fbox !== null) setFieldingBox(fbox as FieldingBoxScore[]);
-    });
+    const timer = setTimeout(() => {
+      Promise.all([
+        fetchPublicGameEvents(gameId),
+        fetchPublicJsonArray(`/api/proxy/public/games/${gameId}/lineups`),
+        fetchPublicJsonArray(`/api/proxy/public/games/${gameId}/boxscore`),
+        fetchPublicJsonArray(`/api/proxy/public/games/${gameId}/pitching-boxscore`),
+        fetchPublicJsonArray(`/api/proxy/public/games/${gameId}/fielding-boxscore`),
+      ]).then(([evts, lineupRows, box, pbox, fbox]) => {
+        if (evts !== null) setEvents(normalizeGameEvents(evts) as GameEvent[]);
+        if (lineupRows !== null) setLineups(lineupRows as LineupEntry[]);
+        if (box !== null) setBattingBox(box);
+        if (pbox !== null) setPitchingBox(pbox);
+        if (fbox !== null) setFieldingBox(fbox as FieldingBoxScore[]);
+      });
+    }, 1500);
+    return () => clearTimeout(timer);
   }, [updateSeq, gameId]);
 
   // Polling: live games when disconnected, OR still no events while connected (recover stuck empty PBP)
