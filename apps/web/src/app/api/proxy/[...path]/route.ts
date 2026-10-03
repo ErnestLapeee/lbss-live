@@ -1,3 +1,4 @@
+import { gzipSync } from 'node:zlib';
 import { NextRequest, NextResponse } from 'next/server';
 
 const API_BASE = process.env.INTERNAL_API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
@@ -67,19 +68,23 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     if (!text) {
       return NextResponse.json({ message: 'Empty response from upstream API' }, { status: 502 });
     }
-    let data: unknown;
     try {
-      data = JSON.parse(text) as unknown;
+      JSON.parse(text);
     } catch {
       return NextResponse.json({ message: 'Invalid JSON from upstream API' }, { status: 502 });
     }
-    return NextResponse.json(data, {
-      status: res.status,
-      headers: {
-        'Cache-Control': responseCacheControl(path, url.searchParams),
-        'X-Robots-Tag': 'noindex, nofollow',
-      },
-    });
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Cache-Control': responseCacheControl(path, url.searchParams),
+      'X-Robots-Tag': 'noindex, nofollow',
+      Vary: 'Accept-Encoding',
+    };
+    // Next.js does not compress route handler responses on Railway; stats JSON is ~10x smaller gzipped.
+    if (/\bgzip\b/.test(request.headers.get('accept-encoding') ?? '')) {
+      headers['Content-Encoding'] = 'gzip';
+      return new NextResponse(gzipSync(text), { status: res.status, headers });
+    }
+    return new NextResponse(text, { status: res.status, headers });
   } catch {
     return NextResponse.json({ message: 'API unreachable' }, { status: 502 });
   }
