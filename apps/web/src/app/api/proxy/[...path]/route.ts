@@ -53,7 +53,7 @@ function responseCacheControl(path: string[], searchParams: URLSearchParams): st
 export async function GET(request: NextRequest, { params }: { params: Promise<{ path: string[] }> }) {
   const { path } = await params;
   const ip = clientIpFromHeaders(request.headers);
-  const limited = checkRateLimit(ip, path);
+  const limited = checkRateLimit(ip);
   if (!limited.ok) {
     return NextResponse.json(
       { message: 'Too many requests. Please slow down.' },

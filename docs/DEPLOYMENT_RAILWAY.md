@@ -43,6 +43,8 @@ On the **API** service in Railway, ensure at least:
 
 These measures stop runaway egress from aggressive scrapers; they do not block normal visitors or live-game pages.
 
+If the site returns plain text **`rate limited`** with HTTP 429 and response header **`server: railway-hikari`**, that is **Railway’s edge protection** (not the app). Open a Railway support ticket or wait for the limit to clear; fixing app code alone will not lift that block.
+
 ## Summary
 
 | Service | Variable | Purpose |

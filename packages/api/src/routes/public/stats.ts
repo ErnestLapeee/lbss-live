@@ -108,7 +108,11 @@ export async function statsRoutes(app: FastifyInstance) {
       const paths = ['batting', 'leaders', 'pitching', 'pitching-leaders', 'fielding'] as const;
       const responses = await Promise.all(
         paths.map((p) =>
-          request.server.inject({ method: 'GET', url: `${base}/${p}?${qs}` }),
+          request.server.inject({
+            method: 'GET',
+            url: `${base}/${p}?${qs}`,
+            headers: { 'x-lbss-internal': '1' },
+          }),
         ),
       );
       const parseJson = (res: { statusCode: number; payload: string | Buffer }) => {

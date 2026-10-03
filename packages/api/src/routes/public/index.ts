@@ -1,10 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import {
-  cacheControlForPublicPath,
-  checkPublicRateLimit,
-  clientIpFromRequest,
-  hasForwardedClientIp,
-} from '../../lib/public-rate-limit.js';
+import { cacheControlForPublicPath } from '../../lib/public-rate-limit.js';
 import { seasonsRoutes } from './seasons.js';
 import { leaguesRoutes } from './leagues.js';
 import { teamsRoutes } from './teams.js';
@@ -17,19 +12,6 @@ import { statsRoutes } from './stats.js';
 import { playoffsRoutes } from './playoffs.js';
 
 export async function publicRoutes(app: FastifyInstance) {
-  app.addHook('onRequest', async (request, reply) => {
-    if (request.method !== 'GET') return;
-    const headers = request.headers as Record<string, unknown>;
-    // SSR (web → API) shares one egress IP; rate limit only browser traffic via proxy (X-Forwarded-For).
-    if (!hasForwardedClientIp(headers)) return;
-    const ip = clientIpFromRequest(headers, request.ip);
-    const result = checkPublicRateLimit(ip, request.url);
-    if (!result.ok) {
-      reply.header('Retry-After', String(result.retryAfterSec));
-      return reply.status(429).send({ message: 'Too many requests. Please slow down.' });
-    }
-  });
-
   app.addHook('onSend', async (request, reply) => {
     if (request.method !== 'GET' || reply.statusCode >= 400) return;
     const cacheControl = cacheControlForPublicPath(request.url);
