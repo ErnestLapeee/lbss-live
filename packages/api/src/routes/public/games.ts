@@ -73,15 +73,9 @@ export async function gamesRoutes(app: FastifyInstance) {
         inningsCount: games.inningsCount,
       };
 
-      // Unfiltered list is capped so scrapers cannot pull the entire history in one response.
-      const gamesList =
-        conditions.length > 0
-          ? await db
-              .select(gameSelect)
-              .from(games)
-              .where(and(...conditions))
-              .orderBy(games.scheduledAt)
-          : await db.select(gameSelect).from(games).orderBy(desc(games.scheduledAt)).limit(500);
+      const gamesList = conditions.length > 0
+        ? await db.select(gameSelect).from(games).where(and(...conditions)).orderBy(games.scheduledAt)
+        : await db.select(gameSelect).from(games).orderBy(games.scheduledAt);
 
       // League -> season info for each game
       const leagueIds = new Set<number>();

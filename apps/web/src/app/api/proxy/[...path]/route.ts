@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { checkRateLimit, clientIpFromHeaders } from '@/lib/rate-limit';
 
 const API_BASE = process.env.INTERNAL_API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
 
@@ -52,21 +51,6 @@ function responseCacheControl(path: string[], searchParams: URLSearchParams): st
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ path: string[] }> }) {
   const { path } = await params;
-  const ip = clientIpFromHeaders(request.headers);
-  const limited = checkRateLimit(ip);
-  if (!limited.ok) {
-    return NextResponse.json(
-      { message: 'Too many requests. Please slow down.' },
-      {
-        status: 429,
-        headers: {
-          'Retry-After': String(limited.retryAfterSec),
-          'X-Robots-Tag': 'noindex, nofollow',
-        },
-      },
-    );
-  }
-
   const apiPath = `/api/${path.join('/')}`;
   const url = new URL(apiPath, API_BASE);
 
@@ -74,14 +58,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     url.searchParams.set(key, value);
   });
 
-  const clientIp = request.headers.get('x-forwarded-for') ?? request.headers.get('x-real-ip') ?? ip;
-
   try {
     const res = await fetch(url.toString(), {
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Forwarded-For': clientIp,
-      },
+      headers: { 'Content-Type': 'application/json' },
       ...upstreamFetchOptions(path, url.searchParams),
     });
     const text = await res.text();

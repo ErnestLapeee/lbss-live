@@ -35,15 +35,11 @@ On the **API** service in Railway, ensure at least:
 - **`ADMIN_URL`** — Public URL of the admin app (if deployed separately).
 - **`SESSION_SECRET`** — A random string for admin session cookies.
 
-## Bot / scraper protection (built into the app)
+## Bot / scraper protection
 
 - **`/robots.txt`** tells well-behaved crawlers not to fetch `/api/` (including `/api/proxy/...`).
-- **Rate limits** (~100 requests/minute per IP, tighter on heavy stats/game-list routes) on public API routes and the web proxy return `429` when exceeded.
 - **Cache headers** on stats, standings, and game lists reduce repeat API work when bots or monitors re-hit the same URLs.
-
-These measures stop runaway egress from aggressive scrapers; they do not block normal visitors or live-game pages.
-
-If the site returns plain text **`rate limited`** with HTTP 429 and response header **`server: railway-hikari`**, that is **Railway’s edge protection** (not the app). Open a Railway support ticket or wait for the limit to clear; fixing app code alone will not lift that block.
+- Aggressive bots are handled by **Railway's browser check** at the edge, not by in-app rate limits.
 
 ## Summary
 

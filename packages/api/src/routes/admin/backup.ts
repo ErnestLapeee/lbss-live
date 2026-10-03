@@ -27,28 +27,8 @@ import {
   playoffSeries,
 } from '../../db/schema/index.js';
 import { restoreFullBackup, type BackupPayload } from '../../services/backup-restore.js';
-import { clientIpFromRequest } from '../../lib/public-rate-limit.js';
 
 const BACKUP_VERSION = 3;
-const EXPORT_WINDOW_MS = 60 * 60 * 1000;
-const MAX_EXPORTS_PER_HOUR = 3;
-const exportBuckets = new Map<string, { count: number; windowStart: number }>();
-
-function checkBackupExportRateLimit(ip: string): { ok: true } | { ok: false; retryAfterSec: number } {
-  const now = Date.now();
-  let b = exportBuckets.get(ip);
-  if (!b || now - b.windowStart >= EXPORT_WINDOW_MS) {
-    b = { count: 0, windowStart: now };
-    exportBuckets.set(ip, b);
-  }
-  if (b.count >= MAX_EXPORTS_PER_HOUR) {
-    const elapsed = now - b.windowStart;
-    const retryAfterSec = Math.max(1, Math.ceil((EXPORT_WINDOW_MS - elapsed) / 1000));
-    return { ok: false, retryAfterSec };
-  }
-  b.count += 1;
-  return { ok: true };
-}
 
 function jsonReplacer(_key: string, value: unknown): unknown {
   if (typeof value === 'bigint') return value.toString();
@@ -84,13 +64,6 @@ export async function adminBackupRoutes(app: FastifyInstance) {
 
   app.get('/export', async (request, reply) => {
     try {
-      const ip = clientIpFromRequest(request.headers as Record<string, unknown>, request.ip);
-      const limited = checkBackupExportRateLimit(ip);
-      if (!limited.ok) {
-        reply.header('Retry-After', String(limited.retryAfterSec));
-        return reply.status(429).send({ message: 'Backup export rate limit reached. Try again later.' });
-      }
-
       const [
         seasonsData,
         leaguesData,
@@ -185,7 +158,6 @@ export async function adminBackupRoutes(app: FastifyInstance) {
           userId: request.user?.id,
           userEmail: request.user?.email,
           bytes: Buffer.byteLength(body, 'utf8'),
-          ip,
         },
         'Admin backup exported',
       );
