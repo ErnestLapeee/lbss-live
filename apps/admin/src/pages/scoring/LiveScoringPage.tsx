@@ -4,6 +4,7 @@ import { apiGet, apiPost, apiPut, apiPatch, apiDelete, isUnreachableError } from
 import { useAuth } from '@/lib/auth';
 import {
   discardBook,
+  dropLastPending,
   enqueueOp,
   lastActiveEventNumber,
   newOpId,
@@ -713,7 +714,7 @@ export function LiveScoringPage() {
 
   const sendScoringOp = useCallback(async (op: ScoringOp) => {
     if (op.kind === 'event') {
-      await saveEvent({ ...op.body, clientOpId: op.id });
+      await apiPost(`/admin/scoring/${gameId}/event`, { ...op.body, clientOpId: op.id });
     } else if (op.kind === 'undo') {
       await apiPost(`/admin/scoring/${gameId}/undo`, { clientOpId: op.id, targetEventNumber: op.targetEventNumber });
     } else if (op.kind === 'redo') {
@@ -784,16 +785,20 @@ export function LiveScoringPage() {
       }
 
       const op = materializeOp(draft, fresh);
+      queue(fresh, op);
       try {
         await sendScoringOp(op);
+        shiftPending(gameId);
         stuckFlushRef.current = null;
         setUploadProblem(null);
         await loadState();
         return 'synced';
       } catch (err) {
-        if (!isUnreachableError(err)) throw err;
-        queue(fresh, op);
-        return 'queued';
+        if (isUnreachableError(err)) return 'queued';
+        dropLastPending(gameId);
+        const book = readBook(gameId);
+        if (book) applyLocalBook(replayBook(book.base, book.pending));
+        throw err;
       }
     });
   }, [gameId, applyLocalBook, flushPending, loadState, sendScoringOp]);

@@ -392,6 +392,14 @@ export function enqueueOp(gameId: number, live: ScoringSnapshot, op: ScoringOp):
   return view;
 }
 
+export function dropLastPending(gameId: number): StoredBook | null {
+  const book = readBook(gameId);
+  if (!book || book.pending.length === 0) return book;
+  const next = { base: book.base, pending: book.pending.slice(0, -1) };
+  writeBook(gameId, next);
+  return next;
+}
+
 export function shiftPending(gameId: number): StoredBook | null {
   const book = readBook(gameId);
   if (!book || book.pending.length === 0) return book;

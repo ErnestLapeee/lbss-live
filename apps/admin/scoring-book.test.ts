@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { discardBook, enqueueOp, replayBook, shiftPending, type ScoringSnapshot } from './src/lib/scoring-book.ts';
+import { discardBook, dropLastPending, enqueueOp, readBook, replayBook, shiftPending, type ScoringSnapshot } from './src/lib/scoring-book.ts';
 
 function base(): ScoringSnapshot {
   return {
@@ -91,6 +91,25 @@ test('a play that already uploaded stays in the book when a later one is still w
   assert.equal(view.state.balls, 1);
   assert.equal(view.state.strikes, 1);
   discardBook(100);
+});
+
+test('a rejected play can be removed without deleting the ones still waiting', () => {
+  discardBook(101);
+  enqueueOp(101, base(), {
+    id: 'pitch-1',
+    kind: 'event',
+    body: { eventType: 'pitch', eventDetail: 'ball', half: 'top', inning: 1 },
+  });
+  enqueueOp(101, base(), {
+    id: 'pitch-2',
+    kind: 'event',
+    body: { eventType: 'pitch', eventDetail: 'strike', half: 'top', inning: 1 },
+  });
+  dropLastPending(101);
+  const book = readBook(101);
+  assert.equal(book?.pending.length, 1);
+  assert.equal(replayBook(book!.base, book!.pending).state.balls, 1);
+  discardBook(101);
 });
 
 test('queued plays stay in order until they are sent', () => {
