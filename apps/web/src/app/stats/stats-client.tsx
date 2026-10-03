@@ -359,14 +359,12 @@ interface StatsClientProps {
   initialFielding: FieldingStat[];
   initialBattingLeaders: LeadersData | null;
   initialPitchingLeaders: LeadersData | null;
-  initialLoadError?: string | null;
 }
 
 export function StatsClient({
   initialSeasons, initialSeasonId,
   initialBatting, initialPitching, initialFielding,
   initialBattingLeaders, initialPitchingLeaders,
-  initialLoadError = null,
 }: StatsClientProps) {
   const enrichBattingRates = (rows: BattingStat[]): BattingStat[] => {
     return rows.map((r) => {
@@ -409,7 +407,6 @@ export function StatsClient({
   const [battingLeaders, setBattingLeaders] = useState<LeadersData | null>(initialBattingLeaders);
   const [pitchingLeaders, setPitchingLeaders] = useState<LeadersData | null>(initialPitchingLeaders);
   const [loading, setLoading] = useState(false);
-  const [loadError, setLoadError] = useState<string | null>(initialLoadError);
   const [sortKey, setSortKey] = useState<string>('battingAvg');
   const [sortDir, setSortDir] = useState<SortDirection>('desc');
 
@@ -427,13 +424,7 @@ export function StatsClient({
     setLoading(true);
 
     fetch(`/api/proxy/public/stats/overview?${seasonParam}`)
-      .then((r) => {
-        if (r.status === 429) {
-          throw new Error('rate_limited');
-        }
-        if (!r.ok) throw new Error('overview failed');
-        return r.json();
-      })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error('overview failed'))))
       .then((data: {
         batting?: unknown[];
         battingLeaders?: LeadersData | null;
@@ -458,15 +449,8 @@ export function StatsClient({
               }))
             : [],
         );
-        setLoadError(null);
       })
-      .catch((err: unknown) => {
-        const msg =
-          err instanceof Error && err.message === 'rate_limited'
-            ? 'Too many requests — wait about a minute and refresh, or try again later.'
-            : 'Could not load statistics. Refresh the page or try again in a minute.';
-        setLoadError(msg);
-      })
+      .catch(() => {})
       .finally(() => setLoading(false));
   }, [seasonParam]);
 
@@ -619,14 +603,6 @@ export function StatsClient({
 
   return (
     <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
-      {loadError ? (
-        <div
-          role="alert"
-          className="mb-6 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950"
-        >
-          {loadError}
-        </div>
-      ) : null}
       {/* Controls row */}
       <div className="flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center justify-between gap-4 mb-8">
         {/* Tabs — shrink-0 so all three labels stay visible (overflow-hidden would clip Fielding). */}
@@ -750,18 +726,12 @@ export function StatsClient({
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 8v8m-4-5v5m-4-2v2m-2 4h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
           </div>
-          {loadError ? (
-            <p className="text-text-muted text-lg font-medium">Statistics are temporarily unavailable</p>
-          ) : (
-            <>
-              <p className="text-text-muted text-lg font-medium">
-                No {tab} statistics available yet
-              </p>
-              <p className="text-text-faint text-sm mt-2">
-                Stats will appear here once games are played and recorded.
-              </p>
-            </>
-          )}
+          <p className="text-text-muted text-lg font-medium">
+            No {tab} statistics available yet
+          </p>
+          <p className="text-text-faint text-sm mt-2">
+            Stats will appear here once games are played and recorded.
+          </p>
         </div>
       ) : (
         <>

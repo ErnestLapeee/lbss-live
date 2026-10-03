@@ -45,8 +45,6 @@ export default async function StatsPage({ searchParams }: Props) {
   let initialFielding: any[] = [];
   let initialBattingLeaders: any = null;
   let initialPitchingLeaders: any = null;
-  let initialLoadError: string | null = null;
-
   try {
     const overview = await apiFetch<StatsOverview>(
       `/api/public/stats/overview?${initialSeasonParam}`,
@@ -66,8 +64,6 @@ export default async function StatsPage({ searchParams }: Props) {
         ? overview.pitchingLeaders
         : null;
   } catch {
-    initialLoadError =
-      'Statistics could not be loaded from the server (often temporary rate limiting). Wait a minute and refresh.';
     const [batting, bLeaders, pitching, pLeaders, fielding] = await Promise.all([
       apiFetch(`/api/public/stats/batting?${initialSeasonParam}`, { revalidate: API_REVALIDATE_STANDINGS }).catch(
         () => [],
@@ -105,7 +101,6 @@ export default async function StatsPage({ searchParams }: Props) {
           initialFielding={initialFielding}
           initialBattingLeaders={initialBattingLeaders}
           initialPitchingLeaders={initialPitchingLeaders}
-          initialLoadError={initialLoadError}
         />
       </Suspense>
     </div>
