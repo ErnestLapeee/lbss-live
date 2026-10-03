@@ -3,7 +3,7 @@ import { verify } from 'argon2';
 import { nanoid } from 'nanoid';
 import { db } from '../../db/index.js';
 import { users, sessions } from '../../db/schema/index.js';
-import { eq, and, gt } from 'drizzle-orm';
+import { eq, and, gt, lt } from 'drizzle-orm';
 import { checkLoginRateLimit, clientIpFromRequest } from '../../lib/login-rate-limit.js';
 
 const SESSION_DAYS = 7;
@@ -57,6 +57,7 @@ export async function authRoutes(app: FastifyInstance) {
         userId: user.id,
         expiresAt,
       });
+      await db.delete(sessions).where(lt(sessions.expiresAt, new Date()));
 
       reply.setCookie('session', sessionId, {
         httpOnly: true,

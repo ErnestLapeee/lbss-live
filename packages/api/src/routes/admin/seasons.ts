@@ -1,6 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { db } from '../../db/index.js';
 import {
+  gameEvents,
+  gameLineups,
   games,
   leagueTeams,
   leagues,
@@ -479,6 +481,8 @@ export async function adminSeasonsRoutes(app: FastifyInstance) {
             await tx.delete(playerGameFielding).where(eq(playerGameFielding.gameId, g.id));
             await tx.delete(playerGamePitching).where(eq(playerGamePitching.gameId, g.id));
             await tx.delete(playerGameBatting).where(eq(playerGameBatting.gameId, g.id));
+            await tx.delete(gameEvents).where(eq(gameEvents.gameId, g.id));
+            await tx.delete(gameLineups).where(eq(gameLineups.gameId, g.id));
             await tx.delete(games).where(eq(games.id, g.id));
           }
 

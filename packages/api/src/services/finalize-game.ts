@@ -1032,14 +1032,11 @@ export async function recomputeSeasonBatting(seasonId: number) {
         THEN ROUND(COALESCE(SUM(pgb.total_bases), 0)::numeric / SUM(pgb.at_bats), 3)
         ELSE 0 END,
       -- OPS = OBP + SLG
-      CASE WHEN SUM(pgb.at_bats) > 0
+      CASE WHEN (SUM(pgb.at_bats) + SUM(pgb.walks) + SUM(pgb.hit_by_pitch) + SUM(pgb.sacrifice_flies)) > 0
         THEN ROUND(
-          COALESCE(
-            (SUM(pgb.hits) + SUM(pgb.walks) + SUM(pgb.hit_by_pitch))::numeric /
-              NULLIF(SUM(pgb.at_bats) + SUM(pgb.walks) + SUM(pgb.hit_by_pitch) + SUM(pgb.sacrifice_flies), 0),
-            0
-          ) +
-          COALESCE(SUM(pgb.total_bases), 0)::numeric / SUM(pgb.at_bats)
+          (SUM(pgb.hits) + SUM(pgb.walks) + SUM(pgb.hit_by_pitch))::numeric /
+            (SUM(pgb.at_bats) + SUM(pgb.walks) + SUM(pgb.hit_by_pitch) + SUM(pgb.sacrifice_flies)) +
+          COALESCE(COALESCE(SUM(pgb.total_bases), 0)::numeric / NULLIF(SUM(pgb.at_bats), 0), 0)
         , 3)
         ELSE 0 END,
       -- BABIP = (H - HR) / (AB - SO - HR + SF)

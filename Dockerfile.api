@@ -1,5 +1,5 @@
 # pnpm monorepo API service for Railway (Node 20)
-# Use this Dockerfile ONLY for the API service. Web and admin use Nixpacks + package.json.
+# Use this Dockerfile ONLY for the API service. Web and admin use Dockerfile.web / Dockerfile.admin.
 #
 # In Railway for the API service:
 #   - Root Directory: leave empty (or "/") so context is repo root

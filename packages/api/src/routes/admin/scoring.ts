@@ -12,7 +12,7 @@ import {
   playerSeasonBatting,
   playerGameFielding,
 } from '../../db/schema/index.js';
-import { eq, and, or, desc, max, sql, inArray } from 'drizzle-orm';
+import { eq, and, or, asc, desc, gt, max, sql, inArray } from 'drizzle-orm';
 import type { InferSelectModel } from 'drizzle-orm';
 import { getIO } from '../../app.js';
 import { finalizeGame } from '../../services/finalize-game.js';
@@ -1652,13 +1652,20 @@ export async function adminScoringRoutes(app: FastifyInstance) {
     try {
       const gameId = parseInt(request.params.gameId, 10);
 
+      // Undo removes from the top, so redo must restore the lowest deleted event above the active tail.
+      const [activeTail] = await db.select({ maxNumber: sql<number | null>`MAX(${gameEvents.eventNumber})` })
+        .from(gameEvents)
+        .where(and(eq(gameEvents.gameId, gameId), eq(gameEvents.isDeleted, false)));
+      const activeMax = activeTail?.maxNumber != null ? Number(activeTail.maxNumber) : 0;
+
       const [lastDeleted] = await db.select()
         .from(gameEvents)
         .where(and(
           eq(gameEvents.gameId, gameId),
           eq(gameEvents.isDeleted, true),
+          gt(gameEvents.eventNumber, activeMax),
         ))
-        .orderBy(desc(gameEvents.eventNumber))
+        .orderBy(asc(gameEvents.eventNumber))
         .limit(1);
 
       if (!lastDeleted) return reply.status(400).send({ message: 'No events to redo' });

@@ -435,6 +435,9 @@ export async function playersRoutes(app: FastifyInstance) {
         );
       }
 
+      // IP is baseball notation (6.2 = 6⅔), so aggregate via outs.
+      const ipCol = playerGamePitching.inningsPitched;
+      const playoffOuts = sql`COALESCE(SUM(TRUNC(COALESCE(${ipCol}, 0)::numeric) * 3 + ROUND((COALESCE(${ipCol}, 0)::numeric - TRUNC(COALESCE(${ipCol}, 0)::numeric)) * 10)), 0)`;
       let playoffRows: any[] = [];
       if (await gamesHavePlayoffSeriesId()) playoffRows = await db.select({
         id: sql<number>`-(${seasons.id} * 1000 + ${playerGamePitching.teamId})`.as('id'),
@@ -445,7 +448,7 @@ export async function playersRoutes(app: FastifyInstance) {
         wins: sql<number>`COALESCE(SUM(CASE WHEN ${playerGamePitching.decision} = 'W' THEN 1 ELSE 0 END), 0)`.as('wins'),
         losses: sql<number>`COALESCE(SUM(CASE WHEN ${playerGamePitching.decision} = 'L' THEN 1 ELSE 0 END), 0)`.as('losses'),
         saves: sql<number>`COALESCE(SUM(CASE WHEN ${playerGamePitching.decision} = 'S' THEN 1 ELSE 0 END), 0)`.as('saves'),
-        inningsPitched: sql<string>`COALESCE(SUM(${playerGamePitching.inningsPitched}::numeric), 0)::text`.as('innings_pitched'),
+        inningsPitched: sql<string>`(FLOOR(${playoffOuts} / 3)::int::text || '.' || MOD(${playoffOuts}, 3)::int::text)`.as('innings_pitched'),
         hitsAllowed: sql<number>`COALESCE(SUM(${playerGamePitching.hitsAllowed}), 0)`.as('hits_allowed'),
         runsAllowed: sql<number>`COALESCE(SUM(${playerGamePitching.runsAllowed}), 0)`.as('runs_allowed'),
         earnedRuns: sql<number>`COALESCE(SUM(${playerGamePitching.earnedRuns}), 0)`.as('earned_runs'),
@@ -459,8 +462,8 @@ export async function playersRoutes(app: FastifyInstance) {
         intentionalWalks: sql<number>`COALESCE(SUM(${playerGamePitching.intentionalWalks}), 0)`.as('intentional_walks'),
         groundOuts: sql<number>`COALESCE(SUM(${playerGamePitching.groundOuts}), 0)`.as('ground_outs'),
         flyOuts: sql<number>`COALESCE(SUM(${playerGamePitching.flyOuts}), 0)`.as('fly_outs'),
-        era: sql<string | null>`CASE WHEN COALESCE(SUM(${playerGamePitching.inningsPitched}::numeric), 0) > 0 THEN ROUND((COALESCE(SUM(${playerGamePitching.earnedRuns}),0)::numeric / COALESCE(SUM(${playerGamePitching.inningsPitched}::numeric),0)) * 9, 2)::text ELSE NULL END`.as('era'),
-        whip: sql<string | null>`CASE WHEN COALESCE(SUM(${playerGamePitching.inningsPitched}::numeric), 0) > 0 THEN ROUND(((COALESCE(SUM(${playerGamePitching.walksAllowed}),0) + COALESCE(SUM(${playerGamePitching.hitsAllowed}),0))::numeric / COALESCE(SUM(${playerGamePitching.inningsPitched}::numeric),0)), 2)::text ELSE NULL END`.as('whip'),
+        era: sql<string | null>`CASE WHEN ${playoffOuts} > 0 THEN ROUND(COALESCE(SUM(${playerGamePitching.earnedRuns}),0)::numeric * 27 / ${playoffOuts}, 2)::text ELSE NULL END`.as('era'),
+        whip: sql<string | null>`CASE WHEN ${playoffOuts} > 0 THEN ROUND((COALESCE(SUM(${playerGamePitching.walksAllowed}),0) + COALESCE(SUM(${playerGamePitching.hitsAllowed}),0))::numeric * 3 / ${playoffOuts}, 2)::text ELSE NULL END`.as('whip'),
         fip: sql<null>`NULL`.as('fip'),
         k9: sql<null>`NULL`.as('k9'),
         bb9: sql<null>`NULL`.as('bb9'),

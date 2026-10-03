@@ -24,8 +24,5 @@
   },
   "engines": {
     "node": ">=20"
-  },
-  "dependencies": {
-    "serve": "^14.2.5"
   }
 }

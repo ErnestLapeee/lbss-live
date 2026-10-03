@@ -404,13 +404,14 @@ export async function adminGamesRoutes(app: FastifyInstance) {
 
       const leagueId = game.leagueId;
 
-      // Delete all related per-game data (foreign key dependencies)
-      await db.delete(playerGameFielding).where(eq(playerGameFielding.gameId, id));
-      await db.delete(playerGamePitching).where(eq(playerGamePitching.gameId, id));
-      await db.delete(playerGameBatting).where(eq(playerGameBatting.gameId, id));
-      await db.delete(gameEvents).where(eq(gameEvents.gameId, id));
-      await db.delete(gameLineups).where(eq(gameLineups.gameId, id));
-      await db.delete(games).where(eq(games.id, id));
+      await db.transaction(async (tx) => {
+        await tx.delete(playerGameFielding).where(eq(playerGameFielding.gameId, id));
+        await tx.delete(playerGamePitching).where(eq(playerGamePitching.gameId, id));
+        await tx.delete(playerGameBatting).where(eq(playerGameBatting.gameId, id));
+        await tx.delete(gameEvents).where(eq(gameEvents.gameId, id));
+        await tx.delete(gameLineups).where(eq(gameLineups.gameId, id));
+        await tx.delete(games).where(eq(games.id, id));
+      });
 
       // Recompute season aggregates if the game belonged to a league
       if (leagueId) {
@@ -432,6 +433,9 @@ export async function adminGamesRoutes(app: FastifyInstance) {
           await recomputeStandings(leagueId);
         } catch (recomputeErr) {
           request.log.error(recomputeErr, 'Failed to recompute season stats after game delete');
+          return reply.status(500).send({
+            message: 'Game deleted, but recomputing season stats failed. Re-finalize a game in this season to rebuild stats.',
+          });
         }
       }
 

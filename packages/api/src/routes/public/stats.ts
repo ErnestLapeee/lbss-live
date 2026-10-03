@@ -23,7 +23,21 @@ import { formatOpponentBattingAvgPitch } from '../../lib/opponent-batting-avg.js
 
 const ALL_TIME = 'all';
 
-/** Min plate appearances to qualify for AVG / OPS leaderboards (avoids 0-PA players topping rate boards). */
+/**
+ * Innings are stored in baseball notation (7.1 = 7⅓, 6.2 = 6⅔), so they cannot be summed as decimals.
+ * Returns SQL for the out count of one row; `col` must be a trusted column reference.
+ */
+function outsFromInningsSql(col: string) {
+  return sql.raw(
+    `TRUNC(COALESCE(${col}, 0)::numeric) * 3 + ROUND((COALESCE(${col}, 0)::numeric - TRUNC(COALESCE(${col}, 0)::numeric)) * 10)`,
+  );
+}
+
+function inningsNotationFromOuts(outs: number): string {
+  return `${Math.floor(outs / 3)}.${outs % 3}`;
+}
+
+/** Min at-bats to qualify for AVG / OPS leaderboards (avoids 1-for-1 players topping rate boards). */
 const MIN_PA_BATTING_RATE_LEADERS = 10;
 
 function computeBattingRates(t: {
@@ -876,7 +890,7 @@ export async function statsRoutes(app: FastifyInstance) {
             SUM(COALESCE(psb.wins, 0))::int AS wins,
             SUM(COALESCE(psb.losses, 0))::int AS losses,
             SUM(COALESCE(psb.saves, 0))::int AS saves,
-            SUM(COALESCE(psb.innings_pitched, 0)::numeric)::numeric AS innings_pitched,
+            SUM(${outsFromInningsSql('psb.innings_pitched')})::int AS total_outs,
             SUM(COALESCE(psb.hits_allowed, 0))::int AS hits_allowed,
             SUM(COALESCE(psb.runs_allowed, 0))::int AS runs_allowed,
             SUM(COALESCE(psb.earned_runs, 0))::int AS earned_runs,
@@ -919,7 +933,7 @@ export async function statsRoutes(app: FastifyInstance) {
         SELECT p.id AS player_id, p.slug AS player_slug, p.first_name, p.last_name,
           t.name AS team_name, t.short_name AS team_short_name, t.logo_url AS team_logo_url,
           tot.games, tot.games_started, tot.wins, tot.losses, tot.saves,
-          tot.innings_pitched, tot.hits_allowed, tot.runs_allowed, tot.earned_runs,
+          tot.total_outs, tot.hits_allowed, tot.runs_allowed, tot.earned_runs,
           tot.walks_allowed, tot.strikeouts, tot.home_runs_allowed, tot.hit_batters,
           tot.wild_pitches, tot.batters_faced, tot.balks, tot.intentional_walks,
           tot.ground_outs, tot.fly_outs,
@@ -931,7 +945,7 @@ export async function statsRoutes(app: FastifyInstance) {
         JOIN latest ls ON tot.player_id = ls.player_id
         JOIN players p ON p.id = tot.player_id
         JOIN teams t ON t.id = ls.team_id
-        ORDER BY CASE WHEN tot.innings_pitched > 0 THEN (tot.earned_runs::numeric / tot.innings_pitched) * 9 ELSE 999 END ASC
+        ORDER BY CASE WHEN tot.total_outs > 0 THEN tot.earned_runs::numeric * 27 / tot.total_outs ELSE 999 END ASC
       `);
 
       const raw = (rows as { rows?: unknown[] }).rows ?? (rows as unknown[]);
@@ -957,8 +971,9 @@ export async function statsRoutes(app: FastifyInstance) {
       );
       const result = Array.isArray(raw) ? raw.map((row: unknown) => {
         const r = row as Record<string, number | string | null>;
-        const ip = typeof r.innings_pitched === 'string' ? parseFloat(r.innings_pitched) : Number(r.innings_pitched ?? 0);
-        const ab = Math.floor(ip * 3) + Number(r.hits_allowed ?? 0) - Number(r.strikeouts ?? 0) - Number(r.home_runs_allowed ?? 0);
+        const outs = Number(r.total_outs ?? 0);
+        const ip = outs / 3;
+        const ab = outs + Number(r.hits_allowed ?? 0) - Number(r.strikeouts ?? 0) - Number(r.home_runs_allowed ?? 0);
         const rates = computePitchingRates({
           inningsPitched: ip,
           earnedRuns: Number(r.earned_runs ?? 0),
@@ -991,7 +1006,7 @@ export async function statsRoutes(app: FastifyInstance) {
           wins: r.wins ?? 0,
           losses: r.losses ?? 0,
           saves: r.saves ?? 0,
-          inningsPitched: ip.toFixed(1),
+          inningsPitched: inningsNotationFromOuts(outs),
           hitsAllowed: r.hits_allowed ?? 0,
           runsAllowed: r.runs_allowed ?? 0,
           earnedRuns: r.earned_runs ?? 0,
@@ -1123,7 +1138,7 @@ export async function statsRoutes(app: FastifyInstance) {
       const pitchRows = await db.execute(sql`
         WITH totals AS (
           SELECT psb.player_id,
-            SUM(COALESCE(psb.innings_pitched, 0)::numeric)::numeric AS ip,
+            SUM(${outsFromInningsSql('psb.innings_pitched')})::int AS outs,
             SUM(COALESCE(psb.earned_runs, 0))::int AS er,
             SUM(COALESCE(psb.hits_allowed, 0))::int AS h,
             SUM(COALESCE(psb.walks_allowed, 0))::int AS bb,
@@ -1144,7 +1159,7 @@ export async function statsRoutes(app: FastifyInstance) {
         )
         SELECT p.id AS player_id, p.slug AS player_slug, p.first_name, p.last_name,
           t.name AS team_name, t.short_name AS team_short_name, t.logo_url AS team_logo_url,
-          tot.ip, tot.er, tot.h, tot.bb, tot.k, tot.wins, tot.strikes, tot.hr
+          tot.outs, tot.er, tot.h, tot.bb, tot.k, tot.wins, tot.strikes, tot.hr
         FROM totals tot
         JOIN latest ls ON tot.player_id = ls.player_id
         JOIN players p ON p.id = tot.player_id
@@ -1153,7 +1168,8 @@ export async function statsRoutes(app: FastifyInstance) {
       const raw = (pitchRows as { rows?: Record<string, unknown>[] }).rows ?? pitchRows as Record<string, unknown>[];
       const rows = Array.isArray(raw) ? raw : [];
       const withRates = rows.map((r: Record<string, unknown>) => {
-        const ip = Number(r.ip ?? 0);
+        const outs = Number(r.outs ?? 0);
+        const ip = outs / 3;
         const er = Number(r.er ?? 0);
         const h = Number(r.h ?? 0);
         const bb = Number(r.bb ?? 0);
@@ -1173,17 +1189,19 @@ export async function statsRoutes(app: FastifyInstance) {
           wins: Number(r.wins ?? 0),
           strikes: Number(r.strikes ?? 0),
           saves: Number(r.saves ?? 0),
-          inningsPitched: ip.toFixed(1),
+          inningsPitched: inningsNotationFromOuts(outs),
+          outs,
         };
       });
-      const qualifiedPitching = withRates.filter((p) => Number(p.inningsPitched) > 0);
+      const qualifiedPitching = withRates.filter((p) => p.outs > 0);
       const leaders: Record<string, { label: string; players: any[] }> = {};
       const eraSorted = [...qualifiedPitching].sort((a, b) => (parseFloat(a.era ?? '999') - parseFloat(b.era ?? '999')));
       leaders.era = { label: 'ERA', players: eraSorted.slice(0, 5).map(p => ({ ...p, value: p.era })) };
       const whipSorted = [...qualifiedPitching].sort((a, b) => (parseFloat(a.whip ?? '999') - parseFloat(b.whip ?? '999')));
       leaders.whip = { label: 'WHIP', players: whipSorted.slice(0, 5).map(p => ({ ...p, value: p.whip })) };
       ['strikeouts', 'wins', 'strikes', 'inningsPitched'].forEach(key => {
-        const sorted = [...withRates].sort((a, b) => (Number((b as Record<string, unknown>)[key]) - Number((a as Record<string, unknown>)[key])));
+        const sortKey = key === 'inningsPitched' ? 'outs' : key;
+        const sorted = [...withRates].sort((a, b) => (Number((b as Record<string, unknown>)[sortKey]) - Number((a as Record<string, unknown>)[sortKey])));
         const label = key === 'inningsPitched' ? 'Innings Pitched' : key.charAt(0).toUpperCase() + key.slice(1);
         leaders[key] = { label, players: sorted.slice(0, 5).map(p => ({ ...p, value: (p as Record<string, unknown>)[key] })) };
       });
@@ -1246,7 +1264,7 @@ export async function statsRoutes(app: FastifyInstance) {
         WITH totals AS (
           SELECT psb.player_id,
             SUM(COALESCE(psb.games, 0))::int AS games,
-            SUM(COALESCE(psb.innings, 0)::numeric)::numeric AS innings,
+            SUM(${outsFromInningsSql('psb.innings')})::int AS innings_outs,
             SUM(COALESCE(psb.putouts, 0))::int AS putouts,
             SUM(COALESCE(psb.assists, 0))::int AS assists,
             SUM(COALESCE(psb.errors, 0))::int AS errors,
@@ -1269,7 +1287,7 @@ export async function statsRoutes(app: FastifyInstance) {
         )
         SELECT p.id AS player_id, p.slug AS player_slug, p.first_name, p.last_name,
           t.name AS team_name, t.short_name AS team_short_name, t.logo_url AS team_logo_url,
-          tot.games, tot.innings, tot.putouts, tot.assists, tot.errors,
+          tot.games, tot.innings_outs, tot.putouts, tot.assists, tot.errors,
           tot.double_plays, tot.triple_plays, tot.passed_balls,
           tot.catcher_stolen_bases, tot.catcher_caught_stealing, tot.pickoffs,
           ls.team_id
@@ -1300,7 +1318,7 @@ export async function statsRoutes(app: FastifyInstance) {
           teamId: r.team_id,
           seasonId: null,
           games: r.games ?? 0,
-          innings: r.innings != null ? String(r.innings) : '0',
+          innings: inningsNotationFromOuts(Number(r.innings_outs ?? 0)),
           putouts: po,
           assists: a,
           errors: e,
