@@ -5,7 +5,7 @@ import { useAuth } from '@/lib/auth';
 
 /* ── Types ── */
 interface Player { playerId: number; firstName: string; lastName: string; jerseyNumber?: string; teamId: number; licensePaid?: string | null }
-interface LineupEntry { id: number; playerId: number | null; battingOrder: number; position: number | null; isActive: boolean; isStarter: boolean; firstName: string; lastName: string; teamId: number; bats?: string | null }
+interface LineupEntry { id: number; playerId: number | null; battingOrder: number; position: number | null; isActive: boolean; isStarter: boolean; firstName: string; lastName: string; teamId: number; bats?: string | null; jerseyNumber?: string | null }
 interface LineupAdjustRow { id: number; playerId: number | null; battingOrder: number; position: number | null; firstName: string; lastName: string }
 interface GameState { inning: number; half: 'top' | 'bot'; outs: number; homeScore: number; awayScore: number; bases: { first: number | null; second: number | null; third: number | null }; homeLineScore: number[]; awayLineScore: number[]; eventCount: number; balls: number; strikes: number }
 interface GameEvent { id: number; eventNumber: number; eventType: string; batterId?: number; batterSide?: string | null; pitcherId?: number; inning: number; half: string; balls?: number; strikes?: number; runsScored?: number; rbi?: number; outsRecorded?: number; errorsOnPlay?: number; eventDetail?: string; fieldingSequence?: string; putoutFielderIds?: number[]; assistFielderIds?: number[]; errorFielderIds?: number[]; pitchCount?: number | null; pitchSequence?: string | null; hitLocationX?: string | null; hitLocationY?: string | null; hitType?: string | null; hitHardness?: string | null; runnerFirstId?: number | null; runnerSecondId?: number | null; runnerThirdId?: number | null; runnersScored?: number[] }
@@ -130,11 +130,26 @@ function suggestedGhostRunnerFromPrevOffensiveInning(events: GameEvent[], inning
 
 const POS_LABELS: Record<number, string> = { 1:'P',2:'C',3:'1B',4:'2B',5:'3B',6:'SS',7:'LF',8:'CF',9:'RF',10:'DH' };
 
+function formatJersey(raw: string | null | undefined): string {
+  const digits = (raw ?? '').replace(/\D/g, '');
+  return digits ? `#${digits}` : '';
+}
+
 function jerseyFromRoster(roster: Player[], playerId: number | null | undefined): string {
   if (playerId == null) return '';
-  const raw = roster.find((p) => p.playerId === playerId)?.jerseyNumber?.trim() ?? '';
-  const digits = raw.replace(/\D/g, '');
-  return digits ? `#${digits}` : '';
+  return formatJersey(roster.find((p) => p.playerId === playerId)?.jerseyNumber);
+}
+
+function JerseyBadge({ value, active = false }: { value: string; active?: boolean }) {
+  return (
+    <span
+      className={`inline-flex h-7 min-w-[2.75rem] shrink-0 items-center justify-center rounded-md px-1.5 font-mono text-sm font-bold tabular-nums leading-none ${
+        active ? 'bg-amber-400 text-black' : 'bg-white/15 text-amber-100'
+      }`}
+    >
+      {value || '—'}
+    </span>
+  );
 }
 
 function shortPlayerName(firstName: string, lastName: string, jersey?: string): string {
@@ -160,7 +175,10 @@ const WIZARD_CANCEL_BTN =
 const WIZARD_BACK_BTN =
   'w-full shrink-0 border-t border-white/10 py-3 text-xs font-bold uppercase text-white/40 transition-colors hover:text-white/60';
 const DESKTOP_FIELD_SIZE = 'lg:h-full lg:w-auto lg:max-h-full lg:max-w-[min(100%,min(72vh,800px))]';
-const WIZARD_OPTIONS_PANEL = 'bg-scoring-panel rounded-lg border border-white/10 p-3 lg:max-h-72 lg:overflow-y-auto';
+const WIZARD_OPTIONS_PANEL = 'bg-scoring-panel min-h-0 overflow-y-auto overscroll-contain rounded-lg border border-white/10 p-3';
+/** Substitution / bench pickers: header stays put, the player list scrolls. */
+const SUB_PANEL = 'flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-white/10 bg-scoring-panel';
+const SUB_LIST = 'min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain px-3 pb-2';
 
 const MOBILE_TOOLBAR_ACTIONS = [
   { key: 'exit', label: 'Exit', onClick: 'exit' as const },
@@ -403,7 +421,7 @@ const JerseyQuickInput = memo(function JerseyQuickInput({
       placeholder="—"
       defaultValue={player.jerseyNumber ?? ''}
       key={`jersey-${player.playerId}-${player.jerseyNumber ?? ''}`}
-      className="w-[3.5rem] shrink-0 rounded border border-white/25 bg-black/40 px-1 py-1 text-center font-mono text-xs text-white [color-scheme:dark] outline-none focus:border-white/45 disabled:opacity-40"
+      className="h-9 w-14 shrink-0 rounded-md border border-amber-400/40 bg-black/50 px-1 text-center font-mono text-sm font-bold text-amber-100 [color-scheme:dark] outline-none focus:border-amber-300 disabled:opacity-40"
       onClick={(e) => e.stopPropagation()}
       onMouseDown={(e) => e.stopPropagation()}
       onPointerDown={(e) => e.stopPropagation()}
@@ -436,6 +454,7 @@ export function LiveScoringPage() {
   const [setupHome, setSetupHome] = useState<Array<{ playerId: number | null; position: number | null }>>([]);
   const [setupAway, setSetupAway] = useState<Array<{ playerId: number | null; position: number | null }>>([]);
   const [setupTeam, setSetupTeam] = useState<'home' | 'away'>('away');
+  const [setupSearch, setSetupSearch] = useState('');
   const [setupUmpire, setSetupUmpire] = useState('');
   const [setupScorer, setSetupScorer] = useState('');
 
@@ -603,6 +622,10 @@ export function LiveScoringPage() {
       );
     setHomeRoster(patch);
     setAwayRoster(patch);
+    const patchLineup = (list: LineupEntry[]) =>
+      list.map((l) => (l.playerId === playerId && l.teamId === teamId ? { ...l, jerseyNumber } : l));
+    setHomeLineup(patchLineup);
+    setAwayLineup(patchLineup);
   }, []);
 
   useEffect(() => { loadState(); loadRosters(); }, [loadState, loadRosters]);
@@ -706,6 +729,20 @@ export function LiveScoringPage() {
     return m;
   }, [homeLineup, awayLineup]);
 
+  const rosterByPlayerId = useMemo(() => {
+    const m = new Map<number, Player>();
+    for (const p of [...homeRoster, ...awayRoster]) m.set(p.playerId, p);
+    return m;
+  }, [homeRoster, awayRoster]);
+
+  const jerseyFor = useCallback((playerId: number | null | undefined) => {
+    if (playerId == null) return '';
+    const lineup = lineupEntryByPlayerId.get(playerId);
+    const roster = rosterByPlayerId.get(playerId);
+    return formatJersey(lineup?.jerseyNumber || roster?.jerseyNumber);
+  }, [lineupEntryByPlayerId, rosterByPlayerId]);
+
+  /** Plain name for play-by-play text saved to the server. */
   const getPlayerName = useCallback(
     (id: number) => {
       const p = lineupEntryByPlayerId.get(id);
@@ -713,24 +750,14 @@ export function LiveScoringPage() {
     },
     [lineupEntryByPlayerId],
   );
+  /** On-screen label with jersey number (never saved). */
   const getPlayerShort = useCallback(
     (id: number) => {
-      const p = lineupEntryByPlayerId.get(id);
-      return p ? `${p.firstName.charAt(0)}. ${p.lastName}` : '';
+      const p = lineupEntryByPlayerId.get(id) ?? rosterByPlayerId.get(id);
+      return p ? shortPlayerName(p.firstName, p.lastName, jerseyFor(id) || undefined) : '';
     },
-    [lineupEntryByPlayerId],
+    [lineupEntryByPlayerId, rosterByPlayerId, jerseyFor],
   );
-
-  const rosterByPlayerId = useMemo(() => {
-    const m = new Map<number, Player>();
-    for (const p of [...homeRoster, ...awayRoster]) m.set(p.playerId, p);
-    return m;
-  }, [homeRoster, awayRoster]);
-
-  const jerseyFor = (playerId: number | null | undefined) => {
-    const p = playerId != null ? rosterByPlayerId.get(playerId) : undefined;
-    return jerseyFromRoster(p ? [p] : [], playerId);
-  };
 
   const nameWithJersey = (playerId: number | null | undefined, firstName: string, lastName: string) =>
     shortPlayerName(firstName, lastName, jerseyFor(playerId) || undefined);
@@ -1945,16 +1972,26 @@ function needsRunnerAdvanceErrorFieldingPrompt(
       (p) => !selectedIds.has(p.playerId) && !opposingSelectedIds.has(p.playerId),
     );
     const hintsMap = setupTeam === 'home' ? lineupHintsHome : lineupHintsAway;
-    const availableSorted = [...availablePlayers].sort((a, b) => {
-      const paA = hintsMap[a.playerId]?.pa ?? 0;
-      const paB = hintsMap[b.playerId]?.pa ?? 0;
-      if (paB !== paA) return paB - paA;
-      return `${a.lastName} ${a.firstName}`.localeCompare(`${b.lastName} ${b.firstName}`);
-    });
+    const searchQ = setupSearch.trim().toLowerCase();
+    const availableSorted = [...availablePlayers]
+      .filter((p) => {
+        if (!searchQ) return true;
+        const jersey = (p.jerseyNumber ?? '').replace(/\D/g, '');
+        return (
+          `${p.firstName} ${p.lastName}`.toLowerCase().includes(searchQ) ||
+          (jersey !== '' && jersey === searchQ.replace(/^#/, ''))
+        );
+      })
+      .sort((a, b) => {
+        const paA = hintsMap[a.playerId]?.pa ?? 0;
+        const paB = hintsMap[b.playerId]?.pa ?? 0;
+        if (paB !== paA) return paB - paA;
+        return `${a.lastName} ${a.firstName}`.localeCompare(`${b.lastName} ${b.firstName}`);
+      });
     return (
       <>
-      <div className="scoring-app min-h-screen bg-scoring-canvas text-white">
-        <div className="bg-scoring-bar border-b border-white/10 px-3 py-3 sm:px-6 sm:py-4">
+      <div className="scoring-app flex h-[100dvh] max-h-[100dvh] flex-col overflow-hidden bg-scoring-canvas text-white">
+        <div className="shrink-0 border-b border-white/10 bg-scoring-bar px-3 py-3 sm:px-6 sm:py-4">
           <div className="mx-auto flex max-w-6xl flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
             <div className="flex items-center justify-between gap-3 sm:contents">
               <button type="button" onClick={() => navigate('/games')} className="shrink-0 text-sm text-white/50 hover:text-white">← Back</button>
@@ -1980,8 +2017,8 @@ function needsRunnerAdvanceErrorFieldingPrompt(
             </button>
           </div>
         </div>
-        <div className="mx-auto max-w-6xl px-3 py-4 sm:p-6">
-          <div className="mb-4 grid gap-3 rounded-lg border border-white/10 bg-white/5 p-4 sm:grid-cols-2">
+        <div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col overflow-hidden px-3 py-3 sm:p-4">
+          <div className="mb-3 shrink-0 grid gap-3 rounded-lg border border-white/10 bg-white/5 p-4 sm:grid-cols-2">
             <label className="block">
               <span className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-white/40">Umpire</span>
               <input
@@ -2001,21 +2038,21 @@ function needsRunnerAdvanceErrorFieldingPrompt(
               />
             </label>
           </div>
-          <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-stretch">
+          <div className="mb-3 flex shrink-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-stretch">
             {(['away', 'home'] as const).map(side => (
               <button
                 key={side}
                 type="button"
-                onClick={() => setSetupTeam(side)}
+                onClick={() => { setSetupTeam(side); setSetupSearch(''); }}
                 className={`w-full rounded-lg px-4 py-3 text-left text-sm font-semibold sm:w-auto sm:py-2 ${setupTeam === side ? 'bg-accent text-white' : 'bg-white/10 text-white/60'}`}
               >
                 {side === 'away' ? game.awayTeamName : game.homeTeamName} ({(side === 'home' ? setupHome : setupAway).length}/9)
               </button>
             ))}
           </div>
-          <div className="flex flex-col gap-8 lg:grid lg:grid-cols-2 lg:gap-8">
-            <div className="min-w-0">
-              <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+          <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-2 gap-3 lg:grid-cols-2 lg:grid-rows-1 lg:gap-6">
+            <div className="flex min-h-0 flex-col overflow-hidden">
+              <div className="mb-2 flex shrink-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
                 <h3 className="text-sm font-bold uppercase text-white/50">Available</h3>
                 <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                   <button
@@ -2034,7 +2071,18 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                   </button>
                 </div>
               </div>
-              <div className="space-y-1">
+              {availablePlayers.length > 12 && (
+                <input
+                  value={setupSearch}
+                  onChange={(e) => setSetupSearch(e.target.value)}
+                  placeholder="Search name or #"
+                  className="mb-2 w-full shrink-0 rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none placeholder:text-white/25 focus:border-white/30"
+                />
+              )}
+              <div className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain pr-0.5">
+                {availableSorted.length === 0 && (
+                  <p className="py-3 text-center text-xs text-white/35">No players match.</p>
+                )}
                 {availableSorted.map((p) => (
                   <div
                     key={p.playerId}
@@ -2062,9 +2110,9 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                 ))}
               </div>
             </div>
-            <div className="min-w-0 border-t border-white/10 pt-6 lg:border-t-0 lg:pt-0">
-              <h3 className="mb-3 text-sm font-bold uppercase text-white/50">Batting order</h3>
-              <div className="space-y-1">
+            <div className="flex min-h-0 flex-col overflow-hidden border-t border-white/10 pt-3 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
+              <h3 className="mb-2 shrink-0 text-sm font-bold uppercase text-white/50">Batting order</h3>
+              <div className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain pr-0.5">
                 {currentSetup.map((entry, idx) => {
                   const player =
                     entry.playerId != null ? currentRoster.find((pr) => pr.playerId === entry.playerId) : null;
@@ -2134,7 +2182,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                         >
                           ⋮⋮
                         </span>
-                        <span className="w-6 shrink-0 font-bold text-white/30">{idx + 1}</span>
+                        <span className="w-6 shrink-0 font-mono text-sm font-bold text-amber-200">{idx + 1}</span>
                         {player && (
                           <JerseyQuickInput
                             gameId={gameId}
@@ -2298,8 +2346,20 @@ function needsRunnerAdvanceErrorFieldingPrompt(
   const activeOffensiveChangeIds = new Set(
     offensiveChangeLineup.map((l) => l.playerId).filter((id): id is number => id != null),
   );
-  const availableFieldingSubs = defensiveChangeTeamRoster.filter(p => !activeDefensiveChangeIds.has(p.playerId));
-  const availableBattingSubs = offensiveChangeTeamRoster.filter(p => !activeOffensiveChangeIds.has(p.playerId));
+  const byJerseyThenName = (a: Player, b: Player) => {
+    const ja = parseInt((a.jerseyNumber ?? '').replace(/\D/g, ''), 10);
+    const jb = parseInt((b.jerseyNumber ?? '').replace(/\D/g, ''), 10);
+    const na = Number.isNaN(ja) ? Infinity : ja;
+    const nb = Number.isNaN(jb) ? Infinity : jb;
+    if (na !== nb) return na - nb;
+    return `${a.lastName} ${a.firstName}`.localeCompare(`${b.lastName} ${b.firstName}`);
+  };
+  const availableFieldingSubs = defensiveChangeTeamRoster
+    .filter(p => !activeDefensiveChangeIds.has(p.playerId))
+    .sort(byJerseyThenName);
+  const availableBattingSubs = offensiveChangeTeamRoster
+    .filter(p => !activeOffensiveChangeIds.has(p.playerId))
+    .sort(byJerseyThenName);
   const setSubEditTeam = (teamId: number) => {
     if (subTeamId === teamId) return;
     setSubTeamId(teamId);
@@ -2373,21 +2433,18 @@ function needsRunnerAdvanceErrorFieldingPrompt(
               </div>
             </div>
           </div>
-          <div className="mt-1 flex items-center justify-between gap-2 border-t border-white/10 pt-1 text-[10px]">
-            <span className="min-w-0 truncate">
-              <span className="font-bold uppercase text-white/40">AB </span>
+          <div className="mt-1 flex items-center gap-2 border-t border-white/10 pt-1">
+            <JerseyBadge value={currentBatter ? jerseyFor(currentBatter.playerId) : ''} active />
+            <span className="min-w-0 flex-1 truncate text-xs font-bold">
+              <span className="mr-1 font-mono text-amber-200/80">BO {battingOrderSlot}</span>
               {currentBatter
-                ? nameWithJersey(currentBatter.playerId, currentBatter.firstName, currentBatter.lastName)
-                : '(empty)'}
+                ? `${currentBatter.firstName} ${currentBatter.lastName}`
+                : <span className="italic text-white/40">(empty)</span>}
             </span>
             {currentPitcher && (
-              <span className="shrink-0 truncate text-right text-white/55">
-                <span className="font-bold uppercase text-white/40">P </span>
-                {nameWithJersey(currentPitcher.playerId, currentPitcher.firstName, currentPitcher.lastName)}
-                {' · '}
-                {getCurrentPitcherPitches(currentPitcher.playerId)}-
-                {getCurrentPitcherBalls(currentPitcher.playerId)}-
-                {getCurrentPitcherStrikes(currentPitcher.playerId)}
+              <span className="flex min-w-0 max-w-[46%] items-center justify-end gap-1.5 text-[11px] text-white/70">
+                <JerseyBadge value={jerseyFor(currentPitcher.playerId)} />
+                <span className="truncate">{currentPitcher.lastName}</span>
               </span>
             )}
           </div>
@@ -2428,6 +2485,20 @@ function needsRunnerAdvanceErrorFieldingPrompt(
               </div>
             </div>
           </div>
+          <div className="mx-auto mt-2 flex max-w-6xl items-center gap-2 border-t border-white/10 pt-2">
+            <JerseyBadge value={currentBatter ? jerseyFor(currentBatter.playerId) : ''} active />
+            <span className="min-w-0 truncate text-sm font-bold">
+              <span className="mr-1.5 font-mono text-amber-200">BO {battingOrderSlot}</span>
+              {currentBatter ? `${currentBatter.firstName} ${currentBatter.lastName}` : <span className="italic text-white/40">empty slot</span>}
+            </span>
+            {currentPitcher && (
+              <span className="ml-auto flex min-w-0 items-center gap-2 text-sm text-white/75">
+                <span className="text-[10px] font-bold uppercase text-white/40">P</span>
+                <JerseyBadge value={jerseyFor(currentPitcher.playerId)} />
+                <span className="truncate">{currentPitcher.firstName.charAt(0)}. {currentPitcher.lastName}</span>
+              </span>
+            )}
+          </div>
         </div>
       </div>
 
@@ -2446,13 +2517,16 @@ function needsRunnerAdvanceErrorFieldingPrompt(
               setSubBattingSlot(battingOrderSlot);
               setStep('sub_offense');
             }}
-              className="text-white font-bold text-sm hover:text-amber-300 transition-colors flex items-center gap-1">
-              <span className="text-white/30 text-xs font-mono">BO {battingOrderSlot}</span>
-              {currentBatter ? (
-                nameWithJersey(currentBatter.playerId, currentBatter.firstName, currentBatter.lastName)
-              ) : (
-                <span className="text-red-400/60 italic">(empty slot)</span>
-              )}
+              className="flex w-full items-center gap-2 text-left text-sm font-bold text-white transition-colors hover:text-amber-300">
+              <JerseyBadge value={currentBatter ? jerseyFor(currentBatter.playerId) : ''} active />
+              <span className="min-w-0">
+                <span className="mr-1 font-mono text-xs text-amber-200">BO {battingOrderSlot}</span>
+                {currentBatter ? (
+                  <span className="truncate">{currentBatter.firstName} {currentBatter.lastName}</span>
+                ) : (
+                  <span className="italic text-red-400/60">(empty slot)</span>
+                )}
+              </span>
             </button>
           </div>
 
@@ -2461,8 +2535,9 @@ function needsRunnerAdvanceErrorFieldingPrompt(
             <div className="bg-scoring-card rounded-lg px-3 py-2 border border-white/5 lg:mb-0">
               <div className="text-[9px] text-white/30 font-bold uppercase tracking-wider mb-0.5">Pitching</div>
               <button onClick={() => { setSubTeamId(fieldingTeamId ?? null); setSubPosition(1); setStep('sub_defense'); }}
-                className="text-white font-bold text-sm hover:text-amber-300 transition-colors">
-                {nameWithJersey(currentPitcher.playerId, currentPitcher.firstName, currentPitcher.lastName)}
+                className="flex w-full items-center gap-2 text-left text-sm font-bold text-white transition-colors hover:text-amber-300">
+                <JerseyBadge value={jerseyFor(currentPitcher.playerId)} />
+                <span className="min-w-0 truncate">{currentPitcher.firstName} {currentPitcher.lastName}</span>
               </button>
               <div className="flex items-center gap-3 mt-1.5 font-mono text-xs">
                 <div className="text-white/50">P <span className="text-white font-bold">{getCurrentPitcherPitches(currentPitcher.playerId)}</span></div>
@@ -2500,13 +2575,11 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                   <span className={`font-mono w-4 shrink-0 text-right tabular-nums ${isCurrent ? 'text-amber-400 font-bold' : 'text-white/25'}`}>{slot}</span>
                   {entry ? (
                     <>
-                      <span className={`min-w-[2rem] shrink-0 font-mono text-[10px] tabular-nums ${isCurrent ? 'text-amber-300/80' : 'text-white/30'}`}>
-                        {jerseyFor(entry.playerId) || '—'}
-                      </span>
-                      <span className={`flex-1 truncate ${isCurrent ? 'text-white font-bold' : 'text-white/60'}`}>
+                      <JerseyBadge value={jerseyFor(entry.playerId)} active={isCurrent} />
+                      <span className={`flex-1 truncate ${isCurrent ? 'text-white font-bold' : 'text-white/70'}`}>
                         {entry.firstName.charAt(0)}. {entry.lastName}
                       </span>
-                      <span className="text-white/25 text-[10px]">{entry.position != null ? POS_LABELS[entry.position] : '—'}</span>
+                      <span className="text-white/40 text-[10px]">{entry.position != null ? POS_LABELS[entry.position] : '—'}</span>
                     </>
                   ) : <span className="text-white/15 italic text-[10px]">(empty)</span>}
                 </div>
@@ -2522,11 +2595,9 @@ function needsRunnerAdvanceErrorFieldingPrompt(
             {fieldingLineupForSidebar.map(entry => (
               <div key={entry.id} onClick={() => { setSubTeamId(fieldingTeamId ?? null); setSubPosition(entry.position); setStep('sub_defense'); }}
                 className="flex items-center gap-1.5 px-2 py-0.5 text-[11px] text-white/40 hover:bg-white/5 rounded cursor-pointer">
-                <span className="text-white/25 font-mono w-5 text-right">{POS_LABELS[entry.position!]}</span>
-                <span className="min-w-[2rem] shrink-0 font-mono text-[10px] tabular-nums text-white/30">
-                  {jerseyFor(entry.playerId) || '—'}
-                </span>
-                <span className="flex-1 truncate">{entry.firstName.charAt(0)}. {entry.lastName}</span>
+                <span className="w-5 text-right font-mono text-white/50">{POS_LABELS[entry.position!]}</span>
+                <JerseyBadge value={jerseyFor(entry.playerId)} />
+                <span className="flex-1 truncate text-white/80">{entry.firstName.charAt(0)}. {entry.lastName}</span>
                 {entry.position === 1 && <span className="text-white/20 font-mono text-[9px]">{getCurrentPitcherPitches(entry.playerId)}p</span>}
               </div>
             ))}
@@ -2660,8 +2731,10 @@ function needsRunnerAdvanceErrorFieldingPrompt(
 
               {/* Batter name below home */}
               {currentBatter && (
-                <text x="200" y="332" textAnchor="middle" fontSize="10" fill="#f97316" fontWeight="bold">
-                  {(currentBatter.playerId == null ? 'VACANT' : currentBatter.lastName).toUpperCase()}
+                <text x="200" y="332" textAnchor="middle" fontSize="13" fill="#fbbf24" fontWeight="bold">
+                  {currentBatter.playerId == null
+                    ? 'VACANT'
+                    : `${jerseyFor(currentBatter.playerId) || '—'} ${currentBatter.lastName.toUpperCase()}`}
                 </text>
               )}
 
@@ -2897,7 +2970,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                 <div className="px-4 py-3 border-b border-white/5 text-center">
                   <p className="text-[10px] text-amber-400 font-bold uppercase mb-1 tracking-widest">Batter on same error</p>
                   <p className="text-xs text-white/80 font-bold tracking-wide">
-                    {currentBatter.firstName} {currentBatter.lastName}
+                    {jerseyFor(currentBatter.playerId) ? `${jerseyFor(currentBatter.playerId)} ` : ''}{currentBatter.firstName} {currentBatter.lastName}
                   </p>
                 </div>
                 <div className="p-3 space-y-3">
@@ -2951,7 +3024,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                 <div className={`${WIZARD_SHELL} border-amber-500/30`}>
                   <div className="px-4 py-3 border-b border-white/5 text-center">
                     <p className="text-[10px] text-amber-400 font-bold uppercase mb-1 tracking-widest">{reasonLabel}</p>
-                    <p className="text-xs text-white/80 font-bold tracking-wide">{q.playerName}</p>
+                    <p className="text-xs text-white/80 font-bold tracking-wide">{getPlayerShort(q.playerId) || q.playerName}</p>
                     {fld.length > 0 && (
                       <p className="text-sm text-white font-bold mt-2 tracking-wider">E{fld.join('')}</p>
                     )}
@@ -2964,7 +3037,12 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                           <button key={p.pos} type="button" onClick={() => setRunnerAdvanceErrorFielding([...runnerAdvanceErrorFielding, p.pos])}
                             className="py-3 bg-white/5 hover:bg-white/10 border border-white/10 text-white text-xs font-bold rounded-lg transition-colors">
                             <span className="block text-base">{p.label}</span>
-                            {fielder && <span className="block text-[9px] text-white/40 mt-0.5">{fielder.lastName}</span>}
+                            {fielder && (
+                              <>
+                                <span className="mt-0.5 block font-mono text-xs font-bold tabular-nums text-amber-200">{jerseyFor(fielder.playerId) || '—'}</span>
+                                <span className="block truncate text-[10px] text-white/70">{fielder.lastName}</span>
+                              </>
+                            )}
                           </button>
                         );
                       })}
@@ -3058,7 +3136,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                     <div className="px-4 py-3 border-b border-white/5 text-center">
                       <p className="text-[10px] text-red-400 font-bold uppercase mb-1 tracking-widest">{runnerOutPendingType.replace(/_/g, ' ')}</p>
                       <p className="text-xs text-white/80 font-bold tracking-wide">
-                        {q.playerName}
+                        {getPlayerShort(q.playerId) || q.playerName}
                       </p>
                       {fld.length > 0 && (
                         <p className="text-sm text-white font-bold mt-2 tracking-wider">{fld.join(' – ')}</p>
@@ -3073,7 +3151,12 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                             <button key={p.pos} onClick={() => setRunnerOutFielding([...runnerOutFielding, p.pos])}
                               className="py-3 bg-white/5 hover:bg-white/10 border border-white/10 text-white text-xs font-bold rounded-lg transition-colors">
                               <span className="block text-base">{p.label}</span>
-                              {fielder && <span className="block text-[9px] text-white/40 mt-0.5">{fielder.lastName}</span>}
+                              {fielder && (
+                              <>
+                                <span className="mt-0.5 block font-mono text-xs font-bold tabular-nums text-amber-200">{jerseyFor(fielder.playerId) || '—'}</span>
+                                <span className="block truncate text-[10px] text-white/70">{fielder.lastName}</span>
+                              </>
+                            )}
                             </button>
                           );
                         })}
@@ -3110,7 +3193,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                     <p className="text-xs text-white/50 uppercase font-bold tracking-wide">
                       What happened to the runner on {baseLabel} base,
                     </p>
-                    <p className="text-base text-white font-bold mt-0.5">{q.playerName}?</p>
+                    <p className="text-base text-white font-bold mt-0.5">{getPlayerShort(q.playerId) || q.playerName}?</p>
                   </div>
 
                   {/* Out / Safe / Quick tabs */}
@@ -3286,7 +3369,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                       <p className="text-xs text-white/50 uppercase font-bold tracking-wide">
                         What happened to the runner on {baseLabel} base,
                       </p>
-                      <p className="text-base text-white font-bold mt-0.5">{runnerId ? getPlayerName(runnerId) : ''}?</p>
+                      <p className="text-base text-white font-bold mt-0.5">{runnerId ? getPlayerShort(runnerId) : ''}?</p>
                     </div>
 
                     {/* Out / Safe tabs */}
@@ -3376,7 +3459,12 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                               <button key={p.pos} onClick={() => setRunnerActionFielding([...runnerActionFielding, p.pos])}
                                 className="py-3 bg-white/5 hover:bg-white/10 border border-white/10 text-white text-xs font-bold rounded-lg transition-colors">
                                 <span className="block text-base">{p.label}</span>
-                                {fielder && <span className="block text-[9px] text-white/40 mt-0.5">{fielder.lastName}</span>}
+                                {fielder && (
+                              <>
+                                <span className="mt-0.5 block font-mono text-xs font-bold tabular-nums text-amber-200">{jerseyFor(fielder.playerId) || '—'}</span>
+                                <span className="block truncate text-[10px] text-white/70">{fielder.lastName}</span>
+                              </>
+                            )}
                               </button>
                             );
                           })}
@@ -3410,7 +3498,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                       <p className="text-xs text-white/50 uppercase font-bold tracking-wide">
                         What happened to the runner on {baseLabel} base,
                       </p>
-                      <p className="text-base text-white font-bold mt-0.5">{runnerId ? getPlayerName(runnerId) : ''}?</p>
+                      <p className="text-base text-white font-bold mt-0.5">{runnerId ? getPlayerShort(runnerId) : ''}?</p>
                     </div>
 
                     <div className="flex border-b border-white/10">
@@ -3463,7 +3551,12 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                             <button key={p.pos} onClick={() => setRunnerActionFielding([...runnerActionFielding, p.pos])}
                               className="py-3 bg-white/5 hover:bg-white/10 border border-white/10 text-white text-xs font-bold rounded-lg transition-colors">
                               <span className="block text-base">{p.label}</span>
-                              {fielder && <span className="block text-[9px] text-white/40 mt-0.5">{fielder.lastName}</span>}
+                              {fielder && (
+                              <>
+                                <span className="mt-0.5 block font-mono text-xs font-bold tabular-nums text-amber-200">{jerseyFor(fielder.playerId) || '—'}</span>
+                                <span className="block truncate text-[10px] text-white/70">{fielder.lastName}</span>
+                              </>
+                            )}
                             </button>
                           );
                         })}
@@ -3498,13 +3591,17 @@ function needsRunnerAdvanceErrorFieldingPrompt(
               const currentPlayer = draftFieldingLineup.find(l => l.position === subPosition);
               const changeTeamName = defensiveChangeTeamId === game.homeTeamId ? game.homeTeamName : game.awayTeamName;
               return (
-                <div className={WIZARD_OPTIONS_PANEL}>
-                  <p className="text-[10px] text-white/40 uppercase font-bold text-center mb-2">
-                    {changeTeamName} · {POS_LABELS[subPosition]} —{' '}
-                    {currentPlayer
-                      ? nameWithJersey(currentPlayer.playerId, currentPlayer.firstName, currentPlayer.lastName)
-                      : 'open'}
+                <div className={SUB_PANEL}>
+                  <div className="max-h-[42%] shrink-0 overflow-y-auto p-3 pb-1">
+                  <p className="mb-2 text-center text-[10px] font-bold uppercase text-white/50">
+                    {changeTeamName} · {POS_LABELS[subPosition]}
                   </p>
+                  <div className="mb-2 flex items-center justify-center gap-2">
+                    <JerseyBadge value={currentPlayer ? jerseyFor(currentPlayer.playerId) : ''} active />
+                    <span className="text-sm font-bold text-white">
+                      {currentPlayer ? `${currentPlayer.firstName} ${currentPlayer.lastName}` : 'open'}
+                    </span>
+                  </div>
                   {subPosition === 1 && (
                     <p className="mb-2 text-[9px] leading-snug text-white/35 text-center px-1">
                       Records a pitching change in the play-by-play and updates who is P on the field. For past innings, use Log → edit Pitcher on individual plays.
@@ -3527,12 +3624,36 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                       </button>
                     ))}
                   </div>
+                  <div className="mb-2 grid grid-cols-3 gap-1">
+                    {[...draftFieldingLineup]
+                      .filter((e) => e.position != null && e.position <= 10)
+                      .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
+                      .map((entry) => (
+                        <button
+                          key={`${entry.position}-${entry.playerId ?? 'open'}`}
+                          type="button"
+                          onClick={() => setSubPosition(entry.position!)}
+                          className={`flex min-w-0 flex-col items-center rounded px-1 py-1.5 text-[10px] transition-colors ${
+                            entry.position === subPosition ? 'bg-amber-500/20 text-amber-100' : 'bg-white/5 text-white/80 hover:bg-white/10'
+                          }`}
+                        >
+                          <span className="font-bold">{POS_LABELS[entry.position!]}</span>
+                          <span className="font-mono text-xs font-bold tabular-nums text-amber-200">
+                            {entry.playerId != null ? (jerseyFor(entry.playerId) || '—') : '—'}
+                          </span>
+                          <span className="w-full truncate text-[10px]">
+                            {entry.playerId != null ? entry.lastName : 'open'}
+                          </span>
+                        </button>
+                      ))}
+                  </div>
                   <div className="flex gap-1 mb-2">
                     <button onClick={() => setStep('swap_position')}
                       className="flex-1 py-2 bg-blue-900/40 hover:bg-blue-800/40 text-white text-[10px] font-bold rounded uppercase">Arrange Positions</button>
-                    <button onClick={() => setStep('sub_defense')}
-                      className="flex-1 py-2 bg-white/10 text-white/60 text-[10px] font-bold rounded uppercase">Replace Player</button>
                   </div>
+                  <p className="mb-1 text-[9px] font-bold uppercase tracking-wider text-white/35">
+                    Bench — tap to put in at {POS_LABELS[subPosition]}
+                  </p>
                   {pendingPositionChanges.length > 0 && (
                     <div className="mb-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2">
                       <p className="text-[9px] font-bold uppercase text-amber-200/80">Pending position changes</p>
@@ -3541,7 +3662,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                           const player = defensiveChangeLineup.find(l => l.playerId === change.playerId);
                           return (
                             <div key={change.playerId} className="text-[10px] text-white/70">
-                              {player ? `${player.firstName.charAt(0)}. ${player.lastName}` : `#${change.playerId}`} {POS_LABELS[change.oldPosition]} → {POS_LABELS[change.newPosition]}
+                              {player ? nameWithJersey(player.playerId, player.firstName, player.lastName) : `Player ${change.playerId}`} {POS_LABELS[change.oldPosition]} → {POS_LABELS[change.newPosition]}
                             </div>
                           );
                         })}
@@ -3554,14 +3675,18 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                       </div>
                     </div>
                   )}
-                  <div className="space-y-1">
+                  </div>
+                  <div className={SUB_LIST}>
                     {availableFieldingSubs.map(p => (
                       <button key={p.playerId} onClick={() => handleDefensiveSub(p.playerId)}
-                        className="w-full text-left px-3 py-2 bg-white/5 hover:bg-white/10 rounded text-xs">{p.firstName.charAt(0)}. {p.lastName}</button>
+                        className="flex w-full items-center gap-2 rounded bg-white/5 px-3 py-2.5 text-left text-sm text-white hover:bg-white/10">
+                        <JerseyBadge value={formatJersey(p.jerseyNumber)} />
+                        <span className="min-w-0 flex-1 truncate font-semibold">{p.firstName} {p.lastName}</span>
+                      </button>
                     ))}
-                    {availableFieldingSubs.length === 0 && <p className="text-white/30 text-xs text-center py-2">No bench players</p>}
+                    {availableFieldingSubs.length === 0 && <p className="py-2 text-center text-xs text-white/40">No bench players</p>}
                   </div>
-                  <button onClick={cancelWizard} className="w-full mt-2 py-2 text-white/40 text-[10px] font-bold uppercase hover:text-white/60">CANCEL</button>
+                  <button onClick={cancelWizard} className="w-full shrink-0 border-t border-white/10 py-3 text-[10px] font-bold uppercase text-white/50 hover:text-white/80">CANCEL</button>
                 </div>
               );
             })()}
@@ -3571,9 +3696,12 @@ function needsRunnerAdvanceErrorFieldingPrompt(
               const currentPlayer = draftFieldingLineup.find(l => l.position === subPosition);
               const changeTeamName = defensiveChangeTeamId === game.homeTeamId ? game.homeTeamName : game.awayTeamName;
               return (
-                <div className={WIZARD_OPTIONS_PANEL}>
-                  <p className="text-[10px] text-white/40 uppercase font-bold text-center mb-1">
-                    {changeTeamName}: move {currentPlayer?.lastName ?? ''} ({POS_LABELS[subPosition]}) to:
+                <div className={SUB_PANEL}>
+                  <div className="shrink-0 p-3 pb-1">
+                  <p className="mb-2 flex items-center justify-center gap-2 text-center text-[10px] font-bold uppercase text-white/50">
+                    <span>{changeTeamName}: move</span>
+                    <JerseyBadge value={currentPlayer ? jerseyFor(currentPlayer.playerId) : ''} active />
+                    <span className="normal-case text-sm text-white">{currentPlayer?.lastName ?? ''} ({POS_LABELS[subPosition]})</span>
                   </p>
                   <div className="mb-2 grid grid-cols-2 gap-1">
                     {[
@@ -3598,25 +3726,12 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                       .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
                       .map((entry) => (
                       <button key={entry.playerId!} onClick={() => setSubPosition(entry.position!)}
-                        className={`rounded px-1 py-1.5 text-[9px] transition-all ${entry.position === subPosition ? 'bg-amber-500/20 text-amber-200' : 'bg-white/5 text-white/50 hover:bg-white/10'}`}>
-                        <span className="font-bold">{POS_LABELS[entry.position!]}</span>{' '}
-                        {jerseyFor(entry.playerId) ? `${jerseyFor(entry.playerId)} ` : ''}
-                        {entry.lastName}
+                        className={`flex min-w-0 flex-col items-center rounded px-1 py-1.5 text-[10px] transition-all ${entry.position === subPosition ? 'bg-amber-500/20 text-amber-100' : 'bg-white/5 text-white/80 hover:bg-white/10'}`}>
+                        <span className="font-bold">{POS_LABELS[entry.position!]}</span>
+                        <span className="font-mono text-xs font-bold tabular-nums text-amber-200">{jerseyFor(entry.playerId) || '—'}</span>
+                        <span className="w-full truncate">{entry.lastName}</span>
                       </button>
                     ))}
-                  </div>
-                  <div className="grid grid-cols-3 gap-1.5 mt-2">
-                    {Object.entries(POS_LABELS).filter(([k]) => parseInt(k) !== subPosition && parseInt(k) <= 9).map(([k, label]) => {
-                      const posNum = parseInt(k);
-                      const occupant = draftFieldingLineup.find(l => l.position === posNum);
-                      return (
-                        <button key={k} onClick={() => handlePositionSwap(posNum)}
-                          className="py-2.5 bg-scoring-tile hover:bg-scoring-tile-hover text-white rounded transition-all text-center">
-                          <div className="text-xs font-bold">{label}</div>
-                          {occupant && <div className="text-[9px] text-white/40 mt-0.5">{occupant.lastName}</div>}
-                        </button>
-                      );
-                    })}
                   </div>
                   {pendingPositionChanges.length > 0 && (
                     <div className="mt-2 flex gap-1">
@@ -3628,15 +3743,36 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                         className="rounded bg-white/10 px-2 py-2 text-[10px] font-bold uppercase text-white/60 hover:bg-white/15">Clear</button>
                     </div>
                   )}
-                  <button onClick={() => setStep('sub_defense')} className="w-full mt-2 py-2 text-white/40 text-[10px] font-bold uppercase hover:text-white/60">← BACK</button>
+                  </div>
+                  <div className={SUB_LIST}>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {Object.entries(POS_LABELS).filter(([k]) => parseInt(k) !== subPosition && parseInt(k) <= 9).map(([k, label]) => {
+                      const posNum = parseInt(k);
+                      const occupant = draftFieldingLineup.find(l => l.position === posNum);
+                      return (
+                        <button key={k} onClick={() => handlePositionSwap(posNum)}
+                          className="rounded bg-scoring-tile py-2.5 text-center text-white transition-all hover:bg-scoring-tile-hover">
+                          <div className="text-xs font-bold">{label}</div>
+                          {occupant && (
+                            <>
+                              <div className="mt-0.5 font-mono text-xs font-bold tabular-nums text-amber-200">{jerseyFor(occupant.playerId) || '—'}</div>
+                              <div className="truncate text-[10px] text-white/70">{occupant.lastName}</div>
+                            </>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  </div>
+                  <button onClick={() => setStep('sub_defense')} className="w-full shrink-0 border-t border-white/10 py-3 text-[10px] font-bold uppercase text-white/50 hover:text-white/80">← BACK</button>
                 </div>
               );
             })()}
 
             {/* PICK PLAYER FOR POSITION CHANGE (from Misc) */}
             {step === 'swap_position_pick' && (
-              <div className={WIZARD_OPTIONS_PANEL}>
-                <p className="text-[10px] text-white/40 uppercase font-bold text-center mb-2">
+              <div className={SUB_PANEL}>
+                <p className="shrink-0 px-3 pt-3 text-center text-[10px] font-bold uppercase text-white/50">
                   {defensiveChangeTeamId === game.homeTeamId ? game.homeTeamName : game.awayTeamName} defense
                 </p>
                 <div className="mb-2 grid grid-cols-2 gap-1">
@@ -3656,19 +3792,19 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                     </button>
                   ))}
                 </div>
-                <div className="space-y-1">
+                <div className={SUB_LIST}>
                   {draftFieldingLineup
                     .filter((e) => e.playerId != null && e.position != null)
                     .map((entry) => (
                     <button key={entry.playerId!} onClick={() => { setSubPosition(entry.position!); setStep('swap_position'); }}
-                      className="w-full flex items-center gap-2 px-3 py-2 bg-white/5 hover:bg-white/10 rounded text-xs text-left">
-                      <span className="text-white/40 font-bold w-6">{POS_LABELS[entry.position!]}</span>
-                      <span className="text-white tabular-nums text-white/35 w-8">{jerseyFor(entry.playerId) || '—'}</span>
-                      <span className="text-white">{nameWithJersey(entry.playerId, entry.firstName, entry.lastName)}</span>
+                      className="flex w-full items-center gap-2 rounded bg-white/5 px-3 py-2.5 text-left text-sm hover:bg-white/10">
+                      <span className="w-8 shrink-0 font-bold text-white/50">{POS_LABELS[entry.position!]}</span>
+                      <JerseyBadge value={jerseyFor(entry.playerId)} />
+                      <span className="min-w-0 flex-1 truncate font-semibold text-white">{entry.firstName} {entry.lastName}</span>
                     </button>
                   ))}
                 </div>
-                <button onClick={cancelWizard} className="w-full mt-2 py-2 text-white/40 text-[10px] font-bold uppercase hover:text-white/60">CANCEL</button>
+                <button onClick={cancelWizard} className="w-full shrink-0 border-t border-white/10 py-3 text-[10px] font-bold uppercase text-white/50 hover:text-white/80">CANCEL</button>
               </div>
             )}
 
@@ -3677,13 +3813,17 @@ function needsRunnerAdvanceErrorFieldingPrompt(
               const offenseTeamName = offensiveChangeTeamId === game.homeTeamId ? game.homeTeamName : game.awayTeamName;
               const phName = offensiveChangeLineup.find(l => l.battingOrder === subBattingSlot);
               return (
-                <div className={WIZARD_OPTIONS_BODY_SM + ' bg-scoring-panel rounded-lg border border-white/10'}>
-                  <p className="text-[10px] text-white/40 uppercase font-bold text-center mb-1">
-                    {offenseTeamName} · BO {subBattingSlot} —{' '}
-                    {phName
-                      ? nameWithJersey(phName.playerId, phName.firstName, phName.lastName)
-                      : 'open slot'}
+                <div className={SUB_PANEL}>
+                  <div className="max-h-[46%] shrink-0 overflow-y-auto p-3 pb-1">
+                  <p className="mb-2 text-center text-[10px] font-bold uppercase text-white/50">
+                    {offenseTeamName} · BO {subBattingSlot}
                   </p>
+                  <div className="mb-2 flex items-center justify-center gap-2">
+                    <JerseyBadge value={phName ? jerseyFor(phName.playerId) : ''} active />
+                    <span className="text-sm font-bold text-white">
+                      {phName ? `${phName.firstName} ${phName.lastName}` : 'open slot'}
+                    </span>
+                  </div>
                   <div className="mb-2 grid grid-cols-2 gap-1">
                     {[
                       { id: game.awayTeamId, label: game.awayTeamName },
@@ -3711,40 +3851,43 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                           type="button"
                           onClick={() => entry && setSubBattingSlot(slot)}
                           disabled={!entry}
-                          className={`rounded px-1 py-1.5 text-[9px] transition-colors ${
+                          className={`flex min-w-0 flex-col items-center rounded px-1 py-1.5 text-[10px] transition-colors ${
                             subBattingSlot === slot
-                              ? 'bg-amber-500/20 text-amber-200'
+                              ? 'bg-amber-500/20 text-amber-100'
                               : entry
-                                ? 'bg-white/5 text-white/55 hover:bg-white/10 hover:text-white/80'
-                                : 'bg-white/[0.03] text-white/15'
+                                ? 'bg-white/5 text-white/80 hover:bg-white/10'
+                                : 'bg-white/[0.03] text-white/25'
                           }`}
                         >
-                          <span className="font-bold tabular-nums">BO {slot}</span>{' '}
-                          {entry
-                            ? `${jerseyFor(entry.playerId) ? `${jerseyFor(entry.playerId)} ` : ''}${entry.lastName}`
-                            : 'empty'}
+                          <span className="font-bold tabular-nums">BO {slot}</span>
+                          <span className="font-mono text-xs font-bold tabular-nums text-amber-200">
+                            {entry ? (jerseyFor(entry.playerId) || '—') : '—'}
+                          </span>
+                          <span className="w-full truncate">{entry ? entry.lastName : 'empty'}</span>
                         </button>
                       );
                     })}
                   </div>
-                  <div className="space-y-1">
+                  </div>
+                  <div className={SUB_LIST}>
                     {availableBattingSubs.map(p => (
                       <button key={p.playerId} onClick={() => handleOffensiveSub(p.playerId)}
-                        className="w-full text-left px-3 py-2 bg-white/5 hover:bg-white/10 rounded text-xs text-white">
-                        {shortPlayerName(p.firstName, p.lastName, jerseyFromRoster(offensiveChangeTeamRoster, p.playerId) || undefined)}
+                        className="flex w-full items-center gap-2 rounded bg-white/5 px-3 py-2.5 text-left text-sm text-white hover:bg-white/10">
+                        <JerseyBadge value={formatJersey(p.jerseyNumber)} />
+                        <span className="min-w-0 flex-1 truncate font-semibold">{p.firstName} {p.lastName}</span>
                       </button>
                     ))}
-                    {availableBattingSubs.length === 0 && <p className="text-white/30 text-xs text-center py-2">No bench players available</p>}
+                    {availableBattingSubs.length === 0 && <p className="py-2 text-center text-xs text-white/40">No bench players available</p>}
                   </div>
-                  <button onClick={cancelWizard} className="w-full mt-2 py-2 text-white/40 text-[10px] font-bold uppercase hover:text-white/60">CANCEL</button>
+                  <button onClick={cancelWizard} className="w-full shrink-0 border-t border-white/10 py-3 text-[10px] font-bold uppercase text-white/50 hover:text-white/80">CANCEL</button>
                 </div>
               );
             })()}
 
             {/* MISC - iScore style vertical list */}
             {step === 'misc' && (
-              <div className="bg-scoring-panel rounded-lg border border-white/10 overflow-hidden lg:max-h-80 flex flex-col">
-                <div className="overflow-y-auto divide-y divide-white/5">
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-white/10 bg-scoring-panel">
+                <div className="min-h-0 flex-1 divide-y divide-white/5 overflow-y-auto">
                   {[
                     { label: 'Pitching Change', fn: () => { setSubTeamId(fieldingTeamId ?? null); setSubPosition(1); setStep('sub_defense'); } },
                     { label: 'Replace Lineup Player', fn: () => {
@@ -3794,7 +3937,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                       onClick={() => setMiscGhostRunnerId(sug)}
                       className="mb-2 w-full py-1.5 px-2 rounded bg-amber-500/15 text-[10px] text-amber-100 hover:bg-amber-500/25 border border-amber-500/25"
                     >
-                      Use suggested: {getPlayerName(sug)}
+                      Use suggested: {getPlayerShort(sug)}
                     </button>
                   );
                 })()}
@@ -3810,7 +3953,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                           : 'bg-white/5 text-white/80 hover:bg-white/10'
                       }`}
                     >
-                      #{l.battingOrder} {l.firstName.charAt(0)}. {l.lastName}
+                      <span className="text-white/40">BO {l.battingOrder}</span> {nameWithJersey(l.playerId, l.firstName, l.lastName)}
                     </button>
                   ))}
                 </div>
@@ -4020,13 +4163,11 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                         <span className={`font-mono w-4 shrink-0 text-right tabular-nums ${isCurrent ? 'text-amber-400 font-bold' : 'text-white/25'}`}>{slot}</span>
                         {entry ? (
                           <>
-                            <span className={`min-w-[2rem] shrink-0 font-mono text-[10px] tabular-nums ${isCurrent ? 'text-amber-300/80' : 'text-white/30'}`}>
-                              {jerseyFor(entry.playerId) || '—'}
-                            </span>
-                            <span className={`flex-1 truncate ${isCurrent ? 'text-white font-bold' : 'text-white/60'}`}>
+                            <JerseyBadge value={jerseyFor(entry.playerId)} active={isCurrent} />
+                            <span className={`flex-1 truncate ${isCurrent ? 'text-white font-bold' : 'text-white/70'}`}>
                               {entry.firstName.charAt(0)}. {entry.lastName}
                             </span>
-                            <span className="text-white/25 text-[10px]">{entry.position != null ? POS_LABELS[entry.position] : '—'}</span>
+                            <span className="text-[10px] text-white/40">{entry.position != null ? POS_LABELS[entry.position] : '—'}</span>
                           </>
                         ) : <span className="text-white/15 italic text-[10px]">(empty)</span>}
                       </div>
@@ -4048,11 +4189,9 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                       }}
                       className="flex items-center gap-1.5 px-2 py-1 text-[12px] text-white/40 hover:bg-white/5 rounded cursor-pointer"
                     >
-                      <span className="text-white/25 font-mono w-5 text-right">{POS_LABELS[entry.position!]}</span>
-                      <span className="min-w-[2rem] shrink-0 font-mono text-[10px] tabular-nums text-white/30">
-                        {jerseyFor(entry.playerId) || '—'}
-                      </span>
-                      <span className="flex-1 truncate">{entry.firstName.charAt(0)}. {entry.lastName}</span>
+                      <span className="w-5 text-right font-mono text-white/50">{POS_LABELS[entry.position!]}</span>
+                      <JerseyBadge value={jerseyFor(entry.playerId)} />
+                      <span className="flex-1 truncate text-white/80">{entry.firstName.charAt(0)}. {entry.lastName}</span>
                       {entry.position === 1 && (
                         <span className="text-white/20 font-mono text-[9px]">{getCurrentPitcherPitches(entry.playerId)}p</span>
                       )}

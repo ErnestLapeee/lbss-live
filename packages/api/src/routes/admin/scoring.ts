@@ -695,6 +695,13 @@ export async function adminScoringRoutes(app: FastifyInstance) {
         .where(and(eq(gameEvents.gameId, gameId), eq(gameEvents.isDeleted, false)))
         .orderBy(gameEvents.eventNumber);
 
+      const [league] = await db
+        .select({ seasonId: leagues.seasonId })
+        .from(leagues)
+        .where(eq(leagues.id, game.leagueId))
+        .limit(1);
+      const seasonId = league?.seasonId ?? null;
+
       const lineupRaw = await db.select({
         id: gameLineups.id,
         teamId: gameLineups.teamId,
@@ -710,9 +717,18 @@ export async function adminScoringRoutes(app: FastifyInstance) {
         firstName: players.firstName,
         lastName: players.lastName,
         bats: players.bats,
+        jerseyNumber: playerSeasons.jerseyNumber,
       })
         .from(gameLineups)
         .leftJoin(players, eq(gameLineups.playerId, players.id))
+        .leftJoin(
+          playerSeasons,
+          and(
+            eq(playerSeasons.playerId, gameLineups.playerId),
+            eq(playerSeasons.teamId, gameLineups.teamId),
+            seasonId != null ? eq(playerSeasons.seasonId, seasonId) : sql`false`,
+          ),
+        )
         .where(eq(gameLineups.gameId, gameId))
         .orderBy(gameLineups.battingOrder);
 
