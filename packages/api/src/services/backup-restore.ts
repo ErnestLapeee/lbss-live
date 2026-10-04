@@ -23,6 +23,7 @@ import {
   users,
   playoffs,
   playoffSeries,
+  teamLogos,
 } from '../db/schema/index.js';
 
 /** Payload shape from GET /admin/backup/export (version 2+). */
@@ -52,6 +53,7 @@ export interface BackupPayload {
     users: Record<string, unknown>[];
     playoffs: Record<string, unknown>[];
     playoffSeries: Record<string, unknown>[];
+    teamLogos?: Record<string, unknown>[];
   };
 }
 
@@ -79,6 +81,7 @@ TRUNCATE TABLE
   playoff_series,
   playoffs,
   seasons,
+  team_logos,
   teams
 RESTART IDENTITY CASCADE
 `;
@@ -164,6 +167,15 @@ export async function restoreFullBackup(
 
   await insertRows(tx, seasons, arr(d.seasons));
   await insertRows(tx, teams, arr(d.teams));
+  const logoRows = arr<Record<string, unknown>>(d.teamLogos)
+    .map((row) => ({
+      teamId: Number(row.teamId),
+      contentType: String(row.contentType || 'image/png'),
+      data: Buffer.from(String(row.dataBase64 || ''), 'base64'),
+      updatedAt: row.updatedAt ? new Date(String(row.updatedAt)) : new Date(),
+    }))
+    .filter((row) => Number.isFinite(row.teamId) && row.data.length > 0);
+  await insertRows(tx, teamLogos, logoRows);
   await insertRows(tx, playoffs, arr(d.playoffs));
   await insertRows(tx, playoffSeries, arr(d.playoffSeries));
   await insertRows(tx, leagues, arr(d.leagues));

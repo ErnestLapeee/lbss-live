@@ -39,6 +39,16 @@ export async function ensureOptionalSchemaColumns(): Promise<void> {
     sql`CREATE INDEX IF NOT EXISTS game_events_game_active_number_idx ON game_events (game_id, is_deleted, event_number)`,
   );
 
+  /** Uploaded club logos. The public site loads them from the API instead of an outside link. */
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS team_logos (
+      team_id integer PRIMARY KEY REFERENCES teams(id) ON DELETE CASCADE,
+      content_type varchar(40) NOT NULL,
+      data bytea NOT NULL,
+      updated_at timestamptz DEFAULT now()
+    )
+  `);
+
   /** Lets a phone retry a saved play without recording it twice. */
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS scoring_client_ops (

@@ -12,8 +12,23 @@ import {
   games,
 } from '../../db/schema/index.js';
 import { eq, and, sql, inArray, asc } from 'drizzle-orm';
+import { teamLogos } from '../../db/schema/team-logos.js';
 
 export async function teamsRoutes(app: FastifyInstance) {
+  app.get<{ Params: { id: string } }>('/:id/logo', async (request, reply) => {
+    const id = parseInt(request.params.id, 10);
+    if (!Number.isFinite(id)) {
+      return reply.status(404).send({ message: 'Team not found' });
+    }
+    const [row] = await db.select().from(teamLogos).where(eq(teamLogos.teamId, id)).limit(1);
+    if (!row) {
+      return reply.status(404).send({ message: 'No logo' });
+    }
+    reply.header('Content-Type', row.contentType);
+    reply.header('Cache-Control', 'public, max-age=86400');
+    return reply.send(row.data);
+  });
+
   // GET /?seasonId= — active teams that participate in that season (league membership and/or roster).
   // Omit seasonId to list all active teams (legacy / admin pickers).
   app.get<{ Querystring: { seasonId?: string } }>('/', async (request, reply) => {

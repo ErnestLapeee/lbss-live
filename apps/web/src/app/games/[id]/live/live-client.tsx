@@ -11,6 +11,7 @@ import { formatGameDateLong } from '@/lib/game-datetime';
 import { normalizeGameEvents, tryExtractEventArray } from '@/lib/normalize-game-events';
 import { buildPositionMapsByEvent } from '@/lib/position-maps-by-event';
 import { usePollingWhenVisible } from '@/hooks/use-polling-when-visible';
+import { resolveTeamLogoUrl } from '@/lib/team-logo';
 
 /** Fetch a JSON array from the public proxy; returns null on non-OK or parse errors so callers do not replace state with []. */
 async function fetchPublicJsonArray(url: string): Promise<any[] | null> {
@@ -93,8 +94,9 @@ function ScoreboardTeamLogo({
   logoUrl?: string | null;
 }) {
   const wrap = 'flex h-14 w-14 shrink-0 items-center justify-center rounded-lg border border-border bg-surface p-1 sm:h-[4.5rem] sm:w-[4.5rem]';
-  if (logoUrl) {
-    return <img src={logoUrl} alt={name} className={`${wrap} object-contain`} />;
+  const src = resolveTeamLogoUrl(logoUrl);
+  if (src) {
+    return <img src={src} alt={name} className={`${wrap} object-contain`} />;
   }
   const abbr = shortName?.trim()
     || (name.length <= 3

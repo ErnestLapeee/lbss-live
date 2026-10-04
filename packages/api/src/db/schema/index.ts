@@ -1,6 +1,7 @@
 export * from './seasons.js';
 export * from './leagues.js';
 export * from './teams.js';
+export * from './team-logos.js';
 export * from './players.js';
 export * from './users.js';
 export * from './games.js';

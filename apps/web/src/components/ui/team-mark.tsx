@@ -1,5 +1,6 @@
 import Image from 'next/image';
 import { clsx } from 'clsx';
+import { resolveTeamLogoUrl } from '@/lib/team-logo';
 
 type Variant = 'tableSm' | 'tableMd' | 'final' | 'live' | 'card' | 'bracket';
 
@@ -49,12 +50,13 @@ export function TeamMark({
     className
   );
 
-  if (logoUrl) {
+  const src = resolveTeamLogoUrl(logoUrl);
+  if (src) {
     const px = variant === 'card' ? 56 : variant === 'bracket' ? 48 : variant === 'live' ? 40 : 20;
     return (
       <div className={imgWrap}>
         <Image
-          src={logoUrl}
+          src={src}
           alt={name}
           width={px}
           height={px}

@@ -66,6 +66,23 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     url.searchParams.set(key, value);
   });
 
+  if (/^public\/teams\/\d+\/logo$/.test(proxyPathKey(path))) {
+    try {
+      const res = await fetch(url.toString(), { cache: 'no-store' });
+      const buf = await res.arrayBuffer();
+      return new NextResponse(buf, {
+        status: res.status,
+        headers: {
+          'Content-Type': res.headers.get('content-type') || 'application/octet-stream',
+          'Cache-Control': res.ok ? 'public, max-age=86400' : 'no-store',
+          'X-Robots-Tag': 'noindex, nofollow',
+        },
+      });
+    } catch {
+      return NextResponse.json({ message: 'API unreachable' }, { status: 502 });
+    }
+  }
+
   try {
     const res = await fetch(url.toString(), {
       headers: { 'Content-Type': 'application/json' },

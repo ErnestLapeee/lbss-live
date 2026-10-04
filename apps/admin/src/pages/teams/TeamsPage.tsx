@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { apiGet, apiPost, apiPut, apiPatch, apiDelete } from '@/lib/api';
 import { useAdminSeason } from '@/context/AdminSeasonContext';
 import { EuropeanDateInput } from '@/components/EuropeanDateInput';
+import { prepareTeamLogo } from '@/lib/team-logo';
 
 /* ───── types ───── */
 interface RosterPlayer {
@@ -24,6 +25,7 @@ interface TeamWithRoster {
   shortName: string | null;
   city: string | null;
   foundedYear: number | null;
+  logoUrl: string | null;
   isActive: boolean;
   players: RosterPlayer[];
 }
@@ -64,7 +66,10 @@ export function TeamsPage() {
   // Team create/edit form
   const [showTeamForm, setShowTeamForm] = useState(false);
   const [editingTeam, setEditingTeam] = useState<TeamWithRoster | null>(null);
-  const [teamForm, setTeamForm] = useState({ name: '', shortName: '', city: '', foundedYear: '', description: '', logoUrl: '' });
+  const [teamForm, setTeamForm] = useState({ name: '', shortName: '', city: '', foundedYear: '', description: '' });
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [removeLogo, setRemoveLogo] = useState(false);
   const [createLeagueId, setCreateLeagueId] = useState('');
 
   // Player create form (add new player directly under a team)
@@ -199,9 +204,19 @@ export function TeamsPage() {
   }, [assignableForModal, assignSearchQuery]);
 
   /* ───── team CRUD ───── */
+  const resetLogoPicker = (existingUrl: string | null) => {
+    setLogoPreview((prev) => {
+      if (prev?.startsWith('blob:')) URL.revokeObjectURL(prev);
+      return existingUrl;
+    });
+    setLogoFile(null);
+    setRemoveLogo(false);
+  };
+
   const openCreateTeam = () => {
     setEditingTeam(null);
-    setTeamForm({ name: '', shortName: '', city: '', foundedYear: '', description: '', logoUrl: '' });
+    setTeamForm({ name: '', shortName: '', city: '', foundedYear: '', description: '' });
+    resetLogoPicker(null);
     setCreateLeagueId(leaguesForSeason[0] ? String(leaguesForSeason[0].id) : '');
     setShowTeamForm(true);
   };
@@ -214,8 +229,8 @@ export function TeamsPage() {
       city: t.city ?? '',
       foundedYear: t.foundedYear ? String(t.foundedYear) : '',
       description: '',
-      logoUrl: (t as any).logoUrl ?? '',
     });
+    resetLogoPicker(t.logoUrl);
     setShowTeamForm(true);
   };
 
@@ -228,9 +243,8 @@ export function TeamsPage() {
         shortName: teamForm.shortName || null,
         city: teamForm.city || null,
         foundedYear: teamForm.foundedYear ? parseInt(teamForm.foundedYear, 10) : null,
-        description: teamForm.description || null,
-        logoUrl: teamForm.logoUrl || null,
       };
+      let teamId = editingTeam?.id ?? null;
       if (editingTeam) {
         await apiPut(`/admin/teams/${editingTeam.id}`, payload);
       } else {
@@ -251,7 +265,14 @@ export function TeamsPage() {
           }
           body.leagueId = lid;
         }
-        await apiPost('/admin/teams', body);
+        const created = await apiPost<{ id: number }>('/admin/teams', body);
+        teamId = created.id;
+      }
+      if (teamId != null && logoFile) {
+        const dataBase64 = await prepareTeamLogo(logoFile);
+        await apiPost(`/admin/teams/${teamId}/logo`, { dataBase64 });
+      } else if (teamId != null && removeLogo) {
+        await apiDelete(`/admin/teams/${teamId}/logo`);
       }
       setShowTeamForm(false);
       await loadRosters({ background: true });
@@ -516,7 +537,11 @@ export function TeamsPage() {
                 {/* team header */}
                 <div className="px-4 py-3 border-b border-border bg-surface-alt rounded-t-xl">
                   <div className="flex items-center justify-between gap-2">
-                    <div className="min-w-0">
+                    <div className="flex min-w-0 items-center gap-2">
+                      {team.logoUrl ? (
+                        <img src={team.logoUrl} alt="" className="h-9 w-9 shrink-0 rounded-md border border-border bg-white object-contain" />
+                      ) : null}
+                      <div className="min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <h3 className="font-heading font-semibold text-sm">{team.name}</h3>
                         {!team.isActive && (
@@ -529,6 +554,7 @@ export function TeamsPage() {
                         {[team.shortName, team.city].filter(Boolean).join(' · ') || 'No details'}
                         {' · '}{team.players.length} player{team.players.length !== 1 ? 's' : ''}
                       </p>
+                      </div>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
                       <button
@@ -738,14 +764,52 @@ export function TeamsPage() {
             <Field label="Founded Year">
               <input type="number" value={teamForm.foundedYear} onChange={e => setTeamForm(f => ({ ...f, foundedYear: e.target.value }))} className={inputClass} />
             </Field>
-            <Field label="Logo URL">
-              <input type="url" value={teamForm.logoUrl} onChange={e => setTeamForm(f => ({ ...f, logoUrl: e.target.value }))} className={inputClass} placeholder="https://example.com/logo.png" />
-              {teamForm.logoUrl && (
-                <div className="mt-2 flex items-center gap-2">
-                  <img src={teamForm.logoUrl} alt="Logo preview" className="w-10 h-10 object-contain rounded border border-border" onError={e => (e.currentTarget.style.display = 'none')} />
-                  <span className="text-xs text-gray-500">Preview</span>
+            <Field label="Logo">
+              <div className="flex items-center gap-3">
+                {logoPreview && !removeLogo ? (
+                  <img src={logoPreview} alt="" className="h-14 w-14 rounded-lg border border-border bg-white object-contain" />
+                ) : (
+                  <div className="flex h-14 w-14 items-center justify-center rounded-lg border border-dashed border-border text-[10px] text-text-muted">No logo</div>
+                )}
+                <div className="flex flex-col gap-2">
+                  <label className="w-fit cursor-pointer rounded-lg border border-border bg-surface px-3 py-2 text-sm font-semibold text-text hover:bg-surface-alt">
+                    Choose image
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp,image/gif"
+                      className="sr-only"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0] ?? null;
+                        e.target.value = '';
+                        if (!file) return;
+                        setLogoPreview((prev) => {
+                          if (prev?.startsWith('blob:')) URL.revokeObjectURL(prev);
+                          return URL.createObjectURL(file);
+                        });
+                        setLogoFile(file);
+                        setRemoveLogo(false);
+                      }}
+                    />
+                  </label>
+                  {(logoPreview || logoFile) && !removeLogo && (
+                    <button
+                      type="button"
+                      className="w-fit text-sm font-semibold text-red-600 hover:text-red-500"
+                      onClick={() => {
+                        setLogoPreview((prev) => {
+                          if (prev?.startsWith('blob:')) URL.revokeObjectURL(prev);
+                          return null;
+                        });
+                        setLogoFile(null);
+                        setRemoveLogo(true);
+                      }}
+                    >
+                      Remove logo
+                    </button>
+                  )}
                 </div>
-              )}
+              </div>
+              <p className="mt-2 text-xs text-text-muted">PNG or JPG. The file is kept with the team, so it does not depend on an outside link.</p>
             </Field>
             <ModalActions onCancel={() => setShowTeamForm(false)} saving={saving} />
           </form>

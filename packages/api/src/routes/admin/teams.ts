@@ -11,6 +11,8 @@ import { games } from '../../db/schema/games.js';
 import { leagues } from '../../db/schema/leagues.js';
 import { and, asc, eq, inArray, or } from 'drizzle-orm';
 import { slugify } from '../../utils/slugify.js';
+import { teamLogos } from '../../db/schema/team-logos.js';
+import { decodeTeamLogoUpload, teamLogoPublicPath } from '../../lib/team-logo.js';
 
 export async function adminTeamsRoutes(app: FastifyInstance) {
   // GET / - list teams; optional ?seasonId= limits to clubs in that workspace season (league membership and/or season rosters)
@@ -491,6 +493,64 @@ export async function adminTeamsRoutes(app: FastifyInstance) {
     } catch (err) {
       request.log.error(err);
       return reply.status(500).send({ message: 'Failed to reactivate team' });
+    }
+  });
+
+  app.post<{ Params: { id: string }; Body: { dataBase64?: string } }>('/:id/logo', async (request, reply) => {
+    try {
+      const id = parseInt(request.params.id, 10);
+      if (!Number.isFinite(id)) {
+        return reply.status(400).send({ message: 'Invalid team id' });
+      }
+      const [team] = await db.select({ id: teams.id }).from(teams).where(eq(teams.id, id)).limit(1);
+      if (!team) {
+        return reply.status(404).send({ message: 'Team not found' });
+      }
+      let decoded: { contentType: string; bytes: Buffer };
+      try {
+        decoded = decodeTeamLogoUpload(request.body?.dataBase64);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Could not read that image';
+        return reply.status(400).send({ message });
+      }
+      const updatedAt = new Date();
+      await db
+        .insert(teamLogos)
+        .values({
+          teamId: id,
+          contentType: decoded.contentType,
+          data: decoded.bytes,
+          updatedAt,
+        })
+        .onConflictDoUpdate({
+          target: teamLogos.teamId,
+          set: {
+            contentType: decoded.contentType,
+            data: decoded.bytes,
+            updatedAt,
+          },
+        });
+      const logoUrl = teamLogoPublicPath(id, updatedAt.getTime());
+      const [updated] = await db.update(teams).set({ logoUrl }).where(eq(teams.id, id)).returning();
+      return reply.send({ logoUrl: updated?.logoUrl ?? logoUrl });
+    } catch (err) {
+      request.log.error(err);
+      return reply.status(500).send({ message: 'Failed to save logo' });
+    }
+  });
+
+  app.delete<{ Params: { id: string } }>('/:id/logo', async (request, reply) => {
+    try {
+      const id = parseInt(request.params.id, 10);
+      if (!Number.isFinite(id)) {
+        return reply.status(400).send({ message: 'Invalid team id' });
+      }
+      await db.delete(teamLogos).where(eq(teamLogos.teamId, id));
+      await db.update(teams).set({ logoUrl: null }).where(eq(teams.id, id));
+      return reply.send({ logoUrl: null });
+    } catch (err) {
+      request.log.error(err);
+      return reply.status(500).send({ message: 'Failed to remove logo' });
     }
   });
 
