@@ -15,7 +15,7 @@ import {
   standings,
   playoffSeries,
 } from '../../db/schema/index.js';
-import { eq, and, sql, inArray, asc } from 'drizzle-orm';
+import { eq, and, sql, inArray, desc } from 'drizzle-orm';
 import { finalizeGame, recomputeSeasonBatting, recomputeSeasonPitching, recomputeSeasonFielding, recomputeStandings } from '../../services/finalize-game.js';
 import { firstRowFromExecute } from '../../lib/pg-result.js';
 import { gamesTableHasOfficialColumns } from '../../lib/games-official-columns.js';
@@ -108,11 +108,11 @@ export async function adminGamesRoutes(app: FastifyInstance) {
           .select(adminGameListSelect)
           .from(games)
           .where(inArray(games.leagueId, leagueIds))
-          .orderBy(asc(games.scheduledAt));
+          .orderBy(desc(games.scheduledAt), desc(games.id));
         return reply.send(filtered);
       }
 
-      const result = await db.select(adminGameListSelect).from(games).orderBy(asc(games.scheduledAt));
+      const result = await db.select(adminGameListSelect).from(games).orderBy(desc(games.scheduledAt), desc(games.id));
       return reply.send(result);
     } catch (err) {
       request.log.error(err);
