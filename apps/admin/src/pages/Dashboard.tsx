@@ -1,11 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { apiGet, apiPost } from '@/lib/api';
+import { apiGet } from '@/lib/api';
 import { useAdminSeason } from '@/context/AdminSeasonContext';
 import { useAuth } from '@/lib/auth';
 import { formatShortDateTime } from '@/lib/localeDisplay';
-
-const RESTORE_CONFIRM = 'LBSS_REPLACE_ALL_DATA';
 
 function getApiBase(): string {
   const raw = typeof window !== 'undefined' ? (window as any).__LBSS_API_URL__ : undefined;
@@ -43,9 +41,6 @@ export function Dashboard() {
   const [teamNames, setTeamNames] = useState<Record<number, string>>({});
   const [loading, setLoading] = useState(true);
   const [backupLoading, setBackupLoading] = useState(false);
-  const [restoreFile, setRestoreFile] = useState<File | null>(null);
-  const [restorePhrase, setRestorePhrase] = useState('');
-  const [restoreBusy, setRestoreBusy] = useState(false);
 
   useEffect(() => {
     if (seasonsLoading) return;
@@ -140,39 +135,6 @@ export function Dashboard() {
     }
   };
 
-  const handleRestore = async () => {
-    if (!restoreFile) {
-      alert('Choose a backup .json file first.');
-      return;
-    }
-    if (restorePhrase.trim() !== RESTORE_CONFIRM) {
-      alert(`Type exactly: ${RESTORE_CONFIRM}`);
-      return;
-    }
-    if (
-      !window.confirm(
-        'This will erase ALL current data in this database and replace it with the backup file. Everyone will be logged out. Continue?',
-      )
-    ) {
-      return;
-    }
-    setRestoreBusy(true);
-    try {
-      const text = await restoreFile.text();
-      const backup = JSON.parse(text) as unknown;
-      await apiPost<{ ok?: boolean; message?: string }>('/admin/backup/import', {
-        confirm: RESTORE_CONFIRM,
-        backup,
-      });
-      alert('Restore finished. You need to sign in again.');
-      window.location.assign('/login');
-    } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : 'Restore failed');
-    } finally {
-      setRestoreBusy(false);
-    }
-  };
-
   const cards = [
     { label: 'Seasons (total)', value: stats.seasons },
     { label: 'Teams (workspace)', value: stats.teams },
@@ -210,47 +172,17 @@ export function Dashboard() {
             >
               {backupLoading ? 'Exporting…' : 'Download backup'}
             </button>
-          </div>
-          <div className="rounded-xl border border-red-200 bg-red-50 p-6">
-            <h2 className="font-heading text-lg font-semibold mb-2 text-red-900">Restore from backup</h2>
-            <p className="text-sm text-red-900/90 mb-4 max-w-2xl">
-              Replaces the entire database with a previously exported file. Use only after accidental deletes or
-              disasters. All sessions are cleared.
+            <p className="mt-4 text-sm text-text-muted">
+              Replacing the database from a file is on the{' '}
+              <Link to="/users" className="font-medium text-text-muted underline hover:text-text">
+                Users
+              </Link>{' '}
+              page.
             </p>
-            <div className="flex flex-col gap-3 max-w-xl">
-              <label className="block text-sm font-medium text-text">
-                Backup file (.json)
-                <input
-                  type="file"
-                  accept="application/json,.json"
-                  className="mt-1 block w-full text-sm"
-                  onChange={(e) => setRestoreFile(e.target.files?.[0] ?? null)}
-                />
-              </label>
-              <label className="block text-sm font-medium text-text">
-                Confirmation (type exactly)
-                <input
-                  type="text"
-                  value={restorePhrase}
-                  onChange={(e) => setRestorePhrase(e.target.value)}
-                  placeholder={RESTORE_CONFIRM}
-                  autoComplete="off"
-                  className="mt-1 w-full rounded-lg border border-border bg-surface-alt px-3 py-2 text-sm font-mono"
-                />
-              </label>
-              <button
-                type="button"
-                onClick={() => void handleRestore()}
-                disabled={restoreBusy}
-                className="w-fit rounded px-4 py-2 text-sm font-semibold text-white bg-red-700 hover:bg-red-600 disabled:opacity-50"
-              >
-                {restoreBusy ? 'Restoring…' : 'Restore database from file'}
-              </button>
-            </div>
           </div>
         </div>
       ) : (
-        <p className="text-sm text-text-muted">Full backup and restore are available to admin accounts only.</p>
+        <p className="text-sm text-text-muted">Full backup is available to admin accounts only.</p>
       )}
     </div>
   );

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
+import { RestoreBackup } from '@/components/RestoreBackup';
 
 interface User {
   id: number;
@@ -326,6 +327,8 @@ export function UsersPage() {
           </div>
         </div>
       )}
+
+      <RestoreBackup />
     </div>
   );
 }

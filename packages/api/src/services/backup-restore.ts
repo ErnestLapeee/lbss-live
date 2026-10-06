@@ -59,6 +59,7 @@ export interface BackupPayload {
 
 const TRUNCATE_SQL = `
 TRUNCATE TABLE
+  scoring_client_ops,
   game_events,
   game_lineups,
   player_game_batting,
@@ -127,6 +128,74 @@ function arr<T>(v: unknown): T[] {
   return Array.isArray(v) ? (v as T[]) : [];
 }
 
+/** Calendar dates. A full timestamp here can shift the day when Postgres stores it. */
+const DATE_ONLY_KEYS = new Set(['startDate', 'endDate', 'dateOfBirth']);
+
+/**
+ * Timestamps. The export writes these as ISO strings. Drizzle's timestamp columns
+ * call `.toISOString()` on insert, so a string crashes the restore.
+ */
+const TIMESTAMP_KEYS = new Set([
+  'createdAt',
+  'updatedAt',
+  'scheduledAt',
+  'finalizedAt',
+  'publishedAt',
+  'issuedAt',
+  'expiresAt',
+  'confirmedAt',
+  'lastComputedAt',
+]);
+
+const DATE_PREFIX = /^(\d{4}-\d{2}-\d{2})(?:[T\s]|$)/;
+
+export function reviveBackupRow(row: Record<string, unknown>): Record<string, unknown> {
+  const next: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(row)) {
+    if (typeof value !== 'string') {
+      next[key] = value;
+      continue;
+    }
+    if (DATE_ONLY_KEYS.has(key)) {
+      const match = DATE_PREFIX.exec(value);
+      next[key] = match ? match[1] : value;
+      continue;
+    }
+    if (TIMESTAMP_KEYS.has(key)) {
+      const parsed = new Date(value);
+      next[key] = Number.isNaN(parsed.getTime()) ? value : parsed;
+      continue;
+    }
+    next[key] = value;
+  }
+  return next;
+}
+
+function rowsForInsert(rows: unknown): Record<string, unknown>[] {
+  return arr<Record<string, unknown>>(rows).map(reviveBackupRow);
+}
+
+/** A playoff season can point at its regular season, so the parent row has to be inserted first. */
+export function orderSeasonRows(rows: Record<string, unknown>[]): Record<string, unknown>[] {
+  const byId = new Map<number, Record<string, unknown>>();
+  for (const row of rows) {
+    const id = Number(row.id);
+    if (Number.isFinite(id)) byId.set(id, row);
+  }
+  const ordered: Record<string, unknown>[] = [];
+  const seen = new Set<number>();
+  const visit = (row: Record<string, unknown>) => {
+    const id = Number(row.id);
+    if (!Number.isFinite(id) || seen.has(id)) return;
+    const parent = row.parentSeasonId == null || row.parentSeasonId === '' ? null : Number(row.parentSeasonId);
+    if (parent != null && byId.has(parent)) visit(byId.get(parent)!);
+    seen.add(id);
+    ordered.push(row);
+  };
+  for (const row of rows) visit(row);
+  return ordered;
+}
+
 type BackupTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 async function insertRows(
@@ -165,46 +234,46 @@ export async function restoreFullBackup(
 
   const ph = options.placeholderPasswordHash;
 
-  await insertRows(tx, seasons, arr(d.seasons));
-  await insertRows(tx, teams, arr(d.teams));
-  const logoRows = arr<Record<string, unknown>>(d.teamLogos)
+  await insertRows(tx, seasons, orderSeasonRows(rowsForInsert(d.seasons)));
+  await insertRows(tx, teams, rowsForInsert(d.teams));
+  const logoRows = rowsForInsert(d.teamLogos)
     .map((row) => ({
       teamId: Number(row.teamId),
       contentType: String(row.contentType || 'image/png'),
       data: Buffer.from(String(row.dataBase64 || ''), 'base64'),
-      updatedAt: row.updatedAt ? new Date(String(row.updatedAt)) : new Date(),
+      updatedAt: row.updatedAt instanceof Date ? row.updatedAt : new Date(),
     }))
     .filter((row) => Number.isFinite(row.teamId) && row.data.length > 0);
   await insertRows(tx, teamLogos, logoRows);
-  await insertRows(tx, playoffs, arr(d.playoffs));
-  await insertRows(tx, playoffSeries, arr(d.playoffSeries));
-  await insertRows(tx, leagues, arr(d.leagues));
-  await insertRows(tx, leagueTeams, arr(d.leagueTeams));
-  await insertRows(tx, players, arr(d.players));
+  await insertRows(tx, playoffs, rowsForInsert(d.playoffs));
+  await insertRows(tx, playoffSeries, rowsForInsert(d.playoffSeries));
+  await insertRows(tx, leagues, rowsForInsert(d.leagues));
+  await insertRows(tx, leagueTeams, rowsForInsert(d.leagueTeams));
+  await insertRows(tx, players, rowsForInsert(d.players));
 
-  const userRows = arr<Record<string, unknown>>(d.users).map((u) => ({
+  const userRows = rowsForInsert(d.users).map((u) => ({
     ...u,
     passwordHash:
-      typeof u.passwordHash === 'string' && (u.passwordHash as string).length > 0
+      typeof u.passwordHash === 'string' && u.passwordHash.length > 0
         ? u.passwordHash
         : ph,
   }));
   await insertRows(tx, users, userRows);
 
-  await insertRows(tx, articles, arr(d.articles));
-  await insertRows(tx, playerSeasons, arr(d.playerSeasons));
-  await insertRows(tx, licenses, arr(d.licenses));
-  await insertRows(tx, payments, arr(d.payments));
-  await insertRows(tx, standings, arr(d.standings));
-  await insertRows(tx, games, arr(d.games));
-  await insertRows(tx, gameLineups, arr(d.gameLineups));
-  await insertRows(tx, gameEvents, arr(d.gameEvents));
-  await insertRows(tx, playerGameBatting, arr(d.playerGameBatting));
-  await insertRows(tx, playerGamePitching, arr(d.playerGamePitching));
-  await insertRows(tx, playerGameFielding, arr(d.playerGameFielding));
-  await insertRows(tx, playerSeasonBatting, arr(d.playerSeasonBatting));
-  await insertRows(tx, playerSeasonPitching, arr(d.playerSeasonPitching));
-  await insertRows(tx, playerSeasonFielding, arr(d.playerSeasonFielding));
+  await insertRows(tx, articles, rowsForInsert(d.articles));
+  await insertRows(tx, playerSeasons, rowsForInsert(d.playerSeasons));
+  await insertRows(tx, licenses, rowsForInsert(d.licenses));
+  await insertRows(tx, payments, rowsForInsert(d.payments));
+  await insertRows(tx, standings, rowsForInsert(d.standings));
+  await insertRows(tx, games, rowsForInsert(d.games));
+  await insertRows(tx, gameLineups, rowsForInsert(d.gameLineups));
+  await insertRows(tx, gameEvents, rowsForInsert(d.gameEvents));
+  await insertRows(tx, playerGameBatting, rowsForInsert(d.playerGameBatting));
+  await insertRows(tx, playerGamePitching, rowsForInsert(d.playerGamePitching));
+  await insertRows(tx, playerGameFielding, rowsForInsert(d.playerGameFielding));
+  await insertRows(tx, playerSeasonBatting, rowsForInsert(d.playerSeasonBatting));
+  await insertRows(tx, playerSeasonPitching, rowsForInsert(d.playerSeasonPitching));
+  await insertRows(tx, playerSeasonFielding, rowsForInsert(d.playerSeasonFielding));
 
   await syncSequences(tx);
 
