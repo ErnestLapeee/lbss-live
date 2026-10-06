@@ -98,8 +98,15 @@ export default async function HomePage() {
     }
   } catch {}
 
-  const liveGames = games.filter((g: any) => g.status === 'live');
-  const finalGames = games.filter((g: any) => g.status === 'final');
+  const byScheduledNewest = (a: { scheduledAt?: string | null; id?: number }, b: { scheduledAt?: string | null; id?: number }) => {
+    const ta = a.scheduledAt ? Date.parse(a.scheduledAt) : 0;
+    const tb = b.scheduledAt ? Date.parse(b.scheduledAt) : 0;
+    const delta = (Number.isFinite(tb) ? tb : 0) - (Number.isFinite(ta) ? ta : 0);
+    if (delta !== 0) return delta;
+    return (b.id ?? 0) - (a.id ?? 0);
+  };
+  const liveGames = games.filter((g: any) => g.status === 'live').sort(byScheduledNewest);
+  const finalGames = games.filter((g: any) => g.status === 'final').sort(byScheduledNewest);
   const recentGames = [...liveGames, ...finalGames].slice(0, 6);
   const upcomingGames = games
     .filter((g: any) => g.status === 'scheduled')
