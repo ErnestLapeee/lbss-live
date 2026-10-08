@@ -36,7 +36,6 @@ export default async function HomePage() {
     winPct: any;
     gamesBehind: any;
     rank?: number;
-    place?: 1 | 2 | 3 | null;
   }> = [];
 
   try {
@@ -95,7 +94,6 @@ export default async function HomePage() {
             winPct: r.winPct ?? null,
             gamesBehind: r.gamesBehind ?? null,
             rank: r.rank ?? undefined,
-            place: r.place ?? null,
           })),
         ),
       );
@@ -228,7 +226,6 @@ export default async function HomePage() {
                           name={row.teamName}
                           shortName={row.teamShortName}
                           logoUrl={row.teamLogoUrl}
-                          place={row.place ?? null}
                         />
                         <div className="flex-1 min-w-0">
                           {row.teamSlug ? (
@@ -260,25 +257,14 @@ export default async function HomePage() {
 
 /* ── Helper Components ── */
 
-function TeamBadge({
-  name,
-  shortName,
-  logoUrl,
-  place,
-}: {
-  name: string;
-  shortName?: string | null;
-  logoUrl?: string | null;
-  place?: 1 | 2 | 3 | null;
-}) {
+function TeamBadge({ name, shortName, logoUrl }: { name: string; shortName?: string | null; logoUrl?: string | null }) {
   return (
     <TeamMark
       name={name}
       shortName={shortName}
       logoUrl={logoUrl}
       variant="tableSm"
-      place={place}
-      className={place ? undefined : 'border-[#ccc] bg-[#f0f0f0]'}
+      className="border-[#ccc] bg-[#f0f0f0]"
     />
   );
 }

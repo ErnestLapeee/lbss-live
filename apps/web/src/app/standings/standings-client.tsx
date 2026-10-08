@@ -31,7 +31,6 @@ type StandingsRow = {
   runsScored?: number;
   runsAllowed?: number;
   rank?: number;
-  place?: 1 | 2 | 3 | null;
 };
 export type LeagueStandings = { leagueName: string; leagueId: number; rows: StandingsRow[] };
 
@@ -440,7 +439,6 @@ export function StandingsClient({
                                 shortName={row.teamShortName}
                                 logoUrl={row.teamLogoUrl}
                                 variant="tableSm"
-                                place={row.place ?? null}
                               />
                               {row.teamSlug ? (
                                 <Link href={`/teams/${row.teamSlug}`} className="hover:text-accent transition-colors">
