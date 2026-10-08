@@ -2,7 +2,6 @@ import type { FastifyInstance } from 'fastify';
 import { db } from '../../db/index.js';
 import { players, playerSeasons, licenses, playerAccolades, seasons, teams } from '../../db/schema/index.js';
 import { and, desc, eq } from 'drizzle-orm';
-import { normalizeHonor } from '../../lib/honor-merge.js';
 import { slugify } from '../../utils/slugify.js';
 
 export async function adminPlayersRoutes(app: FastifyInstance) {
@@ -260,15 +259,15 @@ export async function adminPlayersRoutes(app: FastifyInstance) {
   }>('/:id/accolades', async (request, reply) => {
     const playerId = parseInt(request.params.id, 10);
     if (!Number.isFinite(playerId)) return reply.status(400).send({ message: 'Invalid player id' });
-    const honor = normalizeHonor(String(request.body?.honor ?? ''));
     const label = typeof request.body?.label === 'string' ? request.body.label.trim() : '';
     let seasonYear = Number(request.body?.seasonYear);
     const seasonId = request.body?.seasonId != null ? Number(request.body.seasonId) : null;
     const teamId = request.body?.teamId != null ? Number(request.body.teamId) : null;
-    if (honor === 'custom' && !label) {
-      return reply.status(400).send({ message: 'A custom honor needs a name' });
+    if (!label) {
+      return reply.status(400).send({ message: 'Enter the honor name' });
     }
     if (label.length > 80) return reply.status(400).send({ message: 'Honor name is too long' });
+    const honor = 'custom';
     try {
       const [player] = await db.select({ id: players.id }).from(players).where(eq(players.id, playerId)).limit(1);
       if (!player) return reply.status(404).send({ message: 'Player not found' });

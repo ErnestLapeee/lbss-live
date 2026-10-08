@@ -38,18 +38,13 @@ interface AccoladeRow {
   seasonName: string | null;
 }
 
-const HONOR_OPTIONS = [
-  { value: 'champion', label: 'Champion' },
-  { value: 'runner_up', label: 'Runner-up' },
-  { value: 'third', label: 'Third place' },
-  { value: 'custom', label: 'Other' },
-];
-
 function honorText(row: AccoladeRow): string {
+  const named = row.label?.trim();
+  if (named) return named;
   if (row.honor === 'champion') return 'Champion';
   if (row.honor === 'runner_up') return 'Runner-up';
   if (row.honor === 'third') return 'Third place';
-  return row.label?.trim() || 'Honor';
+  return 'Honor';
 }
 
 const BATS_OPTIONS = ['R', 'L', 'S'];
@@ -67,7 +62,6 @@ export function PlayersPage() {
   const [search, setSearch] = useState('');
   const [honors, setHonors] = useState<AccoladeRow[]>([]);
   const [honorYear, setHonorYear] = useState(String(new Date().getFullYear()));
-  const [honorKind, setHonorKind] = useState('champion');
   const [honorLabel, setHonorLabel] = useState('');
 
   const [form, setForm] = useState({
@@ -144,15 +138,20 @@ export function PlayersPage() {
   const addHonor = async () => {
     if (!editing) return;
     const year = parseInt(honorYear, 10);
+    const name = honorLabel.trim();
     if (!Number.isFinite(year)) {
       setError('Enter a year for the honor.');
+      return;
+    }
+    if (!name) {
+      setError('Enter the honor name, for example MVP.');
       return;
     }
     try {
       await apiPost(`/admin/players/${editing.id}/accolades`, {
         seasonYear: year,
-        honor: honorKind,
-        label: honorKind === 'custom' ? honorLabel.trim() : null,
+        honor: 'custom',
+        label: name,
       });
       setHonorLabel('');
       await loadHonors(editing.id);
@@ -370,9 +369,10 @@ export function PlayersPage() {
               </div>
               {editing && (
                 <div className="rounded-lg border border-border p-3 space-y-3">
-                  <p className="text-sm font-medium">Honors</p>
+                  <p className="text-sm font-medium">Honors for {editing.firstName} {editing.lastName}</p>
+                  <p className="text-xs text-text-muted">Type the award, such as MVP. Championship finishes still come from the table.</p>
                   {honors.length === 0 ? (
-                    <p className="text-xs text-text-muted">None entered. Table finishes still show on the profile.</p>
+                    <p className="text-xs text-text-muted">None entered yet.</p>
                   ) : (
                     <ul className="space-y-1">
                       {honors.map((row) => (
@@ -384,16 +384,15 @@ export function PlayersPage() {
                     </ul>
                   )}
                   <div className="grid grid-cols-2 gap-2">
-                    <input type="number" value={honorYear} onChange={(e) => setHonorYear(e.target.value)} className={inputClass} aria-label="Honor year" />
-                    <select value={honorKind} onChange={(e) => setHonorKind(e.target.value)} className={inputClass} aria-label="Honor">
-                      {HONOR_OPTIONS.map((option) => (
-                        <option key={option.value} value={option.value}>{option.label}</option>
-                      ))}
-                    </select>
+                    <div>
+                      <label className="block text-xs font-medium text-text-muted mb-1">Name</label>
+                      <input type="text" value={honorLabel} onChange={(e) => setHonorLabel(e.target.value)} className={inputClass} placeholder="MVP" aria-label="Honor name" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-text-muted mb-1">Year</label>
+                      <input type="number" value={honorYear} onChange={(e) => setHonorYear(e.target.value)} className={inputClass} aria-label="Honor year" />
+                    </div>
                   </div>
-                  {honorKind === 'custom' && (
-                    <input type="text" value={honorLabel} onChange={(e) => setHonorLabel(e.target.value)} className={inputClass} placeholder="Name, for example MVP" aria-label="Custom honor" />
-                  )}
                   <button type="button" onClick={addHonor} className="text-sm font-medium text-accent">Add honor</button>
                 </div>
               )}
