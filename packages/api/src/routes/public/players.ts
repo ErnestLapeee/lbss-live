@@ -20,6 +20,7 @@ import {
 import { eq, and, desc, sql, isNotNull } from 'drizzle-orm';
 import { rowsFromExecute } from '../../lib/pg-result.js';
 import { formatOpponentBattingAvgPitch } from '../../lib/opponent-batting-avg.js';
+import { accoladesForPlayer } from '../../lib/season-honors.js';
 
 /** Same abbreviations as team roster / modal (1–10). */
 const FIELDING_POS_LABELS: Record<number, string> = {
@@ -195,7 +196,14 @@ export async function playersRoutes(app: FastifyInstance) {
         return reply.status(404).send({ message: 'Player not found' });
       }
 
-      return reply.send(player);
+      let accolades: Awaited<ReturnType<typeof accoladesForPlayer>> = [];
+      try {
+        accolades = await accoladesForPlayer(player.id);
+      } catch (err) {
+        request.log.error(err);
+      }
+
+      return reply.send({ ...player, accolades });
     } catch (err) {
       request.log.error(err);
       return reply.status(500).send({ message: 'Failed to fetch player' });

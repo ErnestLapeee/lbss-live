@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { PageHeader } from '@/components/ui/page-header';
 import { PlayoffBracket } from '@/components/playoffs/playoff-bracket';
+import { PlaceMark } from '@/components/standings/place-mark';
 
 type Season = {
   id: number;
@@ -27,6 +28,8 @@ type StandingsRow = {
   gamesBehind?: string;
   runsScored?: number;
   runsAllowed?: number;
+  rank?: number;
+  place?: 1 | 2 | 3 | null;
 };
 export type LeagueStandings = { leagueName: string; leagueId: number; rows: StandingsRow[] };
 
@@ -425,7 +428,9 @@ export function StandingsClient({
                           key={row.id}
                           className="border-b border-border last:border-0 transition-colors hover:bg-surface-alt/50"
                         >
-                          <td className="px-4 py-3 font-bold text-text-faint">{i + 1}</td>
+                          <td className="px-4 py-3">
+                            <PlaceMark rank={row.rank ?? i + 1} place={row.place ?? null} />
+                          </td>
                           <td className="px-4 py-3 font-semibold">
                             {row.teamSlug ? (
                               <Link href={`/teams/${row.teamSlug}`} className="hover:text-accent transition-colors">

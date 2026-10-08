@@ -2,6 +2,8 @@ import type { FastifyInstance } from 'fastify';
 import { db } from '../../db/index.js';
 import { standings, teams, leagues } from '../../db/schema/index.js';
 import { and, asc, desc, eq, gt, inArray } from 'drizzle-orm';
+import { annotateFinish } from '../../lib/finish-places.js';
+import { leagueTablesComplete } from '../../lib/season-honors.js';
 
 type StandingsRowDto = {
   id: number;
@@ -55,6 +57,31 @@ async function fetchStandingsRows(leagueIds: number[], includeZero: boolean): Pr
     .orderBy(asc(standings.leagueId), desc(standings.winPct));
 }
 
+async function withFinishPlaces<T extends StandingsRowDto>(rows: T[]): Promise<(T & { rank: number; place: 1 | 2 | 3 | null })[]> {
+  const leagueIds = [...new Set(rows.map((row) => row.leagueId))];
+  const complete = await leagueTablesComplete(leagueIds);
+  const byLeague = new Map<number, T[]>();
+  for (const row of rows) {
+    const list = byLeague.get(row.leagueId) ?? [];
+    list.push(row);
+    byLeague.set(row.leagueId, list);
+  }
+  const placed: (T & { rank: number; place: 1 | 2 | 3 | null })[] = [];
+  for (const [leagueId, leagueRows] of byLeague) {
+    placed.push(
+      ...annotateFinish(
+        leagueRows.map((row) => ({
+          ...row,
+          wins: row.wins ?? 0,
+          losses: row.losses ?? 0,
+        })),
+        complete.get(leagueId) === true,
+      ),
+    );
+  }
+  return placed;
+}
+
 function groupByLeague(
   rows: StandingsRowDto[],
   leagueMeta: { id: number; name: string }[],
@@ -97,7 +124,7 @@ export async function standingsRoutes(app: FastifyInstance) {
       }
 
       const leagueIds = seasonLeagues.map((l) => l.id);
-      const rows = await fetchStandingsRows(leagueIds, includeZero);
+      const rows = await withFinishPlaces(await fetchStandingsRows(leagueIds, includeZero));
 
       return reply.send({
         seasonId,
@@ -121,7 +148,7 @@ export async function standingsRoutes(app: FastifyInstance) {
         const includeZero =
           request.query?.includeZeroGames === '1' || request.query?.includeZeroGames === 'true';
 
-        const result = await fetchStandingsRows([leagueId], includeZero);
+        const result = await withFinishPlaces(await fetchStandingsRows([leagueId], includeZero));
         return reply.send(result);
       } catch (err) {
         request.log.error(err);
