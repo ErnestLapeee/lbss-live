@@ -4,7 +4,7 @@ import { nanoid } from 'nanoid';
 import { db } from '../../db/index.js';
 import { users, sessions } from '../../db/schema/index.js';
 import { eq, and, gt, lt } from 'drizzle-orm';
-import { checkLoginRateLimit, clientIpFromRequest } from '../../lib/login-rate-limit.js';
+import { loginAttemptAllowed, noteLoginFailure } from '../../lib/login-rate-limit.js';
 
 const SESSION_DAYS = 7;
 
@@ -19,8 +19,8 @@ export async function authRoutes(app: FastifyInstance) {
         return reply.status(400).send({ message: 'Email and password required' });
       }
 
-      const ip = clientIpFromRequest(request.headers as Record<string, unknown>, request.ip);
-      const rl = checkLoginRateLimit(ip);
+      const ip = request.ip || 'unknown';
+      const rl = loginAttemptAllowed(ip);
       if (!rl.ok) {
         return reply
           .status(429)
@@ -37,11 +37,13 @@ export async function authRoutes(app: FastifyInstance) {
         .limit(1);
 
       if (!user || !user.isActive) {
+        noteLoginFailure(ip);
         return reply.status(401).send({ message: 'Invalid credentials' });
       }
 
       const valid = await verify(user.passwordHash, password);
       if (!valid) {
+        noteLoginFailure(ip);
         return reply.status(401).send({ message: 'Invalid credentials' });
       }
       if (!['admin', 'league_official', 'statistician'].includes(user.role ?? '')) {

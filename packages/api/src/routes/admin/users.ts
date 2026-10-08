@@ -1,11 +1,19 @@
 import type { FastifyInstance } from 'fastify';
 import { hash } from 'argon2';
 import { db } from '../../db/index.js';
-import { users } from '../../db/schema/index.js';
-import { eq } from 'drizzle-orm';
+import { sessions, users } from '../../db/schema/index.js';
+import { and, eq } from 'drizzle-orm';
 import { validatePasswordStrength } from '../../lib/password-policy.js';
 
 const ALLOWED_ROLES = new Set(['public', 'admin', 'league_official', 'statistician']);
+
+async function otherActiveAdmins(userId: number): Promise<number> {
+  const rows = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(and(eq(users.role, 'admin'), eq(users.isActive, true)));
+  return rows.filter((row) => row.id !== userId).length;
+}
 
 export async function adminUsersRoutes(app: FastifyInstance) {
   // GET / - list all users
@@ -29,7 +37,7 @@ export async function adminUsersRoutes(app: FastifyInstance) {
     }
   });
 
-  // POST / - create user (admins from UI; optional ALLOW_ADMIN_USER_CREATE for scripts)
+  // POST / - create user. Only an administrator can do this.
   app.post<{
     Body: {
       email: string;
@@ -38,10 +46,7 @@ export async function adminUsersRoutes(app: FastifyInstance) {
       role?: string;
     };
   }>('/', async (request, reply) => {
-    const actor = request.user;
-    const canCreate =
-      actor?.role === 'admin' || process.env.ALLOW_ADMIN_USER_CREATE === 'true';
-    if (!canCreate) {
+    if (request.user?.role !== 'admin') {
       return reply.status(403).send({
         message: 'Only administrators can create new users from the admin panel.',
       });
@@ -116,6 +121,22 @@ export async function adminUsersRoutes(app: FastifyInstance) {
         return reply.status(400).send({ message: 'Invalid role' });
       }
 
+      let roleChanged = false;
+      if (role !== undefined) {
+        const [existing] = await db
+          .select({ role: users.role, isActive: users.isActive })
+          .from(users)
+          .where(eq(users.id, id))
+          .limit(1);
+        if (!existing) {
+          return reply.status(404).send({ message: 'User not found' });
+        }
+        roleChanged = existing.role !== role;
+        if (role !== 'admin' && existing.role === 'admin' && existing.isActive && (await otherActiveAdmins(id)) === 0) {
+          return reply.status(400).send({ message: 'The last administrator cannot be changed to another role.' });
+        }
+      }
+
       const [user] = await db
         .update(users)
         .set({
@@ -125,6 +146,9 @@ export async function adminUsersRoutes(app: FastifyInstance) {
         })
         .where(eq(users.id, id))
         .returning();
+      if (roleChanged) {
+        await db.delete(sessions).where(eq(sessions.userId, id));
+      }
 
       if (!user) {
         return reply.status(404).send({ message: 'User not found' });
@@ -153,11 +177,24 @@ export async function adminUsersRoutes(app: FastifyInstance) {
         return reply.status(400).send({ message: 'Invalid user id' });
       }
 
+      const [existing] = await db
+        .select({ role: users.role, isActive: users.isActive })
+        .from(users)
+        .where(eq(users.id, id))
+        .limit(1);
+      if (!existing) {
+        return reply.status(404).send({ message: 'User not found' });
+      }
+      if (existing.role === 'admin' && existing.isActive && (await otherActiveAdmins(id)) === 0) {
+        return reply.status(400).send({ message: 'The last administrator cannot be deactivated.' });
+      }
+
       const [user] = await db
         .update(users)
         .set({ isActive: false })
         .where(eq(users.id, id))
         .returning();
+      await db.delete(sessions).where(eq(sessions.userId, id));
 
       if (!user) {
         return reply.status(404).send({ message: 'User not found' });

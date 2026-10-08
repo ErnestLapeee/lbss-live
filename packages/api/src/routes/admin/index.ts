@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { requireAuth } from '../../middleware/auth.js';
+import { scorerMayMutate } from '../../lib/statistician-guards.js';
 import { authRoutes } from './auth.js';
 import { adminSeasonsRoutes } from './seasons.js';
 import { adminLeaguesRoutes } from './leagues.js';
@@ -26,10 +27,7 @@ export async function adminRoutes(app: FastifyInstance) {
     const user = request.user;
     if (!user || user.role !== 'statistician') return;
 
-    const path = (request.raw.url ?? '').split('?')[0];
-    if (path.includes('/api/admin/auth/')) return;
-    if (path.includes('/api/admin/games')) return;
-    if (path.includes('/api/admin/scoring')) return;
+    if (scorerMayMutate(request.raw.url ?? '')) return;
 
     return reply.status(403).send({
       message: 'Scorer accounts may only create or update games and use live scoring.',

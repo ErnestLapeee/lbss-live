@@ -2303,6 +2303,12 @@ export async function adminScoringRoutes(app: FastifyInstance) {
     }
   });
 
+function boundedScore(raw: unknown): number {
+  const n = Math.floor(Number(raw));
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return Math.min(99, n);
+}
+
   // ── PUT /:gameId/adjust-score ── Manually adjust the score
   app.put<{
     Params: { gameId: string };
@@ -2311,8 +2317,8 @@ export async function adminScoringRoutes(app: FastifyInstance) {
     try {
       const gameId = parseInt(request.params.gameId, 10);
       const user = request.user;
-      const targetHome = Math.max(0, Math.floor(Number(request.body?.homeScore) || 0));
-      const targetAway = Math.max(0, Math.floor(Number(request.body?.awayScore) || 0));
+      const targetHome = boundedScore(request.body?.homeScore);
+      const targetAway = boundedScore(request.body?.awayScore);
 
       const allEvents = await db.select().from(gameEvents)
         .where(and(eq(gameEvents.gameId, gameId), eq(gameEvents.isDeleted, false)))

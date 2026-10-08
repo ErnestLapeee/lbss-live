@@ -34,7 +34,8 @@ function parsePositiveIntId(raw: unknown): number | null {
 export async function buildApp() {
   await ensureOptionalSchemaColumns();
 
-  const app = Fastify({ logger: true, bodyLimit: 5 * 1024 * 1024, trustProxy: true });
+  // One trusted hop: Railway's proxy. Trusting the whole chain would let a visitor pick their own client address.
+  const app = Fastify({ logger: true, bodyLimit: 5 * 1024 * 1024, trustProxy: 1 });
 
   const corsOrigins = [
     ...parseOriginList(process.env.WEB_URL, 'http://localhost:3000'),

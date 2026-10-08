@@ -16,6 +16,7 @@ import {
 } from '../../db/schema/index.js';
 import { eq, and, gte, lte, sql, desc, sum, inArray, or, gt } from 'drizzle-orm';
 import { rowsFromExecute } from '../../lib/pg-result.js';
+import { sqlIntArray } from '../../lib/sql-int-array.js';
 import { gamesTableHasOfficialColumns } from '../../lib/games-official-columns.js';
 import { buildPublicLineScores } from '@lbss/shared';
 
@@ -90,7 +91,7 @@ export async function gamesRoutes(app: FastifyInstance) {
         })
           .from(leagues)
           .innerJoin(seasons, eq(leagues.seasonId, seasons.id))
-          .where(sql`${leagues.id} = ANY(${sql.raw(`ARRAY[${[...leagueIds].join(',')}]`)})`);
+          .where(sql`${leagues.id} = ANY(${sqlIntArray([...leagueIds])})`);
         for (const r of leagueRows) leagueSeasonMap[r.leagueId] = { seasonId: r.seasonId, seasonYear: r.seasonYear, seasonName: r.seasonName };
       }
 
@@ -101,7 +102,7 @@ export async function gamesRoutes(app: FastifyInstance) {
       if (teamIds.size > 0) {
         const teamRows = await db.select({ id: teams.id, name: teams.name, shortName: teams.shortName, logoUrl: teams.logoUrl })
           .from(teams)
-          .where(sql`${teams.id} = ANY(${sql.raw(`ARRAY[${[...teamIds].join(',')}]`)})`);
+          .where(sql`${teams.id} = ANY(${sqlIntArray([...teamIds])})`);
         for (const t of teamRows) teamMap[t.id] = { name: t.name, shortName: t.shortName, logoUrl: t.logoUrl };
       }
 
@@ -121,7 +122,7 @@ export async function gamesRoutes(app: FastifyInstance) {
           runsScored: gameEvents.runsScored,
         }).from(gameEvents)
           .where(and(
-            sql`${gameEvents.gameId} = ANY(${sql.raw(`ARRAY[${scoredIds.join(',')}]`)})`,
+            sql`${gameEvents.gameId} = ANY(${sqlIntArray(scoredIds)})`,
             eq(gameEvents.isDeleted, false),
             or(
               eq(gameEvents.eventType, 'end_half_inning'),
@@ -157,7 +158,7 @@ export async function gamesRoutes(app: FastifyInstance) {
       const basesMap: Record<number, { first: boolean; second: boolean; third: boolean }> = {};
       const currentBatterMap: Record<number, { name: string; battingOrder: number } | null> = {};
       if (liveIds.length > 0) {
-        const liveIdArray = sql.raw(`ARRAY[${liveIds.join(',')}]`);
+        const liveIdArray = sqlIntArray(liveIds);
         const [basesResult, battersResult] = await Promise.all([
           db.execute(sql`
           select distinct on (game_id)
@@ -241,7 +242,7 @@ export async function gamesRoutes(app: FastifyInstance) {
         }).from(playerGamePitching)
           .innerJoin(players, eq(playerGamePitching.playerId, players.id))
           .where(and(
-            sql`${playerGamePitching.gameId} = ANY(${sql.raw(`ARRAY[${finalIds.join(',')}]`)})`,
+            sql`${playerGamePitching.gameId} = ANY(${sqlIntArray(finalIds)})`,
             sql`${playerGamePitching.decision} IN ('W', 'L', 'S')`,
           ));
         for (const r of pitcherRows) {
@@ -722,7 +723,7 @@ export async function gamesRoutes(app: FastifyInstance) {
       const pids = [...new Set(lineupRows.map(r => r.playerId).filter((p): p is number => p != null))];
       if (pids.length === 0) return reply.send({ batting: [], pitching: [] });
 
-      const pidArray = sql.raw(`ARRAY[${pids.join(',')}]`);
+      const pidArray = sqlIntArray(pids);
       const [batting, pitching] = await Promise.all([
         db
           .select({

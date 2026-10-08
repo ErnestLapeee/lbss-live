@@ -150,14 +150,20 @@ function gameEventRowFromDb(r: Record<string, unknown>, batterId: number): GameE
   };
 }
 
+function boundedQueryInt(raw: string | undefined, fallback: number, max: number): number {
+  const n = Number.parseInt(raw ?? '', 10);
+  if (!Number.isFinite(n) || n < 1) return fallback;
+  return Math.min(max, n);
+}
+
 export async function playersRoutes(app: FastifyInstance) {
   // GET / - list all active players (with pagination: page, limit)
   app.get<{
     Querystring: { page?: string; limit?: string };
   }>('/', async (request, reply) => {
     try {
-      const page = Math.max(1, parseInt(request.query.page || '1', 10));
-      const limit = Math.min(100, Math.max(1, parseInt(request.query.limit || '20', 10)));
+      const page = boundedQueryInt(request.query.page, 1, 10_000);
+      const limit = boundedQueryInt(request.query.limit, 20, 100);
       const offset = (page - 1) * limit;
 
       const result = await db

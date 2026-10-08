@@ -1,9 +1,10 @@
 /**
- * Simple in-memory rate limit for login attempts (per client IP).
- * Not suitable for multi-instance deploy without shared store; good for single-node / small admin.
+ * In-memory login failures per client IP.
+ * One Railway proxy sits in front of the API, and `request.ip` is that proxy's client.
+ * Do not read X-Forwarded-For here: the visitor can put any address in the first hop.
  */
 const WINDOW_MS = 15 * 60 * 1000;
-const MAX_ATTEMPTS = 8;
+const MAX_FAILURES = 8;
 
 type Bucket = { count: number; windowStart: number };
 const buckets = new Map<string, Bucket>();
@@ -11,35 +12,30 @@ const buckets = new Map<string, Bucket>();
 const MAX_TRACKED_IPS = 10_000;
 
 function pruneExpired(now: number) {
-  for (const [ip, b] of buckets) {
-    if (now - b.windowStart >= WINDOW_MS) buckets.delete(ip);
+  for (const [ip, bucket] of buckets) {
+    if (now - bucket.windowStart >= WINDOW_MS) buckets.delete(ip);
   }
 }
 
-export function checkLoginRateLimit(ip: string): { ok: true } | { ok: false; retryAfterSec: number } {
-  const now = Date.now();
+function bucketFor(ip: string, now: number): Bucket {
   if (buckets.size > MAX_TRACKED_IPS) pruneExpired(now);
-  let b = buckets.get(ip);
-  if (!b || now - b.windowStart >= WINDOW_MS) {
-    b = { count: 0, windowStart: now };
-    buckets.set(ip, b);
+  let bucket = buckets.get(ip);
+  if (!bucket || now - bucket.windowStart >= WINDOW_MS) {
+    bucket = { count: 0, windowStart: now };
+    buckets.set(ip, bucket);
   }
-  if (b.count >= MAX_ATTEMPTS) {
-    const elapsed = now - b.windowStart;
-    const retryAfterSec = Math.max(1, Math.ceil((WINDOW_MS - elapsed) / 1000));
-    return { ok: false, retryAfterSec };
-  }
-  b.count += 1;
-  return { ok: true };
+  return bucket;
 }
 
-export function clientIpFromRequest(headers: Record<string, unknown>, fallbackIp: string): string {
-  const xf = headers['x-forwarded-for'];
-  if (typeof xf === 'string' && xf.length > 0) {
-    return xf.split(',')[0]!.trim();
-  }
-  if (Array.isArray(xf) && xf[0]) {
-    return String(xf[0]).trim();
-  }
-  return fallbackIp || 'unknown';
+export function loginAttemptAllowed(ip: string): { ok: true } | { ok: false; retryAfterSec: number } {
+  const now = Date.now();
+  const bucket = bucketFor(ip || 'unknown', now);
+  if (bucket.count < MAX_FAILURES) return { ok: true };
+  const retryAfterSec = Math.max(1, Math.ceil((WINDOW_MS - (now - bucket.windowStart)) / 1000));
+  return { ok: false, retryAfterSec };
+}
+
+export function noteLoginFailure(ip: string): void {
+  const bucket = bucketFor(ip || 'unknown', Date.now());
+  bucket.count += 1;
 }
