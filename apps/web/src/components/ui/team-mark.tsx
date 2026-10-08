@@ -21,6 +21,7 @@ export function TeamMark({
   variant,
   won,
   emphasized,
+  place,
   className,
 }: {
   name: string;
@@ -31,26 +32,38 @@ export function TeamMark({
   won?: boolean;
   /** Live: score leader (accent). */
   emphasized?: boolean;
+  /** Finished-table place. Colors the logo box gold, silver, or bronze. */
+  place?: 1 | 2 | 3 | null;
   className?: string;
 }) {
   const dim = variantClass[variant];
   const rounded = variant === 'bracket' ? 'rounded-full' : 'rounded-lg';
+  const placeTone =
+    place === 1
+      ? 'border-2 border-gold bg-gold text-white'
+      : place === 2
+        ? 'border-2 border-[#c5c8ce] bg-[#c5c8ce] text-[#1c1e22]'
+        : place === 3
+          ? 'border-2 border-[#b87333] bg-[#b87333] text-white'
+          : null;
   const imgWrap = clsx(
-    'flex shrink-0 items-center justify-center overflow-hidden border border-border/60 bg-surface',
+    'flex shrink-0 items-center justify-center overflow-hidden border',
+    placeTone ?? 'border-border/60 bg-surface',
     rounded,
     dim,
-    emphasized && 'border-accent/30 bg-accent/5',
+    !placeTone && emphasized && 'border-accent/30 bg-accent/5',
     className
   );
   const fallbackWrap = clsx(
     'flex shrink-0 items-center justify-center font-heading font-black',
     rounded,
     dim,
-    won ? 'bg-surface-alt text-text' : emphasized ? 'bg-accent/10 text-accent-light' : 'bg-surface-alt/50 text-text-faint',
+    placeTone ?? (won ? 'bg-surface-alt text-text' : emphasized ? 'bg-accent/10 text-accent-light' : 'bg-surface-alt/50 text-text-faint'),
+    !placeTone && 'border border-transparent',
     className
   );
 
-  const src = resolveTeamLogoUrl(logoUrl);
+  const src = place ? null : resolveTeamLogoUrl(logoUrl);
   if (src) {
     const px = variant === 'card' ? 56 : variant === 'bracket' ? 48 : variant === 'live' ? 40 : 20;
     return (
@@ -60,7 +73,7 @@ export function TeamMark({
           alt={name}
           width={px}
           height={px}
-          className="max-h-full max-w-full object-contain p-0.5"
+          className={clsx('max-h-full max-w-full object-contain', place ? 'p-1' : 'p-0.5')}
           loading="lazy"
           unoptimized
         />

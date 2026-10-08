@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { PageHeader } from '@/components/ui/page-header';
 import { PlayoffBracket } from '@/components/playoffs/playoff-bracket';
-import { PlaceMark } from '@/components/standings/place-mark';
+import { TeamMark } from '@/components/ui/team-mark';
 
 type Season = {
   id: number;
@@ -21,6 +21,8 @@ type StandingsRow = {
   teamId?: number;
   teamSlug?: string;
   teamName: string;
+  teamShortName?: string | null;
+  teamLogoUrl?: string | null;
   wins: number;
   losses: number;
   gamesPlayed: number;
@@ -428,17 +430,26 @@ export function StandingsClient({
                           key={row.id}
                           className="border-b border-border last:border-0 transition-colors hover:bg-surface-alt/50"
                         >
-                          <td className="px-4 py-3">
-                            <PlaceMark rank={row.rank ?? i + 1} place={row.place ?? null} />
+                          <td className="px-4 py-3 text-[11px] font-bold tabular-nums text-text-faint">
+                            {row.rank ?? i + 1}
                           </td>
                           <td className="px-4 py-3 font-semibold">
-                            {row.teamSlug ? (
-                              <Link href={`/teams/${row.teamSlug}`} className="hover:text-accent transition-colors">
-                                {row.teamName || '—'}
-                              </Link>
-                            ) : (
-                              row.teamName || '—'
-                            )}
+                            <div className="flex items-center gap-2">
+                              <TeamMark
+                                name={row.teamName || '—'}
+                                shortName={row.teamShortName}
+                                logoUrl={row.teamLogoUrl}
+                                variant="tableSm"
+                                place={row.place ?? null}
+                              />
+                              {row.teamSlug ? (
+                                <Link href={`/teams/${row.teamSlug}`} className="hover:text-accent transition-colors">
+                                  {row.teamName || '—'}
+                                </Link>
+                              ) : (
+                                row.teamName || '—'
+                              )}
+                            </div>
                           </td>
                           <td className="stat-value px-4 py-3 text-right font-mono">{row.wins}</td>
                           <td className="stat-value px-4 py-3 text-right font-mono">{row.losses}</td>

@@ -55,16 +55,11 @@ function groupedHonors(items: PlayerAccolade[]) {
   }
   return HONOR_ORDER.filter((key) => byHonor.has(key)).map((key) => {
     const rows = (byHonor.get(key) ?? []).slice().sort((a, b) => (a.seasonYear ?? 0) - (b.seasonYear ?? 0));
-    const teams = [...new Set(rows.map((row) => row.teamName).filter((name): name is string => Boolean(name)))];
-    const years = rows.map((row) => {
-      if (teams.length > 1 && row.teamName && row.seasonYear) return `${row.seasonYear} ${row.teamName}`;
-      return row.seasonYear ? String(row.seasonYear) : '';
-    }).filter(Boolean);
+    const years = rows.map((row) => (row.seasonYear ? String(row.seasonYear) : '')).filter(Boolean);
     return {
       honor: key,
       count: rows.length,
       yearsLabel: years.join(', '),
-      team: teams.length === 1 ? teams[0] : null,
     };
   });
 }
@@ -1418,7 +1413,6 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons, accola
                 <li key={line.honor} className="py-3 text-sm text-text">
                   <span className="font-semibold">{line.count}× {honorLabel(line.honor)}</span>
                   {line.yearsLabel ? <span className="text-text-muted"> ({line.yearsLabel})</span> : null}
-                  {line.team ? <span className="text-text-muted"> · {line.team}</span> : null}
                 </li>
               ))}
             </ul>

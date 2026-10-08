@@ -10,7 +10,6 @@ import { HomeLiveScores } from '@/components/home/home-live-scores';
 import { SectionHeader } from '@/components/ui/section-header';
 import { TeamMark } from '@/components/ui/team-mark';
 import { sortStandingsRows } from '@/lib/standings-sort';
-import { PlaceMark } from '@/components/standings/place-mark';
 
 function toArray<T>(v: unknown): T[] {
   if (Array.isArray(v)) return v;
@@ -222,8 +221,15 @@ export default async function HomePage() {
                   <div className="space-y-1">
                     {miniStandings.slice(0, 6).map((row: any, i: number) => (
                       <div key={`${row.teamId}-${i}`} className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-surface-alt transition-colors">
-                        <PlaceMark rank={row.rank ?? i + 1} place={row.place ?? null} />
-                        <TeamBadge name={row.teamName} shortName={row.teamShortName} logoUrl={row.teamLogoUrl} />
+                        <span className="w-4 shrink-0 text-center text-[11px] font-bold tabular-nums text-text-faint">
+                          {row.rank ?? i + 1}
+                        </span>
+                        <TeamBadge
+                          name={row.teamName}
+                          shortName={row.teamShortName}
+                          logoUrl={row.teamLogoUrl}
+                          place={row.place ?? null}
+                        />
                         <div className="flex-1 min-w-0">
                           {row.teamSlug ? (
                             <Link
@@ -254,14 +260,25 @@ export default async function HomePage() {
 
 /* ── Helper Components ── */
 
-function TeamBadge({ name, shortName, logoUrl }: { name: string; shortName?: string | null; logoUrl?: string | null }) {
+function TeamBadge({
+  name,
+  shortName,
+  logoUrl,
+  place,
+}: {
+  name: string;
+  shortName?: string | null;
+  logoUrl?: string | null;
+  place?: 1 | 2 | 3 | null;
+}) {
   return (
     <TeamMark
       name={name}
       shortName={shortName}
       logoUrl={logoUrl}
       variant="tableSm"
-      className="border-[#ccc] bg-[#f0f0f0]"
+      place={place}
+      className={place ? undefined : 'border-[#ccc] bg-[#f0f0f0]'}
     />
   );
 }
