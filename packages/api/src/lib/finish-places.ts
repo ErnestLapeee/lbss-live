@@ -1,5 +1,36 @@
 export type FinishPlace = 1 | 2 | 3;
 
+/**
+ * Places for clubs that actually appear on a season's table.
+ * A roster row is enough. The club does not also need a league-membership row.
+ */
+export function placesForRoster(
+  rows: { seasonId: number; teamId: number }[],
+  leagues: { id: number; seasonId: number }[],
+  placeByLeagueTeam: ReadonlyMap<string, FinishPlace>,
+): { seasonId: number; teamId: number; place: FinishPlace }[] {
+  const leaguesBySeason = new Map<number, number[]>();
+  for (const league of leagues) {
+    const list = leaguesBySeason.get(league.seasonId) ?? [];
+    list.push(league.id);
+    leaguesBySeason.set(league.seasonId, list);
+  }
+
+  const out: { seasonId: number; teamId: number; place: FinishPlace }[] = [];
+  const seen = new Set<string>();
+  for (const row of rows) {
+    for (const leagueId of leaguesBySeason.get(row.seasonId) ?? []) {
+      const place = placeByLeagueTeam.get(`${leagueId}:${row.teamId}`);
+      if (place == null) continue;
+      const key = `${row.seasonId}:${row.teamId}:${place}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({ seasonId: row.seasonId, teamId: row.teamId, place });
+    }
+  }
+  return out;
+}
+
 export type FinishRow = {
   teamId: number;
   wins: number;

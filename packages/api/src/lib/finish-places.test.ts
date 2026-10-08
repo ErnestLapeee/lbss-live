@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { annotateFinish, playoffPodium } from './finish-places.js';
+import { annotateFinish, placesForRoster, playoffPodium } from './finish-places.js';
 
 const table = [
   { teamId: 1, teamName: 'SM GAJA', wins: 10, losses: 2, winPct: '0.833' },
@@ -72,4 +72,26 @@ test('no playoff series leaves the title with the standings', () => {
   const podium = playoffPodium([]);
   assert.equal(podium.hasBracket, false);
   assert.equal(podium.decided, false);
+});
+
+test('a roster club gets the place from that season table', () => {
+  const places = new Map<string, 1 | 2 | 3>([
+    ['3:5', 1],
+    ['5:5', 3],
+  ]);
+  const hits = placesForRoster(
+    [
+      { seasonId: 3, teamId: 5 },
+      { seasonId: 8, teamId: 5 },
+    ],
+    [
+      { id: 3, seasonId: 3 },
+      { id: 5, seasonId: 8 },
+    ],
+    places,
+  );
+  assert.deepEqual(hits, [
+    { seasonId: 3, teamId: 5, place: 1 },
+    { seasonId: 8, teamId: 5, place: 3 },
+  ]);
 });

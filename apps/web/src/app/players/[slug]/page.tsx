@@ -77,20 +77,6 @@ export default async function PlayerProfilePage({ params }: Props) {
               <h1 className="font-heading text-3xl font-bold text-text tracking-tight">
                 {player.firstName} {player.lastName}
               </h1>
-              {accolades.length > 0 && (
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {accolades.map((item, i) => (
-                    <span
-                      key={`${item.honor}-${item.seasonYear}-${item.teamName}-${i}`}
-                      className={`inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-semibold ${honorClass(item.honor)}`}
-                    >
-                      {honorLabel(item.honor)}
-                      {item.teamName ? ` · ${item.teamName}` : ''}
-                      {item.seasonYear ? ` · ${item.seasonYear}` : ''}
-                    </span>
-                  ))}
-                </div>
-              )}
               {infoPills.length > 0 && (
                 <div className="flex flex-wrap gap-2 mt-3">
                   {infoPills.map((pill: string, i: number) => (
@@ -106,6 +92,20 @@ export default async function PlayerProfilePage({ params }: Props) {
       </div>
 
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
+        {accolades.length > 0 && (
+          <ul className="mb-8 max-w-md text-sm">
+            {accolades.map((item, i) => (
+              <li
+                key={`${item.honor}-${item.seasonYear}-${item.teamName}-${i}`}
+                className="flex items-baseline gap-3 border-b border-border py-1.5"
+              >
+                <span className="w-12 shrink-0 tabular-nums text-text-muted">{item.seasonYear}</span>
+                <span className="text-text">{honorLabel(item.honor)}</span>
+                {item.teamName ? <span className="min-w-0 truncate text-text-muted">{item.teamName}</span> : null}
+              </li>
+            ))}
+          </ul>
+        )}
         <Suspense fallback={null}>
           <PlayerProfileClient slug={slug} initialBattingStats={battingStats} seasons={seasons} />
         </Suspense>
@@ -128,10 +128,4 @@ function honorLabel(honor: string | undefined): string {
   if (honor === 'champion') return 'Champion';
   if (honor === 'runner_up') return 'Runner-up';
   return 'Third place';
-}
-
-function honorClass(honor: string | undefined): string {
-  if (honor === 'champion') return 'border-gold bg-gold/10 text-gold';
-  if (honor === 'runner_up') return 'border-[#b8bcc4] bg-[#e8eaee] text-[#3a3d44]';
-  return 'border-[#b87333] bg-[#b87333]/10 text-[#7a4e22]';
 }

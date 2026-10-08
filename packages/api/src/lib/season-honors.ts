@@ -1,9 +1,8 @@
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, gt, inArray } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import {
   games,
   leagues,
-  leagueTeams,
   playoffs,
   playoffSeries,
   playerSeasons,
@@ -11,7 +10,7 @@ import {
   standings,
   teams,
 } from '../db/schema/index.js';
-import { annotateFinish, playoffPodium, type FinishPlace, type PlayoffSeriesResult } from './finish-places.js';
+import { annotateFinish, placesForRoster, playoffPodium, type FinishPlace, type PlayoffSeriesResult } from './finish-places.js';
 
 export type PlayerAccolade = {
   seasonYear: number;
@@ -143,17 +142,12 @@ export async function accoladesForPlayer(playerId: number): Promise<PlayerAccola
     }
   }
 
-  const leagueLinks = await db
-    .select({
-      seasonId: leagues.seasonId,
-      leagueId: leagues.id,
-      teamId: leagueTeams.teamId,
-    })
-    .from(leagueTeams)
-    .innerJoin(leagues, eq(leagueTeams.leagueId, leagues.id))
+  const seasonLeagueRows = await db
+    .select({ id: leagues.id, seasonId: leagues.seasonId })
+    .from(leagues)
     .where(inArray(leagues.seasonId, seasonIds));
 
-  const leagueIds = [...new Set(leagueLinks.map((row) => row.leagueId))];
+  const leagueIds = [...new Set(seasonLeagueRows.map((row) => row.id))];
   const complete = await leagueTablesComplete(leagueIds);
   const standingRows = leagueIds.length
     ? await db
@@ -167,7 +161,7 @@ export async function accoladesForPlayer(playerId: number): Promise<PlayerAccola
         })
         .from(standings)
         .innerJoin(teams, eq(standings.teamId, teams.id))
-        .where(inArray(standings.leagueId, leagueIds))
+        .where(and(inArray(standings.leagueId, leagueIds), gt(standings.gamesPlayed, 0)))
     : [];
 
   const placeByLeagueTeam = new Map<string, FinishPlace>();
@@ -228,7 +222,6 @@ export async function accoladesForPlayer(playerId: number): Promise<PlayerAccola
   }
 
   for (const row of rowsToScore) {
-    const links = leagueLinks.filter((link) => link.seasonId === row.seasonId && link.teamId === row.teamId);
     const podium = playoffPodium(seriesByParent.get(row.seasonId) ?? []);
     if (podium.hasBracket) {
       if (!podium.decided || !onClub(row.teamId, row.seasonId)) continue;
@@ -237,9 +230,8 @@ export async function accoladesForPlayer(playerId: number): Promise<PlayerAccola
       if (podium.thirdTeamId === row.teamId) push(row, 'third');
       continue;
     }
-    for (const link of links) {
-      const place = placeByLeagueTeam.get(`${link.leagueId}:${row.teamId}`);
-      if (place != null) push(row, HONOR_BY_PLACE[place]);
+    for (const hit of placesForRoster([row], seasonLeagueRows, placeByLeagueTeam)) {
+      push(row, HONOR_BY_PLACE[hit.place]);
     }
   }
 
