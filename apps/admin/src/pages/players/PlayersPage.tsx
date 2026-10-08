@@ -30,6 +30,28 @@ interface LicenseInfo {
   paymentStatus: string;
 }
 
+interface AccoladeRow {
+  id: number;
+  seasonYear: number;
+  honor: string;
+  label: string | null;
+  seasonName: string | null;
+}
+
+const HONOR_OPTIONS = [
+  { value: 'champion', label: 'Champion' },
+  { value: 'runner_up', label: 'Runner-up' },
+  { value: 'third', label: 'Third place' },
+  { value: 'custom', label: 'Other' },
+];
+
+function honorText(row: AccoladeRow): string {
+  if (row.honor === 'champion') return 'Champion';
+  if (row.honor === 'runner_up') return 'Runner-up';
+  if (row.honor === 'third') return 'Third place';
+  return row.label?.trim() || 'Honor';
+}
+
 const BATS_OPTIONS = ['R', 'L', 'S'];
 const THROWS_OPTIONS = ['R', 'L', 'S'];
 
@@ -43,6 +65,10 @@ export function PlayersPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  const [honors, setHonors] = useState<AccoladeRow[]>([]);
+  const [honorYear, setHonorYear] = useState(String(new Date().getFullYear()));
+  const [honorKind, setHonorKind] = useState('champion');
+  const [honorLabel, setHonorLabel] = useState('');
 
   const [form, setForm] = useState({
     firstName: '', lastName: '', nationality: 'LV', dateOfBirth: '',
@@ -86,8 +112,18 @@ export function PlayersPage() {
   const openCreate = () => {
     setEditing(null);
     setForm({ firstName: '', lastName: '', nationality: 'LV', dateOfBirth: '', bats: '', throws: '', heightCm: '', weightKg: '', bio: '' });
+    setHonors([]);
     setShowForm(true);
     setError(null);
+  };
+
+  const loadHonors = async (playerId: number) => {
+    try {
+      const rows = await apiGet<AccoladeRow[]>(`/admin/players/${playerId}/accolades`);
+      setHonors(Array.isArray(rows) ? rows : []);
+    } catch {
+      setHonors([]);
+    }
   };
 
   const openEdit = (p: Player) => {
@@ -102,6 +138,37 @@ export function PlayersPage() {
     });
     setShowForm(true);
     setError(null);
+    loadHonors(p.id);
+  };
+
+  const addHonor = async () => {
+    if (!editing) return;
+    const year = parseInt(honorYear, 10);
+    if (!Number.isFinite(year)) {
+      setError('Enter a year for the honor.');
+      return;
+    }
+    try {
+      await apiPost(`/admin/players/${editing.id}/accolades`, {
+        seasonYear: year,
+        honor: honorKind,
+        label: honorKind === 'custom' ? honorLabel.trim() : null,
+      });
+      setHonorLabel('');
+      await loadHonors(editing.id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to add honor');
+    }
+  };
+
+  const removeHonor = async (id: number) => {
+    if (!editing) return;
+    try {
+      await apiDelete(`/admin/players/${editing.id}/accolades/${id}`);
+      await loadHonors(editing.id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to remove honor');
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -301,6 +368,35 @@ export function PlayersPage() {
                 <label className="block text-sm font-medium text-text-muted mb-1">Bio</label>
                 <textarea value={form.bio} onChange={e => setForm(f => ({ ...f, bio: e.target.value }))} className={inputClass} rows={3} />
               </div>
+              {editing && (
+                <div className="rounded-lg border border-border p-3 space-y-3">
+                  <p className="text-sm font-medium">Honors</p>
+                  {honors.length === 0 ? (
+                    <p className="text-xs text-text-muted">None entered. Table finishes still show on the profile.</p>
+                  ) : (
+                    <ul className="space-y-1">
+                      {honors.map((row) => (
+                        <li key={row.id} className="flex items-center justify-between gap-2 text-sm">
+                          <span>{row.seasonYear} · {honorText(row)}</span>
+                          <button type="button" onClick={() => removeHonor(row.id)} className="text-xs text-red-500">Remove</button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  <div className="grid grid-cols-2 gap-2">
+                    <input type="number" value={honorYear} onChange={(e) => setHonorYear(e.target.value)} className={inputClass} aria-label="Honor year" />
+                    <select value={honorKind} onChange={(e) => setHonorKind(e.target.value)} className={inputClass} aria-label="Honor">
+                      {HONOR_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  {honorKind === 'custom' && (
+                    <input type="text" value={honorLabel} onChange={(e) => setHonorLabel(e.target.value)} className={inputClass} placeholder="Name, for example MVP" aria-label="Custom honor" />
+                  )}
+                  <button type="button" onClick={addHonor} className="text-sm font-medium text-accent">Add honor</button>
+                </div>
+              )}
               <div className="flex justify-end gap-3 pt-2">
                 <button type="button" onClick={() => setShowForm(false)} className="px-4 py-2 text-sm font-medium text-text-muted hover:text-text transition-colors">Cancel</button>
                 <button type="submit" disabled={saving} className="px-4 py-2 bg-accent hover:bg-accent-light text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-50">

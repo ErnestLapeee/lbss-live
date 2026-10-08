@@ -1,6 +1,6 @@
 /**
- * Playoff bracket settings (`has_playoffs`, `playoff_settings`, …) belong on **playoff** seasons only.
- * Regular seasons never imply a league-wide playoff — add a separate season with kind `playoff`.
+ * Each season stores its own playoff setup (seeds, series length, third-place game).
+ * Fields omitted from the request are left unchanged.
  */
 export type SeasonKind = 'regular' | 'playoff';
 
@@ -14,18 +14,17 @@ export function playoffColumnsForSeasonKind(
   },
 ): Record<string, unknown> {
   if (!hasPoCols) return {};
-  if (kind === 'regular') {
-    return {
-      hasPlayoffs: false,
-      regularSeasonGamesPerTeam: null,
-      playoffSettings: {},
-    };
+  const patch: Record<string, unknown> = {};
+  if (input.hasPlayoffs !== undefined) patch.hasPlayoffs = input.hasPlayoffs;
+  else if (kind === 'playoff') patch.hasPlayoffs = true;
+  if (input.regularSeasonGamesPerTeam !== undefined) {
+    patch.regularSeasonGamesPerTeam = input.regularSeasonGamesPerTeam;
   }
-  return {
-    hasPlayoffs: input.hasPlayoffs ?? true,
-    regularSeasonGamesPerTeam: input.regularSeasonGamesPerTeam ?? null,
-    playoffSettings: (input.playoffSettings != null && typeof input.playoffSettings === 'object'
-      ? input.playoffSettings
-      : {}) as Record<string, unknown>,
-  };
+  if (input.playoffSettings !== undefined) {
+    patch.playoffSettings =
+      input.playoffSettings != null && typeof input.playoffSettings === 'object'
+        ? (input.playoffSettings as Record<string, unknown>)
+        : {};
+  }
+  return patch;
 }

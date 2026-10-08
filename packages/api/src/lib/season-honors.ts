@@ -7,19 +7,16 @@ import {
   playoffSeries,
   playerSeasons,
   seasons,
+  playerAccolades,
   standings,
   teams,
 } from '../db/schema/index.js';
 import { annotateFinish, placesForRoster, playoffPodium, type FinishPlace, type PlayoffSeriesResult } from './finish-places.js';
+import { mergeManualAccolades, normalizeHonor, type PlayerAccolade } from './honor-merge.js';
 
-export type PlayerAccolade = {
-  seasonYear: number;
-  seasonName: string;
-  teamName: string;
-  honor: 'champion' | 'runner_up' | 'third';
-};
+export type { PlayerAccolade } from './honor-merge.js';
 
-const HONOR_BY_PLACE: Record<FinishPlace, PlayerAccolade['honor']> = {
+const HONOR_BY_PLACE: Record<FinishPlace, 'champion' | 'runner_up' | 'third'> = {
   1: 'champion',
   2: 'runner_up',
   3: 'third',
@@ -235,7 +232,30 @@ export async function accoladesForPlayer(playerId: number): Promise<PlayerAccola
     }
   }
 
-  const order: Record<PlayerAccolade['honor'], number> = { champion: 0, runner_up: 1, third: 2 };
-  accolades.sort((a, b) => b.seasonYear - a.seasonYear || order[a.honor] - order[b.honor]);
-  return accolades;
+  let manual: PlayerAccolade[] = [];
+  try {
+    const rows = await db
+      .select({
+        seasonYear: playerAccolades.seasonYear,
+        seasonName: seasons.name,
+        teamName: teams.name,
+        honor: playerAccolades.honor,
+        label: playerAccolades.label,
+      })
+      .from(playerAccolades)
+      .leftJoin(seasons, eq(playerAccolades.seasonId, seasons.id))
+      .leftJoin(teams, eq(playerAccolades.teamId, teams.id))
+      .where(eq(playerAccolades.playerId, playerId));
+    manual = rows.map((row) => ({
+      seasonYear: row.seasonYear,
+      seasonName: row.seasonName ?? String(row.seasonYear),
+      teamName: row.teamName ?? '',
+      honor: normalizeHonor(row.honor),
+      label: row.label,
+    }));
+  } catch {
+    manual = [];
+  }
+
+  return mergeManualAccolades(accolades, manual);
 }

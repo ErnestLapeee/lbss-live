@@ -1,7 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { db } from '../../db/index.js';
-import { players, playerSeasons, licenses } from '../../db/schema/index.js';
-import { and, eq } from 'drizzle-orm';
+import { players, playerSeasons, licenses, playerAccolades, seasons, teams } from '../../db/schema/index.js';
+import { and, desc, eq } from 'drizzle-orm';
+import { normalizeHonor } from '../../lib/honor-merge.js';
 import { slugify } from '../../utils/slugify.js';
 
 export async function adminPlayersRoutes(app: FastifyInstance) {
@@ -222,6 +223,97 @@ export async function adminPlayersRoutes(app: FastifyInstance) {
     } catch (err) {
       request.log.error(err);
       return reply.status(500).send({ message: 'Failed to add player to roster' });
+    }
+  });
+
+  app.get<{ Params: { id: string } }>('/:id/accolades', async (request, reply) => {
+    const playerId = parseInt(request.params.id, 10);
+    if (!Number.isFinite(playerId)) return reply.status(400).send({ message: 'Invalid player id' });
+    try {
+      const rows = await db
+        .select({
+          id: playerAccolades.id,
+          playerId: playerAccolades.playerId,
+          seasonId: playerAccolades.seasonId,
+          teamId: playerAccolades.teamId,
+          seasonYear: playerAccolades.seasonYear,
+          honor: playerAccolades.honor,
+          label: playerAccolades.label,
+          teamName: teams.name,
+          seasonName: seasons.name,
+        })
+        .from(playerAccolades)
+        .leftJoin(teams, eq(playerAccolades.teamId, teams.id))
+        .leftJoin(seasons, eq(playerAccolades.seasonId, seasons.id))
+        .where(eq(playerAccolades.playerId, playerId))
+        .orderBy(desc(playerAccolades.seasonYear), desc(playerAccolades.id));
+      return reply.send(rows);
+    } catch (err) {
+      request.log.error(err);
+      return reply.status(500).send({ message: 'Failed to load honors' });
+    }
+  });
+
+  app.post<{
+    Params: { id: string };
+    Body: { seasonYear?: number; seasonId?: number | null; teamId?: number | null; honor?: string; label?: string | null };
+  }>('/:id/accolades', async (request, reply) => {
+    const playerId = parseInt(request.params.id, 10);
+    if (!Number.isFinite(playerId)) return reply.status(400).send({ message: 'Invalid player id' });
+    const honor = normalizeHonor(String(request.body?.honor ?? ''));
+    const label = typeof request.body?.label === 'string' ? request.body.label.trim() : '';
+    let seasonYear = Number(request.body?.seasonYear);
+    const seasonId = request.body?.seasonId != null ? Number(request.body.seasonId) : null;
+    const teamId = request.body?.teamId != null ? Number(request.body.teamId) : null;
+    if (honor === 'custom' && !label) {
+      return reply.status(400).send({ message: 'A custom honor needs a name' });
+    }
+    if (label.length > 80) return reply.status(400).send({ message: 'Honor name is too long' });
+    try {
+      const [player] = await db.select({ id: players.id }).from(players).where(eq(players.id, playerId)).limit(1);
+      if (!player) return reply.status(404).send({ message: 'Player not found' });
+      if (seasonId != null && Number.isFinite(seasonId)) {
+        const [season] = await db.select({ year: seasons.year }).from(seasons).where(eq(seasons.id, seasonId)).limit(1);
+        if (!season) return reply.status(400).send({ message: 'Season not found' });
+        seasonYear = season.year;
+      }
+      if (!Number.isFinite(seasonYear) || seasonYear < 1900 || seasonYear > 2200) {
+        return reply.status(400).send({ message: 'Enter a year' });
+      }
+      const [row] = await db
+        .insert(playerAccolades)
+        .values({
+          playerId,
+          seasonId: seasonId != null && Number.isFinite(seasonId) ? seasonId : null,
+          teamId: teamId != null && Number.isFinite(teamId) ? teamId : null,
+          seasonYear,
+          honor,
+          label: label || null,
+        })
+        .returning();
+      return reply.status(201).send(row);
+    } catch (err) {
+      request.log.error(err);
+      return reply.status(500).send({ message: 'Failed to save honor' });
+    }
+  });
+
+  app.delete<{ Params: { id: string; accoladeId: string } }>('/:id/accolades/:accoladeId', async (request, reply) => {
+    const playerId = parseInt(request.params.id, 10);
+    const accoladeId = parseInt(request.params.accoladeId, 10);
+    if (!Number.isFinite(playerId) || !Number.isFinite(accoladeId)) {
+      return reply.status(400).send({ message: 'Invalid id' });
+    }
+    try {
+      const [row] = await db
+        .delete(playerAccolades)
+        .where(and(eq(playerAccolades.id, accoladeId), eq(playerAccolades.playerId, playerId)))
+        .returning({ id: playerAccolades.id });
+      if (!row) return reply.status(404).send({ message: 'Honor not found' });
+      return reply.send({ ok: true });
+    } catch (err) {
+      request.log.error(err);
+      return reply.status(500).send({ message: 'Failed to delete honor' });
     }
   });
 }

@@ -134,7 +134,7 @@ function sortSeeds(rows: StandingSeedSource[]): SeedRow[] {
   }));
 }
 
-function buildDefaultBracket(seeds: SeedRow[], bestOfDefault = 1): { rounds: BracketRoundOut[] } {
+function buildDefaultBracket(seeds: SeedRow[], bestOfDefault = 1, thirdPlace = false): { rounds: BracketRoundOut[] } {
   const n = seeds.length;
   if (n < 2) return { rounds: [] };
 
@@ -206,7 +206,7 @@ function buildDefaultBracket(seeds: SeedRow[], bestOfDefault = 1): { rounds: Bra
       {
         roundNumber: 1,
         name: 'Round 1',
-        series: round1Pairs.map(p => ({
+          series: round1Pairs.map(p => ({
           id: null,
           label: `Series ${p.idx}`,
           bestOf: bestOfDefault,
@@ -224,6 +224,29 @@ function buildDefaultBracket(seeds: SeedRow[], bestOfDefault = 1): { rounds: Bra
           winnerTeamId: null,
         })),
       },
+      ...(thirdPlace && n >= 4
+        ? [{
+          roundNumber: 2,
+          name: 'Third place',
+          series: [{
+            id: null,
+            label: 'Third place',
+            bestOf: 1,
+            higherSeed: null,
+            lowerSeed: null,
+            higherTeamId: null,
+            lowerTeamId: null,
+            higherTeamName: 'TBD',
+            lowerTeamName: 'TBD',
+            higherTeamShortName: null,
+            lowerTeamShortName: null,
+            higherTeamLogoUrl: null,
+            lowerTeamLogoUrl: null,
+            wins: { higher: 0, lower: 0 },
+            winnerTeamId: null,
+          }],
+        }]
+        : []),
     ],
   };
 }
@@ -387,7 +410,11 @@ export async function playoffsRoutes(app: FastifyInstance) {
         }
 
         const bracket = seriesRows.length === 0
-          ? buildDefaultBracket(seeds, playoffConfigOptionalNumber(po.config, 'bestOf') || 1)
+          ? buildDefaultBracket(
+            seeds,
+            playoffConfigOptionalNumber(po.config, 'bestOf') || 1,
+            po.config != null && typeof po.config === 'object' && (po.config as Record<string, unknown>).thirdPlace === true,
+          )
           : (() => {
             const byRound = new Map<number, BracketSeriesOut[]>();
             for (const s of seriesRows) {

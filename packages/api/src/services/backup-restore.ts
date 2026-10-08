@@ -24,6 +24,7 @@ import {
   playoffs,
   playoffSeries,
   teamLogos,
+  playerAccolades,
 } from '../db/schema/index.js';
 
 /** Payload shape from GET /admin/backup/export (version 2+). */
@@ -54,6 +55,7 @@ export interface BackupPayload {
     playoffs: Record<string, unknown>[];
     playoffSeries: Record<string, unknown>[];
     teamLogos?: Record<string, unknown>[];
+    playerAccolades?: Record<string, unknown>[];
   };
 }
 
@@ -72,6 +74,7 @@ TRUNCATE TABLE
   standings,
   payments,
   licenses,
+  player_accolades,
   player_seasons,
   league_teams,
   leagues,
@@ -98,6 +101,7 @@ const SERIAL_TABLES = [
   'users',
   'articles',
   'player_seasons',
+  'player_accolades',
   'licenses',
   'payments',
   'standings',
@@ -250,6 +254,7 @@ export async function restoreFullBackup(
   await insertRows(tx, leagues, rowsForInsert(d.leagues));
   await insertRows(tx, leagueTeams, rowsForInsert(d.leagueTeams));
   await insertRows(tx, players, rowsForInsert(d.players));
+  await insertRows(tx, playerAccolades, rowsForInsert(d.playerAccolades));
 
   const userRows = rowsForInsert(d.users).map((u) => ({
     ...u,

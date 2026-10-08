@@ -8,7 +8,7 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "lint": "tsc --noEmit",
-    "test": "tsx --test src/middleware/auth.test.ts src/lib/team-logo.test.ts src/lib/finish-places.test.ts src/lib/login-rate-limit.test.ts src/lib/sql-int-array.test.ts src/lib/statistician-guards.test.ts src/services/backup-restore.test.ts ../../apps/admin/scoring-book.test.ts ../../apps/admin/scoring-log.test.ts",
+    "test": "tsx --test src/middleware/auth.test.ts src/lib/team-logo.test.ts src/lib/finish-places.test.ts src/lib/playoff-accolades.test.ts src/lib/login-rate-limit.test.ts src/lib/sql-int-array.test.ts src/lib/statistician-guards.test.ts src/services/backup-restore.test.ts ../../apps/admin/scoring-book.test.ts ../../apps/admin/scoring-log.test.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:seed": "tsx --env-file=../../.env src/db/seed.ts",

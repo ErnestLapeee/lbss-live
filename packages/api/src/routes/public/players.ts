@@ -292,8 +292,6 @@ export async function playersRoutes(app: FastifyInstance) {
             .where(and(eq(playerSeasonBatting.playerId, player.id), eq(playerSeasonBatting.seasonId, seasonIdNum)))
             .orderBy(desc(seasons.year)));
 
-      if (!isAllTime) return reply.send(stats);
-
       let playoffRows: any[] = [];
       if (await gamesHavePlayoffSeriesId()) {
         // Playoffs rows (computed from per-game stats linked to playoff series)
@@ -352,6 +350,8 @@ export async function playersRoutes(app: FastifyInstance) {
             eq(playerGameBatting.playerId, player.id),
             eq(games.isFinalized, true),
             sql`${games.playoffSeriesId} IS NOT NULL`,
+            sql`COALESCE(${seasons.seasonKind}, 'regular') <> 'playoff'`,
+            ...(seasonIdNum ? [eq(seasons.id, seasonIdNum)] : []),
           ))
           .groupBy(seasons.id, seasons.year, teams.id, teams.name, teams.logoUrl, playerGameBatting.playerId, playerGameBatting.teamId);
       }
@@ -440,15 +440,6 @@ export async function playersRoutes(app: FastifyInstance) {
             .where(and(eq(playerSeasonPitching.playerId, player.id), eq(playerSeasonPitching.seasonId, seasonIdNum)))
             .orderBy(desc(seasons.year)));
 
-      if (!isAllTime) {
-        return reply.send(
-          stats.map((r: Record<string, unknown>) => ({
-            ...r,
-            opponentAvg: formatOpponentBattingAvgPitch(r),
-          })),
-        );
-      }
-
       // IP is baseball notation (6.2 = 6⅔), so aggregate via outs.
       const ipCol = playerGamePitching.inningsPitched;
       const playoffOuts = sql`COALESCE(SUM(TRUNC(COALESCE(${ipCol}, 0)::numeric) * 3 + ROUND((COALESCE(${ipCol}, 0)::numeric - TRUNC(COALESCE(${ipCol}, 0)::numeric)) * 10)), 0)`;
@@ -506,6 +497,8 @@ export async function playersRoutes(app: FastifyInstance) {
           eq(playerGamePitching.playerId, player.id),
           eq(games.isFinalized, true),
           sql`${games.playoffSeriesId} IS NOT NULL`,
+          sql`COALESCE(${seasons.seasonKind}, 'regular') <> 'playoff'`,
+          ...(seasonIdNum ? [eq(seasons.id, seasonIdNum)] : []),
         ))
         .groupBy(seasons.id, seasons.year, teams.id, teams.name, playerGamePitching.teamId);
 
@@ -573,6 +566,7 @@ export async function playersRoutes(app: FastifyInstance) {
             .where(and(eq(playerSeasonFielding.playerId, player.id), eq(playerSeasonFielding.seasonId, seasonIdNum)))
             .orderBy(desc(seasons.year)));
 
+      const hasPlayoffSeriesColumn = await gamesHavePlayoffSeriesId();
       const posRowsAll = await db
         .select({
           seasonId: seasons.id,
@@ -589,12 +583,18 @@ export async function playersRoutes(app: FastifyInstance) {
             eq(playerGameFielding.playerId, player.id),
             eq(games.isFinalized, true),
             isNotNull(playerGameFielding.position),
+            ...(hasPlayoffSeriesColumn
+              ? [sql`(
+              ${games.playoffSeriesId} IS NULL
+              OR COALESCE(${seasons.seasonKind}, 'regular') = 'playoff'
+            )`]
+              : []),
           ),
         )
         .groupBy(seasons.id, playerGameFielding.teamId, playerGameFielding.position);
 
       let posRowsPlayoff: PosCountRow[] = [];
-      if (await gamesHavePlayoffSeriesId()) {
+      if (hasPlayoffSeriesColumn) {
         posRowsPlayoff = await db
           .select({
             seasonId: seasons.id,
@@ -612,6 +612,7 @@ export async function playersRoutes(app: FastifyInstance) {
               eq(games.isFinalized, true),
               isNotNull(playerGameFielding.position),
               isNotNull(games.playoffSeriesId),
+              sql`COALESCE(${seasons.seasonKind}, 'regular') <> 'playoff'`,
             ),
           )
           .groupBy(seasons.id, playerGameFielding.teamId, playerGameFielding.position);
@@ -633,8 +634,6 @@ export async function playersRoutes(app: FastifyInstance) {
             positionLabel: fieldingPositionLabel(entries),
           };
         });
-
-      if (!isAllTime) return reply.send(enrichFieldingRows(stats));
 
       let playoffRows: any[] = [];
       if (await gamesHavePlayoffSeriesId()) playoffRows = await db.select({
@@ -666,6 +665,8 @@ export async function playersRoutes(app: FastifyInstance) {
           eq(playerGameFielding.playerId, player.id),
           eq(games.isFinalized, true),
           sql`${games.playoffSeriesId} IS NOT NULL`,
+          sql`COALESCE(${seasons.seasonKind}, 'regular') <> 'playoff'`,
+          ...(seasonIdNum ? [eq(seasons.id, seasonIdNum)] : []),
         ))
         .groupBy(seasons.id, seasons.year, teams.id, teams.name, playerGameFielding.teamId);
 

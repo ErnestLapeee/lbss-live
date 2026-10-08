@@ -65,6 +65,10 @@ export async function ensureOptionalSchemaColumns(): Promise<void> {
  * undefined_table. Idempotent DDL aligned with `0006_playoffs.sql`.
  */
 async function ensurePlayoffsTables(): Promise<void> {
+  await db.execute(
+    sql`ALTER TABLE seasons ADD COLUMN IF NOT EXISTS season_kind varchar(20) NOT NULL DEFAULT 'regular'`,
+  );
+  await db.execute(sql`ALTER TABLE seasons ADD COLUMN IF NOT EXISTS parent_season_id integer`);
   await db.execute(sql`ALTER TABLE seasons ADD COLUMN IF NOT EXISTS has_playoffs boolean DEFAULT false`);
   await db.execute(sql`ALTER TABLE seasons ADD COLUMN IF NOT EXISTS regular_season_games_per_team integer`);
   await db.execute(sql`ALTER TABLE seasons ADD COLUMN IF NOT EXISTS playoff_settings jsonb DEFAULT '{}'::jsonb`);
@@ -109,6 +113,20 @@ async function ensurePlayoffsTables(): Promise<void> {
     sql`ALTER TABLE games ADD COLUMN IF NOT EXISTS playoff_series_id integer REFERENCES playoff_series(id) ON DELETE SET NULL`
   );
   await db.execute(sql`CREATE INDEX IF NOT EXISTS games_playoff_series_id_idx ON games(playoff_series_id)`);
+
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS player_accolades (
+      id serial PRIMARY KEY,
+      player_id integer NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+      season_id integer REFERENCES seasons(id) ON DELETE SET NULL,
+      team_id integer REFERENCES teams(id) ON DELETE SET NULL,
+      season_year integer NOT NULL,
+      honor varchar(40) NOT NULL,
+      label varchar(120),
+      created_at timestamptz DEFAULT now()
+    )
+  `);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS player_accolades_player_id_idx ON player_accolades(player_id)`);
 }
 
 /** @deprecated Use ensureOptionalSchemaColumns */

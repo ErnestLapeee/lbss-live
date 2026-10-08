@@ -17,6 +17,14 @@ interface Game {
   homeScore: number;
   awayScore: number;
   isFinalized: boolean;
+  playoffSeriesId?: number | null;
+}
+
+interface SeriesOption {
+  id: number;
+  label: string | null;
+  roundNumber: number;
+  seriesIndex: number;
 }
 
 interface Team {
@@ -74,6 +82,7 @@ export function GamesPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [formLeagueTeams, setFormLeagueTeams] = useState<LeagueTeamOption[]>([]);
+  const [seriesOptions, setSeriesOptions] = useState<SeriesOption[]>([]);
 
   const [form, setForm] = useState({
     leagueId: '',
@@ -83,6 +92,7 @@ export function GamesPage() {
     scheduledTime: '18:00',
     venue: '',
     status: 'scheduled',
+    playoffSeriesId: '',
   });
 
   const teamMap = useMemo(() => Object.fromEntries(teams.map((t) => [t.id, t.name])), [teams]);
@@ -120,11 +130,24 @@ export function GamesPage() {
 
       if (!selectedSeasonId) {
         setGames([]);
+        setSeriesOptions([]);
         return;
       }
 
       const gamesRes = await apiGet<Game[]>(`/admin/games?seasonId=${selectedSeasonId}`);
       setGames(Array.isArray(gamesRes) ? gamesRes : []);
+      try {
+        const brackets = await apiGet<{ id: number; isActive: boolean }[]>(`/admin/playoffs?seasonId=${selectedSeasonId}`);
+        const active = (Array.isArray(brackets) ? brackets : []).find((row) => row.isActive);
+        if (!active) {
+          setSeriesOptions([]);
+        } else {
+          const series = await apiGet<SeriesOption[]>(`/admin/playoffs/${active.id}/series`);
+          setSeriesOptions(Array.isArray(series) ? series : []);
+        }
+      } catch {
+        setSeriesOptions([]);
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to load data';
       if (!/authentication required/i.test(msg)) {
@@ -188,6 +211,7 @@ export function GamesPage() {
       scheduledTime: '18:00',
       venue: '',
       status: 'scheduled',
+      playoffSeriesId: '',
     });
     setShowForm(true);
     setError(null);
@@ -204,6 +228,7 @@ export function GamesPage() {
       scheduledTime: time,
       venue: g.venue ?? '',
       status: g.status ?? 'scheduled',
+      playoffSeriesId: g.playoffSeriesId != null ? String(g.playoffSeriesId) : '',
     });
     setShowForm(true);
     setError(null);
@@ -229,6 +254,7 @@ export function GamesPage() {
           scheduledAt: scheduledAtIso,
           venue: form.venue.trim() || undefined,
           status: form.status,
+          playoffSeriesId: form.playoffSeriesId ? parseInt(form.playoffSeriesId, 10) : null,
         });
       } else {
         await apiPost('/admin/games', {
@@ -237,6 +263,7 @@ export function GamesPage() {
           awayTeamId: parseInt(form.awayTeamId, 10),
           scheduledAt: scheduledAtIso,
           venue: form.venue.trim() || undefined,
+          playoffSeriesId: form.playoffSeriesId ? parseInt(form.playoffSeriesId, 10) : null,
         });
       }
       setShowForm(false);
@@ -595,6 +622,24 @@ export function GamesPage() {
                   className={inputClass}
                 />
               </div>
+              {seriesOptions.length > 0 && (
+                <div>
+                  <label className="block text-sm font-medium text-text-muted mb-1">Playoff series</label>
+                  <select
+                    value={form.playoffSeriesId}
+                    onChange={(e) => setForm((f) => ({ ...f, playoffSeriesId: e.target.value }))}
+                    className={inputClass}
+                  >
+                    <option value="">Regular-season game</option>
+                    {seriesOptions.map((series) => (
+                      <option key={series.id} value={series.id}>
+                        {series.label?.trim() || `Round ${series.roundNumber}, series ${series.seriesIndex}`}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-xs text-text-muted">Playoff games stay off the regular-season stat line.</p>
+                </div>
+              )}
               <div>
                 <label className="block text-sm font-medium text-text-muted mb-1">Status</label>
                 <select

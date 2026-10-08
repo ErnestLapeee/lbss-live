@@ -1050,6 +1050,13 @@ export async function recomputeSeasonBatting(seasonId: number) {
     JOIN games g ON pgb.game_id = g.id
     JOIN leagues l ON g.league_id = l.id
     WHERE l.season_id = ${seasonId} AND g.is_finalized = true
+      AND (
+        g.playoff_series_id IS NULL
+        OR EXISTS (
+          SELECT 1 FROM seasons s
+          WHERE s.id = l.season_id AND s.season_kind = 'playoff'
+        )
+      )
     GROUP BY pgb.player_id, pgb.team_id, l.season_id
     ON CONFLICT (player_id, team_id, season_id) DO UPDATE SET
       games = EXCLUDED.games,
@@ -1099,6 +1106,13 @@ export async function recomputeSeasonBatting(seasonId: number) {
         JOIN leagues l ON g.league_id = l.id
         WHERE l.season_id = psb.season_id
           AND g.is_finalized = true
+      AND (
+        g.playoff_series_id IS NULL
+        OR EXISTS (
+          SELECT 1 FROM seasons s
+          WHERE s.id = l.season_id AND s.season_kind = 'playoff'
+        )
+      )
           AND pgb.player_id = psb.player_id
           AND pgb.team_id = psb.team_id
       )
@@ -1156,6 +1170,13 @@ export async function recomputeSeasonPitching(seasonId: number) {
       JOIN games g ON pgp.game_id = g.id
       JOIN leagues l ON g.league_id = l.id
       WHERE l.season_id = ${seasonId} AND g.is_finalized = true
+      AND (
+        g.playoff_series_id IS NULL
+        OR EXISTS (
+          SELECT 1 FROM seasons s
+          WHERE s.id = l.season_id AND s.season_kind = 'playoff'
+        )
+      )
       GROUP BY pgp.player_id, pgp.team_id, l.season_id
     )
     INSERT INTO player_season_pitching (
@@ -1274,6 +1295,13 @@ export async function recomputeSeasonPitching(seasonId: number) {
         JOIN leagues l ON g.league_id = l.id
         WHERE l.season_id = psp.season_id
           AND g.is_finalized = true
+      AND (
+        g.playoff_series_id IS NULL
+        OR EXISTS (
+          SELECT 1 FROM seasons s
+          WHERE s.id = l.season_id AND s.season_kind = 'playoff'
+        )
+      )
           AND pgp.player_id = psp.player_id
           AND pgp.team_id = psp.team_id
       )
@@ -1305,6 +1333,13 @@ export async function recomputeSeasonFielding(seasonId: number) {
       JOIN games g ON pgf.game_id = g.id
       JOIN leagues l ON g.league_id = l.id
       WHERE l.season_id = ${seasonId} AND g.is_finalized = true
+      AND (
+        g.playoff_series_id IS NULL
+        OR EXISTS (
+          SELECT 1 FROM seasons s
+          WHERE s.id = l.season_id AND s.season_kind = 'playoff'
+        )
+      )
       GROUP BY pgf.player_id, pgf.team_id, l.season_id
     )
     INSERT INTO player_season_fielding (player_id, team_id, season_id, games,
@@ -1348,6 +1383,13 @@ export async function recomputeSeasonFielding(seasonId: number) {
         JOIN leagues l ON g.league_id = l.id
         WHERE l.season_id = psf.season_id
           AND g.is_finalized = true
+      AND (
+        g.playoff_series_id IS NULL
+        OR EXISTS (
+          SELECT 1 FROM seasons s
+          WHERE s.id = l.season_id AND s.season_kind = 'playoff'
+        )
+      )
           AND pgf.player_id = psf.player_id
           AND pgf.team_id = psf.team_id
       )
@@ -1358,7 +1400,18 @@ export async function recomputeStandings(leagueId: number) {
   const finalGames = await db
     .select(standingsFinalGameSelect)
     .from(games)
-    .where(and(eq(games.leagueId, leagueId), eq(games.isFinalized, true)));
+    .where(and(
+      eq(games.leagueId, leagueId),
+      eq(games.isFinalized, true),
+      sql`(
+        ${games.playoffSeriesId} IS NULL
+        OR EXISTS (
+          SELECT 1 FROM leagues l
+          JOIN seasons s ON s.id = l.season_id
+          WHERE l.id = ${leagueId} AND s.season_kind = 'playoff'
+        )
+      )`,
+    ));
 
   const leagueTeams = await db.execute(
     sql`SELECT t.id FROM teams t JOIN league_teams lt ON lt.team_id = t.id WHERE lt.league_id = ${leagueId}`

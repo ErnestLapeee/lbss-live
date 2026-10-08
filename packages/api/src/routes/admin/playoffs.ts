@@ -122,16 +122,6 @@ export async function adminPlayoffsRoutes(app: FastifyInstance) {
         .limit(1);
       if (!season) return reply.status(404).send({ message: 'Season not found' });
 
-      const sk = flags.hasSeasonKindOptionals
-        ? String((season as Record<string, unknown>).seasonKind ?? 'regular')
-        : 'regular';
-      if (sk !== 'playoff') {
-        return reply.status(400).send({
-          message:
-            'Playoff brackets must be attached to a Playoff season. In Admin → Seasons, create a separate season with type "Playoff", add leagues/teams there, then configure the bracket.',
-        });
-      }
-
       const [row] = await db.insert(playoffs).values({
         seasonId,
         name,

@@ -12,3 +12,4 @@ export * from './articles.js';
 export * from './lineups.js';
 export * from './playoffs.js';
 export * from './playoff-series.js';
+export * from './player-accolades.js';

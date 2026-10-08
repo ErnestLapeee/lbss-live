@@ -26,6 +26,7 @@ interface PlayerAccolade {
   seasonName?: string;
   teamName?: string;
   honor?: string;
+  label?: string | null;
 }
 
 interface PlayerProfileClientProps {
@@ -39,25 +40,34 @@ type Tab = 'batting' | 'pitching' | 'fielding' | 'gamelog' | 'spraychart' | 'hon
 
 const HONOR_ORDER = ['champion', 'runner_up', 'third'] as const;
 
-function honorLabel(honor: string | undefined): string {
+function honorTitle(honor: string | undefined, label?: string | null): string {
   if (honor === 'champion') return 'Champion';
   if (honor === 'runner_up') return 'Runner-up';
-  return 'Third place';
+  if (honor === 'third') return 'Third place';
+  const custom = label?.trim();
+  return custom || 'Honor';
 }
 
 function groupedHonors(items: PlayerAccolade[]) {
   const byHonor = new Map<string, PlayerAccolade[]>();
   for (const item of items) {
-    const key = item.honor && HONOR_ORDER.includes(item.honor as (typeof HONOR_ORDER)[number]) ? item.honor : 'third';
+    const known = item.honor && HONOR_ORDER.includes(item.honor as (typeof HONOR_ORDER)[number]);
+    const key = known ? item.honor! : `custom:${(item.label ?? 'Honor').trim()}`;
     const list = byHonor.get(key) ?? [];
     list.push(item);
     byHonor.set(key, list);
   }
-  return HONOR_ORDER.filter((key) => byHonor.has(key)).map((key) => {
+  const keys = [
+    ...HONOR_ORDER.filter((key) => byHonor.has(key)),
+    ...[...byHonor.keys()].filter((key) => key.startsWith('custom:')).sort(),
+  ];
+  return keys.map((key) => {
     const rows = (byHonor.get(key) ?? []).slice().sort((a, b) => (a.seasonYear ?? 0) - (b.seasonYear ?? 0));
     const years = rows.map((row) => (row.seasonYear ? String(row.seasonYear) : '')).filter(Boolean);
+    const sample = rows[0];
     return {
       honor: key,
+      title: key.startsWith('custom:') ? honorTitle('custom', sample?.label) : honorTitle(key),
       count: rows.length,
       yearsLabel: years.join(', '),
     };
@@ -1411,7 +1421,7 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons, accola
             <ul className="divide-y divide-border border-y border-border">
               {honorLines.map((line) => (
                 <li key={line.honor} className="py-3 text-sm text-text">
-                  <span className="font-semibold">{line.count}× {honorLabel(line.honor)}</span>
+                  <span className="font-semibold">{line.count}× {line.title}</span>
                   {line.yearsLabel ? <span className="text-text-muted"> ({line.yearsLabel})</span> : null}
                 </li>
               ))}

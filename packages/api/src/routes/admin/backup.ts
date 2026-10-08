@@ -26,6 +26,7 @@ import {
   playoffs,
   playoffSeries,
   teamLogos,
+  playerAccolades,
 } from '../../db/schema/index.js';
 import { restoreFullBackup, type BackupPayload } from '../../services/backup-restore.js';
 
@@ -89,6 +90,7 @@ export async function adminBackupRoutes(app: FastifyInstance) {
         playoffsData,
         playoffSeriesData,
         teamLogosData,
+        playerAccoladesData,
       ] = await Promise.all([
         db.select().from(seasons),
         db.select().from(leagues),
@@ -122,6 +124,7 @@ export async function adminBackupRoutes(app: FastifyInstance) {
         db.select().from(playoffs),
         db.select().from(playoffSeries),
         db.select().from(teamLogos),
+        db.select().from(playerAccolades),
       ]);
 
       const backup = {
@@ -150,6 +153,7 @@ export async function adminBackupRoutes(app: FastifyInstance) {
           users: usersData,
           playoffs: playoffsData,
           playoffSeries: playoffSeriesData,
+          playerAccolades: playerAccoladesData,
           teamLogos: teamLogosData.map((row) => ({
             teamId: row.teamId,
             contentType: row.contentType,

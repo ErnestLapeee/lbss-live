@@ -26,6 +26,35 @@ import { seasonsRowSelectShape } from '../../lib/seasons-drizzle-select.js';
 import { playoffColumnsForSeasonKind, type SeasonKind } from '../../lib/season-kind-playoffs.js';
 import { slugify } from '../../utils/slugify.js';
 
+async function syncSeasonPlayoffRow(
+  seasonId: number,
+  name: string,
+  hasPlayoffs: boolean,
+  settings: unknown,
+) {
+  const config = settings != null && typeof settings === 'object' ? settings : {};
+  const [existing] = await db
+    .select({ id: playoffs.id })
+    .from(playoffs)
+    .where(eq(playoffs.seasonId, seasonId))
+    .limit(1);
+  const label = (name.trim() || 'Playoffs').slice(0, 120);
+  if (!existing) {
+    if (!hasPlayoffs) return;
+    await db.insert(playoffs).values({
+      seasonId,
+      name: label,
+      isActive: true,
+      config,
+    });
+    return;
+  }
+  await db
+    .update(playoffs)
+    .set({ isActive: hasPlayoffs, config, name: label })
+    .where(eq(playoffs.id, existing.id));
+}
+
 function normalizeYear(v: unknown): number | null {
   if (v == null) return null;
   const n =
@@ -236,6 +265,9 @@ export async function adminSeasonsRoutes(app: FastifyInstance) {
       });
 
       const row = season as Record<string, unknown>;
+      if (hasPoCols && row.id != null && hasPlayoffs !== undefined) {
+        await syncSeasonPlayoffRow(Number(row.id), String(row.name ?? nameTrim), Boolean(hasPlayoffs), playoffSettings);
+      }
       return reply.status(201).send({
         ...seasonWithPlayoffDefaults(hasPoCols, row),
         seasonKind: flags.hasSeasonKindOptionals ? String(row.seasonKind ?? 'regular') : 'regular',
@@ -418,6 +450,14 @@ export async function adminSeasonsRoutes(app: FastifyInstance) {
       }
 
       const row = season as Record<string, unknown>;
+      if (hasPoCols && hasPlayoffs !== undefined) {
+        await syncSeasonPlayoffRow(
+          id,
+          String(row.name ?? ''),
+          Boolean(hasPlayoffs),
+          playoffSettings,
+        );
+      }
       return reply.send({
         ...seasonWithPlayoffDefaults(hasPoCols, row),
         seasonKind: flags.hasSeasonKindOptionals ? String(row.seasonKind ?? 'regular') : 'regular',
