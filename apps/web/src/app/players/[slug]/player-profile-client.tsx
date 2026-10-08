@@ -21,13 +21,53 @@ interface Season {
   year: number;
 }
 
+interface PlayerAccolade {
+  seasonYear?: number;
+  seasonName?: string;
+  teamName?: string;
+  honor?: string;
+}
+
 interface PlayerProfileClientProps {
   slug: string;
   initialBattingStats: any[];
   seasons: Season[];
+  accolades: PlayerAccolade[];
 }
 
-type Tab = 'batting' | 'pitching' | 'fielding' | 'gamelog' | 'spraychart';
+type Tab = 'batting' | 'pitching' | 'fielding' | 'gamelog' | 'spraychart' | 'honors';
+
+const HONOR_ORDER = ['champion', 'runner_up', 'third'] as const;
+
+function honorLabel(honor: string | undefined): string {
+  if (honor === 'champion') return 'Champion';
+  if (honor === 'runner_up') return 'Runner-up';
+  return 'Third place';
+}
+
+function groupedHonors(items: PlayerAccolade[]) {
+  const byHonor = new Map<string, PlayerAccolade[]>();
+  for (const item of items) {
+    const key = item.honor && HONOR_ORDER.includes(item.honor as (typeof HONOR_ORDER)[number]) ? item.honor : 'third';
+    const list = byHonor.get(key) ?? [];
+    list.push(item);
+    byHonor.set(key, list);
+  }
+  return HONOR_ORDER.filter((key) => byHonor.has(key)).map((key) => {
+    const rows = (byHonor.get(key) ?? []).slice().sort((a, b) => (a.seasonYear ?? 0) - (b.seasonYear ?? 0));
+    const teams = [...new Set(rows.map((row) => row.teamName).filter((name): name is string => Boolean(name)))];
+    const years = rows.map((row) => {
+      if (teams.length > 1 && row.teamName && row.seasonYear) return `${row.seasonYear} ${row.teamName}`;
+      return row.seasonYear ? String(row.seasonYear) : '';
+    }).filter(Boolean);
+    return {
+      honor: key,
+      count: rows.length,
+      yearsLabel: years.join(', '),
+      team: teams.length === 1 ? teams[0] : null,
+    };
+  });
+}
 
 const fmtRate = (v: any) => (v != null && v !== '' ? Number(v).toFixed(3).replace(/^0/, '') : '—');
 const fmtPct = (v: any) => (v != null && v !== '' ? `${(Number(v) * 100).toFixed(1)}%` : '—');
@@ -275,7 +315,7 @@ const COUNT_SPLIT_ROWS = [
   ['0-2', '0-2'], ['1-2', '1-2'], ['2-2', '2-2'], ['3-2', 'Full Count'],
 ] as const;
 
-export function PlayerProfileClient({ slug, initialBattingStats, seasons }: PlayerProfileClientProps) {
+export function PlayerProfileClient({ slug, initialBattingStats, seasons, accolades }: PlayerProfileClientProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const profileReturnTo = useMemo(() => {
@@ -369,12 +409,14 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
     });
   }, [tab, slug, filterParam]);
 
+  const honorLines = groupedHonors(accolades);
   const tabs: { key: Tab; label: string }[] = [
     { key: 'batting', label: 'Batting' },
     { key: 'pitching', label: 'Pitching' },
     { key: 'fielding', label: 'Fielding' },
     { key: 'gamelog', label: 'Game Log' },
     { key: 'spraychart', label: 'Spray Chart' },
+    { key: 'honors', label: 'Honors' },
   ];
   const battingCountLines = useMemo(
     () => new Map((platoonSplits?.battingCounts?.counts ?? []).map((line: any) => [line.count, line])),
@@ -1368,6 +1410,26 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons }: Play
       )}
 
       {/* SPRAY CHART TAB */}
+      {tab === 'honors' && (
+        <div className="max-w-lg">
+          {honorLines.length > 0 ? (
+            <ul className="divide-y divide-border border-y border-border">
+              {honorLines.map((line) => (
+                <li key={line.honor} className="py-3 text-sm text-text">
+                  <span className="font-semibold">{line.count}× {honorLabel(line.honor)}</span>
+                  {line.yearsLabel ? <span className="text-text-muted"> ({line.yearsLabel})</span> : null}
+                  {line.team ? <span className="text-text-muted"> · {line.team}</span> : null}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div className="rounded-xl border border-dashed border-border bg-surface-alt p-8 text-center">
+              <p className="text-sm text-text-muted">No honors yet.</p>
+            </div>
+          )}
+        </div>
+      )}
+
       {tab === 'spraychart' && (
         <div className="space-y-4">
           {sprayData && sprayData.length > 0 ? (

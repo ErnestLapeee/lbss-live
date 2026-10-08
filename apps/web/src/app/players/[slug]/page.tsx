@@ -92,22 +92,13 @@ export default async function PlayerProfilePage({ params }: Props) {
       </div>
 
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
-        {accolades.length > 0 && (
-          <ul className="mb-8 max-w-md text-sm">
-            {accolades.map((item, i) => (
-              <li
-                key={`${item.honor}-${item.seasonYear}-${item.teamName}-${i}`}
-                className="flex items-baseline gap-3 border-b border-border py-1.5"
-              >
-                <span className="w-12 shrink-0 tabular-nums text-text-muted">{item.seasonYear}</span>
-                <span className="text-text">{honorLabel(item.honor)}</span>
-                {item.teamName ? <span className="min-w-0 truncate text-text-muted">{item.teamName}</span> : null}
-              </li>
-            ))}
-          </ul>
-        )}
         <Suspense fallback={null}>
-          <PlayerProfileClient slug={slug} initialBattingStats={battingStats} seasons={seasons} />
+          <PlayerProfileClient
+            slug={slug}
+            initialBattingStats={battingStats}
+            seasons={seasons}
+            accolades={accolades}
+          />
         </Suspense>
 
         {player.bio && (
@@ -122,10 +113,4 @@ export default async function PlayerProfilePage({ params }: Props) {
       </div>
     </div>
   );
-}
-
-function honorLabel(honor: string | undefined): string {
-  if (honor === 'champion') return 'Champion';
-  if (honor === 'runner_up') return 'Runner-up';
-  return 'Third place';
 }
