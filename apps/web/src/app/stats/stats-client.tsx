@@ -877,7 +877,11 @@ export function StatsClient({
                       </th>
                       {displayColumns.map(col => (
                         (() => {
-                          const meaning = getStatAbbreviationMeaning(col.label);
+                          const meaning = col.key === 'pickedOff'
+                            ? 'Times picked off'
+                            : col.key === 'pickoffs'
+                              ? 'Pickoffs credited to a fielder'
+                              : getStatAbbreviationMeaning(col.label);
                           return (
                         <th
                           key={col.key}

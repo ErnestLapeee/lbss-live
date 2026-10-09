@@ -1,9 +1,11 @@
 import {
   aggregateBattingCountSplits,
   aggregatePitchingStatsByPitcher,
+  computePlayerGameBattingLinesFromEvents,
   isAtBatEvent,
   isBetweenPitchEvent,
   isPlateAppearanceEvent,
+  pickoffCreditPlayerId,
   remapBasesForSubstitutionDetail,
 } from '../index.js';
 
@@ -179,3 +181,44 @@ const extendedInning = aggregatePitchingStatsByPitcher([
   },
 ]);
 assert(extendedInning.get(50)?.earnedRuns === 0, 'run scoring after third reconstructed out should be unearned');
+
+assert(isPlateAppearanceEvent('sacrifice_fly') && !isAtBatEvent('sacrifice_fly'), 'a clean sacrifice fly is a plate appearance and not an at-bat');
+assert(isPlateAppearanceEvent('sacrifice_bunt') && !isAtBatEvent('sacrifice_bunt'), 'a clean sacrifice bunt is a plate appearance and not an at-bat');
+assert(isPlateAppearanceEvent('sac_fly_error') && !isAtBatEvent('sac_fly_error'), 'a sacrifice fly with an error is not an at-bat');
+assert(isPlateAppearanceEvent('sac_bunt_error') && !isAtBatEvent('sac_bunt_error'), 'a sacrifice bunt with an error is not an at-bat');
+assert(isAtBatEvent('error') && isPlateAppearanceEvent('error'), 'reached on error stays an at-bat');
+
+const sacLines = computePlayerGameBattingLinesFromEvents({
+  events: [
+    { id: 1, eventNumber: 1, eventType: 'sac_fly_error', half: 'top', batterId: 11, rbi: 1, outsRecorded: 1 },
+    { id: 2, eventNumber: 2, eventType: 'sac_bunt_error', half: 'top', batterId: 11, rbi: 0, outsRecorded: 0 },
+    { id: 3, eventNumber: 3, eventType: 'sacrifice_fly', half: 'top', batterId: 11, rbi: 1, outsRecorded: 1 },
+    { id: 4, eventNumber: 4, eventType: 'error', half: 'top', batterId: 11, rbi: 0, outsRecorded: 0 },
+    { id: 5, eventNumber: 5, eventType: 'picked_off', half: 'top', batterId: 11, outsRecorded: 1 },
+  ],
+  homeTeamId: 1,
+  awayTeamId: 2,
+  playerTeamMap: new Map([[11, 2]]),
+});
+const sac = sacLines.get(11);
+assert(sac?.plateAppearances === 4, 'sacrifice-with-error plays stay plate appearances');
+assert(sac?.atBats === 1, 'only the reached-on-error play is an at-bat');
+assert(sac?.sacrificeFlies === 2, 'clean and error sacrifice flies both count as sacrifice flies');
+assert(sac?.sacrificeBunts === 1, 'a sacrifice bunt with an error still counts as a sacrifice bunt');
+assert(sac?.reachedOnError === 1, 'a sacrifice error is not reached on error');
+assert(sac?.pickedOff === 1, 'the runner still gets a batting pickoff');
+
+const positions = new Map<number, number>([[1, 101], [2, 102], [3, 103]]);
+assert(
+  pickoffCreditPlayerId({ fieldingSequence: '1-3', positionToPlayer: positions, assistFielderIds: [101], putoutFielderIds: [103] }) === 101,
+  'a 1-3 pickoff credits the pitcher',
+);
+assert(
+  pickoffCreditPlayerId({ fieldingSequence: '2-3', positionToPlayer: positions, assistFielderIds: [102], putoutFielderIds: [103] }) === 102,
+  'a 2-3 snap throw credits the catcher, not the pitcher',
+);
+assert(
+  pickoffCreditPlayerId({ assistFielderIds: [102], putoutFielderIds: [103] }) === 102,
+  'without a sequence the first assist gets the pickoff',
+);
+assert(pickoffCreditPlayerId({ putoutFielderIds: [] }) == null, 'a pickoff with no fielder does not invent a pitcher credit');

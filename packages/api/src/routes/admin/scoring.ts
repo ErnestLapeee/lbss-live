@@ -116,8 +116,9 @@ function validateScoringEventPayload(
     runnerThirdId?: number | null;
     errorFielderIds?: number[];
     errorsOnPlay?: number;
+    putoutFielderIds?: number[];
   },
-  options?: { expectedState?: GameState; strictState?: boolean },
+  options?: { expectedState?: GameState; strictState?: boolean; requirePickoffPutout?: boolean },
 ): { ok: true; normalizedErrorsOnPlay: number } | { ok: false; message: string } {
   const eventType = String(payload.eventType ?? '').trim();
   if (!eventType || !isKnownEventType(eventType)) return { ok: false, message: `Unknown event type: ${eventType || '(empty)'}` };
@@ -174,6 +175,13 @@ function validateScoringEventPayload(
     if (outsRecorded !== 3) return { ok: false, message: 'triple_play must record exactly three outs' };
     if (options?.strictState && options.expectedState && options.expectedState.outs !== 0) {
       return { ok: false, message: 'triple_play is only possible with no outs' };
+    }
+  }
+  if (options?.requirePickoffPutout && eventType === 'picked_off') {
+    const putouts = Array.isArray(payload.putoutFielderIds) ? payload.putoutFielderIds : [];
+    const hasPutout = putouts.some((id) => Number.isFinite(Number(id)) && Number(id) > 0);
+    if (!hasPutout) {
+      return { ok: false, message: 'A pickoff needs the fielder who recorded the putout' };
     }
   }
 
@@ -1520,6 +1528,7 @@ export async function adminScoringRoutes(app: FastifyInstance) {
           const eventValidation = validateScoringEventPayload(body, {
             expectedState: priorState,
             strictState: true,
+            requirePickoffPutout: true,
           });
           if (!eventValidation.ok) {
             throw new ScoringAbortReply(400, eventValidation.message);
@@ -1840,11 +1849,12 @@ export async function adminScoringRoutes(app: FastifyInstance) {
         runnerThirdId: 'runnerThirdId' in updates ? updates.runnerThirdId : existing.runnerThirdId,
         errorFielderIds: 'errorFielderIds' in updates ? updates.errorFielderIds : uniqueNumberArray(existing.errorFielderIds),
         errorsOnPlay: 'errorsOnPlay' in updates ? updates.errorsOnPlay : existing.errorsOnPlay,
+        putoutFielderIds: 'putoutFielderIds' in updates ? updates.putoutFielderIds : uniqueNumberArray(existing.putoutFielderIds),
       };
       const previousEvents = await db.select().from(gameEvents)
         .where(and(eq(gameEvents.gameId, gameId), eq(gameEvents.isDeleted, false), sql`${gameEvents.eventNumber} < ${existing.eventNumber}`))
         .orderBy(gameEvents.eventNumber);
-      const eventValidation = validateScoringEventPayload(candidate, { expectedState: computeGameState(previousEvents), strictState: true });
+      const eventValidation = validateScoringEventPayload(candidate, { expectedState: computeGameState(previousEvents), strictState: true, requirePickoffPutout: true });
       if (!eventValidation.ok) return reply.status(400).send({ message: eventValidation.message });
       if ('errorFielderIds' in updates || 'errorsOnPlay' in updates) {
         updates.errorsOnPlay = eventValidation.normalizedErrorsOnPlay;

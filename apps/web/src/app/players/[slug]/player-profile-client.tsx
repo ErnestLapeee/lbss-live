@@ -492,7 +492,7 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons, accola
               <table className="w-full min-w-[1680px] text-sm">
                 <thead>
                   <tr className="border-b border-border bg-surface-alt">
-                    {['Season', 'Team', 'G', 'PA', 'AB', 'R', 'H', '1B', '2B', '3B', 'HR', 'TB', 'RBI', 'BB', 'IBB', 'HBP', 'SO', 'K-L', 'K-S', 'SB', 'CS', 'PO', 'SF', 'SH', 'ROE', 'FC', 'GIDP', 'GITP', 'CI', 'AVG', 'OBP', 'SLG', 'OPS', 'BABIP'].map(col => (
+                    {['Season', 'Team', 'G', 'PA', 'AB', 'R', 'H', '1B', '2B', '3B', 'HR', 'TB', 'RBI', 'BB', 'IBB', 'HBP', 'SO', 'K-L', 'K-S', 'SB', 'CS', 'PK', 'SF', 'SH', 'ROE', 'FC', 'GIDP', 'GITP', 'CI', 'AVG', 'OBP', 'SLG', 'OPS', 'BABIP'].map(col => (
                       <th title={getStatAbbreviationMeaning(col) ?? undefined} key={col} className={`px-2 py-2.5 text-[10px] font-bold uppercase tracking-wider text-text-faint whitespace-nowrap ${col === 'Season' || col === 'Team' ? 'text-left' : 'text-right'}`}>
                         {col}
                       </th>
@@ -1108,7 +1108,7 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons, accola
                   <thead>
                     <tr className="border-b border-border bg-surface-alt">
                       {['Season', 'Team', 'Pos', 'G', 'INN', 'PO', 'A', 'E', 'DP', 'TP', 'PB', 'SB', 'CS', 'SBA', 'PK', 'FP%'].map(col => (
-                        <th title={getStatAbbreviationMeaning(col) ?? undefined} key={col} className={`px-2 py-2.5 text-[10px] font-bold uppercase tracking-wider text-text-faint whitespace-nowrap ${col === 'Season' || col === 'Team' ? 'text-left' : 'text-right'}`}>
+                        <th title={getStatAbbreviationMeaning(col, 'fielding') ?? undefined} key={col} className={`px-2 py-2.5 text-[10px] font-bold uppercase tracking-wider text-text-faint whitespace-nowrap ${col === 'Season' || col === 'Team' ? 'text-left' : 'text-right'}`}>
                           {col}
                         </th>
                       ))}
@@ -1248,7 +1248,7 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons, accola
                         <tr className="border-b border-border bg-surface-alt">
                           {[
                             'Date', 'Opp', 'PA', 'AB', 'R', 'H', '1B', '2B', '3B', 'HR', 'TB', 'RBI', 'BB', 'IBB', 'HBP', 'SO',
-                            'K-L', 'K-S', 'SB', 'CS', 'PO', 'SF', 'SH', 'ROE', 'FC', 'GIDP', 'CI', 'AVG', 'OBP', 'SLG', 'OPS', 'BABIP',
+                            'K-L', 'K-S', 'SB', 'CS', 'PK', 'SF', 'SH', 'ROE', 'FC', 'GIDP', 'CI', 'AVG', 'OBP', 'SLG', 'OPS', 'BABIP',
                           ].map(col => (
                             <th
                               key={col}

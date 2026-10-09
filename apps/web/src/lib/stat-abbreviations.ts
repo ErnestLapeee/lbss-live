@@ -80,7 +80,7 @@ const STAT_ABBREVIATIONS: Record<string, string> = {
   TP: 'Triple Plays',
   PB: 'Passed Balls',
   SBA: 'Stolen Base Attempts',
-  PK: 'Picked Off',
+  PK: 'Times picked off',
   'FP%': 'Fielding Percentage',
   FC: "Fielder's Choice",
   CI: "Catcher's Interference",
@@ -104,7 +104,8 @@ const STAT_ABBREVIATIONS: Record<string, string> = {
   Pitcher: 'Opposing pitcher',
 };
 
-export function getStatAbbreviationMeaning(label: string): string | null {
+export function getStatAbbreviationMeaning(label: string, surface?: 'batting' | 'fielding'): string | null {
+  if (label === 'PK' && surface === 'fielding') return 'Pickoffs credited to a fielder';
   return STAT_ABBREVIATIONS[label] ?? null;
 }
 

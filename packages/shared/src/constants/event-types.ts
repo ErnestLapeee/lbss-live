@@ -67,13 +67,16 @@ export const AT_BAT_EVENTS = [
   // them here for "isAtBat" correctness.
   ...OUT_EVENTS,
   'fielders_choice',
-  ...BATTER_REACH_ON_ERROR_EVENTS,
+  // Reached on error is an at-bat. A sacrifice with an error is still a sacrifice, not an at-bat.
+  'error',
 ] as const;
 
 export const PLATE_APPEARANCE_EVENTS = [
   ...AT_BAT_EVENTS,
   ...WALK_EVENTS,
   ...SACRIFICE_EVENTS,
+  'sac_bunt_error',
+  'sac_fly_error',
 ] as const;
 
 export const RUNNER_ONLY_EVENTS = [

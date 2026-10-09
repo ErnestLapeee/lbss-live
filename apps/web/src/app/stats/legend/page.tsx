@@ -82,7 +82,7 @@ const FIELDING = [
   { abbr: 'SB', name: 'Stolen Bases', desc: 'Stolen bases allowed (catcher)' },
   { abbr: 'CS', name: 'Caught Stealing', desc: 'Runners caught stealing (catcher)' },
   { abbr: 'SBA', name: 'Stolen Base Attempts', desc: 'SB + CS' },
-  { abbr: 'PK', name: 'Pickoffs', desc: 'Pickoffs' },
+  { abbr: 'PK', name: 'Pickoffs', desc: 'Pickoffs credited to a fielder' },
   { abbr: 'FP%', name: 'Fielding Percentage', desc: '(PO + A) / (PO + A + E)' },
 ];
 

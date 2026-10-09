@@ -17,6 +17,7 @@ import {
   aggregatePitchingStatsByPitcher,
   computePlayerGameBattingLinesFromEvents,
   inningsFromOuts,
+  pickoffCreditPlayerId,
 } from '@lbss/shared';
 import { firstRowFromExecute, rowsFromExecute } from '../lib/pg-result.js';
 
@@ -438,11 +439,6 @@ export async function finalizeGame(gameId: number, userId?: number, options?: Fi
     return { ...e, pitcherId: inferredPitcherId };
   });
 
-  const pitcherIdByEventId = new Map<number, number | null>();
-  for (const e of eventsForPitching) {
-    if (e.id != null) pitcherIdByEventId.set(e.id, e.pitcherId ?? null);
-  }
-
   const pitcherAgg = aggregatePitchingStatsByPitcher(
     eventsForPitching.map(e => ({
       eventNumber: e.eventNumber,
@@ -651,10 +647,14 @@ export async function finalizeGame(gameId: number, userId?: number, options?: Fi
       if (catcherId) fielderCCS.set(catcherId, (fielderCCS.get(catcherId) || 0) + 1);
     }
 
-    // Pickoffs (credit pitcher — same inference as pitching stats when event omits pitcherId)
+    // Fielding PK is the fielder who starts the throw (pitcher on 1-3, catcher on 2-3).
     if (t === 'picked_off') {
-      const pickPid =
-        (e.id != null ? pitcherIdByEventId.get(e.id) : undefined) ?? e.pitcherId ?? null;
+      const pickPid = pickoffCreditPlayerId({
+        assistFielderIds: ast,
+        putoutFielderIds: po,
+        fieldingSequence: e.fieldingSequence,
+        positionToPlayer: posMap,
+      });
       if (pickPid) fielderPickoffs.set(pickPid, (fielderPickoffs.get(pickPid) || 0) + 1);
     }
   }

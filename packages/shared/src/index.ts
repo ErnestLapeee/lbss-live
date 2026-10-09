@@ -5,4 +5,5 @@ export * from './types/index.js';
 export * from './validators/index.js';
 export * from './scoring/pitching-from-events.js';
 export * from './scoring/batting-from-events.js';
+export * from './scoring/pickoff-credit.js';
 export * from './stats/platoon-splits.js';

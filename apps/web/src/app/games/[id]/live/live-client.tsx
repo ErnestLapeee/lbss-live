@@ -1065,7 +1065,7 @@ export function LiveGameClient({
     const reason = String(fallback || eventType).toLowerCase();
     if (reason === 'stolen_base') return 'SB';
     if (reason === 'caught_stealing') return 'CS';
-    if (reason === 'picked_off') return 'PO';
+    if (reason === 'picked_off') return 'PK';
     if (reason === 'wild_pitch') return 'WP';
     if (reason === 'passed_ball') return 'PB';
     if (reason === 'balk') return 'BK';

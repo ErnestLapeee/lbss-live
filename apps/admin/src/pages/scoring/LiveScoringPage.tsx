@@ -1579,6 +1579,10 @@ function needsRunnerAdvanceErrorFieldingPrompt(
 
     const runnerId = gameState.bases[activeRunnerBase];
     if (!runnerId) return;
+    if (action === 'picked_off' && (!fielding || fielding.length === 0)) {
+      alert('Pick the fielder who made the putout.');
+      return;
+    }
     setSubmitting(true);
     try {
       const isOut = RUNNER_OUT_ACTIONS.has(action);
@@ -3461,8 +3465,9 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                         UNDO
                       </button>
                       <button onClick={() => markRunnerOut(runnerOutPendingType!, fld.length > 0 ? fld : undefined)}
-                        className="flex-[2] py-2.5 bg-red-700 hover:bg-red-600 text-white text-xs font-bold rounded-lg uppercase transition-colors">
-                        {fld.length > 0 ? `SUBMIT (${fld.join('-')})` : 'SUBMIT (no fielding)'}
+                        disabled={runnerOutPendingType === 'picked_off' && fld.length === 0}
+                        className="flex-[2] py-2.5 bg-red-700 hover:bg-red-600 text-white text-xs font-bold rounded-lg uppercase transition-colors disabled:opacity-30">
+                        {fld.length > 0 ? `SUBMIT (${fld.join('-')})` : runnerOutPendingType === 'picked_off' ? 'SELECT FIELDER' : 'SUBMIT (no fielding)'}
                       </button>
                     </div>
 
@@ -3769,8 +3774,9 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                           UNDO
                         </button>
                         <button onClick={() => handleRunnerActionSubmit(runnerActionOutType!, null, fld.length > 0 ? fld : undefined)}
-                          className="flex-[2] py-2.5 bg-red-700 hover:bg-red-600 text-white text-xs font-bold rounded-lg uppercase transition-colors">
-                          {fld.length > 0 ? `SUBMIT (${fld.join('-')})` : 'SUBMIT (no fielding)'}
+                          disabled={runnerActionOutType === 'picked_off' && fld.length === 0}
+                          className="flex-[2] py-2.5 bg-red-700 hover:bg-red-600 text-white text-xs font-bold rounded-lg uppercase transition-colors disabled:opacity-30">
+                          {fld.length > 0 ? `SUBMIT (${fld.join('-')})` : runnerActionOutType === 'picked_off' ? 'SELECT FIELDER' : 'SUBMIT (no fielding)'}
                         </button>
                       </div>
 
