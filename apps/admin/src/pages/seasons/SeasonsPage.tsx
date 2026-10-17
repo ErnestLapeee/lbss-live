@@ -274,7 +274,7 @@ export function SeasonsPage() {
                   <td className="px-4 py-3">{item.name}</td>
                   <td className="px-4 py-3 text-text-muted">
                     {item.leagueLevel === 'youth'
-                      ? 'Children'
+                      ? 'Jaunieši'
                       : item.seasonKind === 'playoff'
                         ? 'Playoff'
                         : 'Regular'}
@@ -348,11 +348,11 @@ export function SeasonsPage() {
                   className="w-full px-3 py-2 border border-border rounded-lg bg-surface-alt text-sm focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent"
                 >
                   <option value="adult">Adults</option>
-                  <option value="youth">Children</option>
+                  <option value="youth">Jaunieši</option>
                 </select>
                 {form.leagueLevel === 'youth' && (
                   <p className="mt-1.5 text-xs text-text-muted">
-                    Children's stats stay on this season and do not count toward all-time. Leave the adult season
+                    Jaunieši stats stay on this season and do not count toward all-time. Leave the adult season
                     active so the public site still opens on the adult league. The batting order is unlimited. Set how
                     many play in the field.
                   </p>

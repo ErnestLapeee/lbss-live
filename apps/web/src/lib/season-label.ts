@@ -13,7 +13,7 @@ export function seasonOptionLabel(season: SeasonLabelInput): string {
     (season.year != null ? String(season.year) : season.id != null ? `Season ${season.id}` : 'Season');
   const tags = [
     season.seasonKind === 'playoff' ? 'Playoffs' : '',
-    season.leagueLevel === 'youth' ? 'Children' : '',
+    season.leagueLevel === 'youth' ? 'Jaunieši' : '',
   ].filter(Boolean);
   return tags.length ? `${base} (${tags.join(', ')})` : base;
 }

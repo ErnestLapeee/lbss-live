@@ -78,7 +78,7 @@ export function validateLineupEntries(
     if (rules.youth) {
       const extraFielder = rules.maxFielders > 9 && position === EXTRA_FIELDER_POSITION;
       if (!((position >= 1 && position <= 9) || extraFielder)) {
-        return 'Children\'s fielders use positions 1–9, or EF when the field has more than nine';
+        return 'Jaunieši fielders use positions 1–9, or EF when the field has more than nine';
       }
     } else if (!Number.isInteger(position) || position < 1 || position > 10) {
       return 'Each filled slot needs a defensive position 1–10';
@@ -95,7 +95,7 @@ export function validateLineupEntries(
       : 'Each defensive position (P–DH) must be unique among active fielders';
   }
   if (rules.youth && positions.length > rules.maxFielders) {
-    return `This children's season fields ${rules.maxFielders}. Extra players bat only, with no position.`;
+    return `This Jaunieši season fields ${rules.maxFielders}. Extra players bat only, with no position.`;
   }
   return null;
 }

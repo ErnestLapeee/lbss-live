@@ -1143,7 +1143,7 @@ export function LiveScoringPage() {
       if (pos != null && youthGame) {
         const defenders = list.filter((p, i) => i !== index && p.position != null).length;
         if (defenders >= youthFielders) {
-          alert(`This children's game fields ${youthFielders}. Extra hitters bat only.`);
+          alert(`This Jaunieši game fields ${youthFielders}. Extra hitters bat only.`);
           return list;
         }
       }
@@ -2058,7 +2058,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
     const outsToAdd = youth ? 0 : Math.max(0, 3 - gameState.outs);
     const runnersOn = [gameState.bases.first, gameState.bases.second, gameState.bases.third].filter(Boolean).length;
     const prompt = youth
-      ? `End this half at the run limit? This closes the inning without charging outs that were not made and clears ${runnersOn} runner${runnersOn === 1 ? '' : 's'}.`
+      ? `End this half without recording an out? Runners leave the bases. The pitcher is not charged outs that were not made.`
       : `End this half inning? This will add ${outsToAdd} out${outsToAdd === 1 ? '' : 's'} and clear ${runnersOn} runner${runnersOn === 1 ? '' : 's'} from base.`;
     if ((youth || outsToAdd > 0 || runnersOn > 0) && !confirm(prompt)) {
       return;
@@ -2771,8 +2771,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
         const limit = game.maxRunsPerInning!;
         return (
           <div className="shrink-0 border-b border-white/10 bg-white/5 px-3 py-1 text-center text-[11px] font-semibold text-white/80">
-            Run limit {limit} this half ({halfRuns} scored)
-            {halfRuns >= limit ? '. End the half from the menu. That does not charge outs that were not made.' : ''}
+            Run limit {limit} this half ({halfRuns} scored). End the inning from the menu when you want to stop it. That records no out.
           </div>
         );
       })()}
@@ -4282,7 +4281,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                       setMiscGhostRunnerId(sug ?? fallback);
                       setStep('misc_runner_second');
                     } },
-                    { label: 'End Half Inning', fn: handleEndHalfInning },
+                    { label: youthGame ? 'End inning (no out)' : 'End Half Inning', fn: handleEndHalfInning },
                     { label: 'Adjust Score', fn: openAdjustScore },
                     { label: 'Adjust active lineups', fn: openLineupAdjust },
                     { label: 'End Game', fn: handleFinalize },
@@ -4728,7 +4727,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                             if (next != null && youthGame && row.position == null) {
                               const defenders = sideRows.filter((r) => r.id !== row.id && r.position != null).length;
                               if (defenders >= youthFielders) {
-                                alert(`This children's game fields ${youthFielders}. Extra hitters bat only.`);
+                                alert(`This Jaunieši game fields ${youthFielders}. Extra hitters bat only.`);
                                 return;
                               }
                             }

@@ -24,22 +24,141 @@ interface Season {
   leagueLevel?: string;
 }
 
-function YouthSeasonNote({ rows }: { rows: Array<{ seasonYear?: number; teamName?: string; games?: number }> }) {
-  if (rows.length === 0) return null;
+function JauniesiLabel({ cols }: { cols: number }) {
   return (
-    <div className="rounded-xl border border-border bg-surface-alt p-4">
-      <p className="text-sm font-semibold">Children's league</p>
-      <p className="mt-1 text-xs text-text-muted">
-        These seasons stay on their own page and are not included in all-time totals.
-      </p>
-      <ul className="mt-2 space-y-1 text-sm">
-        {rows.map((row, index) => (
-          <li key={`${row.seasonYear ?? 'y'}-${row.teamName ?? index}`}>
-            {row.seasonYear ?? '—'} · {row.teamName ?? '—'} · {row.games ?? 0} G
-          </li>
-        ))}
-      </ul>
-    </div>
+    <tr className="border-y border-border bg-surface-alt">
+      <td colSpan={cols} className="px-2 py-2 text-xs font-semibold">
+        Jaunieši
+        <span className="ml-2 font-normal text-text-muted">Same player. Not included in the all-time total.</span>
+      </td>
+    </tr>
+  );
+}
+
+function BattingSeasonRow({ row }: { row: any }) {
+  const s = row;
+  return (
+    <tr className="border-b border-border last:border-0 hover:bg-surface-alt/50 transition-colors">
+      <td className="px-2 py-2 font-semibold text-xs">
+        {s.seasonYear != null ? `${s.seasonYear}${s.seasonLabel ? ` ${s.seasonLabel}` : ''}` : 'All time'}
+      </td>
+      <td className="px-2 py-2 text-xs text-text-muted">
+        <div className="flex items-center gap-2 min-w-0 max-w-[200px]">
+          <TeamMark variant="tableSm" name={s.teamName ?? '—'} logoUrl={s.teamLogoUrl} />
+          <span className="truncate">{s.teamName ?? '—'}</span>
+        </div>
+      </td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.games)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.plateAppearances)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.atBats)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.runs)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.hits)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.singles)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.doubles)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.triples)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.homeRuns)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.totalBases)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.rbi)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.walks)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.intentionalWalks)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.hitByPitch)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.strikeouts)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.strikeoutsLooking)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.strikeoutsSwinging)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.stolenBases)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.caughtStealing)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.pickedOff)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.sacrificeFlies)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.sacrificeBunts)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.reachedOnError)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.fieldersChoice)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.groundedIntoDoublePlays)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.groundedIntoTriplePlay)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.catcherInterference)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs font-bold">{fmtRate(s.battingAvg)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{fmtRate(s.onBasePct)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{fmtRate(s.sluggingPct)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs font-bold">{fmtRate(s.ops)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{fmtRate(s.babip)}</td>
+    </tr>
+  );
+}
+
+function PitchingSeasonRow({ row }: { row: any }) {
+  const s = row;
+  return (
+    <tr className="border-b border-border last:border-0 hover:bg-surface-alt/50 transition-colors">
+      <td className="px-2 py-2 font-semibold text-xs">
+        {s.seasonYear != null ? `${s.seasonYear}${s.seasonLabel ? ` ${s.seasonLabel}` : ''}` : 'All time'}
+      </td>
+      <td className="px-2 py-2 text-xs text-text-muted">
+        <div className="flex items-center gap-2 min-w-0 max-w-[200px]">
+          <TeamMark variant="tableSm" name={s.teamName ?? '—'} logoUrl={s.teamLogoUrl} />
+          <span className="truncate">{s.teamName ?? '—'}</span>
+        </div>
+      </td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.games)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.gamesStarted)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.wins)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.losses)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.saves)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.holds)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.saveOpportunities)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.blownSaves)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{fmtIp(s.inningsPitched)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.battersFaced)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.hitsAllowed)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.runsAllowed)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.earnedRuns)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.walksAllowed)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.intentionalWalks)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.strikeouts)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.strikeoutsLooking)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.strikeoutsSwinging)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.homeRunsAllowed)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.hitBatters)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.wildPitches)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.balks)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{fmtRatio(s.firstPitchStrikes, s.firstPitchTotal)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.inheritedRunners)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.inheritedRunnersScored)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.groundOuts)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.flyOuts)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs font-bold">{fmtEra(s.era)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{fmtEra(s.whip)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{fmtEra(s.fip)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{s.k9 != null ? Number(s.k9).toFixed(1) : '—'}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{s.bb9 != null ? Number(s.bb9).toFixed(1) : '—'}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{s.h9 != null ? Number(s.h9).toFixed(1) : '—'}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{fmtRate(s.opponentAvg)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{fmtRate(s.babip)}</td>
+    </tr>
+  );
+}
+
+function FieldingSeasonRow({ row }: { row: any }) {
+  const s = row;
+  return (
+    <tr className="border-b border-border last:border-0 hover:bg-surface-alt/50 transition-colors">
+      <td className="px-2 py-2 font-semibold text-xs">
+        {s.seasonYear != null ? `${s.seasonYear}${s.seasonLabel ? ` ${s.seasonLabel}` : ''}` : 'All time'}
+      </td>
+      <td className="px-2 py-2 text-xs text-text-muted">{s.teamName ?? '—'}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{s.positionLabel ?? '—'}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.games)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{fmtIp(s.innings)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.putouts)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.assists)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.errors)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.doublePlays)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.triplePlays)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.passedBalls)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.catcherStolenBases)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.catcherCaughtStealing)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{(s.catcherStolenBases || 0) + (s.catcherCaughtStealing || 0)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.pickoffs)}</td>
+      <td className="px-2 py-2 text-right font-mono text-xs font-bold">{fmtRate(s.fieldingPct)}</td>
+    </tr>
   );
 }
 
@@ -529,49 +648,7 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons, accola
                 </thead>
                 <tbody>
                   {adultBatting.map((s: any, i: number) => (
-                    <tr key={i} className="border-b border-border last:border-0 hover:bg-surface-alt/50 transition-colors">
-                      <td className="px-2 py-2 font-semibold text-xs">
-                        {s.seasonYear != null ? `${s.seasonYear}${s.seasonLabel ? ` ${s.seasonLabel}` : ''}` : 'All time'}
-                      </td>
-                      <td className="px-2 py-2 text-xs text-text-muted">
-                        <div className="flex items-center gap-2 min-w-0 max-w-[200px]">
-                          <TeamMark variant="tableSm" name={s.teamName ?? '—'} logoUrl={s.teamLogoUrl} />
-                          <span className="truncate">{s.teamName ?? '—'}</span>
-                        </div>
-                      </td>
-                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.games)}</td>
-                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.plateAppearances)}</td>
-                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.atBats)}</td>
-                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.runs)}</td>
-                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.hits)}</td>
-                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.singles)}</td>
-                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.doubles)}</td>
-                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.triples)}</td>
-                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.homeRuns)}</td>
-                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.totalBases)}</td>
-                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.rbi)}</td>
-                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.walks)}</td>
-                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.intentionalWalks)}</td>
-                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.hitByPitch)}</td>
-                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.strikeouts)}</td>
-                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.strikeoutsLooking)}</td>
-                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.strikeoutsSwinging)}</td>
-                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.stolenBases)}</td>
-                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.caughtStealing)}</td>
-                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.pickedOff)}</td>
-                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.sacrificeFlies)}</td>
-                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.sacrificeBunts)}</td>
-                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.reachedOnError)}</td>
-                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.fieldersChoice)}</td>
-                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.groundedIntoDoublePlays)}</td>
-                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.groundedIntoTriplePlay)}</td>
-                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.catcherInterference)}</td>
-                      <td className="px-2 py-2 text-right font-mono text-xs font-bold">{fmtRate(s.battingAvg)}</td>
-                      <td className="px-2 py-2 text-right font-mono text-xs">{fmtRate(s.onBasePct)}</td>
-                      <td className="px-2 py-2 text-right font-mono text-xs">{fmtRate(s.sluggingPct)}</td>
-                      <td className="px-2 py-2 text-right font-mono text-xs font-bold">{fmtRate(s.ops)}</td>
-                      <td className="px-2 py-2 text-right font-mono text-xs">{fmtRate(s.babip)}</td>
-                    </tr>
+                    <BattingSeasonRow key={`adult-batting-${i}`} row={s} />
                   ))}
                   {sumBattingRows(adultBatting) && (() => {
                     const total = sumBattingRows(adultBatting)!;
@@ -613,11 +690,14 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons, accola
                       </tr>
                     );
                   })()}
+                  {youthBatting.length > 0 && <JauniesiLabel cols={34} />}
+                  {youthBatting.map((s: any, i: number) => (
+                    <BattingSeasonRow key={`youth-batting-${i}`} row={s} />
+                  ))}
                 </tbody>
               </table>
             </div>
           )}
-          <YouthSeasonNote rows={youthBatting} />
 
           {/* Batting vs opposing pitcher (event-derived, finalized games) */}
           {battingByPitcher != null && battingByPitcher.length > 0 && (
@@ -860,52 +940,7 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons, accola
                 </thead>
                 <tbody>
                   {adultPitching.map((s: any, i: number) => (
-                    <tr key={i} className="border-b border-border last:border-0 hover:bg-surface-alt/50 transition-colors">
-                      <td className="px-2 py-2 font-semibold text-xs">
-                        {s.seasonYear != null ? `${s.seasonYear}${s.seasonLabel ? ` ${s.seasonLabel}` : ''}` : 'All time'}
-                      </td>
-                      <td className="px-2 py-2 text-xs text-text-muted">
-                        <div className="flex items-center gap-2 min-w-0 max-w-[200px]">
-                          <TeamMark variant="tableSm" name={s.teamName ?? '—'} logoUrl={s.teamLogoUrl} />
-                          <span className="truncate">{s.teamName ?? '—'}</span>
-                        </div>
-                      </td>
-                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.games)}</td>
-                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.gamesStarted)}</td>
-                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.wins)}</td>
-                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.losses)}</td>
-                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.saves)}</td>
-                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.holds)}</td>
-                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.saveOpportunities)}</td>
-                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.blownSaves)}</td>
-                      <td className="px-2 py-2 text-right font-mono text-xs">{fmtIp(s.inningsPitched)}</td>
-                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.battersFaced)}</td>
-                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.hitsAllowed)}</td>
-                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.runsAllowed)}</td>
-                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.earnedRuns)}</td>
-                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.walksAllowed)}</td>
-                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.intentionalWalks)}</td>
-                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.strikeouts)}</td>
-                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.strikeoutsLooking)}</td>
-                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.strikeoutsSwinging)}</td>
-                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.homeRunsAllowed)}</td>
-                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.hitBatters)}</td>
-                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.wildPitches)}</td>
-                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.balks)}</td>
-                      <td className="px-2 py-2 text-right font-mono text-xs">{fmtRatio(s.firstPitchStrikes, s.firstPitchTotal)}</td>
-                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.inheritedRunners)}</td>
-                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.inheritedRunnersScored)}</td>
-                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.groundOuts)}</td>
-                      <td className="px-2 py-2 text-right font-mono text-xs">{n(s.flyOuts)}</td>
-                      <td className="px-2 py-2 text-right font-mono text-xs font-bold">{fmtEra(s.era)}</td>
-                      <td className="px-2 py-2 text-right font-mono text-xs">{fmtEra(s.whip)}</td>
-                      <td className="px-2 py-2 text-right font-mono text-xs">{fmtEra(s.fip)}</td>
-                      <td className="px-2 py-2 text-right font-mono text-xs">{s.k9 != null ? Number(s.k9).toFixed(1) : '—'}</td>
-                      <td className="px-2 py-2 text-right font-mono text-xs">{s.bb9 != null ? Number(s.bb9).toFixed(1) : '—'}</td>
-                      <td className="px-2 py-2 text-right font-mono text-xs">{s.h9 != null ? Number(s.h9).toFixed(1) : '—'}</td>
-                      <td className="px-2 py-2 text-right font-mono text-xs">{fmtRate(s.opponentAvg)}</td>
-                      <td className="px-2 py-2 text-right font-mono text-xs">{fmtRate(s.babip)}</td>
-                    </tr>
+                    <PitchingSeasonRow key={`adult-pitching-${i}`} row={s} />
                   ))}
                   {sumPitchingRows(adultPitching) && (() => {
                     const total = sumPitchingRows(adultPitching)!;
@@ -956,12 +991,14 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons, accola
                       </tr>
                     );
                   })()}
+                  {youthPitching.length > 0 && <JauniesiLabel cols={40} />}
+                  {youthPitching.map((s: any, i: number) => (
+                    <PitchingSeasonRow key={`youth-pitching-${i}`} row={s} />
+                  ))}
                 </tbody>
               </table>
             </div>
           )}
-          <YouthSeasonNote rows={youthPitching} />
-
           {/* Opponent slash by batter hand (same PA rules as batting line, from the batter&apos;s perspective) */}
           {platoonSplits && (
             <div className="mt-8">
@@ -1146,26 +1183,7 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons, accola
                   </thead>
                   <tbody>
                     {adultFielding.map((s: any, i: number) => (
-                      <tr key={i} className="border-b border-border last:border-0 hover:bg-surface-alt/50 transition-colors">
-                        <td className="px-2 py-2 font-semibold text-xs">
-                          {s.seasonYear != null ? `${s.seasonYear}${s.seasonLabel ? ` ${s.seasonLabel}` : ''}` : 'All time'}
-                        </td>
-                        <td className="px-2 py-2 text-xs text-text-muted">{s.teamName ?? '—'}</td>
-                        <td className="px-2 py-2 text-right font-mono text-xs">{s.positionLabel ?? '—'}</td>
-                        <td className="px-2 py-2 text-right font-mono text-xs">{n(s.games)}</td>
-                        <td className="px-2 py-2 text-right font-mono text-xs">{fmtIp(s.innings)}</td>
-                        <td className="px-2 py-2 text-right font-mono text-xs">{n(s.putouts)}</td>
-                        <td className="px-2 py-2 text-right font-mono text-xs">{n(s.assists)}</td>
-                        <td className="px-2 py-2 text-right font-mono text-xs">{n(s.errors)}</td>
-                        <td className="px-2 py-2 text-right font-mono text-xs">{n(s.doublePlays)}</td>
-                        <td className="px-2 py-2 text-right font-mono text-xs">{n(s.triplePlays)}</td>
-                        <td className="px-2 py-2 text-right font-mono text-xs">{n(s.passedBalls)}</td>
-                        <td className="px-2 py-2 text-right font-mono text-xs">{n(s.catcherStolenBases)}</td>
-                        <td className="px-2 py-2 text-right font-mono text-xs">{n(s.catcherCaughtStealing)}</td>
-                        <td className="px-2 py-2 text-right font-mono text-xs">{(s.catcherStolenBases || 0) + (s.catcherCaughtStealing || 0)}</td>
-                        <td className="px-2 py-2 text-right font-mono text-xs">{n(s.pickoffs)}</td>
-                        <td className="px-2 py-2 text-right font-mono text-xs font-bold">{fmtRate(s.fieldingPct)}</td>
-                      </tr>
+                      <FieldingSeasonRow key={`adult-fielding-${i}`} row={s} />
                     ))}
                     {sumFieldingRows(adultFielding) && (() => {
                       const total = sumFieldingRows(adultFielding)!;
@@ -1188,11 +1206,12 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons, accola
                         </tr>
                       );
                     })()}
+                    {youthFielding.length > 0 && <JauniesiLabel cols={16} />}
+                    {youthFielding.map((s: any, i: number) => (
+                      <FieldingSeasonRow key={`youth-fielding-${i}`} row={s} />
+                    ))}
                   </tbody>
                 </table>
-              </div>
-              <div className="mt-4">
-                <YouthSeasonNote rows={youthFielding} />
               </div>
 
               {/* Fielding by Position */}
