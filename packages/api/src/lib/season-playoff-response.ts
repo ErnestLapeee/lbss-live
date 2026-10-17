@@ -19,3 +19,13 @@ export function seasonWithPlayoffDefaults(
       : {},
   };
 }
+
+/** Adult seasons count toward all-time. Children's seasons stay on their own season. */
+export function seasonLeagueFields(row: Record<string, unknown>): { leagueLevel: 'adult' | 'youth'; youthRules: Record<string, unknown> } {
+  const leagueLevel = row.leagueLevel === 'youth' ? 'youth' : 'adult';
+  const youthRules =
+    leagueLevel === 'youth' && row.youthRules != null && typeof row.youthRules === 'object'
+      ? (row.youthRules as Record<string, unknown>)
+      : {};
+  return { leagueLevel, youthRules };
+}

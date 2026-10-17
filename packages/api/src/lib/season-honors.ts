@@ -13,6 +13,7 @@ import {
 } from '../db/schema/index.js';
 import { annotateFinish, placesForRoster, playoffPodium, type FinishPlace, type PlayoffSeriesResult } from './finish-places.js';
 import { mergeManualAccolades, normalizeHonor, type PlayerAccolade } from './honor-merge.js';
+import { getSeasonsColumnFlagsCached } from './seasons-playoff-columns-cache.js';
 
 export type { PlayerAccolade } from './honor-merge.js';
 
@@ -60,6 +61,7 @@ export async function leagueTablesComplete(leagueIds: number[]): Promise<Map<num
 }
 
 export async function accoladesForPlayer(playerId: number): Promise<PlayerAccolade[]> {
+  const flags = await getSeasonsColumnFlagsCached();
   const roster = await db
     .select({
       seasonId: playerSeasons.seasonId,
@@ -69,14 +71,19 @@ export async function accoladesForPlayer(playerId: number): Promise<PlayerAccola
       seasonKind: seasons.seasonKind,
       parentSeasonId: seasons.parentSeasonId,
       teamName: teams.name,
+      ...(flags.hasLeagueLevel ? { leagueLevel: seasons.leagueLevel } : {}),
     })
     .from(playerSeasons)
     .innerJoin(seasons, eq(playerSeasons.seasonId, seasons.id))
     .innerJoin(teams, eq(playerSeasons.teamId, teams.id))
     .where(eq(playerSeasons.playerId, playerId));
 
-  const regular = roster.filter((row) => row.seasonKind !== 'playoff');
-  const playoffMembership = roster.filter((row) => row.seasonKind === 'playoff' && row.parentSeasonId != null);
+  const regular = roster.filter(
+    (row) => row.seasonKind !== 'playoff' && row.leagueLevel !== 'youth',
+  );
+  const playoffMembership = roster.filter(
+    (row) => row.seasonKind === 'playoff' && row.parentSeasonId != null && row.leagueLevel !== 'youth',
+  );
   const seasonIds = [
     ...new Set([
       ...regular.map((row) => row.seasonId),

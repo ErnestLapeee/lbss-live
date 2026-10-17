@@ -72,6 +72,10 @@ async function ensurePlayoffsTables(): Promise<void> {
   await db.execute(sql`ALTER TABLE seasons ADD COLUMN IF NOT EXISTS has_playoffs boolean DEFAULT false`);
   await db.execute(sql`ALTER TABLE seasons ADD COLUMN IF NOT EXISTS regular_season_games_per_team integer`);
   await db.execute(sql`ALTER TABLE seasons ADD COLUMN IF NOT EXISTS playoff_settings jsonb DEFAULT '{}'::jsonb`);
+  await db.execute(
+    sql`ALTER TABLE seasons ADD COLUMN IF NOT EXISTS league_level varchar(20) NOT NULL DEFAULT 'adult'`,
+  );
+  await db.execute(sql`ALTER TABLE seasons ADD COLUMN IF NOT EXISTS youth_rules jsonb DEFAULT '{}'::jsonb`);
 
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS playoffs (

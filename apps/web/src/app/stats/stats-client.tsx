@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { getStatAbbreviationMeaning } from '@/lib/stat-abbreviations';
+import { seasonOptionLabel } from '@/lib/season-label';
 import { playerProfilePath } from '@/lib/player-profile-nav';
 import { HorizontalScrollArea } from '@/components/stats/horizontal-scroll-area';
 import { TeamMark } from '@/components/ui/team-mark';
@@ -17,6 +18,7 @@ interface Season {
   year: number;
   isActive: boolean;
   seasonKind?: string;
+  leagueLevel?: string;
   parentSeasonId?: number | null;
 }
 
@@ -659,7 +661,7 @@ export function StatsClient({
               <option value="all">All time</option>
               {seasons.map(s => (
                 <option key={s.id} value={s.id}>
-                  {s.name}{s.seasonKind === 'playoff' ? ' (Playoffs)' : ''}
+                  {seasonOptionLabel(s)}
                 </option>
               ))}
             </select>

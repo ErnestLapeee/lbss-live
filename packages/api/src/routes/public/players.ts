@@ -22,6 +22,13 @@ import { rowsFromExecute } from '../../lib/pg-result.js';
 import { formatOpponentBattingAvgPitch } from '../../lib/opponent-batting-avg.js';
 import { accoladesForPlayer } from '../../lib/season-honors.js';
 
+/** A chosen season includes children's games. All-time leaves them out. */
+function adultUnlessSeason(seasonFilter: number | null) {
+  return seasonFilter != null
+    ? sql`AND l.season_id = ${seasonFilter}`
+    : sql`AND EXISTS (SELECT 1 FROM seasons s WHERE s.id = l.season_id AND COALESCE(s.league_level, 'adult') <> 'youth')`;
+}
+
 /** Same abbreviations as team roster / modal (1–10). */
 const FIELDING_POS_LABELS: Record<number, string> = {
   1: 'P', 2: 'C', 3: '1B', 4: '2B', 5: '3B', 6: 'SS', 7: 'LF', 8: 'CF', 9: 'RF', 10: 'DH',
@@ -279,6 +286,7 @@ export async function playersRoutes(app: FastifyInstance) {
           teamName: teams.name,
           teamLogoUrl: teams.logoUrl,
           seasonYear: seasons.year,
+          leagueLevel: seasons.leagueLevel,
         })
         .from(playerSeasonBatting)
         .innerJoin(teams, eq(playerSeasonBatting.teamId, teams.id))
@@ -340,6 +348,7 @@ export async function playersRoutes(app: FastifyInstance) {
           teamName: teams.name,
           teamLogoUrl: teams.logoUrl,
           seasonYear: seasons.year,
+          leagueLevel: seasons.leagueLevel,
         })
           .from(playerGameBatting)
           .innerJoin(games, eq(playerGameBatting.gameId, games.id))
@@ -427,6 +436,7 @@ export async function playersRoutes(app: FastifyInstance) {
           teamName: teams.name,
           teamLogoUrl: teams.logoUrl,
           seasonYear: seasons.year,
+          leagueLevel: seasons.leagueLevel,
         })
         .from(playerSeasonPitching)
         .innerJoin(teams, eq(playerSeasonPitching.teamId, teams.id))
@@ -487,6 +497,7 @@ export async function playersRoutes(app: FastifyInstance) {
         firstPitchTotal: sql<number>`COALESCE(SUM(${playerGamePitching.firstPitchTotal}), 0)`.as('first_pitch_total'),
         teamName: teams.name,
         seasonYear: seasons.year,
+          leagueLevel: seasons.leagueLevel,
       })
         .from(playerGamePitching)
         .innerJoin(games, eq(playerGamePitching.gameId, games.id))
@@ -553,6 +564,7 @@ export async function playersRoutes(app: FastifyInstance) {
           fieldingPct: playerSeasonFielding.fieldingPct,
           teamName: teams.name,
           seasonYear: seasons.year,
+          leagueLevel: seasons.leagueLevel,
         })
         .from(playerSeasonFielding)
         .innerJoin(teams, eq(playerSeasonFielding.teamId, teams.id))
@@ -655,6 +667,7 @@ export async function playersRoutes(app: FastifyInstance) {
         fieldingPct: sql<string | null>`CASE WHEN (COALESCE(SUM(${playerGameFielding.putouts}),0) + COALESCE(SUM(${playerGameFielding.assists}),0) + COALESCE(SUM(${playerGameFielding.errors}),0)) > 0 THEN ROUND((COALESCE(SUM(${playerGameFielding.putouts}),0) + COALESCE(SUM(${playerGameFielding.assists}),0))::numeric / (COALESCE(SUM(${playerGameFielding.putouts}),0) + COALESCE(SUM(${playerGameFielding.assists}),0) + COALESCE(SUM(${playerGameFielding.errors}),0)), 3)::text ELSE NULL END`.as('fielding_pct'),
         teamName: teams.name,
         seasonYear: seasons.year,
+          leagueLevel: seasons.leagueLevel,
       })
         .from(playerGameFielding)
         .innerJoin(games, eq(playerGameFielding.gameId, games.id))
@@ -727,7 +740,14 @@ export async function playersRoutes(app: FastifyInstance) {
         : await db
           .select(posSelect)
           .from(playerGameFielding)
-          .where(and(eq(playerGameFielding.playerId, player.id), isNotNull(playerGameFielding.position)))
+          .innerJoin(games, eq(playerGameFielding.gameId, games.id))
+          .innerJoin(leagues, eq(games.leagueId, leagues.id))
+          .innerJoin(seasons, eq(leagues.seasonId, seasons.id))
+          .where(and(
+            eq(playerGameFielding.playerId, player.id),
+            isNotNull(playerGameFielding.position),
+            sql`COALESCE(${seasons.leagueLevel}, 'adult') <> 'youth'`,
+          ))
           .groupBy(playerGameFielding.position)
           .orderBy(sql`count(*) desc`);
 
@@ -773,7 +793,9 @@ export async function playersRoutes(app: FastifyInstance) {
         JOIN games g ON pgb.game_id = g.id
         JOIN teams ht ON g.home_team_id = ht.id
         JOIN teams at ON g.away_team_id = at.id
-        ${seasonFilter ? sql`JOIN leagues l ON g.league_id = l.id WHERE pgb.player_id = ${player.id} AND l.season_id = ${seasonFilter}` : sql`WHERE pgb.player_id = ${player.id}`}
+        JOIN leagues l ON g.league_id = l.id
+        WHERE pgb.player_id = ${player.id}
+        ${adultUnlessSeason(seasonFilter)}
         AND g.is_finalized = true
         ORDER BY g.scheduled_at DESC
       `);
@@ -787,7 +809,9 @@ export async function playersRoutes(app: FastifyInstance) {
         JOIN games g ON pgp.game_id = g.id
         JOIN teams ht ON g.home_team_id = ht.id
         JOIN teams at ON g.away_team_id = at.id
-        ${seasonFilter ? sql`JOIN leagues l ON g.league_id = l.id WHERE pgp.player_id = ${player.id} AND l.season_id = ${seasonFilter}` : sql`WHERE pgp.player_id = ${player.id}`}
+        JOIN leagues l ON g.league_id = l.id
+        WHERE pgp.player_id = ${player.id}
+        ${adultUnlessSeason(seasonFilter)}
         AND g.is_finalized = true
         ORDER BY g.scheduled_at DESC
       `);
@@ -834,7 +858,7 @@ export async function playersRoutes(app: FastifyInstance) {
         WHERE ge.batter_id = ${player.id}
           AND ge.is_deleted = false
           AND g.is_finalized = true
-          ${seasonFilter != null ? sql`AND l.season_id = ${seasonFilter}` : sql``}
+          ${adultUnlessSeason(seasonFilter)}
       `);
 
       const hasBatterSideCol = await gameEventsHasBatterSideColumn();
@@ -857,7 +881,7 @@ export async function playersRoutes(app: FastifyInstance) {
         WHERE ge.pitcher_id = ${player.id}
           AND ge.is_deleted = false
           AND g.is_finalized = true
-          ${seasonFilter != null ? sql`AND l.season_id = ${seasonFilter}` : sql``}
+          ${adultUnlessSeason(seasonFilter)}
       `
           : sql`
         SELECT ge.game_id, ge.event_type, ge.event_detail, ge.rbi, ge.outs_recorded, ge.hit_type,
@@ -870,7 +894,7 @@ export async function playersRoutes(app: FastifyInstance) {
         WHERE ge.pitcher_id = ${player.id}
           AND ge.is_deleted = false
           AND g.is_finalized = true
-          ${seasonFilter != null ? sql`AND l.season_id = ${seasonFilter}` : sql``}
+          ${adultUnlessSeason(seasonFilter)}
       `,
       );
 
@@ -969,7 +993,7 @@ export async function playersRoutes(app: FastifyInstance) {
           WHERE ge.batter_id = ${player.id}
             AND ge.is_deleted = false
             AND g.is_finalized = true
-            ${seasonFilter != null ? sql`AND l.season_id = ${seasonFilter}` : sql``}
+            ${adultUnlessSeason(seasonFilter)}
         `);
 
         const rows = rowsFromExecute<Record<string, unknown>>(evRows);
@@ -1090,7 +1114,7 @@ export async function playersRoutes(app: FastifyInstance) {
           ge.event_type, ge.outs_recorded
         FROM game_events ge
         JOIN games g ON ge.game_id = g.id
-        ${seasonFilter ? sql`JOIN leagues l ON g.league_id = l.id` : sql``}
+        JOIN leagues l ON g.league_id = l.id
         WHERE ge.batter_id = ${player.id}
           AND ge.is_deleted = false
           AND ge.hit_location_x IS NOT NULL
@@ -1101,7 +1125,7 @@ export async function playersRoutes(app: FastifyInstance) {
             'sacrifice_fly', 'sacrifice_bunt', 'infield_fly', 'fielders_choice',
             'error', 'sac_bunt_error', 'sac_fly_error'
           )
-          ${seasonFilter ? sql`AND l.season_id = ${seasonFilter}` : sql``}
+          ${adultUnlessSeason(seasonFilter)}
         ORDER BY ge.created_at DESC
       `);
 

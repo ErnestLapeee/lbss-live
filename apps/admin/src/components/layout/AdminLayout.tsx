@@ -140,6 +140,7 @@ export function AdminLayout() {
                       seasons.map((s: AdminSeasonRow) => (
                         <option key={s.id} value={s.id}>
                           {s.year} – {s.name}
+                          {s.leagueLevel === 'youth' ? ' (Children)' : ''}
                           {s.seasonKind === 'playoff' ? ' (Playoffs)' : ''}
                           {s.isActive ? ' (active)' : ''}
                         </option>

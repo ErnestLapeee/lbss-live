@@ -3,6 +3,7 @@ import { Suspense } from 'react';
 import { PageHeader } from '@/components/ui/page-header';
 import { apiFetch, API_REVALIDATE_SEASONS, API_REVALIDATE_STANDINGS } from '@/lib/api';
 import { StatsClient } from './stats-client';
+import { defaultPublicSeason } from '@/lib/season-label';
 
 export const metadata: Metadata = {
   title: 'Statistics - LBSS',
@@ -31,7 +32,7 @@ export default async function StatsPage({ searchParams }: Props) {
     seasons = Array.isArray(data) ? data : [];
   } catch {}
 
-  const activeSeason = seasons.find((s: any) => s.isActive) || seasons[0];
+  const activeSeason = defaultPublicSeason(seasons);
   let seasonId: number | null;
   if (seasonFromUrl === 'all' || seasonFromUrl === '') seasonId = null;
   else if (seasonFromUrl) {

@@ -17,6 +17,7 @@ import {
   aggregatePitchingStatsByPitcher,
   computePlayerGameBattingLinesFromEvents,
   inningsFromOuts,
+  isNumberedFielder,
   pickoffCreditPlayerId,
 } from '@lbss/shared';
 import { firstRowFromExecute, rowsFromExecute } from '../lib/pg-result.js';
@@ -584,7 +585,7 @@ export async function finalizeGame(gameId: number, userId?: number, options?: Fi
       const numericPositions = segments
         .filter(seg => /^\d+$/.test(seg))
         .map(seg => Number(seg))
-        .filter(n => !isNaN(n) && n >= 1 && n <= 9);
+        .filter(n => !isNaN(n) && isNumberedFielder(n));
       if (!hasErrorSegment && numericPositions.length > 0 && po.length === 0 && ast.length === 0) {
         const lastPos = numericPositions[numericPositions.length - 1];
         const putoutPid = posMap.get(lastPos);

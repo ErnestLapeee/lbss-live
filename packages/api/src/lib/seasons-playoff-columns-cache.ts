@@ -9,6 +9,8 @@ export type SeasonsColumnFlags = {
   hasPlayoffOptionals: boolean;
   /** season_kind, parent_season_id (migration 0011) */
   hasSeasonKindOptionals: boolean;
+  /** league_level, youth_rules */
+  hasLeagueLevel: boolean;
 };
 
 let cachedAt = 0;
@@ -27,6 +29,7 @@ export async function getSeasonsColumnFlagsCached(): Promise<SeasonsColumnFlags>
   let flags: SeasonsColumnFlags = {
     hasPlayoffOptionals: false,
     hasSeasonKindOptionals: false,
+    hasLeagueLevel: false,
   };
   try {
     const rows = await db.execute(sql`
@@ -36,7 +39,8 @@ export async function getSeasonsColumnFlagsCached(): Promise<SeasonsColumnFlags>
         and table_name = 'seasons'
         and column_name in (
           'has_playoffs', 'regular_season_games_per_team', 'playoff_settings',
-          'season_kind', 'parent_season_id'
+          'season_kind', 'parent_season_id',
+          'league_level', 'youth_rules'
         )
     `);
     const list = rowsFromExecute<{ column_name?: string }>(rows);
@@ -49,9 +53,10 @@ export async function getSeasonsColumnFlagsCached(): Promise<SeasonsColumnFlags>
         names.has('regular_season_games_per_team') &&
         names.has('playoff_settings'),
       hasSeasonKindOptionals: names.has('season_kind') && names.has('parent_season_id'),
+      hasLeagueLevel: names.has('league_level') && names.has('youth_rules'),
     };
   } catch {
-    flags = { hasPlayoffOptionals: false, hasSeasonKindOptionals: false };
+    flags = { hasPlayoffOptionals: false, hasSeasonKindOptionals: false, hasLeagueLevel: false };
   }
   cachedFlags = flags;
   cachedAt = now;

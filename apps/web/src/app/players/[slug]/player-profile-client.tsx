@@ -13,12 +13,34 @@ import { TeamMark } from '@/components/ui/team-mark';
 import { getStatAbbreviationMeaning } from '@/lib/stat-abbreviations';
 import { playerProfilePath } from '@/lib/player-profile-nav';
 import { POS_LABELS } from '@/lib/derive-primary-position';
+import { seasonOptionLabel } from '@/lib/season-label';
 
 
 interface Season {
   id: number;
   name: string;
   year: number;
+  seasonKind?: string;
+  leagueLevel?: string;
+}
+
+function YouthSeasonNote({ rows }: { rows: Array<{ seasonYear?: number; teamName?: string; games?: number }> }) {
+  if (rows.length === 0) return null;
+  return (
+    <div className="rounded-xl border border-border bg-surface-alt p-4">
+      <p className="text-sm font-semibold">Children's league</p>
+      <p className="mt-1 text-xs text-text-muted">
+        These seasons stay on their own page and are not included in all-time totals.
+      </p>
+      <ul className="mt-2 space-y-1 text-sm">
+        {rows.map((row, index) => (
+          <li key={`${row.seasonYear ?? 'y'}-${row.teamName ?? index}`}>
+            {row.seasonYear ?? '—'} · {row.teamName ?? '—'} · {row.games ?? 0} G
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
 }
 
 interface PlayerAccolade {
@@ -342,6 +364,12 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons, accola
   const [battingStats, setBattingStats] = useState<any[]>(initialBattingStats);
   const [pitchingStats, setPitchingStats] = useState<any[] | null>(null);
   const [fieldingStats, setFieldingStats] = useState<any[] | null>(null);
+  const adultBatting = battingStats.filter((row) => row.leagueLevel !== 'youth');
+  const youthBatting = battingStats.filter((row) => row.leagueLevel === 'youth');
+  const adultPitching = (pitchingStats ?? []).filter((row) => row.leagueLevel !== 'youth');
+  const youthPitching = (pitchingStats ?? []).filter((row) => row.leagueLevel === 'youth');
+  const adultFielding = (fieldingStats ?? []).filter((row) => row.leagueLevel !== 'youth');
+  const youthFielding = (fieldingStats ?? []).filter((row) => row.leagueLevel === 'youth');
   const [fieldingByPos, setFieldingByPos] = useState<any[] | null>(null);
   const [gameLog, setGameLog] = useState<{ batting: any[]; pitching: any[] } | null>(null);
   const [sprayData, setSprayData] = useState<any[] | null>(null);
@@ -473,7 +501,7 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons, accola
             <option value="all">All time</option>
             {seasons.map(s => (
               <option key={s.id} value={s.id}>
-                {s.name}
+                {seasonOptionLabel(s)}
               </option>
             ))}
           </select>
@@ -483,7 +511,7 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons, accola
       {/* BATTING TAB */}
       {tab === 'batting' && (
         <div className="space-y-8">
-          {battingStats.length === 0 ? (
+          {adultBatting.length === 0 && youthBatting.length === 0 ? (
             <div className="rounded-xl border border-dashed border-border bg-surface-alt p-8 text-center">
               <p className="text-sm text-text-muted">No batting statistics recorded yet.</p>
             </div>
@@ -500,7 +528,7 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons, accola
                   </tr>
                 </thead>
                 <tbody>
-                  {battingStats.map((s: any, i: number) => (
+                  {adultBatting.map((s: any, i: number) => (
                     <tr key={i} className="border-b border-border last:border-0 hover:bg-surface-alt/50 transition-colors">
                       <td className="px-2 py-2 font-semibold text-xs">
                         {s.seasonYear != null ? `${s.seasonYear}${s.seasonLabel ? ` ${s.seasonLabel}` : ''}` : 'All time'}
@@ -545,8 +573,8 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons, accola
                       <td className="px-2 py-2 text-right font-mono text-xs">{fmtRate(s.babip)}</td>
                     </tr>
                   ))}
-                  {sumBattingRows(battingStats) && (() => {
-                    const total = sumBattingRows(battingStats)!;
+                  {sumBattingRows(adultBatting) && (() => {
+                    const total = sumBattingRows(adultBatting)!;
                     return (
                       <tr className="bg-surface-alt border-t border-border/80">
                         <td className="px-2 py-2 font-bold text-xs" colSpan={2}>TOTAL</td>
@@ -589,6 +617,7 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons, accola
               </table>
             </div>
           )}
+          <YouthSeasonNote rows={youthBatting} />
 
           {/* Batting vs opposing pitcher (event-derived, finalized games) */}
           {battingByPitcher != null && battingByPitcher.length > 0 && (
@@ -813,7 +842,7 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons, accola
         <div>
           {pitchingStats === null ? (
             <p className="text-sm text-text-muted py-4">Loading...</p>
-          ) : pitchingStats.length === 0 ? (
+          ) : adultPitching.length === 0 && youthPitching.length === 0 ? (
             <div className="rounded-xl border border-dashed border-border bg-surface-alt p-8 text-center">
               <p className="text-sm text-text-muted">No pitching statistics recorded.</p>
             </div>
@@ -830,7 +859,7 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons, accola
                   </tr>
                 </thead>
                 <tbody>
-                  {pitchingStats.map((s: any, i: number) => (
+                  {adultPitching.map((s: any, i: number) => (
                     <tr key={i} className="border-b border-border last:border-0 hover:bg-surface-alt/50 transition-colors">
                       <td className="px-2 py-2 font-semibold text-xs">
                         {s.seasonYear != null ? `${s.seasonYear}${s.seasonLabel ? ` ${s.seasonLabel}` : ''}` : 'All time'}
@@ -878,8 +907,8 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons, accola
                       <td className="px-2 py-2 text-right font-mono text-xs">{fmtRate(s.babip)}</td>
                     </tr>
                   ))}
-                  {sumPitchingRows(pitchingStats) && (() => {
-                    const total = sumPitchingRows(pitchingStats)!;
+                  {sumPitchingRows(adultPitching) && (() => {
+                    const total = sumPitchingRows(adultPitching)!;
                     return (
                       <tr className="bg-surface-alt border-t border-border/80">
                         <td className="px-2 py-2 font-bold text-xs" colSpan={2}>TOTAL</td>
@@ -931,6 +960,7 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons, accola
               </table>
             </div>
           )}
+          <YouthSeasonNote rows={youthPitching} />
 
           {/* Opponent slash by batter hand (same PA rules as batting line, from the batter&apos;s perspective) */}
           {platoonSplits && (
@@ -1097,7 +1127,7 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons, accola
         <div>
           {fieldingStats === null ? (
             <p className="text-sm text-text-muted py-4">Loading...</p>
-          ) : fieldingStats.length === 0 ? (
+          ) : adultFielding.length === 0 && youthFielding.length === 0 ? (
             <div className="rounded-xl border border-dashed border-border bg-surface-alt p-8 text-center">
               <p className="text-sm text-text-muted">No fielding statistics recorded.</p>
             </div>
@@ -1115,7 +1145,7 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons, accola
                     </tr>
                   </thead>
                   <tbody>
-                    {fieldingStats.map((s: any, i: number) => (
+                    {adultFielding.map((s: any, i: number) => (
                       <tr key={i} className="border-b border-border last:border-0 hover:bg-surface-alt/50 transition-colors">
                         <td className="px-2 py-2 font-semibold text-xs">
                           {s.seasonYear != null ? `${s.seasonYear}${s.seasonLabel ? ` ${s.seasonLabel}` : ''}` : 'All time'}
@@ -1137,8 +1167,8 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons, accola
                         <td className="px-2 py-2 text-right font-mono text-xs font-bold">{fmtRate(s.fieldingPct)}</td>
                       </tr>
                     ))}
-                    {sumFieldingRows(fieldingStats) && (() => {
-                      const total = sumFieldingRows(fieldingStats)!;
+                    {sumFieldingRows(adultFielding) && (() => {
+                      const total = sumFieldingRows(adultFielding)!;
                       return (
                         <tr className="bg-surface-alt border-t border-border/80">
                           <td className="px-2 py-2 font-bold text-xs" colSpan={3}>TOTAL</td>
@@ -1160,6 +1190,9 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons, accola
                     })()}
                   </tbody>
                 </table>
+              </div>
+              <div className="mt-4">
+                <YouthSeasonNote rows={youthFielding} />
               </div>
 
               {/* Fielding by Position */}
@@ -1185,7 +1218,7 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons, accola
                       >
                         <option value="all">All seasons</option>
                         {seasons.map(s => (
-                          <option key={s.id} value={s.id}>{s.name}</option>
+                          <option key={s.id} value={s.id}>{seasonOptionLabel(s)}</option>
                         ))}
                       </select>
                     </div>

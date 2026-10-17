@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { apiFetch, API_REVALIDATE_GAMES, API_REVALIDATE_SEASONS, API_REVALIDATE_STANDINGS } from '@/lib/api';
 import { buildRecordByTeamIdFromStandings } from '@/lib/standings-records';
 import { ScheduleClient } from './schedule-client';
+import { defaultPublicSeason } from '@/lib/season-label';
 
 export const metadata: Metadata = { title: 'Schedule & Scores' };
 
@@ -12,13 +13,13 @@ type SchedulePageProps = { searchParams: Promise<{ season?: string }> };
 
 export default async function SchedulePage({ searchParams }: SchedulePageProps) {
   const params = await searchParams;
-  let seasons: { id: number; name: string; year: number; isActive?: boolean; seasonKind?: string }[] = [];
+  let seasons: { id: number; name: string; year: number; isActive?: boolean; seasonKind?: string; leagueLevel?: string }[] = [];
   let initialGames: any[] = [];
   try {
     seasons = await apiFetch('/api/public/stats/seasons', { revalidate: API_REVALIDATE_SEASONS });
     seasons = Array.isArray(seasons) ? seasons : [];
   } catch {}
-  const activeSeason = seasons.find((s) => s.isActive) || seasons[0];
+  const activeSeason = defaultPublicSeason(seasons);
   const rawSeason = params.season;
   let defaultSeasonId: number | null = activeSeason?.id ?? null;
   if (rawSeason === 'all') {

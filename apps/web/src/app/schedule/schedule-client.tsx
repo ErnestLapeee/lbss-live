@@ -14,6 +14,7 @@ import {
   formatGameWeekdayShort,
 } from '@/lib/game-datetime';
 import { buildRecordByTeamIdFromStandings } from '@/lib/standings-records';
+import { seasonOptionLabel } from '@/lib/season-label';
 import { usePollingWhenVisible } from '@/hooks/use-polling-when-visible';
 
 
@@ -57,6 +58,7 @@ interface Season {
   name: string;
   year: number;
   seasonKind?: string;
+  leagueLevel?: string;
 }
 
 interface ScheduleClientProps {
@@ -188,7 +190,7 @@ export function ScheduleClient({
               <option value="all">All seasons</option>
               {seasons.map(s => (
                 <option key={s.id} value={s.id}>
-                  {s.name}{s.seasonKind === 'playoff' ? ' (Playoffs)' : ''}
+                  {seasonOptionLabel(s)}
                 </option>
               ))}
             </select>

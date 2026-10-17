@@ -35,6 +35,7 @@ export interface AdminSeasonRow {
   name: string;
   isActive: boolean;
   seasonKind?: string;
+  leagueLevel?: string;
 }
 
 interface AdminSeasonContextValue {

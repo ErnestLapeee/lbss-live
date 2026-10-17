@@ -10,6 +10,7 @@ import { HomeLiveScores } from '@/components/home/home-live-scores';
 import { SectionHeader } from '@/components/ui/section-header';
 import { TeamMark } from '@/components/ui/team-mark';
 import { sortStandingsRows } from '@/lib/standings-sort';
+import { defaultPublicSeason } from '@/lib/season-label';
 
 function toArray<T>(v: unknown): T[] {
   if (Array.isArray(v)) return v;
@@ -41,7 +42,7 @@ export default async function HomePage() {
   try {
     seasons = toArray(await apiFetch('/api/public/stats/seasons', { revalidate: API_REVALIDATE_SEASONS }));
   } catch {}
-  activeSeason = seasons.find((s: any) => s?.isActive) ?? seasons[0] ?? null;
+  activeSeason = defaultPublicSeason(seasons);
 
   const gamesUrl = activeSeason?.id
     ? `/api/public/games?seasonId=${activeSeason.id}`

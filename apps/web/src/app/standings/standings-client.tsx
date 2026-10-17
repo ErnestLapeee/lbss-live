@@ -6,6 +6,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { PageHeader } from '@/components/ui/page-header';
 import { PlayoffBracket } from '@/components/playoffs/playoff-bracket';
 import { TeamMark } from '@/components/ui/team-mark';
+import { defaultPublicSeason, seasonOptionLabel } from '@/lib/season-label';
 
 type Season = {
   id: number;
@@ -15,6 +16,7 @@ type Season = {
   hasPlayoffs?: boolean;
   playoffSettings?: any;
   seasonKind?: string;
+  leagueLevel?: string;
 };
 type StandingsRow = {
   id: number;
@@ -87,10 +89,7 @@ function proxy(path: string) {
 }
 
 function seasonSelectLabel(s: Season): string {
-  const base = (s.name ?? '').trim();
-  if (base) return s.seasonKind === 'playoff' ? `${base} (Playoffs)` : base;
-  if (s.year != null) return String(s.year);
-  return `Season ${s.id}`;
+  return seasonOptionLabel(s);
 }
 
 export function StandingsClient({
@@ -128,8 +127,8 @@ export function StandingsClient({
         if (list.length > 0) {
           const fromUrl = searchParams?.get('season');
           const explicit = fromUrl ? list.find((s) => String(s.id) === fromUrl) : null;
-          const active = explicit ?? list.find((s) => s.isActive) ?? list[0];
-          setSelectedSeasonId(active.id);
+          const active = explicit ?? defaultPublicSeason(list);
+          if (active) setSelectedSeasonId(active.id);
         }
       })
       .catch(() => {

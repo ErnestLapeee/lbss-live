@@ -119,8 +119,8 @@ export function applyEvent(state: GameState, event: GameEvent): GameState {
     next.strikes = 0;
   }
 
-  // Check for half-inning change (3 outs)
-  if (next.outs >= 3) {
+  // Three outs ends the half. A run-limit end records no extra outs and still ends it.
+  if (next.outs >= 3 || event.eventType === 'end_half_inning') {
     next.outs = 0;
     next.bases = { first: null, second: null, third: null };
     next.balls = 0;

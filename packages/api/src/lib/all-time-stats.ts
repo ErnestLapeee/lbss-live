@@ -11,9 +11,10 @@ export function parseIncludePlayoffsAllTime(
   return v === 'true' || v === '1';
 }
 
-/** Use in raw SQL `WHERE` for `player_season_*` joins to `seasons s_psb`. */
+/** Use in raw SQL `WHERE` for `player_season_*` joins to `seasons s_psb`. Children's seasons never count. */
 export function sqlAllTimeSeasonWhere(includePlayoffs: boolean) {
+  const youth = sql`COALESCE(s_psb.league_level, 'adult') <> 'youth'`;
   return includePlayoffs
-    ? sql`TRUE`
-    : sql`COALESCE(s_psb.season_kind, 'regular') <> 'playoff'`;
+    ? youth
+    : sql`COALESCE(s_psb.season_kind, 'regular') <> 'playoff' AND ${youth}`;
 }

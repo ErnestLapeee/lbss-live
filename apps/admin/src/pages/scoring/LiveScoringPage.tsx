@@ -27,20 +27,64 @@ interface LineupEntry { id: number; playerId: number | null; battingOrder: numbe
 interface LineupAdjustRow { id: number; playerId: number | null; battingOrder: number; position: number | null; firstName: string; lastName: string }
 interface GameState { inning: number; half: 'top' | 'bot'; outs: number; homeScore: number; awayScore: number; bases: { first: number | null; second: number | null; third: number | null }; homeLineScore: number[]; awayLineScore: number[]; eventCount: number; balls: number; strikes: number }
 interface GameEvent { id: number; eventNumber: number; eventType: string; batterId?: number; batterSide?: string | null; pitcherId?: number; inning: number; half: string; balls?: number; strikes?: number; runsScored?: number; rbi?: number; outsRecorded?: number; errorsOnPlay?: number; eventDetail?: string; fieldingSequence?: string; putoutFielderIds?: number[]; assistFielderIds?: number[]; errorFielderIds?: number[]; pitchCount?: number | null; pitchSequence?: string | null; hitLocationX?: string | null; hitLocationY?: string | null; hitType?: string | null; hitHardness?: string | null; runnerFirstId?: number | null; runnerSecondId?: number | null; runnerThirdId?: number | null; runnersScored?: number[]; isDeleted?: boolean }
-interface GameData { id: number; status: string; homeTeamId: number; awayTeamId: number; homeTeamName: string; awayTeamName: string; isFinalized: boolean; umpire?: string | null; officialScorer?: string | null }
+interface GameData {
+  id: number;
+  status: string;
+  homeTeamId: number;
+  awayTeamId: number;
+  homeTeamName: string;
+  awayTeamName: string;
+  isFinalized: boolean;
+  umpire?: string | null;
+  officialScorer?: string | null;
+  leagueLevel?: 'adult' | 'youth';
+  youthFielders?: number | null;
+  maxRunsPerInning?: number | null;
+}
 type PositionChangeDraft = { playerId: number; oldPosition: number; newPosition: number };
 
 interface LineupHintsEntry { pa: number; positions: number[] }
 
 /** Prefer primary defensive positions by season innings; skip slots already taken in this lineup draft. */
-function pickLineupFieldingPosition(preferred: number[] | undefined, used: Set<number>): number {
+function pickLineupFieldingPosition(
+  preferred: number[] | undefined,
+  used: Set<number>,
+  youth = false,
+  maxFielders = 10,
+): number | null {
+  const allowed = (pos: number) => {
+    if (!youth) return pos >= 1 && pos <= 10;
+    if (pos === 11) return maxFielders > 9;
+    return pos >= 1 && pos <= 9;
+  };
   for (const pos of preferred ?? []) {
-    if (Number.isInteger(pos) && pos >= 1 && pos <= 10 && !used.has(pos)) return pos;
+    if (Number.isInteger(pos) && allowed(pos) && !used.has(pos)) return pos;
   }
-  for (let p = 1; p <= 10; p++) {
-    if (!used.has(p)) return p;
+  const pool = youth
+    ? [...Array.from({ length: 9 }, (_, i) => i + 1), ...(maxFielders > 9 ? [11] : [])]
+    : Array.from({ length: 10 }, (_, i) => i + 1);
+  for (const pos of pool) {
+    if (!used.has(pos)) return pos;
   }
-  return 1;
+  return youth ? null : 1;
+}
+
+function positionChoices(youth: boolean, fielders: number): Array<[string, string]> {
+  if (!youth) return Object.entries(POS_LABELS);
+  const choices: Array<[string, string]> = [];
+  for (let pos = 1; pos <= 9; pos++) choices.push([String(pos), POS_LABELS[pos] ?? String(pos)]);
+  if (fielders > 9) choices.push(['11', 'EF']);
+  return choices;
+}
+
+function fieldingGrid(showExtra: boolean): Array<{ pos: number; label: string }> {
+  const grid = [
+    { pos: 1, label: 'P' }, { pos: 2, label: 'C' }, { pos: 3, label: '1B' },
+    { pos: 4, label: '2B' }, { pos: 5, label: '3B' }, { pos: 6, label: 'SS' },
+    { pos: 7, label: 'LF' }, { pos: 8, label: 'CF' }, { pos: 9, label: 'RF' },
+  ];
+  if (showExtra) grid.push({ pos: 11, label: 'EF' });
+  return grid;
 }
 
 /** Apply batting order / position edits from "Adjust active lineups" before refetch completes. */
@@ -135,7 +179,7 @@ function suggestedGhostRunnerFromPrevOffensiveInning(events: GameEvent[], inning
   return null;
 }
 
-const POS_LABELS: Record<number, string> = { 1:'P',2:'C',3:'1B',4:'2B',5:'3B',6:'SS',7:'LF',8:'CF',9:'RF',10:'DH' };
+const POS_LABELS: Record<number, string> = { 1:'P',2:'C',3:'1B',4:'2B',5:'3B',6:'SS',7:'LF',8:'CF',9:'RF',10:'DH',11:'EF' };
 
 function formatJersey(raw: string | null | undefined): string {
   const digits = (raw ?? '').replace(/\D/g, '');
@@ -485,6 +529,9 @@ export function LiveScoringPage() {
   const gameId = parseInt(gameIdStr || '0', 10);
 
   const [game, setGame] = useState<GameData | null>(null);
+  const youthGame = game?.leagueLevel === 'youth';
+  const youthFielders = youthGame ? Math.min(12, Math.max(5, game?.youthFielders ?? 6)) : 10;
+  const maxLineupSlots = youthGame ? 30 : 10;
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [events, setEvents] = useState<GameEvent[]>([]);
   const [homeLineup, setHomeLineup] = useState<LineupEntry[]>([]);
@@ -935,11 +982,19 @@ export function LiveScoringPage() {
     }));
   }, [defensiveChangeLineup, pendingPositionChanges]);
   const currentPitcher = fieldingLineupActive.find(l => l.position === 1 && l.playerId != null);
+  const showExtraFielder = youthGame && (
+    youthFielders > 9 || [...homeLineup, ...awayLineup].some((l) => l.position === 11)
+  );
 
   const battingSide = gameState?.half === 'top' ? 'away' : 'home';
   const rawIdx = derivedBatterIdx[battingSide] || 0;
 
-  const battingOrderSlot = (rawIdx % 9) + 1;
+  const battingOrders = youthGame
+    ? [...new Set(battingLineup.map((l) => l.battingOrder))].sort((a, b) => a - b)
+    : [];
+  const battingOrderSlot = battingOrders.length > 0
+    ? battingOrders[rawIdx % battingOrders.length]!
+    : (rawIdx % 9) + 1;
   const currentBatter = battingLineup.find(l => l.battingOrder === battingOrderSlot) ?? null;
   const isEmptySlot =
     battingLineup.length > 0 && (currentBatter == null || currentBatter.playerId == null);
@@ -1063,15 +1118,18 @@ export function LiveScoringPage() {
     if (list.find((p) => p.playerId === pid)) return;
     const hintsMap = side === 'home' ? lineupHintsHome : lineupHintsAway;
     const used = new Set(
-      list.map((p) => p.position).filter((x): x is number => x != null && x >= 1 && x <= 10),
+      list.map((p) => p.position).filter((x): x is number => x != null),
     );
-    const pos = pickLineupFieldingPosition(hintsMap[pid]?.positions, used);
+    const defenders = used.size;
+    const pos = youthGame && defenders >= youthFielders
+      ? null
+      : pickLineupFieldingPosition(hintsMap[pid]?.positions, used, youthGame, youthFielders);
     if (side === 'home') setSetupHome([...list, { playerId: pid, position: pos }]);
     else setSetupAway([...list, { playerId: pid, position: pos }]);
   };
   const addVacantSlotToSetup = (side: 'home' | 'away') => {
     const list = side === 'home' ? setupHome : setupAway;
-    if (list.length >= 10) return;
+    if (list.length >= maxLineupSlots) return;
     if (side === 'home') setSetupHome([...list, { playerId: null, position: null }]);
     else setSetupAway([...list, { playerId: null, position: null }]);
   };
@@ -1079,11 +1137,18 @@ export function LiveScoringPage() {
     if (side === 'home') setSetupHome((s) => s.filter((_, i) => i !== index));
     else setSetupAway((s) => s.filter((_, i) => i !== index));
   };
-  const updatePosition = (side: 'home' | 'away', index: number, pos: number) => {
+  const updatePosition = (side: 'home' | 'away', index: number, pos: number | null) => {
     const setter = side === 'home' ? setSetupHome : setSetupAway;
-    setter((list) =>
-      list.map((p, i) => (i === index && p.playerId != null ? { ...p, position: pos } : p)),
-    );
+    setter((list) => {
+      if (pos != null && youthGame) {
+        const defenders = list.filter((p, i) => i !== index && p.position != null).length;
+        if (defenders >= youthFielders) {
+          alert(`This children's game fields ${youthFielders}. Extra hitters bat only.`);
+          return list;
+        }
+      }
+      return list.map((p, i) => (i === index && p.playerId != null ? { ...p, position: pos } : p));
+    });
   };
 
   const [setupDragFrom, setSetupDragFrom] = useState<number | null>(null);
@@ -1989,9 +2054,13 @@ function needsRunnerAdvanceErrorFieldingPrompt(
   };
   const handleEndHalfInning = async () => {
     if (!gameState || submitting) return;
-    const outsToAdd = Math.max(0, 3 - gameState.outs);
+    const youth = game?.leagueLevel === 'youth';
+    const outsToAdd = youth ? 0 : Math.max(0, 3 - gameState.outs);
     const runnersOn = [gameState.bases.first, gameState.bases.second, gameState.bases.third].filter(Boolean).length;
-    if ((outsToAdd > 0 || runnersOn > 0) && !confirm(`End this half inning? This will add ${outsToAdd} out${outsToAdd === 1 ? '' : 's'} and clear ${runnersOn} runner${runnersOn === 1 ? '' : 's'} from base.`)) {
+    const prompt = youth
+      ? `End this half at the run limit? This closes the inning without charging outs that were not made and clears ${runnersOn} runner${runnersOn === 1 ? '' : 's'}.`
+      : `End this half inning? This will add ${outsToAdd} out${outsToAdd === 1 ? '' : 's'} and clear ${runnersOn} runner${runnersOn === 1 ? '' : 's'} from base.`;
+    if ((youth || outsToAdd > 0 || runnersOn > 0) && !confirm(prompt)) {
       return;
     }
     setSubmitting(true);
@@ -2314,7 +2383,8 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                 onClick={() => { setSetupTeam(side); setSetupSearch(''); }}
                 className={`w-full rounded-lg px-4 py-3 text-left text-sm font-semibold sm:w-auto sm:py-2 ${setupTeam === side ? 'bg-accent text-white' : 'bg-white/10 text-white/60'}`}
               >
-                {side === 'away' ? game.awayTeamName : game.homeTeamName} ({(side === 'home' ? setupHome : setupAway).length}/9)
+                {side === 'away' ? game.awayTeamName : game.homeTeamName}{' '}
+                ({(side === 'home' ? setupHome : setupAway).length}{youthGame ? '' : '/9'})
               </button>
             ))}
           </div>
@@ -2475,12 +2545,13 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                       <div className="flex shrink-0 items-center justify-end gap-2 sm:justify-start">
                         {entry.playerId != null ? (
                           <select
-                            value={entry.position ?? 1}
-                            onChange={(e) => updatePosition(setupTeam, idx, Number(e.target.value))}
+                            value={entry.position ?? ''}
+                            onChange={(e) => updatePosition(setupTeam, idx, e.target.value === '' ? null : Number(e.target.value))}
                             className={`${ADMIN_SELECT_POS} min-w-0 max-w-[11rem] flex-1 sm:max-w-none sm:flex-initial`}
                             onClick={(e) => e.stopPropagation()}
                           >
-                            {Object.entries(POS_LABELS).map(([k, v]) => (
+                            {youthGame && <option value="">Bats only</option>}
+                            {positionChoices(youthGame, youthFielders).map(([k, v]) => (
                               <option key={k} value={k}>
                                 {v}
                               </option>
@@ -2694,6 +2765,17 @@ function needsRunnerAdvanceErrorFieldingPrompt(
           )}
         </div>
       )}
+      {youthGame && game?.maxRunsPerInning != null && gameState && (() => {
+        const line = gameState.half === 'top' ? gameState.awayLineScore : gameState.homeLineScore;
+        const halfRuns = line[gameState.inning - 1] ?? 0;
+        const limit = game.maxRunsPerInning!;
+        return (
+          <div className="shrink-0 border-b border-white/10 bg-white/5 px-3 py-1 text-center text-[11px] font-semibold text-white/80">
+            Run limit {limit} this half ({halfRuns} scored)
+            {halfRuns >= limit ? '. End the half from the menu. That does not charge outs that were not made.' : ''}
+          </div>
+        );
+      })()}
       {/* ── Scoreboard: compact strip on phone, full bar on lg+ ── */}
       <div className="shrink-0 bg-scoring-footer border-b border-white/20 lg:hidden">
         <div className="px-2 py-1.5 font-mono">
@@ -2850,8 +2932,10 @@ function needsRunnerAdvanceErrorFieldingPrompt(
             <div className="text-[9px] text-white/30 font-bold uppercase tracking-wider px-1 mb-0.5">
               {battingSide === 'away' ? game.awayTeamName : game.homeTeamName}
             </div>
-            {Array.from({ length: 9 }, (_, i) => {
-              const slot = i + 1;
+            {(youthGame
+              ? (battingOrders.length ? battingOrders : [1])
+              : Array.from({ length: 9 }, (_, i) => i + 1)
+            ).map((slot) => {
               const entry = battingLineup.find(l => l.battingOrder === slot);
               const isCurrent = slot === battingOrderSlot;
               return (
@@ -3309,11 +3393,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
             {step === 'runner_advance_error_fielding' && runnerAdvanceErrorPending && runnerQuestions.length > 0 && (() => {
               const q = runnerQuestions[currentRunnerIdx];
               const fld = runnerAdvanceErrorFielding;
-              const POS_GRID = [
-                { pos: 1, label: 'P' },  { pos: 2, label: 'C' },  { pos: 3, label: '1B' },
-                { pos: 4, label: '2B' }, { pos: 5, label: '3B' }, { pos: 6, label: 'SS' },
-                { pos: 7, label: 'LF' }, { pos: 8, label: 'CF' }, { pos: 9, label: 'RF' },
-              ];
+              const POS_GRID = fieldingGrid(showExtraFielder);
               const reasonLabel = runnerAdvanceErrorPending.reason === 'advance_on_error' ? 'ADVANCED ON ERROR' : 'ERROR ON ADVANCE';
               return (
                 <div className={`${WIZARD_SHELL} border-amber-500/30`}>
@@ -3421,11 +3501,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
               // Runner out fielding sub-step
               if (step === 'runner_out_fielding' && runnerOutPendingType) {
                 const fld = runnerOutFielding;
-                const POS_GRID = [
-                  { pos: 1, label: 'P' },  { pos: 2, label: 'C' },  { pos: 3, label: '1B' },
-                  { pos: 4, label: '2B' }, { pos: 5, label: '3B' }, { pos: 6, label: 'SS' },
-                  { pos: 7, label: 'LF' }, { pos: 8, label: 'CF' }, { pos: 9, label: 'RF' },
-                ];
+                const POS_GRID = fieldingGrid(showExtraFielder);
                 return (
                   <div className={WIZARD_SHELL}>
                     <div className="px-4 py-3 border-b border-white/5 text-center">
@@ -3730,11 +3806,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                 // Step 2: Fielding positions for the chosen out type
                 if (runnerActionOutType) {
                   const fld = runnerActionFielding;
-                  const POS_GRID = [
-                    { pos: 1, label: 'P' },  { pos: 2, label: 'C' },  { pos: 3, label: '1B' },
-                    { pos: 4, label: '2B' }, { pos: 5, label: '3B' }, { pos: 6, label: 'SS' },
-                    { pos: 7, label: 'LF' }, { pos: 8, label: 'CF' }, { pos: 9, label: 'RF' },
-                  ];
+                  const POS_GRID = fieldingGrid(showExtraFielder);
                   const outLabel = runnerActionOutType.replace(/_/g, ' ').toUpperCase();
                   return (
                     <div className={WIZARD_SHELL}>
@@ -3824,11 +3896,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
 
               if (runnerActionType === '__error__') {
                 const fld = runnerActionFielding;
-                const POS_GRID = [
-                  { pos: 1, label: 'P' },  { pos: 2, label: 'C' },  { pos: 3, label: '1B' },
-                  { pos: 4, label: '2B' }, { pos: 5, label: '3B' }, { pos: 6, label: 'SS' },
-                  { pos: 7, label: 'LF' }, { pos: 8, label: 'CF' }, { pos: 9, label: 'RF' },
-                ];
+                const POS_GRID = fieldingGrid(showExtraFielder);
                 return (
                   <div className={WIZARD_SHELL}>
                     <div className="px-4 py-3 border-b border-white/5 text-center">
@@ -4043,7 +4111,12 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                   </div>
                   <div className={SUB_LIST}>
                   <div className="grid grid-cols-3 gap-1.5">
-                    {Object.entries(POS_LABELS).filter(([k]) => parseInt(k) !== subPosition && parseInt(k) <= 9).map(([k, label]) => {
+                    {Object.entries(POS_LABELS).filter(([k]) => {
+                      const n = parseInt(k, 10);
+                      if (n === subPosition) return false;
+                      if (youthGame) return n <= 9 || (showExtraFielder && n === 11);
+                      return n <= 9;
+                    }).map(([k, label]) => {
                       const posNum = parseInt(k);
                       const occupant = draftFieldingLineup.find(l => l.position === posNum);
                       return (
@@ -4139,8 +4212,10 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                     ))}
                   </div>
                   <div className="mb-2 grid grid-cols-3 gap-1">
-                    {Array.from({ length: 9 }, (_, i) => {
-                      const slot = i + 1;
+                    {(youthGame
+                      ? [...new Set(offensiveChangeLineup.map((l) => l.battingOrder))].sort((a, b) => a - b)
+                      : Array.from({ length: 9 }, (_, i) => i + 1)
+                    ).map((slot) => {
                       const entry = offensiveChangeLineup.find(l => l.battingOrder === slot);
                       return (
                         <button
@@ -4439,8 +4514,10 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                   <div className="text-[9px] text-white/30 font-bold uppercase tracking-wider px-1 mb-0.5">
                     {battingSide === 'away' ? game.awayTeamName : game.homeTeamName}
                   </div>
-                  {Array.from({ length: 9 }, (_, i) => {
-                    const slot = i + 1;
+                  {(youthGame
+                    ? (battingOrders.length ? battingOrders : [1])
+                    : Array.from({ length: 9 }, (_, i) => i + 1)
+                  ).map((slot) => {
                     const entry = battingLineup.find(l => l.battingOrder === slot);
                     const isCurrent = slot === battingOrderSlot;
                     return (
@@ -4605,7 +4682,10 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                               .filter((r) => r.id !== row.id && r.position != null)
                               .map((r) => r.position as number),
                           );
-                          const pos = pickLineupFieldingPosition(hintsMap[pid]?.positions, used);
+                          const defenders = used.size;
+                          const pos = youthGame && defenders >= youthFielders
+                            ? null
+                            : pickLineupFieldingPosition(hintsMap[pid]?.positions, used, youthGame, youthFielders);
                           updateLineupAdjustRow(lineupAdjustTeam, row.id, {
                             playerId: pid,
                             position: pos,
@@ -4628,11 +4708,11 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                       <input
                         type="number"
                         min={1}
-                        max={10}
+                        max={maxLineupSlots}
                         value={row.battingOrder}
                         onChange={(e) =>
                           updateLineupAdjustRow(lineupAdjustTeam, row.id, {
-                            battingOrder: Math.min(10, Math.max(1, parseInt(e.target.value, 10) || 1)),
+                            battingOrder: Math.min(maxLineupSlots, Math.max(1, parseInt(e.target.value, 10) || 1)),
                           })
                         }
                         className="w-11 rounded border border-white/15 bg-scoring-input px-1 py-0.5 text-[11px] text-slate-100 [color-scheme:dark]"
@@ -4642,13 +4722,22 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                       <label className="flex items-center gap-1 text-[10px] text-white/40 flex-1 min-w-[100px]">
                         Pos
                         <select
-                          value={row.position ?? 1}
-                          onChange={(e) =>
-                            updateLineupAdjustRow(lineupAdjustTeam, row.id, { position: Number(e.target.value) })
-                          }
+                          value={row.position ?? ''}
+                          onChange={(e) => {
+                            const next = e.target.value === '' ? null : Number(e.target.value);
+                            if (next != null && youthGame && row.position == null) {
+                              const defenders = sideRows.filter((r) => r.id !== row.id && r.position != null).length;
+                              if (defenders >= youthFielders) {
+                                alert(`This children's game fields ${youthFielders}. Extra hitters bat only.`);
+                                return;
+                              }
+                            }
+                            updateLineupAdjustRow(lineupAdjustTeam, row.id, { position: next });
+                          }}
                           className={`${ADMIN_SELECT_SM} flex-1 min-w-0`}
                         >
-                          {Object.entries(POS_LABELS).map(([k, v]) => (
+                          {youthGame && <option value="">Bats only</option>}
+                          {positionChoices(youthGame, youthFielders).map(([k, v]) => (
                             <option key={k} value={k}>
                               {v}
                             </option>

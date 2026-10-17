@@ -31,5 +31,9 @@ export const seasons = pgTable('seasons', {
   regularSeasonGamesPerTeam: integer('regular_season_games_per_team'),
   // Lightweight, season-level playoff settings (manual). The detailed structure lives in playoffs/series.
   playoffSettings: jsonb('playoff_settings').default({}),
+  /** `adult` counts toward all-time. `youth` is a children's season with its own field size. */
+  leagueLevel: varchar('league_level', { length: 20 }).notNull().default('adult'),
+  /** `{ fielders, maxRunsPerInning }` for children's seasons. Ignored for adults. */
+  youthRules: jsonb('youth_rules').default({}),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 });

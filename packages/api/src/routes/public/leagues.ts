@@ -4,7 +4,7 @@ import { leagues, seasons } from '../../db/schema/index.js';
 import { eq } from 'drizzle-orm';
 import { getSeasonsColumnFlagsCached } from '../../lib/seasons-playoff-columns-cache.js';
 import { seasonsRowSelectShape } from '../../lib/seasons-drizzle-select.js';
-import { seasonWithPlayoffDefaults } from '../../lib/season-playoff-response.js';
+import { seasonLeagueFields, seasonWithPlayoffDefaults } from '../../lib/season-playoff-response.js';
 
 const leagueCore = {
   id: leagues.id,
@@ -45,6 +45,7 @@ export async function leaguesRoutes(app: FastifyInstance) {
             seasonKind: flags.hasSeasonKindOptionals
               ? String((seasonRow as Record<string, unknown>).seasonKind ?? 'regular')
               : 'regular',
+            ...seasonLeagueFields(seasonRow as Record<string, unknown>),
             parentSeasonId: flags.hasSeasonKindOptionals
               ? ((seasonRow as Record<string, unknown>).parentSeasonId as number | null | undefined) ?? null
               : null,

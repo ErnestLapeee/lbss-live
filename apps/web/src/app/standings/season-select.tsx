@@ -1,9 +1,10 @@
 'use client';
 
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { seasonOptionLabel } from '@/lib/season-label';
 
 interface SeasonSelectProps {
-  seasons: { id: number; name?: string; year?: number; seasonKind?: string }[];
+  seasons: { id: number; name?: string; year?: number; seasonKind?: string; leagueLevel?: string }[];
   currentSeasonId: number | null;
 }
 
@@ -36,8 +37,7 @@ export function SeasonSelect({ seasons, currentSeasonId }: SeasonSelectProps) {
         <option value="all">Latest active</option>
         {seasons.map((s) => (
           <option key={s.id} value={s.id}>
-            {s.name || s.year || s.id}
-            {s.seasonKind === 'playoff' ? ' (Playoffs)' : ''}
+            {seasonOptionLabel(s)}
           </option>
         ))}
       </select>

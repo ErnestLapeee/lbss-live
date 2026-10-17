@@ -1,11 +1,16 @@
 import {
   aggregateBattingCountSplits,
   aggregatePitchingStatsByPitcher,
+  applyEvent,
   computePlayerGameBattingLinesFromEvents,
+  initialGameState,
   isAtBatEvent,
   isBetweenPitchEvent,
   isPlateAppearanceEvent,
+  lineupRulesForSeason,
+  parseYouthRules,
   pickoffCreditPlayerId,
+  validateLineupEntries,
   remapBasesForSubstitutionDetail,
 } from '../index.js';
 
@@ -222,3 +227,45 @@ assert(
   'without a sequence the first assist gets the pickoff',
 );
 assert(pickoffCreditPlayerId({ putoutFielderIds: [] }) == null, 'a pickoff with no fielder does not invent a pitcher credit');
+
+const indoor = parseYouthRules({ fielders: 6, maxRunsPerInning: 5 });
+assert(indoor.fielders === 6 && indoor.maxRunsPerInning === 5, 'indoor children rules keep six fielders and a run limit');
+const adultRules = lineupRulesForSeason('adult', { fielders: 6 });
+const youthRules = lineupRulesForSeason('youth', { fielders: 10, maxRunsPerInning: 7 });
+assert(adultRules.maxBattingOrder === 10 && adultRules.youth === false, 'adult lineups stay capped at ten');
+assert(youthRules.maxBattingOrder === 30 && youthRules.maxFielders === 10, 'children lineups can bat past nine and field ten');
+const eleven = Array.from({ length: 11 }, (_, i) => ({
+  playerId: i + 1,
+  battingOrder: i + 1,
+  position: i < 6 ? i + 1 : null,
+}));
+assert(validateLineupEntries(eleven, youthRules) == null, 'extra children hitters can bat without a position');
+assert(
+  validateLineupEntries([{ playerId: 1, battingOrder: 11, position: 1 }], adultRules) != null,
+  'adult batting order still stops at ten',
+);
+const ended = applyEvent(initialGameState(), {
+  id: 1,
+  gameId: 1,
+  eventNumber: 1,
+  eventType: 'end_half_inning',
+  inning: 1,
+  half: 'top',
+  batterId: null,
+  pitcherId: null,
+  eventDetail: null,
+  rbi: 0,
+  runsScored: 0,
+  outsRecorded: 0,
+  errorsOnPlay: 0,
+  balls: 0,
+  strikes: 0,
+  runnerFirstId: null,
+  runnerSecondId: null,
+  runnerThirdId: null,
+  runnersScored: [],
+  isDeleted: false,
+  createdAt: '',
+  createdBy: null,
+});
+assert(ended.half === 'bot' && ended.outs === 0 && ended.inning === 1, 'ending a half with no extra outs still flips the inning');

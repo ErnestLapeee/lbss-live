@@ -9,6 +9,7 @@ import {
   teams,
   licenses,
   leagues,
+  seasons,
   playerSeasonBatting,
   playerGameFielding,
 } from '../../db/schema/index.js';
@@ -23,14 +24,30 @@ import {
   isBetweenPitchEvent,
   isKnownEventType,
   isPlateAppearanceEvent,
+  lineupRulesForSeason,
   remapBasesForSubstitutionDetail,
+  validateLineupEntries,
+  type LineupRules,
 } from '@lbss/shared';
+import { getSeasonsColumnFlagsCached } from '../../lib/seasons-playoff-columns-cache.js';
 import { isStatistician } from '../../lib/statistician-guards.js';
 
 /** JSONB array columns — normalize without `as any` on DB rows. */
 function jsonbNumberArray(v: unknown): number[] {
   if (!Array.isArray(v)) return [];
   return v.map((x) => Number(x)).filter((n) => Number.isFinite(n));
+}
+
+async function lineupRulesForLeague(leagueId: number): Promise<LineupRules> {
+  const flags = await getSeasonsColumnFlagsCached();
+  if (!flags.hasLeagueLevel) return lineupRulesForSeason('adult', null);
+  const [row] = await db
+    .select({ leagueLevel: seasons.leagueLevel, youthRules: seasons.youthRules })
+    .from(leagues)
+    .innerJoin(seasons, eq(seasons.id, leagues.seasonId))
+    .where(eq(leagues.id, leagueId))
+    .limit(1);
+  return lineupRulesForSeason(row?.leagueLevel, row?.youthRules);
 }
 
 function jsonbStringArray(v: unknown): string[] {
@@ -143,7 +160,8 @@ function validateScoringEventPayload(
   }
   if (options?.strictState && options.expectedState && eventType === 'end_half_inning') {
     const expectedOuts = Math.max(0, 3 - options.expectedState.outs);
-    if (outsRecorded !== expectedOuts) {
+    const runLimitEnd = outsRecorded === 0;
+    if (!runLimitEnd && outsRecorded !== expectedOuts) {
       return { ok: false, message: `end_half_inning must record exactly ${expectedOuts} out${expectedOuts === 1 ? '' : 's'}` };
     }
     if (Number(payload.runsScored ?? 0) !== 0) {
@@ -282,7 +300,7 @@ function computeGameState(events: any[]): GameState {
       state.strikes = 0;
     }
 
-    if (state.outs >= 3) {
+    if (state.outs >= 3 || event.eventType === 'end_half_inning') {
       state.outs = 0;
       state.bases = { first: null, second: null, third: null };
       state.balls = 0;
@@ -768,12 +786,16 @@ export async function adminScoringRoutes(app: FastifyInstance) {
       const awayTeam = teamById.get(game.awayTeamId);
 
       const state = computeGameState(events);
+      const rules = await lineupRulesForLeague(game.leagueId);
 
       return reply.send({
         game: {
           ...game,
           homeTeamName: homeTeam?.name,
           awayTeamName: awayTeam?.name,
+          leagueLevel: rules.youth ? 'youth' : 'adult',
+          youthFielders: rules.youth ? rules.maxFielders : null,
+          maxRunsPerInning: rules.maxRunsPerInning,
         },
         state,
         events,
@@ -1270,6 +1292,7 @@ export async function adminScoringRoutes(app: FastifyInstance) {
           isFinalized: games.isFinalized,
           homeTeamId: games.homeTeamId,
           awayTeamId: games.awayTeamId,
+          leagueId: games.leagueId,
         })
         .from(games)
         .where(eq(games.id, gameId))
@@ -1283,43 +1306,11 @@ export async function adminScoringRoutes(app: FastifyInstance) {
       }
 
       const entries = lineup ?? [];
-      const battingOrders = entries.map((e) => Number(e.battingOrder));
-      if (battingOrders.some((b) => !Number.isInteger(b) || b < 1 || b > 10)) {
-        return reply.status(400).send({ message: 'Batting order must be integers 1–10 for each slot' });
-      }
-      if (new Set(battingOrders).size !== battingOrders.length) {
-        return reply.status(400).send({ message: 'Duplicate batting order in lineup' });
-      }
-
-      const filledPositions: number[] = [];
-      const lineupPlayerIds: number[] = [];
-      for (const entry of entries) {
-        const pidRaw = entry.playerId;
-        const isVacant = pidRaw == null;
-        if (isVacant) {
-          if (entry.position != null) {
-            return reply.status(400).send({ message: 'Vacant lineup slots cannot have a defensive position' });
-          }
-          continue;
-        }
-        const pid = Number(pidRaw);
-        if (!Number.isInteger(pid) || pid <= 0) {
-          return reply.status(400).send({ message: 'Invalid player id in lineup' });
-        }
-        lineupPlayerIds.push(pid);
-        const pos = Number(entry.position);
-        if (!Number.isInteger(pos) || pos < 1 || pos > 10) {
-          return reply.status(400).send({ message: 'Each filled slot needs a defensive position 1–10' });
-        }
-        filledPositions.push(pos);
-      }
-
-      if (new Set(lineupPlayerIds).size !== lineupPlayerIds.length) {
-        return reply.status(400).send({ message: 'The same player cannot appear twice in one lineup' });
-      }
-      if (new Set(filledPositions).size !== filledPositions.length) {
-        return reply.status(400).send({ message: 'Each defensive position (P–DH) must be unique among active fielders' });
-      }
+      const lineupError = validateLineupEntries(entries, await lineupRulesForLeague(game.leagueId));
+      if (lineupError) return reply.status(400).send({ message: lineupError });
+      const lineupPlayerIds = entries
+        .map((entry) => (entry.playerId == null ? null : Number(entry.playerId)))
+        .filter((id): id is number => id != null);
 
       if (lineupPlayerIds.length > 0) {
         const opponentTeamId = teamId === game.homeTeamId ? game.awayTeamId : game.homeTeamId;
@@ -2428,6 +2419,7 @@ function boundedScore(raw: unknown): number {
           isFinalized: games.isFinalized,
           homeTeamId: games.homeTeamId,
           awayTeamId: games.awayTeamId,
+          leagueId: games.leagueId,
         })
         .from(games)
         .where(eq(games.id, gameId))
@@ -2445,6 +2437,8 @@ function boundedScore(raw: unknown): number {
       const body = request.body ?? {};
       const homeRows = Array.isArray(body.home) ? body.home : [];
       const awayRows = Array.isArray(body.away) ? body.away : [];
+
+      const rules = await lineupRulesForLeague(game.leagueId);
 
       function validateSide(
         label: string,
@@ -2464,31 +2458,8 @@ function boundedScore(raw: unknown): number {
         }
         if (new Set(realPids).size !== realPids.length) return `${label}: duplicate player in payload`;
 
-        const bo = rows.map((r) => Number(r.battingOrder));
-        if (bo.some((b) => !Number.isInteger(b) || b < 1 || b > 10)) {
-          return `${label}: batting order must be integers 1–10`;
-        }
-        if (new Set(bo).size !== bo.length) return `${label}: duplicate batting order`;
-
-        const filledPositions: number[] = [];
-        for (const r of rows) {
-          const pid = r.playerId == null ? null : Number(r.playerId);
-          if (pid == null) {
-            if (r.position != null) {
-              return `${label}: vacant slot cannot have a fielding position`;
-            }
-            continue;
-          }
-          const pos = Number(r.position);
-          if (!Number.isInteger(pos) || pos < 1 || pos > 10) {
-            return `${label}: active players need position 1–10`;
-          }
-          filledPositions.push(pos);
-        }
-        if (new Set(filledPositions).size !== filledPositions.length) {
-          return `${label}: each defensive position (P,C,IF,OF,DH) must be unique — fix duplicate roles (e.g. multiple DH)`;
-        }
-        return null;
+        const lineupError = validateLineupEntries(rows, rules);
+        return lineupError ? `${label}: ${lineupError}` : null;
       }
 
       const errH = validateSide('Home', homeRows);

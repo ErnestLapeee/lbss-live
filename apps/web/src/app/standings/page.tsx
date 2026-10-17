@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Suspense } from 'react';
 import { apiFetch, API_REVALIDATE_SEASONS, API_REVALIDATE_STANDINGS } from '@/lib/api';
 import { StandingsClient, type LeagueStandings } from './standings-client';
+import { defaultPublicSeason } from '@/lib/season-label';
 
 export const metadata: Metadata = { title: 'Standings' };
 
@@ -12,7 +13,7 @@ type Props = { searchParams: Promise<{ season?: string }> };
 
 export default async function StandingsPage({ searchParams }: Props) {
   const params = await searchParams;
-  let seasons: { id: number; name?: string; year?: number; isActive?: boolean; seasonKind?: string }[] = [];
+  let seasons: { id: number; name?: string; year?: number; isActive?: boolean; seasonKind?: string; leagueLevel?: string }[] = [];
   try {
     const data = await apiFetch<typeof seasons>('/api/public/stats/seasons', {
       revalidate: API_REVALIDATE_SEASONS,
@@ -22,7 +23,7 @@ export default async function StandingsPage({ searchParams }: Props) {
 
   const fromUrl = params.season;
   const explicit = fromUrl ? seasons.find((s) => String(s.id) === fromUrl) : null;
-  const active = explicit ?? seasons.find((s) => s.isActive) ?? seasons[0];
+  const active = explicit ?? defaultPublicSeason(seasons);
   const initialSeasonId = active?.id ?? null;
 
   let initialStandings: LeagueStandings[] = [];

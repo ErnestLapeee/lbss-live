@@ -20,11 +20,17 @@ import {
   standings,
 } from '../../db/schema/index.js';
 import { desc, eq, inArray, ne } from 'drizzle-orm';
-import { seasonWithPlayoffDefaults } from '../../lib/season-playoff-response.js';
+import { seasonLeagueFields, seasonWithPlayoffDefaults } from '../../lib/season-playoff-response.js';
 import { getSeasonsColumnFlagsCached } from '../../lib/seasons-playoff-columns-cache.js';
 import { seasonsRowSelectShape } from '../../lib/seasons-drizzle-select.js';
 import { playoffColumnsForSeasonKind, type SeasonKind } from '../../lib/season-kind-playoffs.js';
 import { slugify } from '../../utils/slugify.js';
+import { parseYouthRules } from '@lbss/shared';
+
+function leagueColumns(level: unknown, fielders: unknown, maxRuns: unknown) {
+  if (level !== 'youth') return { leagueLevel: 'adult' as const, youthRules: {} };
+  return { leagueLevel: 'youth' as const, youthRules: parseYouthRules({ fielders, maxRunsPerInning: maxRuns }) };
+}
 
 async function syncSeasonPlayoffRow(
   seasonId: number,
@@ -106,6 +112,7 @@ export async function adminSeasonsRoutes(app: FastifyInstance) {
           return {
             ...seasonWithPlayoffDefaults(hasPoCols, row),
             seasonKind: flags.hasSeasonKindOptionals ? String(row.seasonKind ?? 'regular') : 'regular',
+            ...seasonLeagueFields(row),
             parentSeasonId: flags.hasSeasonKindOptionals
               ? ((row.parentSeasonId as number | null | undefined) ?? null)
               : null,
@@ -142,6 +149,7 @@ export async function adminSeasonsRoutes(app: FastifyInstance) {
       return reply.send({
         ...seasonWithPlayoffDefaults(hasPoCols, row),
         seasonKind: flags.hasSeasonKindOptionals ? String(row.seasonKind ?? 'regular') : 'regular',
+        ...seasonLeagueFields(row),
         parentSeasonId: flags.hasSeasonKindOptionals
           ? ((row.parentSeasonId as number | null | undefined) ?? null)
           : null,
@@ -167,12 +175,15 @@ export async function adminSeasonsRoutes(app: FastifyInstance) {
       seasonKind?: 'regular' | 'playoff';
       /** Regular season this playoff season continues (optional). */
       parentSeasonId?: number | null;
+      leagueLevel?: 'adult' | 'youth';
+      youthFielders?: number | null;
+      maxRunsPerInning?: number | null;
     };
   }>('/', async (request, reply) => {
     try {
       const {
         year, name, startDate, endDate, isActive, hasPlayoffs, regularSeasonGamesPerTeam, playoffSettings,
-        seasonKind, parentSeasonId,
+        seasonKind, parentSeasonId, leagueLevel, youthFielders, maxRunsPerInning,
       } = request.body ?? {};
       const yearNum = normalizeYear(year);
       const nameTrim = String(name ?? '').trim();
@@ -236,6 +247,7 @@ export async function adminSeasonsRoutes(app: FastifyInstance) {
                 }
               : {}),
             ...(hasPoCols ? playoffColumnsForSeasonKind(kind, true, { hasPlayoffs, regularSeasonGamesPerTeam, playoffSettings }) : {}),
+            ...(flags.hasLeagueLevel ? leagueColumns(leagueLevel, youthFielders, maxRunsPerInning) : {}),
           })
           // Omit columns missing in older DBs — bare `.returning()` asks Postgres for every Drizzle column and can 500.
           .returning(seasonsRowSelectShape(flags));
@@ -271,6 +283,7 @@ export async function adminSeasonsRoutes(app: FastifyInstance) {
       return reply.status(201).send({
         ...seasonWithPlayoffDefaults(hasPoCols, row),
         seasonKind: flags.hasSeasonKindOptionals ? String(row.seasonKind ?? 'regular') : 'regular',
+        ...seasonLeagueFields(row),
         parentSeasonId: flags.hasSeasonKindOptionals
           ? ((row.parentSeasonId as number | null | undefined) ?? null)
           : null,
@@ -319,6 +332,9 @@ export async function adminSeasonsRoutes(app: FastifyInstance) {
       playoffSettings?: unknown;
       seasonKind?: 'regular' | 'playoff';
       parentSeasonId?: number | null;
+      leagueLevel?: 'adult' | 'youth';
+      youthFielders?: number | null;
+      maxRunsPerInning?: number | null;
     };
   }>('/:id', async (request, reply) => {
     try {
@@ -329,7 +345,7 @@ export async function adminSeasonsRoutes(app: FastifyInstance) {
 
       const {
         year, name, startDate, endDate, isActive, hasPlayoffs, regularSeasonGamesPerTeam, playoffSettings,
-        seasonKind, parentSeasonId,
+        seasonKind, parentSeasonId, leagueLevel, youthFielders, maxRunsPerInning,
       } = request.body ?? {};
 
       const flags = await getSeasonsColumnFlagsCached();
@@ -439,6 +455,9 @@ export async function adminSeasonsRoutes(app: FastifyInstance) {
                   playoffSettings,
                 })
               : {}),
+            ...(flags.hasLeagueLevel && leagueLevel !== undefined
+              ? leagueColumns(leagueLevel, youthFielders, maxRunsPerInning)
+              : {}),
           })
           .where(eq(seasons.id, id))
           .returning(seasonsRowSelectShape(flags));
@@ -461,6 +480,7 @@ export async function adminSeasonsRoutes(app: FastifyInstance) {
       return reply.send({
         ...seasonWithPlayoffDefaults(hasPoCols, row),
         seasonKind: flags.hasSeasonKindOptionals ? String(row.seasonKind ?? 'regular') : 'regular',
+        ...seasonLeagueFields(row),
         parentSeasonId: flags.hasSeasonKindOptionals
           ? ((row.parentSeasonId as number | null | undefined) ?? null)
           : null,

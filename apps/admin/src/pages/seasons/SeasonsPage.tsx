@@ -26,6 +26,9 @@ export function SeasonsPage() {
     playoffSeeds: '4',
     playoffBestOf: '1',
     playoffThirdPlace: false,
+    leagueLevel: 'adult' as 'adult' | 'youth',
+    youthFielders: '6',
+    maxRunsPerInning: '',
   });
   const [saving, setSaving] = useState(false);
   const [playoffId, setPlayoffId] = useState<number | null>(null);
@@ -85,6 +88,9 @@ export function SeasonsPage() {
       playoffSeeds: '4',
       playoffBestOf: '1',
       playoffThirdPlace: false,
+      leagueLevel: 'adult',
+      youthFielders: '6',
+      maxRunsPerInning: '',
     });
     setPlayoffId(null);
     setSeriesRows([]);
@@ -107,6 +113,10 @@ export function SeasonsPage() {
       playoffSeeds: String(item.playoffSettings?.seeds ?? 4),
       playoffBestOf: String(item.playoffSettings?.bestOf ?? 1),
       playoffThirdPlace: item.playoffSettings?.thirdPlace === true,
+      leagueLevel: item.leagueLevel === 'youth' ? 'youth' : 'adult',
+      youthFielders: String(item.youthRules?.fielders ?? 6),
+      maxRunsPerInning:
+        item.youthRules?.maxRunsPerInning != null ? String(item.youthRules.maxRunsPerInning) : '',
     });
     setShowForm(true);
     if (item.hasPlayoffs === true) loadSeries(item.id);
@@ -174,6 +184,12 @@ export function SeasonsPage() {
           bestOf: form.playoffBestOf.trim() ? parseInt(form.playoffBestOf, 10) : 1,
           thirdPlace: form.playoffThirdPlace,
         },
+        leagueLevel: form.leagueLevel,
+        youthFielders: form.leagueLevel === 'youth' ? parseInt(form.youthFielders, 10) : null,
+        maxRunsPerInning:
+          form.leagueLevel === 'youth' && form.maxRunsPerInning.trim()
+            ? parseInt(form.maxRunsPerInning, 10)
+            : null,
       };
 
       if (editing) {
@@ -257,7 +273,11 @@ export function SeasonsPage() {
                   <td className="px-4 py-3">{item.year}</td>
                   <td className="px-4 py-3">{item.name}</td>
                   <td className="px-4 py-3 text-text-muted">
-                    {item.seasonKind === 'playoff' ? 'Playoff' : 'Regular'}
+                    {item.leagueLevel === 'youth'
+                      ? 'Children'
+                      : item.seasonKind === 'playoff'
+                        ? 'Playoff'
+                        : 'Regular'}
                   </td>
                   <td className="px-4 py-3">{formatShortDate(item.startDate)}</td>
                   <td className="px-4 py-3">{formatShortDate(item.endDate)}</td>
@@ -318,6 +338,54 @@ export function SeasonsPage() {
                   <option value="playoff">Playoff — separate campaign (add manually)</option>
                 </select>
               </div>
+              <div>
+                <label className="block text-sm font-medium mb-1.5">League</label>
+                <select
+                  value={form.leagueLevel}
+                  onChange={(e) =>
+                    setForm({ ...form, leagueLevel: e.target.value === 'youth' ? 'youth' : 'adult' })
+                  }
+                  className="w-full px-3 py-2 border border-border rounded-lg bg-surface-alt text-sm focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent"
+                >
+                  <option value="adult">Adults</option>
+                  <option value="youth">Children</option>
+                </select>
+                {form.leagueLevel === 'youth' && (
+                  <p className="mt-1.5 text-xs text-text-muted">
+                    Children's stats stay on this season and do not count toward all-time. Leave the adult season
+                    active so the public site still opens on the adult league. The batting order is unlimited. Set how
+                    many play in the field.
+                  </p>
+                )}
+              </div>
+              {form.leagueLevel === 'youth' && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium mb-1.5">Fielders</label>
+                    <select
+                      value={form.youthFielders}
+                      onChange={(e) => setForm({ ...form, youthFielders: e.target.value })}
+                      className="w-full px-3 py-2 border border-border rounded-lg bg-surface-alt text-sm focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent"
+                    >
+                      <option value="6">6 — indoor winter</option>
+                      <option value="9">9</option>
+                      <option value="10">10 — summer</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1.5">Run limit per inning</label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={30}
+                      placeholder="None"
+                      value={form.maxRunsPerInning}
+                      onChange={(e) => setForm({ ...form, maxRunsPerInning: e.target.value })}
+                      className="w-full px-3 py-2 border border-border rounded-lg bg-surface-alt text-sm focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent"
+                    />
+                  </div>
+                </div>
+              )}
               <div>
                 <label className="block text-sm font-medium mb-1.5">Year</label>
                 <input
@@ -384,6 +452,9 @@ export function SeasonsPage() {
                 <label htmlFor="isActive" className="text-sm font-medium">
                   Active (workspace default)
                 </label>
+                {form.leagueLevel === 'youth' && (
+                  <span className="text-xs text-text-muted">Keep the adult season active for the public site.</span>
+                )}
               </div>
 
               <div className="flex items-center gap-2">

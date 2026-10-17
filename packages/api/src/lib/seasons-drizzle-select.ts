@@ -20,6 +20,9 @@ export function seasonsRowSelectShape(flags: SeasonsColumnFlags) {
           playoffSettings: seasons.playoffSettings,
         }
       : {}),
+    ...(flags.hasLeagueLevel
+      ? { leagueLevel: seasons.leagueLevel, youthRules: seasons.youthRules }
+      : {}),
     createdAt: seasons.createdAt,
   };
 }

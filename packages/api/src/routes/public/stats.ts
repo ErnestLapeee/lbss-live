@@ -16,7 +16,7 @@ import {
 } from '../../db/schema/index.js';
 import { eq, desc, asc, and, sql, gte, ne } from 'drizzle-orm';
 import { rowsFromExecute } from '../../lib/pg-result.js';
-import { seasonWithPlayoffDefaults } from '../../lib/season-playoff-response.js';
+import { seasonLeagueFields, seasonWithPlayoffDefaults } from '../../lib/season-playoff-response.js';
 import { getSeasonsColumnFlagsCached } from '../../lib/seasons-playoff-columns-cache.js';
 import { parseIncludePlayoffsAllTime, sqlAllTimeSeasonWhere } from '../../lib/all-time-stats.js';
 import { formatOpponentBattingAvgPitch } from '../../lib/opponent-batting-avg.js';
@@ -429,7 +429,7 @@ export async function statsRoutes(app: FastifyInstance) {
             eq(gameEvents.isDeleted, false),
             battedBallFilter,
             ...(isAllTime
-              ? [includePlayoffs ? sql`true` : ne(seasons.seasonKind, 'playoff')]
+              ? [includePlayoffs ? sql`true` : ne(seasons.seasonKind, 'playoff'), sql`COALESCE(${seasons.leagueLevel}, 'adult') <> 'youth'`]
               : [eq(leagues.seasonId, seasonIdNum!)]),
           ),
         )
@@ -537,7 +537,7 @@ export async function statsRoutes(app: FastifyInstance) {
             eq(gameEvents.isDeleted, false),
             battedBallFilter,
             ...(isAllTime
-              ? [includePlayoffs ? sql`true` : ne(seasons.seasonKind, 'playoff')]
+              ? [includePlayoffs ? sql`true` : ne(seasons.seasonKind, 'playoff'), sql`COALESCE(${seasons.leagueLevel}, 'adult') <> 'youth'`]
               : [eq(leagues.seasonId, seasonIdNum!)]),
           ),
         )
@@ -972,6 +972,7 @@ export async function statsRoutes(app: FastifyInstance) {
           and(
             eq(games.isFinalized, true),
             includePlayoffs ? sql`true` : ne(seasons.seasonKind, 'playoff'),
+            sql`COALESCE(${seasons.leagueLevel}, 'adult') <> 'youth'`,
           ),
         )
         .groupBy(playerGamePitching.playerId);
@@ -1372,12 +1373,13 @@ export async function statsRoutes(app: FastifyInstance) {
           INNER JOIN leagues l ON g.league_id = l.id
           WHERE l.season_id = ${seasonIdNum}
         )`);
-      } else if (isAllTime && !includePlayoffs) {
+      } else if (isAllTime) {
         conditions.push(sql`${playerGameFielding.gameId} IN (
           SELECT g.id FROM games g
           INNER JOIN leagues l ON g.league_id = l.id
           INNER JOIN seasons s_fld ON s_fld.id = l.season_id
-          WHERE COALESCE(s_fld.season_kind, 'regular') <> 'playoff'
+          WHERE COALESCE(s_fld.league_level, 'adult') <> 'youth'
+          ${includePlayoffs ? sql`` : sql`AND COALESCE(s_fld.season_kind, 'regular') <> 'playoff'`}
         )`);
       }
       if (category === 'infield') {
@@ -1518,6 +1520,9 @@ export async function statsRoutes(app: FastifyInstance) {
                 playoffSettings: seasons.playoffSettings,
               }
             : {}),
+          ...(flags.hasLeagueLevel
+            ? { leagueLevel: seasons.leagueLevel, youthRules: seasons.youthRules }
+            : {}),
         })
         .from(seasons)
         .orderBy(desc(seasons.year));
@@ -1528,6 +1533,7 @@ export async function statsRoutes(app: FastifyInstance) {
           return {
             ...seasonWithPlayoffDefaults(hasPoCols, row),
             seasonKind: flags.hasSeasonKindOptionals ? String(row.seasonKind ?? 'regular') : 'regular',
+            ...seasonLeagueFields(row),
             parentSeasonId: flags.hasSeasonKindOptionals
               ? ((row.parentSeasonId as number | null | undefined) ?? null)
               : null,

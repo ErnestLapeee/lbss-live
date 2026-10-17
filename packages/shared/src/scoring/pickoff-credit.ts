@@ -16,7 +16,7 @@ export function pickoffCreditPlayerId(args: {
       .map((segment) => segment.trim())
       .filter((segment) => /^\d+$/.test(segment))
       .map((segment) => Number(segment))
-      .find((position) => position >= 1 && position <= 9);
+      .find((position) => (position >= 1 && position <= 9) || position === 11);
     if (firstPosition != null) {
       const playerId = args.positionToPlayer.get(firstPosition);
       if (playerId != null) return playerId;
