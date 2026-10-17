@@ -1,3 +1,5 @@
+import { isNumberedFielder } from './youth-rules.js';
+
 /**
  * Fielding pickoff (PK) goes to the fielder who starts the throw.
  * 1-3: pitcher. 2-3: catcher. A lone fielder gets the PK with the putout.
@@ -16,7 +18,7 @@ export function pickoffCreditPlayerId(args: {
       .map((segment) => segment.trim())
       .filter((segment) => /^\d+$/.test(segment))
       .map((segment) => Number(segment))
-      .find((position) => (position >= 1 && position <= 9) || position === 11);
+      .find((position) => isNumberedFielder(position));
     if (firstPosition != null) {
       const playerId = args.positionToPlayer.get(firstPosition);
       if (playerId != null) return playerId;

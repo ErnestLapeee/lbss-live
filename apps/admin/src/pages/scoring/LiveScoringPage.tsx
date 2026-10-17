@@ -50,18 +50,13 @@ function pickLineupFieldingPosition(
   preferred: number[] | undefined,
   used: Set<number>,
   youth = false,
-  maxFielders = 10,
 ): number | null {
-  const allowed = (pos: number) => {
-    if (!youth) return pos >= 1 && pos <= 10;
-    if (pos === 11) return maxFielders > 9;
-    return pos >= 1 && pos <= 9;
-  };
+  const allowed = (pos: number) => (youth ? (pos >= 1 && pos <= 9) || (pos >= 11 && pos <= 16) : pos >= 1 && pos <= 10);
   for (const pos of preferred ?? []) {
     if (Number.isInteger(pos) && allowed(pos) && !used.has(pos)) return pos;
   }
   const pool = youth
-    ? [...Array.from({ length: 9 }, (_, i) => i + 1), ...(maxFielders > 9 ? [11] : [])]
+    ? [...Array.from({ length: 9 }, (_, i) => i + 1), 11, 12, 13, 14, 15, 16]
     : Array.from({ length: 10 }, (_, i) => i + 1);
   for (const pos of pool) {
     if (!used.has(pos)) return pos;
@@ -69,21 +64,23 @@ function pickLineupFieldingPosition(
   return youth ? null : 1;
 }
 
-function positionChoices(youth: boolean, fielders: number): Array<[string, string]> {
-  if (!youth) return Object.entries(POS_LABELS);
+function positionChoices(youth: boolean): Array<[string, string]> {
+  if (!youth) return Object.entries(POS_LABELS).filter(([key]) => Number(key) <= 10);
   const choices: Array<[string, string]> = [];
   for (let pos = 1; pos <= 9; pos++) choices.push([String(pos), POS_LABELS[pos] ?? String(pos)]);
-  if (fielders > 9) choices.push(['11', 'EF']);
+  for (let pos = 11; pos <= 16; pos++) choices.push([String(pos), POS_LABELS[pos] ?? `EF${pos - 10}`]);
   return choices;
 }
 
-function fieldingGrid(showExtra: boolean): Array<{ pos: number; label: string }> {
+function fieldingGrid(extraPositions: number[]): Array<{ pos: number; label: string }> {
   const grid = [
     { pos: 1, label: 'P' }, { pos: 2, label: 'C' }, { pos: 3, label: '1B' },
     { pos: 4, label: '2B' }, { pos: 5, label: '3B' }, { pos: 6, label: 'SS' },
     { pos: 7, label: 'LF' }, { pos: 8, label: 'CF' }, { pos: 9, label: 'RF' },
   ];
-  if (showExtra) grid.push({ pos: 11, label: 'EF' });
+  for (const pos of [...new Set(extraPositions)].sort((a, b) => a - b)) {
+    if (pos >= 11) grid.push({ pos, label: POS_LABELS[pos] ?? `EF${pos - 10}` });
+  }
   return grid;
 }
 
@@ -179,7 +176,10 @@ function suggestedGhostRunnerFromPrevOffensiveInning(events: GameEvent[], inning
   return null;
 }
 
-const POS_LABELS: Record<number, string> = { 1:'P',2:'C',3:'1B',4:'2B',5:'3B',6:'SS',7:'LF',8:'CF',9:'RF',10:'DH',11:'EF' };
+const POS_LABELS: Record<number, string> = {
+  1:'P',2:'C',3:'1B',4:'2B',5:'3B',6:'SS',7:'LF',8:'CF',9:'RF',10:'DH',
+  11:'EF',12:'EF2',13:'EF3',14:'EF4',15:'EF5',16:'EF6',
+};
 
 function formatJersey(raw: string | null | undefined): string {
   const digits = (raw ?? '').replace(/\D/g, '');
@@ -530,7 +530,6 @@ export function LiveScoringPage() {
 
   const [game, setGame] = useState<GameData | null>(null);
   const youthGame = game?.leagueLevel === 'youth';
-  const youthFielders = youthGame ? Math.min(12, Math.max(5, game?.youthFielders ?? 6)) : 10;
   const maxLineupSlots = youthGame ? 30 : 10;
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [events, setEvents] = useState<GameEvent[]>([]);
@@ -982,9 +981,9 @@ export function LiveScoringPage() {
     }));
   }, [defensiveChangeLineup, pendingPositionChanges]);
   const currentPitcher = fieldingLineupActive.find(l => l.position === 1 && l.playerId != null);
-  const showExtraFielder = youthGame && (
-    youthFielders > 9 || [...homeLineup, ...awayLineup].some((l) => l.position === 11)
-  );
+  const extraFielderPositions = (youthGame ? [...homeLineup, ...awayLineup] : [])
+    .map((entry) => entry.position)
+    .filter((pos): pos is number => pos != null && pos >= 11);
 
   const battingSide = gameState?.half === 'top' ? 'away' : 'home';
   const rawIdx = derivedBatterIdx[battingSide] || 0;
@@ -1120,10 +1119,7 @@ export function LiveScoringPage() {
     const used = new Set(
       list.map((p) => p.position).filter((x): x is number => x != null),
     );
-    const defenders = used.size;
-    const pos = youthGame && defenders >= youthFielders
-      ? null
-      : pickLineupFieldingPosition(hintsMap[pid]?.positions, used, youthGame, youthFielders);
+    const pos = pickLineupFieldingPosition(hintsMap[pid]?.positions, used, youthGame);
     if (side === 'home') setSetupHome([...list, { playerId: pid, position: pos }]);
     else setSetupAway([...list, { playerId: pid, position: pos }]);
   };
@@ -1139,16 +1135,7 @@ export function LiveScoringPage() {
   };
   const updatePosition = (side: 'home' | 'away', index: number, pos: number | null) => {
     const setter = side === 'home' ? setSetupHome : setSetupAway;
-    setter((list) => {
-      if (pos != null && youthGame) {
-        const defenders = list.filter((p, i) => i !== index && p.position != null).length;
-        if (defenders >= youthFielders) {
-          alert(`This Jaunieši game fields ${youthFielders}. Extra hitters bat only.`);
-          return list;
-        }
-      }
-      return list.map((p, i) => (i === index && p.playerId != null ? { ...p, position: pos } : p));
-    });
+    setter((list) => list.map((p, i) => (i === index && p.playerId != null ? { ...p, position: pos } : p)));
   };
 
   const [setupDragFrom, setSetupDragFrom] = useState<number | null>(null);
@@ -2551,7 +2538,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                             onClick={(e) => e.stopPropagation()}
                           >
                             {youthGame && <option value="">Bats only</option>}
-                            {positionChoices(youthGame, youthFielders).map(([k, v]) => (
+                            {positionChoices(youthGame).map(([k, v]) => (
                               <option key={k} value={k}>
                                 {v}
                               </option>
@@ -2765,16 +2752,6 @@ function needsRunnerAdvanceErrorFieldingPrompt(
           )}
         </div>
       )}
-      {youthGame && game?.maxRunsPerInning != null && gameState && (() => {
-        const line = gameState.half === 'top' ? gameState.awayLineScore : gameState.homeLineScore;
-        const halfRuns = line[gameState.inning - 1] ?? 0;
-        const limit = game.maxRunsPerInning!;
-        return (
-          <div className="shrink-0 border-b border-white/10 bg-white/5 px-3 py-1 text-center text-[11px] font-semibold text-white/80">
-            Run limit {limit} this half ({halfRuns} scored). End the inning from the menu when you want to stop it. That records no out.
-          </div>
-        );
-      })()}
       {/* ── Scoreboard: compact strip on phone, full bar on lg+ ── */}
       <div className="shrink-0 bg-scoring-footer border-b border-white/20 lg:hidden">
         <div className="px-2 py-1.5 font-mono">
@@ -3392,7 +3369,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
             {step === 'runner_advance_error_fielding' && runnerAdvanceErrorPending && runnerQuestions.length > 0 && (() => {
               const q = runnerQuestions[currentRunnerIdx];
               const fld = runnerAdvanceErrorFielding;
-              const POS_GRID = fieldingGrid(showExtraFielder);
+              const POS_GRID = fieldingGrid(extraFielderPositions);
               const reasonLabel = runnerAdvanceErrorPending.reason === 'advance_on_error' ? 'ADVANCED ON ERROR' : 'ERROR ON ADVANCE';
               return (
                 <div className={`${WIZARD_SHELL} border-amber-500/30`}>
@@ -3500,7 +3477,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
               // Runner out fielding sub-step
               if (step === 'runner_out_fielding' && runnerOutPendingType) {
                 const fld = runnerOutFielding;
-                const POS_GRID = fieldingGrid(showExtraFielder);
+                const POS_GRID = fieldingGrid(extraFielderPositions);
                 return (
                   <div className={WIZARD_SHELL}>
                     <div className="px-4 py-3 border-b border-white/5 text-center">
@@ -3805,7 +3782,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                 // Step 2: Fielding positions for the chosen out type
                 if (runnerActionOutType) {
                   const fld = runnerActionFielding;
-                  const POS_GRID = fieldingGrid(showExtraFielder);
+                  const POS_GRID = fieldingGrid(extraFielderPositions);
                   const outLabel = runnerActionOutType.replace(/_/g, ' ').toUpperCase();
                   return (
                     <div className={WIZARD_SHELL}>
@@ -3895,7 +3872,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
 
               if (runnerActionType === '__error__') {
                 const fld = runnerActionFielding;
-                const POS_GRID = fieldingGrid(showExtraFielder);
+                const POS_GRID = fieldingGrid(extraFielderPositions);
                 return (
                   <div className={WIZARD_SHELL}>
                     <div className="px-4 py-3 border-b border-white/5 text-center">
@@ -4113,7 +4090,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                     {Object.entries(POS_LABELS).filter(([k]) => {
                       const n = parseInt(k, 10);
                       if (n === subPosition) return false;
-                      if (youthGame) return n <= 9 || (showExtraFielder && n === 11);
+                      if (youthGame) return n <= 9 || (n >= 11 && n <= 16);
                       return n <= 9;
                     }).map(([k, label]) => {
                       const posNum = parseInt(k);
@@ -4681,10 +4658,7 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                               .filter((r) => r.id !== row.id && r.position != null)
                               .map((r) => r.position as number),
                           );
-                          const defenders = used.size;
-                          const pos = youthGame && defenders >= youthFielders
-                            ? null
-                            : pickLineupFieldingPosition(hintsMap[pid]?.positions, used, youthGame, youthFielders);
+                          const pos = pickLineupFieldingPosition(hintsMap[pid]?.positions, used, youthGame);
                           updateLineupAdjustRow(lineupAdjustTeam, row.id, {
                             playerId: pid,
                             position: pos,
@@ -4724,19 +4698,12 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                           value={row.position ?? ''}
                           onChange={(e) => {
                             const next = e.target.value === '' ? null : Number(e.target.value);
-                            if (next != null && youthGame && row.position == null) {
-                              const defenders = sideRows.filter((r) => r.id !== row.id && r.position != null).length;
-                              if (defenders >= youthFielders) {
-                                alert(`This Jaunieši game fields ${youthFielders}. Extra hitters bat only.`);
-                                return;
-                              }
-                            }
                             updateLineupAdjustRow(lineupAdjustTeam, row.id, { position: next });
                           }}
                           className={`${ADMIN_SELECT_SM} flex-1 min-w-0`}
                         >
                           {youthGame && <option value="">Bats only</option>}
-                          {positionChoices(youthGame, youthFielders).map(([k, v]) => (
+                          {positionChoices(youthGame).map(([k, v]) => (
                             <option key={k} value={k}>
                               {v}
                             </option>

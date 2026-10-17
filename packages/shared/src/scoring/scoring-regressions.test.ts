@@ -8,7 +8,6 @@ import {
   isBetweenPitchEvent,
   isPlateAppearanceEvent,
   lineupRulesForSeason,
-  parseYouthRules,
   pickoffCreditPlayerId,
   validateLineupEntries,
   remapBasesForSubstitutionDetail,
@@ -228,18 +227,16 @@ assert(
 );
 assert(pickoffCreditPlayerId({ putoutFielderIds: [] }) == null, 'a pickoff with no fielder does not invent a pitcher credit');
 
-const indoor = parseYouthRules({ fielders: 6, maxRunsPerInning: 5 });
-assert(indoor.fielders === 6 && indoor.maxRunsPerInning === 5, 'indoor children rules keep six fielders and a run limit');
 const adultRules = lineupRulesForSeason('adult', { fielders: 6 });
-const youthRules = lineupRulesForSeason('youth', { fielders: 10, maxRunsPerInning: 7 });
+const youthRules = lineupRulesForSeason('youth', { fielders: 6, maxRunsPerInning: 5 });
 assert(adultRules.maxBattingOrder === 10 && adultRules.youth === false, 'adult lineups stay capped at ten');
-assert(youthRules.maxBattingOrder === 30 && youthRules.maxFielders === 10, 'children lineups can bat past nine and field ten');
+assert(youthRules.maxRunsPerInning == null && youthRules.maxFielders > 9, 'a Jaunieši game does not inherit a fielder count or run limit');
 const eleven = Array.from({ length: 11 }, (_, i) => ({
   playerId: i + 1,
   battingOrder: i + 1,
-  position: i < 6 ? i + 1 : null,
+  position: i < 9 ? i + 1 : 11 + (i - 9),
 }));
-assert(validateLineupEntries(eleven, youthRules) == null, 'extra children hitters can bat without a position');
+assert(validateLineupEntries(eleven, youthRules) == null, 'a Jaunieši lineup can field more than nine and bat the rest');
 assert(
   validateLineupEntries([{ playerId: 1, battingOrder: 11, position: 1 }], adultRules) != null,
   'adult batting order still stops at ten',

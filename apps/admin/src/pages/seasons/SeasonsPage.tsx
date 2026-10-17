@@ -27,8 +27,6 @@ export function SeasonsPage() {
     playoffBestOf: '1',
     playoffThirdPlace: false,
     leagueLevel: 'adult' as 'adult' | 'youth',
-    youthFielders: '6',
-    maxRunsPerInning: '',
   });
   const [saving, setSaving] = useState(false);
   const [playoffId, setPlayoffId] = useState<number | null>(null);
@@ -89,8 +87,6 @@ export function SeasonsPage() {
       playoffBestOf: '1',
       playoffThirdPlace: false,
       leagueLevel: 'adult',
-      youthFielders: '6',
-      maxRunsPerInning: '',
     });
     setPlayoffId(null);
     setSeriesRows([]);
@@ -114,9 +110,6 @@ export function SeasonsPage() {
       playoffBestOf: String(item.playoffSettings?.bestOf ?? 1),
       playoffThirdPlace: item.playoffSettings?.thirdPlace === true,
       leagueLevel: item.leagueLevel === 'youth' ? 'youth' : 'adult',
-      youthFielders: String(item.youthRules?.fielders ?? 6),
-      maxRunsPerInning:
-        item.youthRules?.maxRunsPerInning != null ? String(item.youthRules.maxRunsPerInning) : '',
     });
     setShowForm(true);
     if (item.hasPlayoffs === true) loadSeries(item.id);
@@ -185,11 +178,6 @@ export function SeasonsPage() {
           thirdPlace: form.playoffThirdPlace,
         },
         leagueLevel: form.leagueLevel,
-        youthFielders: form.leagueLevel === 'youth' ? parseInt(form.youthFielders, 10) : null,
-        maxRunsPerInning:
-          form.leagueLevel === 'youth' && form.maxRunsPerInning.trim()
-            ? parseInt(form.maxRunsPerInning, 10)
-            : null,
       };
 
       if (editing) {
@@ -353,39 +341,11 @@ export function SeasonsPage() {
                 {form.leagueLevel === 'youth' && (
                   <p className="mt-1.5 text-xs text-text-muted">
                     Jaunieši stats stay on this season and do not count toward all-time. Leave the adult season
-                    active so the public site still opens on the adult league. The batting order is unlimited. Set how
-                    many play in the field.
+                    active so the public site still opens on the adult league. The lineup has no fielder or batting-order
+                    limit. End an inning from the scorer when you want to; that records no out.
                   </p>
                 )}
               </div>
-              {form.leagueLevel === 'youth' && (
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-sm font-medium mb-1.5">Fielders</label>
-                    <select
-                      value={form.youthFielders}
-                      onChange={(e) => setForm({ ...form, youthFielders: e.target.value })}
-                      className="w-full px-3 py-2 border border-border rounded-lg bg-surface-alt text-sm focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent"
-                    >
-                      <option value="6">6 — indoor winter</option>
-                      <option value="9">9</option>
-                      <option value="10">10 — summer</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-1.5">Run limit per inning</label>
-                    <input
-                      type="number"
-                      min={1}
-                      max={30}
-                      placeholder="None"
-                      value={form.maxRunsPerInning}
-                      onChange={(e) => setForm({ ...form, maxRunsPerInning: e.target.value })}
-                      className="w-full px-3 py-2 border border-border rounded-lg bg-surface-alt text-sm focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent"
-                    />
-                  </div>
-                </div>
-              )}
               <div>
                 <label className="block text-sm font-medium mb-1.5">Year</label>
                 <input

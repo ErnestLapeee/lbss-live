@@ -25,11 +25,9 @@ import { getSeasonsColumnFlagsCached } from '../../lib/seasons-playoff-columns-c
 import { seasonsRowSelectShape } from '../../lib/seasons-drizzle-select.js';
 import { playoffColumnsForSeasonKind, type SeasonKind } from '../../lib/season-kind-playoffs.js';
 import { slugify } from '../../utils/slugify.js';
-import { parseYouthRules } from '@lbss/shared';
-
-function leagueColumns(level: unknown, fielders: unknown, maxRuns: unknown) {
+function leagueColumns(level: unknown) {
   if (level !== 'youth') return { leagueLevel: 'adult' as const, youthRules: {} };
-  return { leagueLevel: 'youth' as const, youthRules: parseYouthRules({ fielders, maxRunsPerInning: maxRuns }) };
+  return { leagueLevel: 'youth' as const, youthRules: {} };
 }
 
 async function syncSeasonPlayoffRow(
@@ -183,7 +181,7 @@ export async function adminSeasonsRoutes(app: FastifyInstance) {
     try {
       const {
         year, name, startDate, endDate, isActive, hasPlayoffs, regularSeasonGamesPerTeam, playoffSettings,
-        seasonKind, parentSeasonId, leagueLevel, youthFielders, maxRunsPerInning,
+        seasonKind, parentSeasonId, leagueLevel,
       } = request.body ?? {};
       const yearNum = normalizeYear(year);
       const nameTrim = String(name ?? '').trim();
@@ -247,7 +245,7 @@ export async function adminSeasonsRoutes(app: FastifyInstance) {
                 }
               : {}),
             ...(hasPoCols ? playoffColumnsForSeasonKind(kind, true, { hasPlayoffs, regularSeasonGamesPerTeam, playoffSettings }) : {}),
-            ...(flags.hasLeagueLevel ? leagueColumns(leagueLevel, youthFielders, maxRunsPerInning) : {}),
+            ...(flags.hasLeagueLevel ? leagueColumns(leagueLevel) : {}),
           })
           // Omit columns missing in older DBs — bare `.returning()` asks Postgres for every Drizzle column and can 500.
           .returning(seasonsRowSelectShape(flags));
@@ -345,7 +343,7 @@ export async function adminSeasonsRoutes(app: FastifyInstance) {
 
       const {
         year, name, startDate, endDate, isActive, hasPlayoffs, regularSeasonGamesPerTeam, playoffSettings,
-        seasonKind, parentSeasonId, leagueLevel, youthFielders, maxRunsPerInning,
+        seasonKind, parentSeasonId, leagueLevel,
       } = request.body ?? {};
 
       const flags = await getSeasonsColumnFlagsCached();
@@ -456,7 +454,7 @@ export async function adminSeasonsRoutes(app: FastifyInstance) {
                 })
               : {}),
             ...(flags.hasLeagueLevel && leagueLevel !== undefined
-              ? leagueColumns(leagueLevel, youthFielders, maxRunsPerInning)
+              ? leagueColumns(leagueLevel)
               : {}),
           })
           .where(eq(seasons.id, id))

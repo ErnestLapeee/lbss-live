@@ -1,8 +1,9 @@
-/** Children's league rules stored on a season. Adult seasons ignore these. */
+/** Jaunieši games are marked on the season. Lineup size is chosen while scoring, not in advance. */
 
 export const YOUTH_MAX_BATTING_ORDER = 30;
-/** Tenth fielder. Position 10 stays the adult DH, who does not play defense. */
+/** First extra fielder. Position 10 stays the adult DH, who does not play defense. */
 export const EXTRA_FIELDER_POSITION = 11;
+const EXTRA_FIELDER_LAST = 16;
 
 export interface YouthRules {
   fielders: number;
@@ -16,6 +17,7 @@ export interface LineupRules {
   maxRunsPerInning: number | null;
 }
 
+/** Older seasons may still store these. Scoring no longer uses them. */
 export function parseYouthRules(raw: unknown): YouthRules {
   const source = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
   const fielders = Number(source.fielders);
@@ -26,22 +28,25 @@ export function parseYouthRules(raw: unknown): YouthRules {
   };
 }
 
-export function lineupRulesForSeason(leagueLevel: unknown, youthRules: unknown): LineupRules {
+export function lineupRulesForSeason(leagueLevel: unknown, _youthRules?: unknown): LineupRules {
   if (leagueLevel !== 'youth') {
     return { youth: false, maxBattingOrder: 10, maxFielders: 10, maxRunsPerInning: null };
   }
-  const rules = parseYouthRules(youthRules);
   return {
     youth: true,
     maxBattingOrder: YOUTH_MAX_BATTING_ORDER,
-    maxFielders: rules.fielders,
-    maxRunsPerInning: rules.maxRunsPerInning,
+    maxFielders: YOUTH_MAX_BATTING_ORDER,
+    maxRunsPerInning: null,
   };
 }
 
-/** Positions that can record a putout or assist. 10 is the DH. */
+/** Positions that can record a putout or assist. 10 is the DH. 11–16 are extra fielders. */
 export function isNumberedFielder(position: number): boolean {
-  return (position >= 1 && position <= 9) || position === EXTRA_FIELDER_POSITION;
+  return (position >= 1 && position <= 9) || (position >= EXTRA_FIELDER_POSITION && position <= EXTRA_FIELDER_LAST);
+}
+
+export function isExtraFielder(position: number): boolean {
+  return position >= EXTRA_FIELDER_POSITION && position <= EXTRA_FIELDER_LAST;
 }
 
 export function validateLineupEntries(
@@ -76,9 +81,8 @@ export function validateLineupEntries(
     }
     const position = Number(entry.position);
     if (rules.youth) {
-      const extraFielder = rules.maxFielders > 9 && position === EXTRA_FIELDER_POSITION;
-      if (!((position >= 1 && position <= 9) || extraFielder)) {
-        return 'Jaunieši fielders use positions 1–9, or EF when the field has more than nine';
+      if (!isNumberedFielder(position)) {
+        return 'Jaunieši fielders use positions 1–9, or an extra fielder spot';
       }
     } else if (!Number.isInteger(position) || position < 1 || position > 10) {
       return 'Each filled slot needs a defensive position 1–10';
@@ -93,9 +97,6 @@ export function validateLineupEntries(
     return rules.youth
       ? 'Each fielder needs a different position'
       : 'Each defensive position (P–DH) must be unique among active fielders';
-  }
-  if (rules.youth && positions.length > rules.maxFielders) {
-    return `This Jaunieši season fields ${rules.maxFielders}. Extra players bat only, with no position.`;
   }
   return null;
 }
