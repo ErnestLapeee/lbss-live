@@ -554,7 +554,7 @@ export function PlayerModal({ slug, firstName, lastName, onClose }: PlayerModalP
                       }}
                       className="bg-white border border-[#ccc] rounded px-2 py-1 text-[10px] text-[#111]"
                     >
-                      <option value="all">All time</option>
+                      <option value="all">All time LBL</option>
                       {seasons.map(s => (
                         <option key={s.id} value={s.id}>{s.year}</option>
                       ))}
@@ -663,7 +663,7 @@ export function PlayerModal({ slug, firstName, lastName, onClose }: PlayerModalP
                         }}
                         className="bg-white border border-[#ccc] rounded px-2 py-1 text-[10px] text-[#111]"
                       >
-                        <option value="all">All time</option>
+                        <option value="all">All time LBL</option>
                         {seasons.map(s => (
                           <option key={s.id} value={s.id}>{s.year}</option>
                         ))}

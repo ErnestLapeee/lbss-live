@@ -40,7 +40,7 @@ function BattingSeasonRow({ row }: { row: any }) {
   return (
     <tr className="border-b border-border last:border-0 hover:bg-surface-alt/50 transition-colors">
       <td className="px-2 py-2 font-semibold text-xs">
-        {s.seasonYear != null ? `${s.seasonYear}${s.seasonLabel ? ` ${s.seasonLabel}` : ''}` : 'All time'}
+        {s.seasonYear != null ? `${s.seasonYear}${s.seasonLabel ? ` ${s.seasonLabel}` : ''}` : 'All time LBL'}
       </td>
       <td className="px-2 py-2 text-xs text-text-muted">
         <div className="flex items-center gap-2 min-w-0 max-w-[200px]">
@@ -89,7 +89,7 @@ function PitchingSeasonRow({ row }: { row: any }) {
   return (
     <tr className="border-b border-border last:border-0 hover:bg-surface-alt/50 transition-colors">
       <td className="px-2 py-2 font-semibold text-xs">
-        {s.seasonYear != null ? `${s.seasonYear}${s.seasonLabel ? ` ${s.seasonLabel}` : ''}` : 'All time'}
+        {s.seasonYear != null ? `${s.seasonYear}${s.seasonLabel ? ` ${s.seasonLabel}` : ''}` : 'All time LBL'}
       </td>
       <td className="px-2 py-2 text-xs text-text-muted">
         <div className="flex items-center gap-2 min-w-0 max-w-[200px]">
@@ -141,7 +141,7 @@ function FieldingSeasonRow({ row }: { row: any }) {
   return (
     <tr className="border-b border-border last:border-0 hover:bg-surface-alt/50 transition-colors">
       <td className="px-2 py-2 font-semibold text-xs">
-        {s.seasonYear != null ? `${s.seasonYear}${s.seasonLabel ? ` ${s.seasonLabel}` : ''}` : 'All time'}
+        {s.seasonYear != null ? `${s.seasonYear}${s.seasonLabel ? ` ${s.seasonLabel}` : ''}` : 'All time LBL'}
       </td>
       <td className="px-2 py-2 text-xs text-text-muted">{s.teamName ?? '—'}</td>
       <td className="px-2 py-2 text-right font-mono text-xs">{s.positionLabel ?? '—'}</td>
@@ -617,7 +617,7 @@ export function PlayerProfileClient({ slug, initialBattingStats, seasons, accola
             onChange={e => setSelectedSeasonId(e.target.value === 'all' ? null : Number(e.target.value))}
             className="rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent/50 min-w-[160px]"
           >
-            <option value="all">All time</option>
+            <option value="all">All time LBL</option>
             {seasons.map(s => (
               <option key={s.id} value={s.id}>
                 {seasonOptionLabel(s)}
