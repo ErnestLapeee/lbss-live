@@ -3,7 +3,7 @@
 const RETURN_LABELS: Record<string, string> = {
   '/stats': 'Statistics',
   '/stats/juniori': 'Statistika Junioriem',
-  '/junioriem': 'Junioriem',
+  '/junioriem': 'Statistika Junioriem',
   '/teams': 'Teams',
   '/schedule': 'Schedule',
   '/standings': 'Standings',
@@ -37,7 +37,7 @@ export function returnLabelForPath(path: string): string {
 
   const pathname = safe.split('?')[0]?.split('#')[0] ?? safe;
   if (RETURN_LABELS[pathname]) return RETURN_LABELS[pathname];
-  if (pathname === '/junioriem' || pathname.startsWith('/junioriem/')) return 'Junioriem';
+  if (pathname === '/junioriem' || pathname.startsWith('/junioriem/')) return 'Statistika Junioriem';
 
   const teamMatch = pathname.match(/^\/teams\/([^/]+)$/);
   if (teamMatch) return 'Team';

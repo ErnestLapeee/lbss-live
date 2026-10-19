@@ -22,7 +22,7 @@ export function JunioriemSection({
 }) {
   return (
     <div>
-      <PageHeader title="Junioriem" />
+      <PageHeader title="Statistika Junioriem" />
       <div className="mx-auto max-w-none px-4 pt-6 sm:px-6 lg:px-10">
         <div className="flex flex-wrap gap-2">
           {groups.map((group) => {

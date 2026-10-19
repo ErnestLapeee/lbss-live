@@ -82,7 +82,7 @@ export function SiteHeader() {
               href="/junioriem"
               className="ml-2 rounded-md border border-white/35 px-3 py-1 text-sm font-medium text-white hover:bg-white/10"
             >
-              Junioriem
+              Statistika Junioriem
             </Link>
           </nav>
 
@@ -106,7 +106,7 @@ export function SiteHeader() {
             <Link href="/standings" className="block py-1.5 text-sm text-white/85" onClick={() => setMobileOpen(false)}>Standings</Link>
             <Link href="/stats" className="block py-1.5 text-sm text-white/85" onClick={() => setMobileOpen(false)}>Statistics</Link>
             <div className="border-t border-white/10 my-2" />
-            <Link href="/junioriem" className="block py-1.5 text-sm font-medium text-white" onClick={() => setMobileOpen(false)}>Junioriem</Link>
+            <Link href="/junioriem" className="block py-1.5 text-sm font-medium text-white" onClick={() => setMobileOpen(false)}>Statistika Junioriem</Link>
             {mainNavItems.map((item) => (
               <Link key={item.href} href={item.href} className="block py-1.5 text-sm text-white/85" onClick={() => setMobileOpen(false)}>{item.label}</Link>
             ))}
