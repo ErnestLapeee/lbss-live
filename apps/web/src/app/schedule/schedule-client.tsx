@@ -66,6 +66,8 @@ interface ScheduleClientProps {
   seasons: Season[];
   defaultSeasonId: number | null;
   initialRecordByTeamId?: Record<number, string>;
+  /** Rendered inside Junioriem, which already has the page title and group switcher. */
+  embedded?: boolean;
 }
 
 export function ScheduleClient({
@@ -73,6 +75,7 @@ export function ScheduleClient({
   seasons,
   defaultSeasonId,
   initialRecordByTeamId = {},
+  embedded = false,
 }: ScheduleClientProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -169,9 +172,9 @@ export function ScheduleClient({
 
   return (
     <div>
-      <PageHeader title="Schedule & Scores" />
+      {!embedded && <PageHeader title="Schedule & Scores" />}
       <div className="mx-auto max-w-3xl px-4 sm:px-6 py-6 space-y-8">
-        {seasons.length > 0 && (
+        {!embedded && seasons.length > 0 && (
           <div className="flex items-center gap-3 p-3 rounded-xl bg-surface-alt border border-border mb-4">
             <label className="text-sm font-medium text-text-muted whitespace-nowrap">Season:</label>
             <select

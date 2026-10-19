@@ -37,6 +37,7 @@ export function returnLabelForPath(path: string): string {
 
   const pathname = safe.split('?')[0]?.split('#')[0] ?? safe;
   if (RETURN_LABELS[pathname]) return RETURN_LABELS[pathname];
+  if (pathname === '/junioriem' || pathname.startsWith('/junioriem/')) return 'Junioriem';
 
   const teamMatch = pathname.match(/^\/teams\/([^/]+)$/);
   if (teamMatch) return 'Team';

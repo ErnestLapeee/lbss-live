@@ -1,8 +1,10 @@
 import type { Metadata } from 'next';
 import { Suspense } from 'react';
 import { apiFetch, API_REVALIDATE_SEASONS, API_REVALIDATE_STANDINGS } from '@/lib/api';
+import { redirect } from 'next/navigation';
 import { StandingsClient, type LeagueStandings } from './standings-client';
 import { defaultPublicSeason } from '@/lib/season-label';
+import { isYouthSeason } from '../stats/load-stats-page';
 
 export const metadata: Metadata = { title: 'Standings' };
 
@@ -22,6 +24,11 @@ export default async function StandingsPage({ searchParams }: Props) {
   } catch {}
 
   const fromUrl = params.season;
+  if (fromUrl) {
+    const youth = seasons.find((season) => String(season.id) === fromUrl && isYouthSeason(season));
+    if (youth) redirect(`/junioriem/${youth.id}/standings`);
+  }
+  seasons = seasons.filter((season) => !isYouthSeason(season));
   const explicit = fromUrl ? seasons.find((s) => String(s.id) === fromUrl) : null;
   const active = explicit ?? defaultPublicSeason(seasons);
   const initialSeasonId = active?.id ?? null;

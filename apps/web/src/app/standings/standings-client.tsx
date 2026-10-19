@@ -40,6 +40,8 @@ type StandingsClientProps = {
   initialSeasons?: Season[];
   initialSeasonId?: number | null;
   initialStandings?: LeagueStandings[];
+  /** Rendered inside Junioriem, which already has the page title and group switcher. */
+  embedded?: boolean;
 };
 type PlayoffsData = {
   seasonId: number;
@@ -96,6 +98,7 @@ export function StandingsClient({
   initialSeasons = [],
   initialSeasonId = null,
   initialStandings = [],
+  embedded = false,
 }: StandingsClientProps = {}) {
   const router = useRouter();
   const pathname = usePathname();
@@ -301,10 +304,9 @@ export function StandingsClient({
 
   return (
     <div>
-      <PageHeader title={pageTitle} description={isPlayoffSeason ? 'Postseason bracket' : 'League standings by season'} />
+      {!embedded && <PageHeader title={pageTitle} description={isPlayoffSeason ? 'Postseason bracket' : 'League standings by season'} />}
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
-        {/* Always-visible season selector — light card on playoff view to match schedule/stats */}
-        <div
+        {!embedded && <div
           className={`mb-6 flex flex-wrap items-center gap-4 ${isPlayoffSeason ? 'rounded-xl border border-border bg-surface-alt p-4' : ''}`}
         >
           <span className="text-sm font-medium text-text-muted">Season:</span>
@@ -326,7 +328,7 @@ export function StandingsClient({
               ))}
             </select>
           )}
-        </div>
+        </div>}
 
         {isPlayoffSeason ? (
           <div className="space-y-6">

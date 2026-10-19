@@ -24,7 +24,7 @@ export default async function StatsPage({ searchParams }: Props) {
   if (seasonFromUrl && seasonFromUrl !== 'all') {
     const requested = parseInt(seasonFromUrl, 10);
     if (!isNaN(requested) && allSeasons.some((season) => season.id === requested && isYouthSeason(season))) {
-      redirect(`/stats/juniori?season=${requested}`);
+      redirect(`/junioriem/${requested}/statistika`);
     }
   }
 

@@ -355,6 +355,7 @@ function formatStatValue(value: string | number | null | undefined): string {
 
 interface StatsClientProps {
   audience?: 'lbl' | 'juniori';
+  hideSeasonSelect?: boolean;
   initialSeasons: Season[];
   initialSeasonId: number | null;
   initialBatting: BattingStat[];
@@ -366,6 +367,7 @@ interface StatsClientProps {
 
 export function StatsClient({
   audience = 'lbl',
+  hideSeasonSelect = false,
   initialSeasons, initialSeasonId,
   initialBatting, initialPitching, initialFielding,
   initialBattingLeaders, initialPitchingLeaders,
@@ -646,13 +648,8 @@ export function StatsClient({
         {/* Season + category + Legend */}
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-4 sm:justify-end">
           <div className="flex items-center gap-3">
-            {audience === 'juniori' && (
-              <Link href="/junioriem" className="text-sm font-medium text-accent hover:text-accent-light">
-                Junioriem
-              </Link>
-            )}
-            <label className="text-sm font-medium text-text-muted">Season:</label>
-            <select
+            {!hideSeasonSelect && <label className="text-sm font-medium text-text-muted">Season:</label>}
+            {!hideSeasonSelect && <select
               value={audience === 'juniori' ? String(selectedSeasonId ?? seasons[0]?.id ?? '') : (selectedSeasonId ?? 'all')}
               onChange={(e) => {
                 const v = e.target.value;
@@ -671,7 +668,7 @@ export function StatsClient({
                   {seasonOptionLabel(s)}
                 </option>
               ))}
-            </select>
+            </select>}
           </div>
           {tab === 'batting' && (
             <div className="flex items-center gap-2">

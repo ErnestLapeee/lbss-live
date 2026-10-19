@@ -1,8 +1,10 @@
 import type { Metadata } from 'next';
 import { apiFetch, API_REVALIDATE_GAMES, API_REVALIDATE_SEASONS, API_REVALIDATE_STANDINGS } from '@/lib/api';
 import { buildRecordByTeamIdFromStandings } from '@/lib/standings-records';
+import { redirect } from 'next/navigation';
 import { ScheduleClient } from './schedule-client';
 import { defaultPublicSeason } from '@/lib/season-label';
+import { isYouthSeason } from '../stats/load-stats-page';
 
 export const metadata: Metadata = { title: 'Schedule & Scores' };
 
@@ -19,8 +21,15 @@ export default async function SchedulePage({ searchParams }: SchedulePageProps) 
     seasons = await apiFetch('/api/public/stats/seasons', { revalidate: API_REVALIDATE_SEASONS });
     seasons = Array.isArray(seasons) ? seasons : [];
   } catch {}
-  const activeSeason = defaultPublicSeason(seasons);
   const rawSeason = params.season;
+  if (rawSeason && rawSeason !== 'all') {
+    const sid = parseInt(rawSeason, 10);
+    if (!isNaN(sid) && seasons.some((season) => season.id === sid && isYouthSeason(season))) {
+      redirect(`/junioriem/${sid}/schedule`);
+    }
+  }
+  seasons = seasons.filter((season) => !isYouthSeason(season));
+  const activeSeason = defaultPublicSeason(seasons);
   let defaultSeasonId: number | null = activeSeason?.id ?? null;
   if (rawSeason === 'all') {
     defaultSeasonId = null;
