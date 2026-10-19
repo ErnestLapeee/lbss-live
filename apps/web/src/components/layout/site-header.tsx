@@ -3,33 +3,89 @@
 import Link from 'next/link';
 import { useState, useRef, useEffect } from 'react';
 
-const mainNavItems = [
-  { label: 'Teams', href: '/teams' },
-  { label: 'Junioriem', href: '/junioriem' },
+const LEAGUE_LINKS = [
+  { href: '/schedule', label: 'Schedule' },
+  { href: '/standings', label: 'Standings' },
+  { href: '/stats', label: 'Statistics' },
 ];
 
+const JUNIORIEM_LINKS = [
+  { href: '/junioriem/schedule', label: 'Schedule' },
+  { href: '/junioriem/standings', label: 'Standings' },
+  { href: '/junioriem/statistika', label: 'Statistics' },
+];
+
+const mainNavItems = [
+  { label: 'Teams', href: '/teams' },
+];
+
+function NavDropdown({
+  label,
+  items,
+  open,
+  onOpen,
+  onClose,
+}: {
+  label: string;
+  items: { href: string; label: string }[];
+  open: boolean;
+  onOpen: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="relative" onMouseEnter={onOpen} onMouseLeave={onClose}>
+      <button
+        className="px-3 py-1.5 text-sm text-white/80 hover:text-white hover:underline flex items-center gap-1"
+        onClick={() => (open ? onClose() : onOpen())}
+      >
+        {label}
+        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      {open && (
+        <div className="absolute left-0 top-full pt-1" onMouseEnter={onOpen} onMouseLeave={onClose}>
+          <div className="w-40 border border-black/30 bg-[#3a3a3a] shadow-sm py-1">
+            {items.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                className="block px-3 py-1.5 text-sm text-white/85 hover:bg-black/15"
+                onClick={onClose}
+              >
+                {item.label}
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function SiteHeader() {
-  const [megaOpen, setMegaOpen] = useState(false);
+  const [openMenu, setOpenMenu] = useState<'league' | 'junioriem' | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const megaRef = useRef<HTMLDivElement>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const openMega = () => {
+  const open = (menu: 'league' | 'junioriem') => {
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
     timeoutRef.current = null;
-    setMegaOpen(true);
+    setOpenMenu(menu);
   };
-  const closeMega = () => {
+  const close = () => {
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
     timeoutRef.current = setTimeout(() => {
-      setMegaOpen(false);
+      setOpenMenu(null);
       timeoutRef.current = null;
     }, 120);
   };
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (megaRef.current && !megaRef.current.contains(e.target as Node)) setMegaOpen(false);
+      const target = e.target as HTMLElement | null;
+      if (target?.closest('[data-nav-menu]')) return;
+      setOpenMenu(null);
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
@@ -44,41 +100,26 @@ export function SiteHeader() {
             <span className="text-sm font-semibold text-white">LBSS</span>
           </Link>
 
-          <nav className="hidden md:flex items-center gap-1">
-            <div
-              ref={megaRef}
-              className="relative"
-              onMouseEnter={openMega}
-              onMouseLeave={closeMega}
-            >
-              <button
-                className="px-3 py-1.5 text-sm text-white/80 hover:text-white hover:underline flex items-center gap-1"
-                onClick={() => setMegaOpen(!megaOpen)}
-              >
-                League
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              </button>
-              {megaOpen && (
-                <div
-                  className="absolute left-0 top-full pt-1"
-                  onMouseEnter={openMega}
-                  onMouseLeave={closeMega}
-                >
-                  <div className="w-40 border border-black/30 bg-[#3a3a3a] shadow-sm py-1">
-                    <Link href="/schedule" className="block px-3 py-1.5 text-sm text-white/85 hover:bg-black/15" onClick={() => setMegaOpen(false)}>Schedule</Link>
-                    <Link href="/standings" className="block px-3 py-1.5 text-sm text-white/85 hover:bg-black/15" onClick={() => setMegaOpen(false)}>Standings</Link>
-                    <Link href="/stats" className="block px-3 py-1.5 text-sm text-white/85 hover:bg-black/15" onClick={() => setMegaOpen(false)}>Statistics</Link>
-                  </div>
-                </div>
-              )}
-            </div>
+          <nav className="hidden md:flex items-center gap-1" data-nav-menu>
+            <NavDropdown
+              label="League"
+              items={LEAGUE_LINKS}
+              open={openMenu === 'league'}
+              onOpen={() => open('league')}
+              onClose={close}
+            />
             {mainNavItems.map((item) => (
               <Link key={item.href} href={item.href} className="px-3 py-1.5 text-sm text-white/80 hover:text-white hover:underline">
                 {item.label}
               </Link>
             ))}
+            <NavDropdown
+              label="Junioriem"
+              items={JUNIORIEM_LINKS}
+              open={openMenu === 'junioriem'}
+              onOpen={() => open('junioriem')}
+              onClose={close}
+            />
           </nav>
 
           <button
@@ -97,9 +138,13 @@ export function SiteHeader() {
         <div className="md:hidden border-t border-black/30 bg-[#2f2f2f]">
           <div className="px-4 py-2 space-y-0">
             <div className="text-[11px] font-semibold text-white/55 uppercase pt-2 pb-1">League</div>
-            <Link href="/schedule" className="block py-1.5 text-sm text-white/85" onClick={() => setMobileOpen(false)}>Schedule</Link>
-            <Link href="/standings" className="block py-1.5 text-sm text-white/85" onClick={() => setMobileOpen(false)}>Standings</Link>
-            <Link href="/stats" className="block py-1.5 text-sm text-white/85" onClick={() => setMobileOpen(false)}>Statistics</Link>
+            {LEAGUE_LINKS.map((item) => (
+              <Link key={item.href} href={item.href} className="block py-1.5 text-sm text-white/85" onClick={() => setMobileOpen(false)}>{item.label}</Link>
+            ))}
+            <div className="text-[11px] font-semibold text-white/55 uppercase pt-3 pb-1">Junioriem</div>
+            {JUNIORIEM_LINKS.map((item) => (
+              <Link key={item.href} href={item.href} className="block py-1.5 text-sm text-white/85" onClick={() => setMobileOpen(false)}>{item.label}</Link>
+            ))}
             <div className="border-t border-white/10 my-2" />
             {mainNavItems.map((item) => (
               <Link key={item.href} href={item.href} className="block py-1.5 text-sm text-white/85" onClick={() => setMobileOpen(false)}>{item.label}</Link>
