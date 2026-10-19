@@ -3,6 +3,7 @@
 const RETURN_LABELS: Record<string, string> = {
   '/stats': 'Statistics',
   '/stats/juniori': 'Statistika Junioriem',
+  '/junioriem': 'Junioriem',
   '/teams': 'Teams',
   '/schedule': 'Schedule',
   '/standings': 'Standings',

@@ -646,13 +646,9 @@ export function StatsClient({
         {/* Season + category + Legend */}
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-4 sm:justify-end">
           <div className="flex items-center gap-3">
-            {audience === 'lbl' ? (
-              <Link href="/stats/juniori" className="text-sm font-medium text-accent hover:text-accent-light">
-                Statistika Junioriem
-              </Link>
-            ) : (
-              <Link href="/stats" className="text-sm font-medium text-accent hover:text-accent-light">
-                LBL
+            {audience === 'juniori' && (
+              <Link href="/junioriem" className="text-sm font-medium text-accent hover:text-accent-light">
+                Junioriem
               </Link>
             )}
             <label className="text-sm font-medium text-text-muted">Season:</label>

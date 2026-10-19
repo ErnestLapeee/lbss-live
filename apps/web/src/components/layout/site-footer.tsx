@@ -30,7 +30,6 @@ export function SiteFooter() {
               <li><Link href="/standings" className="text-sm hover:text-white transition-colors">Standings</Link></li>
               <li><Link href="/teams" className="text-sm hover:text-white transition-colors">Teams</Link></li>
               <li><Link href="/leaderboards" className="text-sm hover:text-white transition-colors">Statistics</Link></li>
-              <li><Link href="/stats/juniori" className="text-sm hover:text-white transition-colors">Statistika Junioriem</Link></li>
             </ul>
           </div>
 
@@ -38,6 +37,7 @@ export function SiteFooter() {
           <div>
             <h3 className="text-[11px] font-bold uppercase tracking-[0.12em] text-white/30 mb-3">Federation</h3>
             <ul className="space-y-2">
+              <li><Link href="/junioriem" className="text-sm hover:text-white transition-colors">Junioriem</Link></li>
               <li><Link href="/about" className="text-sm hover:text-white transition-colors">About LBSS</Link></li>
               <li><Link href="/news" className="text-sm hover:text-white transition-colors">News</Link></li>
               <li><Link href="/stats" className="text-sm hover:text-white transition-colors">Statistics</Link></li>
