@@ -30,7 +30,7 @@ export function SiteFooter() {
               <li><Link href="/standings" className="text-sm hover:text-white transition-colors">Standings</Link></li>
               <li><Link href="/teams" className="text-sm hover:text-white transition-colors">Teams</Link></li>
               <li><Link href="/leaderboards" className="text-sm hover:text-white transition-colors">Statistics</Link></li>
-              <li><Link href="/stats/juniori" className="text-sm hover:text-white transition-colors">Statistics Juniori</Link></li>
+              <li><Link href="/stats/juniori" className="text-sm hover:text-white transition-colors">Statistika Junioriem</Link></li>
             </ul>
           </div>
 

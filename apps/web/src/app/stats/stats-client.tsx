@@ -648,7 +648,7 @@ export function StatsClient({
           <div className="flex items-center gap-3">
             {audience === 'lbl' ? (
               <Link href="/stats/juniori" className="text-sm font-medium text-accent hover:text-accent-light">
-                Juniori
+                Statistika Junioriem
               </Link>
             ) : (
               <Link href="/stats" className="text-sm font-medium text-accent hover:text-accent-light">

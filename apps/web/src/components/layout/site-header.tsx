@@ -65,11 +65,11 @@ export function SiteHeader() {
                   onMouseEnter={openMega}
                   onMouseLeave={closeMega}
                 >
-                  <div className="w-52 border border-black/30 bg-[#3a3a3a] shadow-sm py-1">
+                  <div className="w-56 border border-black/30 bg-[#3a3a3a] shadow-sm py-1">
                     <Link href="/schedule" className="block px-3 py-1.5 text-sm text-white/85 hover:bg-black/15" onClick={() => setMegaOpen(false)}>Schedule</Link>
                     <Link href="/standings" className="block px-3 py-1.5 text-sm text-white/85 hover:bg-black/15" onClick={() => setMegaOpen(false)}>Standings</Link>
                     <Link href="/stats" className="block px-3 py-1.5 text-sm text-white/85 hover:bg-black/15" onClick={() => setMegaOpen(false)}>Statistics</Link>
-                    <Link href="/stats/juniori" className="block px-3 py-1.5 text-sm text-white/85 hover:bg-black/15" onClick={() => setMegaOpen(false)}>Statistics Juniori</Link>
+                    <Link href="/stats/juniori" className="block px-3 py-1.5 text-sm text-white/85 hover:bg-black/15" onClick={() => setMegaOpen(false)}>Statistika Junioriem</Link>
                   </div>
                 </div>
               )}
@@ -100,7 +100,7 @@ export function SiteHeader() {
             <Link href="/schedule" className="block py-1.5 text-sm text-white/85" onClick={() => setMobileOpen(false)}>Schedule</Link>
             <Link href="/standings" className="block py-1.5 text-sm text-white/85" onClick={() => setMobileOpen(false)}>Standings</Link>
             <Link href="/stats" className="block py-1.5 text-sm text-white/85" onClick={() => setMobileOpen(false)}>Statistics</Link>
-            <Link href="/stats/juniori" className="block py-1.5 text-sm text-white/85" onClick={() => setMobileOpen(false)}>Statistics Juniori</Link>
+            <Link href="/stats/juniori" className="block py-1.5 text-sm text-white/85" onClick={() => setMobileOpen(false)}>Statistika Junioriem</Link>
             <div className="border-t border-white/10 my-2" />
             {mainNavItems.map((item) => (
               <Link key={item.href} href={item.href} className="block py-1.5 text-sm text-white/85" onClick={() => setMobileOpen(false)}>{item.label}</Link>

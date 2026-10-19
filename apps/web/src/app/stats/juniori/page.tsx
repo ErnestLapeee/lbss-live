@@ -6,7 +6,7 @@ import { StatsClient } from '../stats-client';
 import { fetchPublicSeasons, fetchStatsBundle, isYouthSeason } from '../load-stats-page';
 
 export const metadata: Metadata = {
-  title: 'Statistics Juniori - LBSS',
+  title: 'Statistika Junioriem - LBSS',
   description: 'Batting and pitching statistics for Jaunieši seasons',
 };
 
@@ -34,7 +34,7 @@ export default async function JunioriStatsPage({ searchParams }: Props) {
   if (seasonId == null) {
     return (
       <div>
-        <PageHeader title="Statistics Juniori" />
+        <PageHeader title="Statistika Junioriem" />
         <div className="mx-auto max-w-none px-4 py-16 text-center sm:px-6 lg:px-10">
           <p className="text-text-muted">No Juniori seasons yet.</p>
         </div>
@@ -46,7 +46,7 @@ export default async function JunioriStatsPage({ searchParams }: Props) {
 
   return (
     <div>
-      <PageHeader title="Statistics Juniori" />
+      <PageHeader title="Statistika Junioriem" />
       <Suspense fallback={null}>
         <StatsClient
           audience="juniori"
