@@ -102,7 +102,7 @@ export function SiteHeader() {
             <span className="text-sm font-semibold text-white">LBSS</span>
           </Link>
 
-          <nav className="hidden md:flex items-center gap-1" data-nav-menu>
+          <nav className="hidden md:flex items-center gap-1 mr-14" data-nav-menu>
             <NavDropdown
               label="League"
               items={LEAGUE_LINKS}
@@ -118,7 +118,6 @@ export function SiteHeader() {
             <NavDropdown
               label="Junioriem"
               items={JUNIORIEM_LINKS}
-              align="right"
               open={openMenu === 'junioriem'}
               onOpen={() => open('junioriem')}
               onClose={close}
