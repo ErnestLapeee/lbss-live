@@ -19,7 +19,7 @@ export default async function JunioriemIndexPage() {
     <div>
       <PageHeader title="Statistika Junioriem" />
       <div className="mx-auto max-w-none px-4 py-16 sm:px-6 lg:px-10">
-        <p className="text-text-muted">No children’s groups yet.</p>
+        <p className="text-text-muted">No children’s league yet.</p>
       </div>
     </div>
   );

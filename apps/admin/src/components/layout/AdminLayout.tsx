@@ -20,6 +20,7 @@ export function AdminLayout() {
   const { user, logout } = useAuth();
   const { seasons, selectedSeasonId, setSelectedSeasonId, seasonsLoading, seasonsError, reloadSeasons } =
     useAdminSeason();
+  const youthWorkspace = seasons.find((season) => season.id === selectedSeasonId)?.leagueLevel === 'youth';
   const [navOpen, setNavOpen] = useState(false);
 
   const isScorer = user?.role === 'statistician';
@@ -95,7 +96,7 @@ export function AdminLayout() {
                     : 'text-sidebar-text hover:bg-sidebar-active hover:text-white'
                 }`}
               >
-                {item.label}
+                {item.href === '/leagues' && youthWorkspace ? 'Age groups' : item.label}
               </Link>
             );
           })}

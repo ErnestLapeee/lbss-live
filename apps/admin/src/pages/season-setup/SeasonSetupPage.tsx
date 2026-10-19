@@ -39,6 +39,7 @@ export function SeasonSetupPage() {
     () => (selectedSeasonId == null ? [] : leagues.filter((l) => l.seasonId === selectedSeasonId)),
     [leagues, selectedSeasonId],
   );
+  const youth = seasons.find((season) => season.id === selectedSeasonId)?.leagueLevel === 'youth';
 
   const activeTeams = useMemo(() => teams.filter((t) => t.isActive).sort((a, b) => a.name.localeCompare(b.name)), [teams]);
 
@@ -187,12 +188,14 @@ export function SeasonSetupPage() {
       ) : !selectedSeasonId ? (
         <p className="text-text-muted text-sm">No season selected.</p>
       ) : leaguesInSeason.length === 0 ? (
-        <p className="text-text-muted text-sm">No league for this season.</p>
+        <p className="text-text-muted text-sm">
+          {youth ? 'No age group for this season yet. Add one under Age groups.' : 'No league for this season.'}
+        </p>
       ) : (
         <div className="space-y-8">
           <div className="flex flex-wrap items-end gap-4">
             <div>
-              <label className="block text-xs font-medium text-text-muted mb-1">League</label>
+              <label className="block text-xs font-medium text-text-muted mb-1">{youth ? 'Age group' : 'League'}</label>
               <select
                 className={`${inputBar} min-w-[14rem]`}
                 value={leagueId ?? ''}

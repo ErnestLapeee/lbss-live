@@ -72,7 +72,8 @@ export function GamesPage() {
   const { user } = useAuth();
   const isScorer = user?.role === 'statistician';
   const isFinishedGame = (g: Game) => g.isFinalized || g.status === 'final';
-  const { selectedSeasonId, seasonsLoading } = useAdminSeason();
+  const { selectedSeasonId, selectedSeason, seasonsLoading } = useAdminSeason();
+  const ageGroups = selectedSeason?.leagueLevel === 'youth';
   const [games, setGames] = useState<Game[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
   const [leagues, setLeagues] = useState<League[]>([]);
@@ -447,7 +448,9 @@ export function GamesPage() {
               <tr>
                 <td className="px-4 py-8 text-center text-text-muted" colSpan={6}>
                   {leaguesForSeason.length === 0
-                    ? 'No leagues for this season yet. Create a league first.'
+                    ? ageGroups
+                      ? 'No age groups yet. Add one under Age groups, then create a game.'
+                      : 'No leagues for this season yet. Create a league first.'
                     : 'No games scheduled yet. Create your first game.'}
                 </td>
               </tr>
@@ -522,7 +525,7 @@ export function GamesPage() {
             </h2>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-text-muted mb-1">League *</label>
+                <label className="block text-sm font-medium text-text-muted mb-1">{ageGroups ? 'Age group *' : 'League *'}</label>
                 <select
                   value={form.leagueId}
                   onChange={(e) =>
@@ -536,7 +539,7 @@ export function GamesPage() {
                   className={inputClass}
                   required
                 >
-                  <option value="">Select league</option>
+                  <option value="">{ageGroups ? 'Select age group' : 'Select league'}</option>
                   {leaguesForForm.map((l) => (
                     <option key={l.id} value={l.id}>
                       {l.name}
@@ -546,7 +549,9 @@ export function GamesPage() {
               </div>
               {form.leagueId && formLeagueTeams.length === 0 && (
                 <p className="text-xs text-amber-800 bg-amber-500/10 border border-amber-500/25 rounded-lg px-3 py-2">
-                  This league has no teams yet. Add clubs under <strong>Season setup</strong>, then pick home and away here.
+                  {ageGroups
+                    ? 'This age group has no teams yet. Add clubs under Season setup, then pick home and away here.'
+                    : 'This league has no teams yet. Add clubs under Season setup, then pick home and away here.'}
                 </p>
               )}
               <div>

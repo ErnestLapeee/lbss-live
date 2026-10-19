@@ -68,6 +68,8 @@ interface ScheduleClientProps {
   initialRecordByTeamId?: Record<number, string>;
   /** Rendered inside Junioriem, which already has the page title and group switcher. */
   embedded?: boolean;
+  /** Age group. When set, the schedule lists only that group's games. */
+  leagueId?: number | null;
 }
 
 export function ScheduleClient({
@@ -76,6 +78,7 @@ export function ScheduleClient({
   defaultSeasonId,
   initialRecordByTeamId = {},
   embedded = false,
+  leagueId = null,
 }: ScheduleClientProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -101,16 +104,18 @@ export function ScheduleClient({
 
   const fetchData = useCallback(async () => {
     try {
-      const url = selectedSeasonId
-        ? `/api/proxy/public/games?seasonId=${selectedSeasonId}`
-        : '/api/proxy/public/games';
+      const url = leagueId != null
+        ? `/api/proxy/public/games?leagueId=${leagueId}`
+        : selectedSeasonId
+          ? `/api/proxy/public/games?seasonId=${selectedSeasonId}`
+          : '/api/proxy/public/games';
       const res = await fetch(url, { cache: 'no-store' });
       const data = await res.json();
       if (res.ok && Array.isArray(data)) setGames(data);
     } catch {
       // keep existing games on transient errors
     }
-  }, [selectedSeasonId]);
+  }, [selectedSeasonId, leagueId]);
 
   useEffect(() => {
     if (isFirstRun.current) {
@@ -121,7 +126,7 @@ export function ScheduleClient({
   }, [selectedSeasonId, fetchData]);
 
   useEffect(() => {
-    if (selectedSeasonId == null) {
+    if (leagueId == null && selectedSeasonId == null) {
       setRecordByTeamId({});
       return;
     }
@@ -129,12 +134,18 @@ export function ScheduleClient({
     (async () => {
       try {
         const res = await fetch(
-          `/api/proxy/public/standings/by-season/${selectedSeasonId}?includeZeroGames=1`,
+          leagueId != null
+            ? `/api/proxy/public/standings/${leagueId}?includeZeroGames=1`
+            : `/api/proxy/public/standings/by-season/${selectedSeasonId}?includeZeroGames=1`,
           { cache: 'no-store' },
         );
         const data = await res.json();
         if (!cancelled && res.ok) {
-          setRecordByTeamId(buildRecordByTeamIdFromStandings(data));
+          setRecordByTeamId(
+            buildRecordByTeamIdFromStandings(
+              leagueId != null && Array.isArray(data) ? { leagues: [{ rows: data }] } : data,
+            ),
+          );
         }
       } catch {
         if (!cancelled) setRecordByTeamId({});
@@ -143,7 +154,7 @@ export function ScheduleClient({
     return () => {
       cancelled = true;
     };
-  }, [selectedSeasonId]);
+  }, [selectedSeasonId, leagueId]);
 
   const hasLiveGames = games.some((g) => g.status === 'live');
   usePollingWhenVisible(fetchData, 12000, hasLiveGames);

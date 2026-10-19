@@ -11,6 +11,8 @@ function slugify(text: string): string {
 
 export function LeaguesPage() {
   const { seasons, selectedSeasonId } = useAdminSeason();
+  const selectedSeason = seasons.find((season) => season.id === selectedSeasonId) ?? null;
+  const youth = selectedSeason?.leagueLevel === 'youth';
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -54,9 +56,9 @@ export function LeaguesPage() {
     setForm({
       name: '',
       slug: '',
-      seasonId: seasons.length > 0 ? String(seasons[0].id) : '',
+      seasonId: selectedSeasonId != null ? String(selectedSeasonId) : seasons.length > 0 ? String(seasons[0].id) : '',
       sport: 'baseball',
-      level: 'senior',
+      level: youth ? 'youth' : 'senior',
     });
     setShowForm(true);
   };
@@ -88,9 +90,9 @@ export function LeaguesPage() {
       const payload = {
         name: form.name,
         slug: form.slug || slugify(form.name),
-        seasonId: parseInt(form.seasonId, 10),
-        sport: form.sport,
-        level: form.level,
+        seasonId: parseInt(youth && selectedSeasonId != null ? String(selectedSeasonId) : form.seasonId, 10),
+        sport: youth ? 'baseball' : form.sport,
+        level: youth ? 'youth' : form.level,
       };
       if (editing) {
         await apiPut(`/admin/leagues/${editing.id}`, payload);
@@ -107,7 +109,7 @@ export function LeaguesPage() {
   };
 
   const handleDelete = async (id: number) => {
-    if (!confirm('Delete this league?')) return;
+    if (!confirm(youth ? 'Delete this age group?' : 'Delete this league?')) return;
     try {
       await apiDelete(`/admin/leagues/${id}`);
       await load();
@@ -119,12 +121,19 @@ export function LeaguesPage() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h1 className="font-heading text-2xl font-bold">Leagues</h1>
+        <div>
+          <h1 className="font-heading text-2xl font-bold">{youth ? 'Age groups' : 'Leagues'}</h1>
+          {youth && (
+            <p className="mt-1 text-sm text-text-muted">
+              Each age group has its own games, standings, and statistics under Junioriem.
+            </p>
+          )}
+        </div>
         <button
           onClick={openCreate}
           className="px-4 py-2 bg-accent hover:bg-accent-light text-white text-sm font-semibold rounded-lg transition-colors"
         >
-          + Create New
+          {youth ? '+ Add age group' : '+ Create New'}
         </button>
       </div>
 
@@ -140,22 +149,26 @@ export function LeaguesPage() {
             <tr className="border-b border-border bg-surface-alt">
               <th className="px-4 py-3 text-left font-semibold text-text-muted">Name</th>
               <th className="px-4 py-3 text-left font-semibold text-text-muted">Season Year</th>
-              <th className="px-4 py-3 text-left font-semibold text-text-muted">Sport</th>
-              <th className="px-4 py-3 text-left font-semibold text-text-muted">Level</th>
+              {!youth && <th className="px-4 py-3 text-left font-semibold text-text-muted">Sport</th>}
+              {!youth && <th className="px-4 py-3 text-left font-semibold text-text-muted">Level</th>}
               <th className="px-4 py-3 text-left font-semibold text-text-muted">Actions</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td className="px-4 py-8 text-center text-text-muted" colSpan={5}>
+                <td className="px-4 py-8 text-center text-text-muted" colSpan={youth ? 3 : 5}>
                   Loading...
                 </td>
               </tr>
             ) : filteredItems.length === 0 ? (
               <tr>
-                <td className="px-4 py-8 text-center text-text-muted" colSpan={5}>
-                  {items.length === 0 ? 'No leagues yet.' : 'No leagues for this season.'}
+                <td className="px-4 py-8 text-center text-text-muted" colSpan={youth ? 3 : 5}>
+                  {youth
+                    ? 'No age groups yet. Add U12, U15, and so on.'
+                    : items.length === 0
+                      ? 'No leagues yet.'
+                      : 'No leagues for this season.'}
                 </td>
               </tr>
             ) : (
@@ -163,8 +176,8 @@ export function LeaguesPage() {
                 <tr key={item.id} className="border-b border-border last:border-0 hover:bg-surface-alt/50">
                   <td className="px-4 py-3">{item.name}</td>
                   <td className="px-4 py-3">{seasonMap[item.seasonId]?.year ?? '—'}</td>
-                  <td className="px-4 py-3 capitalize">{item.sport ?? '—'}</td>
-                  <td className="px-4 py-3 capitalize">{item.level ?? '—'}</td>
+                  {!youth && <td className="px-4 py-3 capitalize">{item.sport ?? '—'}</td>}
+                  {!youth && <td className="px-4 py-3 capitalize">{item.level ?? '—'}</td>}
                   <td className="px-4 py-3">
                     <div className="flex gap-2">
                       <button
@@ -192,9 +205,14 @@ export function LeaguesPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="bg-surface rounded-xl border border-border shadow-2xl w-full max-w-lg mx-4 p-6">
             <h2 className="font-heading text-xl font-bold mb-4">
-              {editing ? 'Edit League' : 'Create League'}
+              {youth ? (editing ? 'Edit age group' : 'Add age group') : editing ? 'Edit League' : 'Create League'}
             </h2>
             <form onSubmit={handleSubmit} className="space-y-4">
+              {youth ? (
+                <p className="text-sm text-text-muted">
+                  Added to {selectedSeason ? `${selectedSeason.year} – ${selectedSeason.name}` : 'the children’s league'}.
+                </p>
+              ) : (
               <div>
                 <label className="block text-sm font-medium mb-1.5">Season</label>
                 <select
@@ -211,16 +229,20 @@ export function LeaguesPage() {
                   ))}
                 </select>
               </div>
+              )}
               <div>
                 <label className="block text-sm font-medium mb-1.5">Name</label>
                 <input
                   type="text"
                   value={form.name}
                   onChange={(e) => handleNameChange(e.target.value)}
+                  placeholder={youth ? 'U12, U15…' : ''}
                   className="w-full px-3 py-2 border border-border rounded-lg bg-surface-alt text-sm focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent"
                   required
                 />
               </div>
+              {!youth && (
+              <>
               <div>
                 <label className="block text-sm font-medium mb-1.5">Slug</label>
                 <input
@@ -254,6 +276,8 @@ export function LeaguesPage() {
                   <option value="amateur">Amateur</option>
                 </select>
               </div>
+              </>
+              )}
               <div className="flex justify-end gap-3 pt-2">
                 <button
                   type="button"

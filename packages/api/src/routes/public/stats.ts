@@ -21,6 +21,14 @@ import { getSeasonsColumnFlagsCached } from '../../lib/seasons-playoff-columns-c
 import { parseIncludePlayoffsAllTime, sqlAllTimeSeasonWhere } from '../../lib/all-time-stats.js';
 import { formatOpponentBattingAvgPitch } from '../../lib/opponent-batting-avg.js';
 import { getQualificationThresholds, outsFromInningsNotation } from '../../lib/stat-qualification.js';
+import {
+  battingLeadersForLeague,
+  battingLinesForLeague,
+  fieldingLinesForLeague,
+  pitchingLeadersForLeague,
+  pitchingLinesForLeague,
+  requestedLeagueId,
+} from '../../lib/league-stat-lines.js';
 
 const ALL_TIME = 'all';
 
@@ -96,7 +104,7 @@ function computePitchingRates(t: {
   };
 }
 
-function parseOverviewQuery(query: { seasonId?: string; includePlayoffs?: string }) {
+function parseOverviewQuery(query: { seasonId?: string; includePlayoffs?: string; leagueId?: string }) {
   const seasonId = query.seasonId;
   const q =
     !seasonId || seasonId === ALL_TIME
@@ -106,13 +114,14 @@ function parseOverviewQuery(query: { seasonId?: string; includePlayoffs?: string
     query.includePlayoffs != null && String(query.includePlayoffs).trim() !== ''
       ? `&includePlayoffs=${encodeURIComponent(String(query.includePlayoffs))}`
       : '';
-  return `${q}${playoffQ}`;
+  const leagueQ = query.leagueId ? `&leagueId=${encodeURIComponent(query.leagueId)}` : '';
+  return `${q}${playoffQ}${leagueQ}`;
 }
 
 export async function statsRoutes(app: FastifyInstance) {
   // GET /overview — batting, pitching, fielding + leaderboards in one response (fewer HTTP round-trips)
   app.get<{
-    Querystring: { seasonId?: string; includePlayoffs?: string };
+    Querystring: { seasonId?: string; includePlayoffs?: string; leagueId?: string };
   }>('/overview', async (request, reply) => {
     try {
       const qs = parseOverviewQuery(request.query);
@@ -157,7 +166,7 @@ export async function statsRoutes(app: FastifyInstance) {
 
   // GET /batting?seasonId=X or omit for all-time — optional includePlayoffs=1 for all-time (includes playoff-season rows)
   app.get<{
-    Querystring: { seasonId?: string; includePlayoffs?: string };
+    Querystring: { seasonId?: string; includePlayoffs?: string; leagueId?: string };
   }>('/batting', async (request, reply) => {
     try {
       const seasonId = request.query.seasonId;
@@ -167,6 +176,9 @@ export async function statsRoutes(app: FastifyInstance) {
       if (seasonId && seasonId !== ALL_TIME && (isNaN(seasonIdNum!) || seasonIdNum! <= 0)) {
         return reply.status(400).send({ message: 'Invalid seasonId' });
       }
+      const leagueId = requestedLeagueId(request.query);
+      if (Number.isNaN(leagueId)) return reply.status(400).send({ message: 'Invalid leagueId' });
+      if (leagueId != null) return reply.send(await battingLinesForLeague(leagueId));
       const { minPlateAppearances } = await getQualificationThresholds(isAllTime ? null : seasonIdNum, includePlayoffs);
 
       if (!isAllTime && seasonIdNum) {
@@ -395,7 +407,7 @@ export async function statsRoutes(app: FastifyInstance) {
   const INFER_HARDNESS_SQL = sql`COALESCE(${gameEvents.hitHardness}, 'medium')`;
 
   // GET /batting-contact?seasonId=X or omit for all-time — hit type × hardness from game_events
-  app.get<{ Querystring: { seasonId?: string; includePlayoffs?: string } }>('/batting-contact', async (request, reply) => {
+  app.get<{ Querystring: { seasonId?: string; includePlayoffs?: string; leagueId?: string } }>('/batting-contact', async (request, reply) => {
     try {
       const seasonId = request.query.seasonId;
       const isAllTime = !seasonId || seasonId === ALL_TIME;
@@ -404,6 +416,8 @@ export async function statsRoutes(app: FastifyInstance) {
       if (seasonId && seasonId !== ALL_TIME && (isNaN(seasonIdNum!) || seasonIdNum! <= 0)) {
         return reply.status(400).send({ message: 'Invalid seasonId' });
       }
+      const leagueId = requestedLeagueId(request.query);
+      if (Number.isNaN(leagueId)) return reply.status(400).send({ message: 'Invalid leagueId' });
       const typeKey = (ht: string | null) => (ht && { grounder: 'gb', line_drive: 'ld', pop_up: 'pu', fly_ball: 'fb' }[ht]) || null;
       const hardKey = (hh: string | null) => (hh && ['soft', 'medium', 'hard'].includes(hh) ? hh : null);
 
@@ -431,6 +445,7 @@ export async function statsRoutes(app: FastifyInstance) {
             ...(isAllTime
               ? [includePlayoffs ? sql`true` : ne(seasons.seasonKind, 'playoff'), sql`COALESCE(${seasons.leagueLevel}, 'adult') <> 'youth'`]
               : [eq(leagues.seasonId, seasonIdNum!)]),
+            ...(leagueId != null ? [eq(games.leagueId, leagueId)] : []),
           ),
         )
         .groupBy(gameEvents.batterId, sql`${INFER_HIT_TYPE_SQL}`, sql`${INFER_HARDNESS_SQL}`);
@@ -503,7 +518,7 @@ export async function statsRoutes(app: FastifyInstance) {
   });
 
   // GET /pitching-contact?seasonId=X or omit for all-time — hit type × hardness allowed (from game_events)
-  app.get<{ Querystring: { seasonId?: string; includePlayoffs?: string } }>('/pitching-contact', async (request, reply) => {
+  app.get<{ Querystring: { seasonId?: string; includePlayoffs?: string; leagueId?: string } }>('/pitching-contact', async (request, reply) => {
     try {
       const seasonId = request.query.seasonId;
       const isAllTime = !seasonId || seasonId === ALL_TIME;
@@ -512,6 +527,8 @@ export async function statsRoutes(app: FastifyInstance) {
       if (seasonId && seasonId !== ALL_TIME && (isNaN(seasonIdNum!) || seasonIdNum! <= 0)) {
         return reply.status(400).send({ message: 'Invalid seasonId' });
       }
+      const leagueId = requestedLeagueId(request.query);
+      if (Number.isNaN(leagueId)) return reply.status(400).send({ message: 'Invalid leagueId' });
       const typeKey = (ht: string | null) => (ht && { grounder: 'gb', line_drive: 'ld', pop_up: 'pu', fly_ball: 'fb' }[ht]) || null;
       const hardKey = (hh: string | null) => (hh && ['soft', 'medium', 'hard'].includes(hh) ? hh : null);
 
@@ -539,6 +556,7 @@ export async function statsRoutes(app: FastifyInstance) {
             ...(isAllTime
               ? [includePlayoffs ? sql`true` : ne(seasons.seasonKind, 'playoff'), sql`COALESCE(${seasons.leagueLevel}, 'adult') <> 'youth'`]
               : [eq(leagues.seasonId, seasonIdNum!)]),
+            ...(leagueId != null ? [eq(games.leagueId, leagueId)] : []),
           ),
         )
         .groupBy(gameEvents.pitcherId, sql`${INFER_HIT_TYPE_SQL}`, sql`${INFER_HARDNESS_SQL}`);
@@ -612,7 +630,7 @@ export async function statsRoutes(app: FastifyInstance) {
 
   // GET /leaders?seasonId=X or omit for all-time
   app.get<{
-    Querystring: { seasonId?: string; includePlayoffs?: string };
+    Querystring: { seasonId?: string; includePlayoffs?: string; leagueId?: string };
   }>('/leaders', async (request, reply) => {
     try {
       const seasonId = request.query.seasonId;
@@ -622,6 +640,9 @@ export async function statsRoutes(app: FastifyInstance) {
       if (seasonId && seasonId !== ALL_TIME && (isNaN(seasonIdNum!) || seasonIdNum! <= 0)) {
         return reply.status(400).send({ message: 'Invalid seasonId' });
       }
+      const leagueId = requestedLeagueId(request.query);
+      if (Number.isNaN(leagueId)) return reply.status(400).send({ message: 'Invalid leagueId' });
+      if (leagueId != null) return reply.send(await battingLeadersForLeague(leagueId));
 
       const categories = [
         { key: 'battingAvg', label: 'Batting Average', desc: true, getVal: (r: Record<string, unknown>) => r.battingAvg != null ? parseFloat(String(r.battingAvg)) : 0 },
@@ -767,7 +788,7 @@ export async function statsRoutes(app: FastifyInstance) {
 
   // GET /pitching?seasonId=X or omit for all-time
   app.get<{
-    Querystring: { seasonId?: string; includePlayoffs?: string };
+    Querystring: { seasonId?: string; includePlayoffs?: string; leagueId?: string };
   }>('/pitching', async (request, reply) => {
     try {
       const seasonId = request.query.seasonId;
@@ -777,6 +798,9 @@ export async function statsRoutes(app: FastifyInstance) {
       if (seasonId && seasonId !== ALL_TIME && (isNaN(seasonIdNum!) || seasonIdNum! <= 0)) {
         return reply.status(400).send({ message: 'Invalid seasonId' });
       }
+      const leagueId = requestedLeagueId(request.query);
+      if (Number.isNaN(leagueId)) return reply.status(400).send({ message: 'Invalid leagueId' });
+      if (leagueId != null) return reply.send(await pitchingLinesForLeague(leagueId));
       const { minOuts } = await getQualificationThresholds(isAllTime ? null : seasonIdNum, includePlayoffs);
 
       if (!isAllTime && seasonIdNum) {
@@ -1074,7 +1098,7 @@ export async function statsRoutes(app: FastifyInstance) {
 
   // GET /pitching-leaders?seasonId=X or omit for all-time
   app.get<{
-    Querystring: { seasonId?: string; includePlayoffs?: string };
+    Querystring: { seasonId?: string; includePlayoffs?: string; leagueId?: string };
   }>('/pitching-leaders', async (request, reply) => {
     try {
       const seasonId = request.query.seasonId;
@@ -1084,6 +1108,9 @@ export async function statsRoutes(app: FastifyInstance) {
       if (seasonId && seasonId !== ALL_TIME && (isNaN(seasonIdNum!) || seasonIdNum! <= 0)) {
         return reply.status(400).send({ message: 'Invalid seasonId' });
       }
+      const leagueId = requestedLeagueId(request.query);
+      if (Number.isNaN(leagueId)) return reply.status(400).send({ message: 'Invalid leagueId' });
+      if (leagueId != null) return reply.send(await pitchingLeadersForLeague(leagueId));
       const { minOuts } = await getQualificationThresholds(isAllTime ? null : seasonIdNum, includePlayoffs);
 
       if (!isAllTime && seasonIdNum) {
@@ -1227,7 +1254,7 @@ export async function statsRoutes(app: FastifyInstance) {
 
   // GET /fielding?seasonId=X or omit for all-time
   app.get<{
-    Querystring: { seasonId?: string; includePlayoffs?: string };
+    Querystring: { seasonId?: string; includePlayoffs?: string; leagueId?: string };
   }>('/fielding', async (request, reply) => {
     try {
       const seasonId = request.query.seasonId;
@@ -1237,6 +1264,9 @@ export async function statsRoutes(app: FastifyInstance) {
       if (seasonId && seasonId !== ALL_TIME && (isNaN(seasonIdNum!) || seasonIdNum! <= 0)) {
         return reply.status(400).send({ message: 'Invalid seasonId' });
       }
+      const leagueId = requestedLeagueId(request.query);
+      if (Number.isNaN(leagueId)) return reply.status(400).send({ message: 'Invalid leagueId' });
+      if (leagueId != null) return reply.send(await fieldingLinesForLeague(leagueId));
 
       if (!isAllTime && seasonIdNum) {
         const result = await db
@@ -1353,7 +1383,7 @@ export async function statsRoutes(app: FastifyInstance) {
 
   // GET /fielding-by-position?seasonId=X&position=N&category=infield|outfield - seasonId optional for all-time
   app.get<{
-    Querystring: { seasonId?: string; position?: string; category?: string; includePlayoffs?: string };
+    Querystring: { seasonId?: string; position?: string; category?: string; includePlayoffs?: string; leagueId?: string };
   }>('/fielding-by-position', async (request, reply) => {
     try {
       const seasonId = request.query.seasonId;
@@ -1365,8 +1395,13 @@ export async function statsRoutes(app: FastifyInstance) {
       if (seasonId && seasonId !== ALL_TIME && (isNaN(seasonIdNum!) || seasonIdNum! <= 0)) {
         return reply.status(400).send({ message: 'Invalid seasonId' });
       }
+      const leagueId = requestedLeagueId(request.query);
+      if (Number.isNaN(leagueId)) return reply.status(400).send({ message: 'Invalid leagueId' });
 
       const conditions: ReturnType<typeof sql>[] = [];
+      if (leagueId != null) {
+        conditions.push(sql`${playerGameFielding.gameId} IN (SELECT id FROM games WHERE league_id = ${leagueId})`);
+      }
       if (!isAllTime && seasonIdNum) {
         conditions.push(sql`${playerGameFielding.gameId} IN (
           SELECT g.id FROM games g

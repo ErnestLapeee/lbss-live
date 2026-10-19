@@ -356,6 +356,7 @@ function formatStatValue(value: string | number | null | undefined): string {
 interface StatsClientProps {
   audience?: 'lbl' | 'juniori';
   hideSeasonSelect?: boolean;
+  leagueId?: number | null;
   initialSeasons: Season[];
   initialSeasonId: number | null;
   initialBatting: BattingStat[];
@@ -368,6 +369,7 @@ interface StatsClientProps {
 export function StatsClient({
   audience = 'lbl',
   hideSeasonSelect = false,
+  leagueId = null,
   initialSeasons, initialSeasonId,
   initialBatting, initialPitching, initialFielding,
   initialBattingLeaders, initialPitchingLeaders,
@@ -419,7 +421,7 @@ export function StatsClient({
   // Track whether this is the first render (skip initial fetch since data comes from server)
   const isInitialLoad = useRef(true);
 
-  const seasonParam = selectedSeasonId != null ? `seasonId=${selectedSeasonId}` : 'seasonId=all';
+  const seasonParam = `${selectedSeasonId != null ? `seasonId=${selectedSeasonId}` : 'seasonId=all'}${leagueId != null ? `&leagueId=${leagueId}` : ''}`;
 
   // Re-fetch stats when season changes (but not on first mount — server already provided data)
   useEffect(() => {

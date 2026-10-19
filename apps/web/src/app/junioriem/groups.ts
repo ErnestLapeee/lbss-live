@@ -1,3 +1,4 @@
+import { apiFetch, API_REVALIDATE_SEASONS } from '@/lib/api';
 import { fetchPublicSeasons, isYouthSeason, type PublicSeason } from '../stats/load-stats-page';
 
 export type JunioriemSectionName = 'statistika' | 'schedule' | 'standings';
@@ -18,4 +19,29 @@ export function groupLabel(season: PublicSeason): string {
 
 export async function loadJunioriemGroups(): Promise<PublicSeason[]> {
   return junioriemGroups(await fetchPublicSeasons());
+}
+
+export type AgeGroup = { id: number; name: string; slug: string };
+
+export async function loadAgeGroups(seasonId: number): Promise<AgeGroup[]> {
+  try {
+    const season = await apiFetch<{ leagues?: Array<{ id: number; name?: string; slug?: string }> }>(
+      `/api/public/seasons/by-id/${seasonId}`,
+      { revalidate: API_REVALIDATE_SEASONS },
+    );
+    return (season.leagues ?? [])
+      .filter((league) => league.id != null && league.slug)
+      .map((league) => ({
+        id: league.id,
+        name: (league.name ?? league.slug ?? `Group ${league.id}`).trim(),
+        slug: league.slug as string,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  } catch {
+    return [];
+  }
+}
+
+export function ageGroupHref(seasonId: number, section: JunioriemSectionName, slug: string): string {
+  return `/junioriem/${seasonId}/${section}?group=${encodeURIComponent(slug)}`;
 }

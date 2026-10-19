@@ -30,8 +30,9 @@ export async function fetchPublicSeasons(): Promise<PublicSeason[]> {
   }
 }
 
-export async function fetchStatsBundle(seasonId: number | null) {
-  const initialSeasonParam = seasonId != null ? `seasonId=${seasonId}` : 'seasonId=all';
+export async function fetchStatsBundle(seasonId: number | null, leagueId?: number | null) {
+  const seasonPart = seasonId != null ? `seasonId=${seasonId}` : 'seasonId=all';
+  const initialSeasonParam = leagueId != null ? `${seasonPart}&leagueId=${leagueId}` : seasonPart;
   let initialBatting: any[] = [];
   let initialPitching: any[] = [];
   let initialFielding: any[] = [];

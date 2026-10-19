@@ -327,7 +327,7 @@ export function SeasonsPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1.5">Group</label>
+                <label className="block text-sm font-medium mb-1.5">Level</label>
                 <select
                   value={form.leagueLevel}
                   onChange={(e) =>
@@ -340,9 +340,9 @@ export function SeasonsPage() {
                 </select>
                 {form.leagueLevel === 'youth' && (
                   <p className="mt-1.5 text-xs text-text-muted">
-                    This season is one children’s group. It shows under Junioriem on the public site, and its
-                    stats stay off the adult all-time totals. Leave the adult season active. Name it the group
-                    (U12, U15, indoor). After saving, add a league for it and tick the clubs in Season setup.
+                    This is the children’s league for the year. It shows under Junioriem, and its stats stay off
+                    the adult all-time totals. Leave the adult season active. After saving, open Age groups and add
+                    U12, U15, and so on. Tick each group’s clubs in Season setup, and put each game in an age group.
                     The lineup has no fielder or batting-order limit. End an inning from the scorer when you want to;
                     that records no out.
                   </p>
@@ -364,7 +364,7 @@ export function SeasonsPage() {
                   type="text"
                   value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  placeholder={form.leagueLevel === 'youth' ? 'U12, U15, indoor…' : ''}
+                  placeholder={form.leagueLevel === 'youth' ? 'Jaunieši' : ''}
                   className="w-full px-3 py-2 border border-border rounded-lg bg-surface-alt text-sm focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent"
                   required
                 />
