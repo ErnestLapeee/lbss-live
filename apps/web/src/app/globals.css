@@ -31,11 +31,6 @@
 }
 
 /* ── Base ── */
-html {
-  /* Keep the scrollbar gutter reserved so opening a menu does not shift the page. */
-  scrollbar-gutter: stable;
-}
-
 body {
   font-family: var(--font-body);
   background: #f5f5f5;

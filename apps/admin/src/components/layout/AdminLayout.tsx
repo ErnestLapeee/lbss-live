@@ -103,7 +103,7 @@ export function AdminLayout() {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        <header className="flex shrink-0 flex-col gap-2 border-b border-border bg-surface px-4 py-2 shadow-sm sm:px-6 lg:h-14 lg:flex-row lg:items-center lg:justify-between lg:gap-4 lg:py-0">
+        <header className="flex shrink-0 flex-col gap-2 border-b border-border bg-surface px-4 py-2 shadow-sm sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:gap-4">
           <div className="flex min-w-0 items-center gap-2">
             <button
               type="button"
@@ -120,11 +120,11 @@ export function AdminLayout() {
               {isScorer ? 'Games' : 'LBSS Administration'}
             </h2>
           </div>
-          <div className="flex min-w-0 flex-wrap items-center gap-2 sm:gap-3 lg:flex-nowrap lg:justify-end">
-            <label className="flex min-w-0 w-full flex-col gap-1 sm:w-auto sm:max-w-md sm:flex-row sm:items-start sm:gap-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-2 sm:gap-3 lg:justify-end">
+            <label className="flex min-w-0 w-full flex-col gap-1 sm:w-auto sm:max-w-xs sm:flex-row sm:items-center sm:gap-2">
               <span className="shrink-0 text-xs font-medium text-text-muted sm:text-sm">Season</span>
-              <div className="flex min-w-0 w-full flex-col gap-1.5 sm:max-w-[20rem]">
-                <div className="flex min-w-0 flex-wrap items-stretch gap-2">
+              <div className="flex min-w-0 w-full flex-col gap-1.5">
+                <div className="flex min-w-0 items-stretch gap-2">
                   <select
                     value={selectedSeasonId ?? ''}
                     disabled={seasonsLoading}
@@ -132,7 +132,7 @@ export function AdminLayout() {
                       const v = e.target.value;
                       setSelectedSeasonId(v ? parseInt(v, 10) : null);
                     }}
-                    className="min-h-[44px] min-w-0 flex-1 rounded-lg border border-border bg-surface-alt px-3 py-2 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-accent sm:min-w-[12rem]"
+                    className="min-h-[44px] w-full min-w-0 max-w-full rounded-lg border border-border bg-surface-alt px-3 py-2 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-accent"
                   >
                     {seasons.length === 0 ? (
                       <option value="">{seasonsError ? 'Seasons could not be loaded' : 'No seasons yet'}</option>

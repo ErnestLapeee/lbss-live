@@ -327,7 +327,7 @@ export function SeasonsPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1.5">League</label>
+                <label className="block text-sm font-medium mb-1.5">Group</label>
                 <select
                   value={form.leagueLevel}
                   onChange={(e) =>
@@ -340,9 +340,11 @@ export function SeasonsPage() {
                 </select>
                 {form.leagueLevel === 'youth' && (
                   <p className="mt-1.5 text-xs text-text-muted">
-                    Jaunieši stats stay on this season and do not count toward all-time. Leave the adult season
-                    active so the public site still opens on the adult league. The lineup has no fielder or batting-order
-                    limit. End an inning from the scorer when you want to; that records no out.
+                    This season is one children’s group. It shows under Junioriem on the public site, and its
+                    stats stay off the adult all-time totals. Leave the adult season active. Name it the group
+                    (U12, U15, indoor). After saving, add a league for it and tick the clubs in Season setup.
+                    The lineup has no fielder or batting-order limit. End an inning from the scorer when you want to;
+                    that records no out.
                   </p>
                 )}
               </div>
@@ -362,6 +364,7 @@ export function SeasonsPage() {
                   type="text"
                   value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  placeholder={form.leagueLevel === 'youth' ? 'U12, U15, indoor…' : ''}
                   className="w-full px-3 py-2 border border-border rounded-lg bg-surface-alt text-sm focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent"
                   required
                 />
