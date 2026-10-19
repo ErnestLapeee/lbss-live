@@ -23,12 +23,14 @@ function NavDropdown({
   label,
   items,
   open,
+  align = 'left',
   onOpen,
   onClose,
 }: {
   label: string;
   items: { href: string; label: string }[];
   open: boolean;
+  align?: 'left' | 'right';
   onOpen: () => void;
   onClose: () => void;
 }) {
@@ -44,7 +46,7 @@ function NavDropdown({
         </svg>
       </button>
       {open && (
-        <div className="absolute left-0 top-full pt-1" onMouseEnter={onOpen} onMouseLeave={onClose}>
+        <div className={`absolute top-full pt-1 ${align === 'right' ? 'right-0' : 'left-0'}`} onMouseEnter={onOpen} onMouseLeave={onClose}>
           <div className="w-40 border border-black/30 bg-[#3a3a3a] shadow-sm py-1">
             {items.map((item) => (
               <Link
@@ -116,6 +118,7 @@ export function SiteHeader() {
             <NavDropdown
               label="Junioriem"
               items={JUNIORIEM_LINKS}
+              align="right"
               open={openMenu === 'junioriem'}
               onOpen={() => open('junioriem')}
               onClose={close}
