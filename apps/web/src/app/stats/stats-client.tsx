@@ -14,9 +14,9 @@ import { TeamMark } from '@/components/ui/team-mark';
 
 interface Season {
   id: number;
-  name: string;
-  year: number;
-  isActive: boolean;
+  name?: string;
+  year?: number;
+  isActive?: boolean;
   seasonKind?: string;
   leagueLevel?: string;
   parentSeasonId?: number | null;
@@ -354,6 +354,7 @@ function formatStatValue(value: string | number | null | undefined): string {
 /* ── Main Component ── */
 
 interface StatsClientProps {
+  audience?: 'lbl' | 'juniori';
   initialSeasons: Season[];
   initialSeasonId: number | null;
   initialBatting: BattingStat[];
@@ -364,6 +365,7 @@ interface StatsClientProps {
 }
 
 export function StatsClient({
+  audience = 'lbl',
   initialSeasons, initialSeasonId,
   initialBatting, initialPitching, initialFielding,
   initialBattingLeaders, initialPitchingLeaders,
@@ -644,9 +646,18 @@ export function StatsClient({
         {/* Season + category + Legend */}
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-4 sm:justify-end">
           <div className="flex items-center gap-3">
+            {audience === 'lbl' ? (
+              <Link href="/stats/juniori" className="text-sm font-medium text-accent hover:text-accent-light">
+                Juniori
+              </Link>
+            ) : (
+              <Link href="/stats" className="text-sm font-medium text-accent hover:text-accent-light">
+                LBL
+              </Link>
+            )}
             <label className="text-sm font-medium text-text-muted">Season:</label>
             <select
-              value={selectedSeasonId ?? 'all'}
+              value={audience === 'juniori' ? String(selectedSeasonId ?? seasons[0]?.id ?? '') : (selectedSeasonId ?? 'all')}
               onChange={(e) => {
                 const v = e.target.value;
                 const newId = v === 'all' ? null : Number(v);
@@ -658,7 +669,7 @@ export function StatsClient({
               }}
               className="rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-accent/50"
             >
-              <option value="all">All time LBL</option>
+              {audience === 'lbl' && <option value="all">All time LBL</option>}
               {seasons.map(s => (
                 <option key={s.id} value={s.id}>
                   {seasonOptionLabel(s)}

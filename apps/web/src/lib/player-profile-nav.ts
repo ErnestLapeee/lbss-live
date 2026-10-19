@@ -2,6 +2,7 @@
 
 const RETURN_LABELS: Record<string, string> = {
   '/stats': 'Statistics',
+  '/stats/juniori': 'Statistics Juniori',
   '/teams': 'Teams',
   '/schedule': 'Schedule',
   '/standings': 'Standings',
