@@ -11,7 +11,6 @@ export function junioriemGroups(seasons: PublicSeason[]): PublicSeason[] {
 
 export function groupLabel(season: PublicSeason): string {
   const name = (season.name ?? '').trim();
-  if (name && season.year != null && name !== String(season.year)) return `${name} · ${season.year}`;
   if (name) return name;
   if (season.year != null) return String(season.year);
   return `Season ${season.id}`;
