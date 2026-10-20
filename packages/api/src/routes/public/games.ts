@@ -81,10 +81,11 @@ export async function gamesRoutes(app: FastifyInstance) {
       // League -> season info for each game
       const leagueIds = new Set<number>();
       for (const g of gamesList) leagueIds.add(g.leagueId);
-      const leagueSeasonMap: Record<number, { seasonId: number; seasonYear: number; seasonName: string }> = {};
+      const leagueSeasonMap: Record<number, { seasonId: number; seasonYear: number; seasonName: string; leagueName: string }> = {};
       if (leagueIds.size > 0) {
         const leagueRows = await db.select({
           leagueId: leagues.id,
+          leagueName: leagues.name,
           seasonId: seasons.id,
           seasonYear: seasons.year,
           seasonName: seasons.name,
@@ -92,7 +93,14 @@ export async function gamesRoutes(app: FastifyInstance) {
           .from(leagues)
           .innerJoin(seasons, eq(leagues.seasonId, seasons.id))
           .where(sql`${leagues.id} = ANY(${sqlIntArray([...leagueIds])})`);
-        for (const r of leagueRows) leagueSeasonMap[r.leagueId] = { seasonId: r.seasonId, seasonYear: r.seasonYear, seasonName: r.seasonName };
+        for (const r of leagueRows) {
+          leagueSeasonMap[r.leagueId] = {
+            seasonId: r.seasonId,
+            seasonYear: r.seasonYear,
+            seasonName: r.seasonName,
+            leagueName: r.leagueName,
+          };
+        }
       }
 
       // Collect all team IDs for a single batch query
@@ -327,6 +335,7 @@ export async function gamesRoutes(app: FastifyInstance) {
           seasonId: seasonInfo?.seasonId ?? null,
           seasonYear: seasonInfo?.seasonYear ?? null,
           seasonName: seasonInfo?.seasonName ?? null,
+          leagueName: seasonInfo?.leagueName ?? null,
           homeTeamName: ht?.name ?? null,
           awayTeamName: at?.name ?? null,
           homeTeamShort: ht?.shortName ?? null,

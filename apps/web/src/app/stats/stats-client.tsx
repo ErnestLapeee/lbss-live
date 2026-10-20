@@ -175,7 +175,7 @@ interface LeaderEntry {
   value: string | number | null;
 }
 
-interface LeadersData {
+export interface LeadersData {
   [key: string]: {
     label: string;
     players: LeaderEntry[];
@@ -353,10 +353,20 @@ function formatStatValue(value: string | number | null | undefined): string {
 
 /* ── Main Component ── */
 
+export type AgeGroupOption = { id: number; name: string; slug: string };
+export type AgeGroupLeaders = {
+  id: number;
+  name: string;
+  batting: LeadersData | null;
+  pitching: LeadersData | null;
+};
+
 interface StatsClientProps {
   audience?: 'lbl' | 'juniori';
   hideSeasonSelect?: boolean;
   leagueId?: number | null;
+  ageGroups?: AgeGroupOption[];
+  ageGroupLeaders?: AgeGroupLeaders[];
   initialSeasons: Season[];
   initialSeasonId: number | null;
   initialBatting: BattingStat[];
@@ -370,6 +380,8 @@ export function StatsClient({
   audience = 'lbl',
   hideSeasonSelect = false,
   leagueId = null,
+  ageGroups = [],
+  ageGroupLeaders = [],
   initialSeasons, initialSeasonId,
   initialBatting, initialPitching, initialFielding,
   initialBattingLeaders, initialPitchingLeaders,
@@ -400,6 +412,7 @@ export function StatsClient({
   const [tab, setTab] = useState<StatsTab>('batting');
   const [seasons, setSeasons] = useState<Season[]>(initialSeasons);
   const [selectedSeasonId, setSelectedSeasonId] = useState<number | null>(initialSeasonId); // null = All time
+  const [activeLeagueId, setActiveLeagueId] = useState<number | null>(leagueId ?? null);
   const [battingStats, setBattingStats] = useState<BattingStat[]>(enrichBattingRates(initialBatting));
   const [pitchingStats, setPitchingStats] = useState<PitchingStat[]>(initialPitching);
   const [fieldingStats, setFieldingStats] = useState<FieldingStat[]>(
@@ -421,7 +434,7 @@ export function StatsClient({
   // Track whether this is the first render (skip initial fetch since data comes from server)
   const isInitialLoad = useRef(true);
 
-  const seasonParam = `${selectedSeasonId != null ? `seasonId=${selectedSeasonId}` : 'seasonId=all'}${leagueId != null ? `&leagueId=${leagueId}` : ''}`;
+  const seasonParam = `${selectedSeasonId != null ? `seasonId=${selectedSeasonId}` : 'seasonId=all'}${activeLeagueId != null ? `&leagueId=${activeLeagueId}` : ''}`;
 
   // Re-fetch stats when season changes (but not on first mount — server already provided data)
   useEffect(() => {
@@ -603,6 +616,23 @@ export function StatsClient({
       : sortedFielding;
   const currentLeaders = tab === 'batting' ? battingLeaders : tab === 'pitching' ? pitchingLeaders : null;
   const currentLeaderCats = tab === 'batting' ? BATTING_LEADER_CATS : PITCHING_LEADER_CATS;
+  const hideLeaderCards =
+    (tab === 'batting' && battingCategory === 'hittype') ||
+    (tab === 'pitching' && pitchingCategory === 'hittype') ||
+    (tab === 'fielding' && ageGroupLeaders.length > 0);
+  const leaderBlocks = (ageGroupLeaders.length > 0
+    ? ageGroupLeaders.map((group) => ({
+        key: String(group.id),
+        title: `${tab === 'batting' ? 'Batting' : 'Pitching'} Leaders — ${group.name}`,
+        leaders: tab === 'batting' ? group.batting : group.pitching,
+      }))
+    : [{
+        key: 'season',
+        title: `${tab === 'batting' ? 'Batting' : tab === 'pitching' ? 'Pitching' : 'Fielding'} Leaders`,
+        leaders: currentLeaders,
+      }]
+  ).filter((block) => block.leaders && Object.keys(block.leaders).length > 0);
+  const activeAgeGroupName = ageGroups.find((group) => group.id === (activeLeagueId ?? ageGroups[0]?.id))?.name ?? null;
   const hasData = tab === 'batting'
     ? (battingCategory === 'hittype' ? battingContactStats.length > 0 : battingStats.length > 0)
     : tab === 'pitching'
@@ -650,6 +680,29 @@ export function StatsClient({
         {/* Season + category + Legend */}
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-4 sm:justify-end">
           <div className="flex items-center gap-3">
+            {ageGroups.length > 0 && (
+              <>
+                <label className="text-sm font-medium text-text-muted" htmlFor="junioriem-age-group">Age group:</label>
+                <select
+                  id="junioriem-age-group"
+                  value={String(activeLeagueId ?? ageGroups[0]?.id ?? '')}
+                  onChange={(event) => {
+                    const id = Number(event.target.value);
+                    setActiveLeagueId(id);
+                    const slug = ageGroups.find((group) => group.id === id)?.slug;
+                    const sp = new URLSearchParams(searchParams.toString());
+                    if (slug) sp.set('group', slug);
+                    const qs = sp.toString();
+                    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+                  }}
+                  className="rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-accent/50"
+                >
+                  {ageGroups.map((group) => (
+                    <option key={group.id} value={group.id}>{group.name}</option>
+                  ))}
+                </select>
+              </>
+            )}
             {!hideSeasonSelect && <label className="text-sm font-medium text-text-muted">Season:</label>}
             {!hideSeasonSelect && <select
               value={audience === 'juniori' ? String(selectedSeasonId ?? seasons[0]?.id ?? '') : (selectedSeasonId ?? 'all')}
@@ -723,11 +776,11 @@ export function StatsClient({
         </div>
       </div>
 
-      {loading ? (
+      {ageGroupLeaders.length === 0 && loading ? (
         <div className="flex items-center justify-center py-20">
           <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin" />
         </div>
-      ) : !hasData && !currentLeaders ? (
+      ) : ageGroupLeaders.length === 0 && !hasData && !currentLeaders ? (
         <div className="rounded-xl border border-dashed border-border bg-surface-alt p-16 text-center">
           <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-white/[0.05] flex items-center justify-center">
             <svg className="w-8 h-8 text-text-faint" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -744,18 +797,19 @@ export function StatsClient({
       ) : (
         <>
           {/* ── Leaders (hidden for Hit type & power view) ── */}
-          {currentLeaders && Object.keys(currentLeaders).length > 0 && (tab !== 'batting' || battingCategory !== 'hittype') && (tab !== 'pitching' || pitchingCategory !== 'hittype') && (
-            <section className="mb-10">
+          {!hideLeaderCards && leaderBlocks.map((block) => (
+            <section key={block.key} className="mb-10">
               <div className="flex items-center gap-3 mb-5">
                 <div className="w-1 h-6 rounded-full bg-accent" />
                 <h2 className="font-heading text-xl font-bold tracking-tight">
-                  {tab === 'batting' ? 'Batting' : tab === 'pitching' ? 'Pitching' : 'Fielding'} Leaders
+                  {block.title}
                 </h2>
               </div>
 
+              {currentLeaderCats.some((catKey) => (block.leaders?.[catKey]?.players.length ?? 0) > 0) ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {currentLeaderCats.map(catKey => {
-                  const cat = currentLeaders[catKey];
+                  const cat = block.leaders?.[catKey];
                   if (!cat || cat.players.length === 0) return null;
                   const leader = cat.players[0];
                   const runnersUp = cat.players.slice(1, 5);
@@ -827,8 +881,11 @@ export function StatsClient({
                   );
                 })}
               </div>
+              ) : (
+                <p className="text-sm text-text-muted">No leaders yet.</p>
+              )}
             </section>
-          )}
+          ))}
 
           {/* ── Stats Table ── */}
           <section>
@@ -837,6 +894,7 @@ export function StatsClient({
                 <div className="w-1 h-6 rounded-full bg-accent" />
                 <h2 className="font-heading text-xl font-bold tracking-tight">
                   {tab === 'batting' ? 'Batting' : tab === 'pitching' ? 'Pitching' : 'Fielding'} Statistics
+                  {activeAgeGroupName ? ` — ${activeAgeGroupName}` : ''}
                 </h2>
                 <span className="text-[11px] font-medium text-text-faint bg-surface-alt px-2 py-0.5 rounded">
                   {currentData.length} players
@@ -984,7 +1042,7 @@ export function StatsClient({
                     {currentData.length === 0 && (
                       <tr>
                         <td colSpan={displayColumns.length + 1} className="px-4 py-12 text-center text-text-muted">
-                          No {tab} data for this season.
+                          No {tab} data for this {activeAgeGroupName ? 'age group' : 'season'}.
                         </td>
                       </tr>
                     )}

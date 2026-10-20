@@ -382,17 +382,21 @@ export function StandingsClient({
           <div className="rounded-xl border border-border bg-surface-alt p-12 text-center">
             <p className="text-text-muted">Loading standings…</p>
           </div>
-        ) : !hasStandings ? (
+        ) : !hasStandings && !(embedded && standings.length > 0) ? (
           <div className="rounded-xl border border-dashed border-border bg-surface-alt p-12 text-center">
             <p className="text-lg font-medium text-text-muted">
-              {embedded ? 'No standings for this age group yet' : 'No standings data for this season yet'}
+              {embedded ? 'No standings yet' : 'No standings data for this season yet'}
             </p>
           </div>
         ) : (
           <div className="space-y-8">
             {standings.map((league) => (
               <div key={league.leagueId}>
-                {!embedded && <h2 className="mb-3 text-lg font-bold">{league.leagueName}</h2>}
+                <h2 className="mb-3 text-lg font-bold">{league.leagueName}</h2>
+                {league.rows.length === 0 ? (
+                  <p className="text-sm text-text-muted">No standings yet.</p>
+                ) : (
+                <>
                 <div className="overflow-x-auto overscroll-x-contain rounded-xl border border-border bg-surface">
                   <table className="w-full min-w-[36rem] text-sm">
                     <thead>
@@ -500,6 +504,8 @@ export function StandingsClient({
                     </div>
                   );
                 })()}
+                </>
+                )}
               </div>
             ))}
           </div>

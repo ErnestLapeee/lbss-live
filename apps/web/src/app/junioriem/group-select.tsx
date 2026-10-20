@@ -13,11 +13,11 @@ export function JunioriemGroupSelect({
   section: JunioriemSectionName;
 }) {
   const router = useRouter();
-  if (groups.length < 2) return null;
+  if (groups.length < 1) return null;
 
   return (
     <div className="mx-auto flex max-w-none items-center gap-3 px-4 pt-6 sm:px-6 lg:px-10">
-      <label className="text-sm font-medium text-text-muted" htmlFor="junioriem-group">Season:</label>
+      <label className="text-sm font-medium text-text-muted" htmlFor="junioriem-group">League:</label>
       <select
         id="junioriem-group"
         value={seasonId}

@@ -39,7 +39,7 @@ export default async function SchedulePage({ searchParams }: SchedulePageProps) 
       defaultSeasonId = sid;
     }
   }
-  let initialRecordByTeamId: Record<number, string> = {};
+  let initialRecordByTeamId: Record<string, string> = {};
   try {
     const url = defaultSeasonId
       ? `/api/public/games?seasonId=${defaultSeasonId}`

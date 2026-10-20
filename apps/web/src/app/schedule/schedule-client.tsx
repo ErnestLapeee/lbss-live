@@ -51,6 +51,8 @@ interface Game {
   seasonId?: number | null;
   seasonYear?: number | null;
   seasonName?: string | null;
+  leagueId?: number;
+  leagueName?: string | null;
 }
 
 interface Season {
@@ -65,11 +67,13 @@ interface ScheduleClientProps {
   initialGames: Game[];
   seasons: Season[];
   defaultSeasonId: number | null;
-  initialRecordByTeamId?: Record<number, string>;
+  initialRecordByTeamId?: Record<string, string>;
   /** Rendered inside Junioriem, which already has the page title and group switcher. */
   embedded?: boolean;
   /** Age group. When set, the schedule lists only that group's games. */
   leagueId?: number | null;
+  /** Label each game with its age group. */
+  showAgeGroup?: boolean;
 }
 
 export function ScheduleClient({
@@ -79,13 +83,14 @@ export function ScheduleClient({
   initialRecordByTeamId = {},
   embedded = false,
   leagueId = null,
+  showAgeGroup = false,
 }: ScheduleClientProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [games, setGames] = useState<Game[]>(initialGames);
   const [selectedSeasonId, setSelectedSeasonId] = useState<number | null>(defaultSeasonId);
-  const [recordByTeamId, setRecordByTeamId] = useState<Record<number, string>>(initialRecordByTeamId);
+  const [recordByTeamId, setRecordByTeamId] = useState<Record<string, string>>(initialRecordByTeamId);
   const isFirstRun = useRef(true);
 
   useEffect(() => {
@@ -143,7 +148,7 @@ export function ScheduleClient({
         if (!cancelled && res.ok) {
           setRecordByTeamId(
             buildRecordByTeamIdFromStandings(
-              leagueId != null && Array.isArray(data) ? { leagues: [{ rows: data }] } : data,
+              leagueId != null && Array.isArray(data) ? { leagues: [{ leagueId, rows: data }] } : data,
             ),
           );
         }
@@ -230,7 +235,7 @@ export function ScheduleClient({
                     <>
                       <SectionLabel color="live" pulse>Live Now</SectionLabel>
                       <div className="space-y-4">
-                        {live.map(g => <LiveCard key={g.id} game={g} />)}
+                        {live.map(g => <LiveCard key={g.id} game={g} showAgeGroup={showAgeGroup} />)}
                       </div>
                     </>
                   )}
@@ -239,7 +244,7 @@ export function ScheduleClient({
                       <SectionLabel color="muted">Upcoming</SectionLabel>
                       <div className="space-y-2">
                         {upcoming.map(g => (
-                          <UpcomingCard key={g.id} game={g} recordByTeamId={recordForGame(g, recordByTeamId)} />
+                          <UpcomingCard key={g.id} game={g} showAgeGroup={showAgeGroup} recordByTeamId={recordForGame(g, recordByTeamId)} />
                         ))}
                       </div>
                     </>
@@ -248,7 +253,7 @@ export function ScheduleClient({
                     <>
                       <SectionLabel color="faint">Final</SectionLabel>
                       <div className="space-y-3">
-                        {final.map(g => <FinalCard key={g.id} game={g} />)}
+                        {final.map(g => <FinalCard key={g.id} game={g} showAgeGroup={showAgeGroup} />)}
                       </div>
                     </>
                   )}
@@ -262,7 +267,7 @@ export function ScheduleClient({
               <section>
                 <SectionLabel color="live" pulse>Live Now</SectionLabel>
                 <div className="space-y-4">
-                  {liveGames.map(g => <LiveCard key={g.id} game={g} />)}
+                  {liveGames.map(g => <LiveCard key={g.id} game={g} showAgeGroup={showAgeGroup} />)}
                 </div>
               </section>
             )}
@@ -271,7 +276,7 @@ export function ScheduleClient({
                 <SectionLabel color="muted">Upcoming</SectionLabel>
                 <div className="space-y-2">
                   {upcomingGames.map(g => (
-                    <UpcomingCard key={g.id} game={g} recordByTeamId={recordForGame(g, recordByTeamId)} />
+                    <UpcomingCard key={g.id} game={g} showAgeGroup={showAgeGroup} recordByTeamId={recordForGame(g, recordByTeamId)} />
                   ))}
                 </div>
               </section>
@@ -280,7 +285,7 @@ export function ScheduleClient({
               <section>
                 <SectionLabel color="faint">Final</SectionLabel>
                 <div className="space-y-3">
-                  {finishedGames.map(g => <FinalCard key={g.id} game={g} />)}
+                  {finishedGames.map(g => <FinalCard key={g.id} game={g} showAgeGroup={showAgeGroup} />)}
                 </div>
               </section>
             )}
@@ -313,7 +318,7 @@ function SectionLabel({ children, color, pulse }: { children: React.ReactNode; c
    LIVE CARD — broadcast scoreboard overlay
    3 zones: State Bar → Confrontation → Context
    ═══════════════════════════════════════════ */
-function LiveCard({ game }: { game: Game }) {
+function LiveCard({ game, showAgeGroup = false }: { game: Game; showAgeGroup?: boolean }) {
   const inn = game.currentInning ?? 1;
   const half = game.currentHalf ?? 'top';
   const outs = game.currentOuts ?? 0;
@@ -344,6 +349,9 @@ function LiveCard({ game }: { game: Game }) {
             <span className="text-[11px] font-heading font-black uppercase tracking-[0.12em] text-text">
               {halfLabel} {inn}
             </span>
+            {showAgeGroup && game.leagueName ? (
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-text-muted">{game.leagueName}</span>
+            ) : null}
           </div>
 
           {/* Center: outs */}
@@ -462,7 +470,7 @@ function LiveCard({ game }: { game: Game }) {
 /* ═══════════════════════════════════════════
    FINAL CARD — archival, calm, grayscale
    ═══════════════════════════════════════════ */
-function FinalCard({ game }: { game: Game }) {
+function FinalCard({ game, showAgeGroup = false }: { game: Game; showAgeGroup?: boolean }) {
   const awayWon = (game.awayScore ?? 0) > (game.homeScore ?? 0);
   const homeWon = (game.homeScore ?? 0) > (game.awayScore ?? 0);
   const awayLS = game.awayLineScore ?? [];
@@ -479,7 +487,12 @@ function FinalCard({ game }: { game: Game }) {
               {formatGameDateShort(game.scheduledAt)}
               {game.venue && <span className="ml-1 opacity-50">— {game.venue}</span>}
             </span>
-            <span className="text-[9px] font-bold uppercase tracking-widest text-text-faint/60">Final</span>
+            <span className="flex items-center gap-2">
+              {showAgeGroup && game.leagueName ? (
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-text-muted">{game.leagueName}</span>
+              ) : null}
+              <span className="text-[9px] font-bold uppercase tracking-widest text-text-faint/60">Final</span>
+            </span>
           </div>
 
           {/* Score rows */}
@@ -577,10 +590,12 @@ function FinalCard({ game }: { game: Game }) {
    ═══════════════════════════════════════════ */
 function recordForGame(
   game: Game,
-  records: Record<number, string>,
+  records: Record<string, string>,
 ): { away?: string; home?: string } | undefined {
-  const away = records[game.awayTeamId];
-  const home = records[game.homeTeamId];
+  const pick = (teamId: number) =>
+    (game.leagueId != null ? records[`${game.leagueId}:${teamId}`] : undefined) ?? records[String(teamId)];
+  const away = pick(game.awayTeamId);
+  const home = pick(game.homeTeamId);
   if (!away && !home) return undefined;
   return { away, home };
 }
@@ -588,9 +603,11 @@ function recordForGame(
 function UpcomingCard({
   game,
   recordByTeamId,
+  showAgeGroup = false,
 }: {
   game: Game;
   recordByTeamId?: { away?: string; home?: string };
+  showAgeGroup?: boolean;
 }) {
   return (
     <Link
@@ -620,6 +637,9 @@ function UpcomingCard({
       </div>
 
       <div className="shrink-0 text-right">
+        {showAgeGroup && game.leagueName ? (
+          <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-text-muted">{game.leagueName}</div>
+        ) : null}
         <span className="text-sm font-semibold tabular-nums text-text">{formatGameTime(game.scheduledAt)}</span>
       </div>
     </Link>

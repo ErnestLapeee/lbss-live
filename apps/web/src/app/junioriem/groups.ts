@@ -41,7 +41,3 @@ export async function loadAgeGroups(seasonId: number): Promise<AgeGroup[]> {
     return [];
   }
 }
-
-export function ageGroupHref(seasonId: number, section: JunioriemSectionName, slug: string): string {
-  return `/junioriem/${seasonId}/${section}?group=${encodeURIComponent(slug)}`;
-}
