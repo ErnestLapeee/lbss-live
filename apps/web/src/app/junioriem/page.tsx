@@ -8,7 +8,7 @@ export const metadata: Metadata = {
   description: 'Children’s age groups and disciplines',
 };
 
-export const revalidate = 60;
+export const dynamic = 'force-dynamic';
 
 export default async function JunioriemIndexPage() {
   const groups = await loadJunioriemGroups();

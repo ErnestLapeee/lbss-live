@@ -1,3 +1,4 @@
+import { unstable_noStore as noStore } from 'next/cache';
 import { apiFetch, API_REVALIDATE_SEASONS } from '@/lib/api';
 import { fetchPublicSeasons, isYouthSeason, type PublicSeason } from '../stats/load-stats-page';
 
@@ -16,8 +17,28 @@ export function groupLabel(season: PublicSeason): string {
   return `Season ${season.id}`;
 }
 
+async function fetchSeasonsUncached(): Promise<PublicSeason[]> {
+  const data = await apiFetch('/api/public/stats/seasons', { noCache: true });
+  return Array.isArray(data) ? data : [];
+}
+
 export async function loadJunioriemGroups(): Promise<PublicSeason[]> {
-  return junioriemGroups(await fetchPublicSeasons());
+  let seasons: PublicSeason[] | null = null;
+  try {
+    seasons = await fetchPublicSeasons();
+  } catch {
+    seasons = null;
+  }
+  const groups = seasons ? junioriemGroups(seasons) : [];
+  if (groups.length > 0) return groups;
+  // An empty list is what we show as "no children's league". A timed-out or cached
+  // miss looks the same, and the next click would keep serving it. Confirm live.
+  noStore();
+  try {
+    return junioriemGroups(await fetchSeasonsUncached());
+  } catch {
+    return [];
+  }
 }
 
 export type AgeGroup = { id: number; name: string; slug: string };

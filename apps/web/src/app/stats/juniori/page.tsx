@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { loadJunioriemGroups } from '../../junioriem/groups';
 
-export const revalidate = 60;
+export const dynamic = 'force-dynamic';
 
 type Props = { searchParams: Promise<{ season?: string }> };
 

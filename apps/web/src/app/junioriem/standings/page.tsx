@@ -1,6 +1,8 @@
 import { redirect } from 'next/navigation';
 import { loadJunioriemGroups } from '../groups';
 
+export const dynamic = 'force-dynamic';
+
 export default async function JunioriemStandingsIndex() {
   const groups = await loadJunioriemGroups();
   const first = groups[0];

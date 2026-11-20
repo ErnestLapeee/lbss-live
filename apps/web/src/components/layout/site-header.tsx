@@ -24,6 +24,7 @@ function NavDropdown({
   items,
   open,
   align = 'left',
+  prefetch = true,
   onOpen,
   onClose,
 }: {
@@ -31,6 +32,7 @@ function NavDropdown({
   items: { href: string; label: string }[];
   open: boolean;
   align?: 'left' | 'right';
+  prefetch?: boolean;
   onOpen: () => void;
   onClose: () => void;
 }) {
@@ -52,6 +54,7 @@ function NavDropdown({
               <Link
                 key={item.href}
                 href={item.href}
+                prefetch={prefetch}
                 className="block px-3 py-1.5 text-sm text-white/85 hover:bg-black/15"
                 onClick={onClose}
               >
@@ -119,6 +122,7 @@ export function SiteHeader() {
               label="Junioriem"
               items={JUNIORIEM_LINKS}
               open={openMenu === 'junioriem'}
+              prefetch={false}
               onOpen={() => open('junioriem')}
               onClose={close}
             />
@@ -145,7 +149,7 @@ export function SiteHeader() {
             ))}
             <div className="text-[11px] font-semibold text-white/55 uppercase pt-3 pb-1">Junioriem</div>
             {JUNIORIEM_LINKS.map((item) => (
-              <Link key={item.href} href={item.href} className="block py-1.5 text-sm text-white/85" onClick={() => setMobileOpen(false)}>{item.label}</Link>
+              <Link key={item.href} href={item.href} prefetch={false} className="block py-1.5 text-sm text-white/85" onClick={() => setMobileOpen(false)}>{item.label}</Link>
             ))}
             <div className="border-t border-white/10 my-2" />
             {mainNavItems.map((item) => (
