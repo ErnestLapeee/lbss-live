@@ -4,6 +4,7 @@ export const YOUTH_MAX_BATTING_ORDER = 30;
 /** First extra fielder. Position 10 stays the adult DH, who does not play defense. */
 export const EXTRA_FIELDER_POSITION = 11;
 const EXTRA_FIELDER_LAST = 16;
+const YOUTH_MAX_FIELDERS = 15;
 
 export interface YouthRules {
   fielders: number;
@@ -35,14 +36,16 @@ export function lineupRulesForSeason(leagueLevel: unknown, _youthRules?: unknown
   return {
     youth: true,
     maxBattingOrder: YOUTH_MAX_BATTING_ORDER,
-    maxFielders: YOUTH_MAX_BATTING_ORDER,
+    maxFielders: YOUTH_MAX_FIELDERS,
     maxRunsPerInning: null,
   };
 }
 
 /** Positions that can record a putout or assist. 10 is the DH. 11–16 are extra fielders. */
 export function isNumberedFielder(position: number): boolean {
-  return (position >= 1 && position <= 9) || (position >= EXTRA_FIELDER_POSITION && position <= EXTRA_FIELDER_LAST);
+  return Number.isInteger(position) &&
+    ((position >= 1 && position <= 9) ||
+      (position >= EXTRA_FIELDER_POSITION && position <= EXTRA_FIELDER_LAST));
 }
 
 export function isExtraFielder(position: number): boolean {

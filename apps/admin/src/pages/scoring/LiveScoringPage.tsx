@@ -1181,7 +1181,7 @@ export function LiveScoringPage() {
             out[Number(k)] = {
               pa: Math.max(0, Number(v.pa) || 0),
               positions: Array.isArray(v.positions)
-                ? v.positions.filter((n) => Number.isInteger(n) && n >= 1 && n <= 10)
+                ? v.positions.filter((n) => Number.isInteger(n) && n >= 1 && n <= 16)
                 : [],
             };
           }
@@ -3967,7 +3967,10 @@ function needsRunnerAdvanceErrorFieldingPrompt(
                   </div>
                   <div className="mb-2 grid grid-cols-3 gap-1">
                     {[...draftFieldingLineup]
-                      .filter((e) => e.position != null && e.position <= 10)
+                      .filter((e) =>
+                        e.position != null &&
+                        (e.position <= 10 || (youthGame && e.position >= 11 && e.position <= 16)),
+                      )
                       .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
                       .map((entry) => (
                         <button

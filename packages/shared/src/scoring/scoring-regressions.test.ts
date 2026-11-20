@@ -238,6 +238,14 @@ const eleven = Array.from({ length: 11 }, (_, i) => ({
 }));
 assert(validateLineupEntries(eleven, youthRules) == null, 'a Jaunieši lineup can field more than nine and bat the rest');
 assert(
+  validateLineupEntries([{ playerId: 1, battingOrder: 1, position: null }], youthRules) == null,
+  'a Jaunieši player can remain in the batting order without a defensive position',
+);
+assert(
+  validateLineupEntries([{ playerId: 1, battingOrder: 1, position: 11.5 }], youthRules) != null,
+  'a Jaunieši defensive position must be an integer',
+);
+assert(
   validateLineupEntries([{ playerId: 1, battingOrder: 11, position: 1 }], adultRules) != null,
   'adult batting order still stops at ten',
 );

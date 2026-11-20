@@ -125,7 +125,8 @@ function defensiveInningsForStint(
   homeTeamId: number,
   awayTeamId: number,
 ): number {
-  if (row.position === 10) return 0;
+  // DH and youth "bats only" slots do not receive defensive innings.
+  if (row.position == null || row.position === 10) return 0;
   const ei = row.enteredInning ?? 1;
   const eh = (row.enteredHalf || 'top').toLowerCase();
 
@@ -247,6 +248,10 @@ function errorPositionsFromSegment(seg: string): number[] {
   const s = seg.trim();
   if (!s.startsWith('E')) return [];
   const tail = s.slice(1).replace(/\D/g, '');
+  const combined = Number(tail);
+  // Junior extra-field positions are two digits (E11–E16), unlike a
+  // compact sequence of standard positions such as E56.
+  if (combined >= 11 && isNumberedFielder(combined)) return [combined];
   const positions: number[] = [];
   for (const ch of tail) {
     const p = Number(ch);

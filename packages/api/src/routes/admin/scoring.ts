@@ -22,6 +22,7 @@ import { gamesTableHasOfficialColumns } from '../../lib/games-official-columns.j
 import { slugify } from '../../utils/slugify.js';
 import {
   isBetweenPitchEvent,
+  isNumberedFielder,
   isKnownEventType,
   isPlateAppearanceEvent,
   lineupRulesForSeason,
@@ -425,7 +426,7 @@ export async function adminScoringRoutes(app: FastifyInstance) {
       outPlayerId: number;
       inPlayerId: number;
       teamId: number;
-      position: number;
+      position: number | null;
       inning: number;
       half: string;
     },
@@ -472,6 +473,62 @@ export async function adminScoringRoutes(app: FastifyInstance) {
             : 'Incoming player is already active for the other team in this game',
       };
     }
+
+    const [gameContext] = await conn
+      .select({ leagueId: games.leagueId, homeTeamId: games.homeTeamId, awayTeamId: games.awayTeamId })
+      .from(games)
+      .where(eq(games.id, gameId))
+      .limit(1);
+    if (!gameContext) return { ok: false, message: 'Game not found' };
+    if (teamId !== gameContext.homeTeamId && teamId !== gameContext.awayTeamId) {
+      return { ok: false, message: 'Substitution team must be playing in this game' };
+    }
+
+    const [leagueContext] = await conn
+      .select({ seasonId: leagues.seasonId })
+      .from(leagues)
+      .where(eq(leagues.id, gameContext.leagueId))
+      .limit(1);
+    if (!leagueContext?.seasonId) {
+      return { ok: false, message: 'Game league has no season' };
+    }
+    const [incomingRosterEntry] = await conn
+      .select({ id: playerSeasons.id })
+      .from(playerSeasons)
+      .where(and(
+        eq(playerSeasons.playerId, inPlayerId),
+        eq(playerSeasons.teamId, teamId),
+        eq(playerSeasons.seasonId, leagueContext.seasonId),
+      ))
+      .limit(1);
+    if (!incomingRosterEntry) {
+      return { ok: false, message: 'Incoming player is not on this team roster for the game season' };
+    }
+
+    const activeTeamLineup = await conn
+      .select({
+        playerId: gameLineups.playerId,
+        battingOrder: gameLineups.battingOrder,
+        position: gameLineups.position,
+      })
+      .from(gameLineups)
+      .where(and(
+        eq(gameLineups.gameId, gameId),
+        eq(gameLineups.teamId, teamId),
+        eq(gameLineups.isActive, true),
+      ));
+    const resultingLineup = activeTeamLineup.map((entry: {
+      playerId: number | null;
+      battingOrder: number;
+      position: number | null;
+    }) => entry.playerId === outPlayerId
+      ? { ...entry, playerId: inPlayerId, position }
+      : entry);
+    const resultingLineupError = validateLineupEntries(
+      resultingLineup,
+      await lineupRulesForLeague(gameContext.leagueId),
+    );
+    if (resultingLineupError) return { ok: false, message: resultingLineupError };
 
     await conn
       .update(gameLineups)
@@ -589,7 +646,7 @@ export async function adminScoringRoutes(app: FastifyInstance) {
       outPlayerId?: number;
       inPlayerId?: number;
       teamId?: number;
-      position?: number;
+      position?: number | null;
       changes?: PositionSwapChange[];
     } = {};
     try {
@@ -608,13 +665,13 @@ export async function adminScoringRoutes(app: FastifyInstance) {
       detail.outPlayerId != null &&
       detail.inPlayerId != null &&
       detail.teamId != null &&
-      detail.position != null
+      'position' in detail
     ) {
       return applyPlayerSubstitutionLineup(gameId, {
         outPlayerId: detail.outPlayerId,
         inPlayerId: detail.inPlayerId,
         teamId: detail.teamId,
-        position: detail.position,
+        position: detail.position ?? null,
         inning: event.inning ?? 1,
         half: String(event.half ?? 'top'),
       });
@@ -1246,7 +1303,7 @@ export async function adminScoringRoutes(app: FastifyInstance) {
 
         for (const r of posRows) {
           const pos = Number(r.position);
-          if (!Number.isInteger(pos) || pos < 1 || pos > 10) continue;
+          if (!Number.isInteger(pos) || (!isNumberedFielder(pos) && pos !== 10)) continue;
           const inn = parseFloat(r.innings || '0') || 0;
           const cur = byPlayer.get(r.playerId) ?? { pa: 0, positionInnings: [] };
           cur.positionInnings.push({ position: pos, innings: inn });
@@ -1313,6 +1370,30 @@ export async function adminScoringRoutes(app: FastifyInstance) {
         .filter((id): id is number => id != null);
 
       if (lineupPlayerIds.length > 0) {
+        const [leagueContext] = await db
+          .select({ seasonId: leagues.seasonId })
+          .from(leagues)
+          .where(eq(leagues.id, game.leagueId))
+          .limit(1);
+        if (!leagueContext?.seasonId) {
+          return reply.status(400).send({ message: 'Game league has no season' });
+        }
+        const rosterRows = await db
+          .select({ playerId: playerSeasons.playerId })
+          .from(playerSeasons)
+          .where(and(
+            eq(playerSeasons.teamId, teamId),
+            eq(playerSeasons.seasonId, leagueContext.seasonId),
+            inArray(playerSeasons.playerId, lineupPlayerIds),
+          ));
+        const rosterPlayerIds = new Set(rosterRows.map((row) => row.playerId));
+        const nonRosterPlayer = lineupPlayerIds.find((id) => !rosterPlayerIds.has(id));
+        if (nonRosterPlayer != null) {
+          return reply.status(400).send({
+            message: `Player #${nonRosterPlayer} is not on this team roster for the game season`,
+          });
+        }
+
         const opponentTeamId = teamId === game.homeTeamId ? game.awayTeamId : game.homeTeamId;
         const [opponentConflict] = await db
           .select({ playerId: gameLineups.playerId })
@@ -1346,7 +1427,7 @@ export async function adminScoringRoutes(app: FastifyInstance) {
               teamId,
               playerId: vacant ? null : Number(pidRaw),
               battingOrder: entry.battingOrder,
-              position: vacant ? null : Number(entry.position),
+              position: vacant || entry.position == null ? null : Number(entry.position),
               isStarter: true,
               isActive: true,
             };
@@ -1516,6 +1597,17 @@ export async function adminScoringRoutes(app: FastifyInstance) {
             .where(and(eq(gameEvents.gameId, gameId), eq(gameEvents.isDeleted, false)))
             .orderBy(gameEvents.eventNumber);
           const priorState = computeGameState(priorEvents);
+          if (body.eventType === 'end_half_inning' && outsRecorded === 0) {
+            const [eventGame] = await tx
+              .select({ leagueId: games.leagueId })
+              .from(games)
+              .where(eq(games.id, gameId))
+              .limit(1);
+            if (!eventGame) throw new ScoringAbortReply(404, 'Game not found');
+            if (!(await lineupRulesForLeague(eventGame.leagueId)).youth) {
+              throw new ScoringAbortReply(400, 'Only Jaunieši games can end a half-inning without recording the remaining outs');
+            }
+          }
           const eventValidation = validateScoringEventPayload(body, {
             expectedState: priorState,
             strictState: true,
@@ -1842,6 +1934,19 @@ export async function adminScoringRoutes(app: FastifyInstance) {
         errorsOnPlay: 'errorsOnPlay' in updates ? updates.errorsOnPlay : existing.errorsOnPlay,
         putoutFielderIds: 'putoutFielderIds' in updates ? updates.putoutFielderIds : uniqueNumberArray(existing.putoutFielderIds),
       };
+      if (candidate.eventType === 'end_half_inning' && Number(candidate.outsRecorded) === 0) {
+        const [eventGame] = await db
+          .select({ leagueId: games.leagueId })
+          .from(games)
+          .where(eq(games.id, gameId))
+          .limit(1);
+        if (!eventGame) return reply.status(404).send({ message: 'Game not found' });
+        if (!(await lineupRulesForLeague(eventGame.leagueId)).youth) {
+          return reply.status(400).send({
+            message: 'Only Jaunieši games can end a half-inning without recording the remaining outs',
+          });
+        }
+      }
       const previousEvents = await db.select().from(gameEvents)
         .where(and(eq(gameEvents.gameId, gameId), eq(gameEvents.isDeleted, false), sql`${gameEvents.eventNumber} < ${existing.eventNumber}`))
         .orderBy(gameEvents.eventNumber);
@@ -1992,7 +2097,7 @@ export async function adminScoringRoutes(app: FastifyInstance) {
       outPlayerId: number;
       inPlayerId: number;
       teamId: number;
-      position: number;
+      position: number | null;
       inning: number;
       half: string;
       /** Distinguishes pinch-hit / pinch-run style subs from defensive replacements in play-by-play. */
@@ -2011,6 +2116,27 @@ export async function adminScoringRoutes(app: FastifyInstance) {
       const user = request.user;
       const halfNorm = normalizeHalf(half);
       const inningNum = Math.max(1, Math.floor(Number(inning)) || 1);
+      const [gameForRules] = await db
+        .select({ leagueId: games.leagueId })
+        .from(games)
+        .where(eq(games.id, gameId))
+        .limit(1);
+      if (!gameForRules) return reply.status(404).send({ message: 'Game not found' });
+      const substitutionRules = await lineupRulesForLeague(gameForRules.leagueId);
+      const normalizedPosition = position == null ? null : Number(position);
+      if (
+        (normalizedPosition == null && !substitutionRules.youth) ||
+        (normalizedPosition != null &&
+          (substitutionRules.youth
+            ? !isNumberedFielder(normalizedPosition)
+            : !Number.isInteger(normalizedPosition) || normalizedPosition < 1 || normalizedPosition > 10))
+      ) {
+        return reply.status(400).send({
+          message: substitutionRules.youth
+            ? 'Jaunieši substitutions use positions 1–9, an extra fielder spot, or bats only'
+            : 'Substitutions require a defensive position 1–10',
+        });
+      }
 
       const nameRows = await db.select({
         id: players.id,
@@ -2025,7 +2151,7 @@ export async function adminScoringRoutes(app: FastifyInstance) {
       const detail = JSON.stringify({
         kind: 'player_change',
         subKind,
-        position,
+        position: normalizedPosition,
         teamId,
         outPlayerId,
         inPlayerId,
@@ -2046,7 +2172,7 @@ export async function adminScoringRoutes(app: FastifyInstance) {
           outPlayerId,
           inPlayerId,
           teamId,
-          position,
+          position: normalizedPosition,
           inning: inningNum,
           half: halfNorm,
         }, tx);
@@ -2136,7 +2262,20 @@ export async function adminScoringRoutes(app: FastifyInstance) {
         playerId: Number(change.playerId),
         newPosition: Number(change.newPosition),
       }));
-      if (normalizedChanges.some((change) => !Number.isInteger(change.playerId) || !Number.isInteger(change.newPosition) || change.newPosition < 1 || change.newPosition > 10)) {
+      const [swapGame] = await db
+        .select({ leagueId: games.leagueId })
+        .from(games)
+        .where(eq(games.id, gameId))
+        .limit(1);
+      if (!swapGame) return reply.status(404).send({ message: 'Game not found' });
+      const swapRules = await lineupRulesForLeague(swapGame.leagueId);
+      if (normalizedChanges.some((change) =>
+        !Number.isInteger(change.playerId) ||
+        !Number.isInteger(change.newPosition) ||
+        (swapRules.youth
+          ? !isNumberedFielder(change.newPosition)
+          : change.newPosition < 1 || change.newPosition > 10)
+      )) {
         return reply.status(400).send({ message: 'Position changes must include valid player IDs and positions' });
       }
       if (new Set(normalizedChanges.map((change) => change.playerId)).size !== normalizedChanges.length) {
@@ -2467,6 +2606,47 @@ function boundedScore(raw: unknown): number {
       const errA = validateSide('Away', awayRows);
       if (errA) return reply.status(400).send({ message: errA });
 
+      const homePlayerIds = homeRows
+        .map((row) => row.playerId == null ? null : Number(row.playerId))
+        .filter((id): id is number => id != null);
+      const awayPlayerIds = awayRows
+        .map((row) => row.playerId == null ? null : Number(row.playerId))
+        .filter((id): id is number => id != null);
+      const homePlayerSet = new Set(homePlayerIds);
+      const crossTeamPlayer = awayPlayerIds.find((id) => homePlayerSet.has(id));
+      if (crossTeamPlayer != null) {
+        return reply.status(400).send({ message: 'The same player cannot be active for both teams in one game' });
+      }
+
+      const [leagueContext] = await db
+        .select({ seasonId: leagues.seasonId })
+        .from(leagues)
+        .where(eq(leagues.id, game.leagueId))
+        .limit(1);
+      if (!leagueContext?.seasonId) {
+        return reply.status(400).send({ message: 'Game league has no season' });
+      }
+      const requestedPlayerIds = [...homePlayerIds, ...awayPlayerIds];
+      if (requestedPlayerIds.length > 0) {
+        const rosterRows = await db
+          .select({ playerId: playerSeasons.playerId, teamId: playerSeasons.teamId })
+          .from(playerSeasons)
+          .where(and(
+            eq(playerSeasons.seasonId, leagueContext.seasonId),
+            inArray(playerSeasons.playerId, requestedPlayerIds),
+            inArray(playerSeasons.teamId, [game.homeTeamId, game.awayTeamId]),
+          ));
+        const rosterKeys = new Set(rosterRows.map((row) => `${row.teamId}:${row.playerId}`));
+        const invalidHome = homePlayerIds.find((id) => !rosterKeys.has(`${game.homeTeamId}:${id}`));
+        if (invalidHome != null) {
+          return reply.status(400).send({ message: `Home player #${invalidHome} is not on the game-season roster` });
+        }
+        const invalidAway = awayPlayerIds.find((id) => !rosterKeys.has(`${game.awayTeamId}:${id}`));
+        if (invalidAway != null) {
+          return reply.status(400).send({ message: `Away player #${invalidAway} is not on the game-season roster` });
+        }
+      }
+
       const activeHome = await db
         .select({ id: gameLineups.id })
         .from(gameLineups)
@@ -2511,7 +2691,7 @@ function boundedScore(raw: unknown): number {
             .set({
               playerId: row.playerId == null ? null : Number(row.playerId),
               battingOrder: row.battingOrder,
-              position: row.playerId == null ? null : Number(row.position),
+              position: row.playerId == null || row.position == null ? null : Number(row.position),
             })
             .where(
               and(
@@ -2528,7 +2708,7 @@ function boundedScore(raw: unknown): number {
             .set({
               playerId: row.playerId == null ? null : Number(row.playerId),
               battingOrder: row.battingOrder,
-              position: row.playerId == null ? null : Number(row.position),
+              position: row.playerId == null || row.position == null ? null : Number(row.position),
             })
             .where(
               and(
