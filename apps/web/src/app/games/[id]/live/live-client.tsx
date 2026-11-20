@@ -85,28 +85,14 @@ interface GameData {
 }
 
 function ScoreboardTeamLogo({
-  name,
-  shortName,
   logoUrl,
 }: {
-  name: string;
-  shortName?: string | null;
   logoUrl?: string | null;
 }) {
-  const wrap = 'flex h-14 w-14 shrink-0 items-center justify-center rounded-lg border border-border bg-surface p-1 sm:h-[4.5rem] sm:w-[4.5rem]';
+  const wrap = 'flex h-5 w-5 shrink-0 items-center justify-center';
   const src = resolveTeamLogoUrl(logoUrl);
-  if (src) {
-    return <img src={src} alt={name} className={`${wrap} object-contain`} />;
-  }
-  const abbr = shortName?.trim()
-    || (name.length <= 3
-      ? name.toUpperCase()
-      : name.split(/\s+/).map(w => w[0]).join('').slice(0, 3).toUpperCase());
-  return (
-    <div className={`${wrap} bg-surface-alt`} aria-hidden>
-      <span className="text-center text-[11px] font-bold leading-none tracking-tight text-text-muted sm:text-xs">{abbr}</span>
-    </div>
-  );
+  if (!src) return null;
+  return <img src={src} alt="" className={`${wrap} object-contain`} />;
 }
 
 interface GameEvent {
@@ -284,7 +270,6 @@ export function LiveGameClient({
   const [loading, setLoading] = useState(false);
   const [tab, setTab] = useState<Tab>('plays');
   const [playMode, setPlayMode] = useState<'compact' | 'expanded'>('compact');
-  const [openPitchCards, setOpenPitchCards] = useState<Record<string, boolean>>({});
   const { connected, gameState, gameStatus, updateSeq, isFinal, viewerCount } = useGameSocket(gameId, apiBase);
 
   /** Refetch only when SSR could not provide events; live updates still arrive via socket/polling below. */
@@ -854,47 +839,6 @@ export function LiveGameClient({
     return (obp + slg) > 0 ? (obp + slg).toFixed(3) : '—';
   };
 
-  const playTone = (ab: AtBat): { tag: string; badge: string; border: string } => {
-    const positive = {
-      badge: 'bg-emerald-50 text-emerald-800',
-      border: 'border-l-emerald-500',
-    };
-    const negative = {
-      badge: 'bg-rose-50 text-rose-800',
-      border: 'border-l-rose-400',
-    };
-    const neutral = {
-      badge: 'bg-surface-alt text-text-muted',
-      border: 'border-l-border',
-    };
-    const t = ab.result?.eventType || '';
-    if (t === 'adjust_score') return { tag: 'NOTE', ...neutral };
-    if (t === 'substitution') return { tag: 'SUB', ...neutral };
-    if ((ab.result?.runsScored ?? 0) > 0) return { tag: 'SCORING', ...positive };
-    if (['single', 'bunt_single', 'double', 'triple', 'home_run', 'inside_park_hr', 'ground_rule_double'].includes(t)) {
-      return { tag: 'HIT', ...positive };
-    }
-    if (['walk', 'intentional_walk', 'hit_by_pitch'].includes(t)) return { tag: 'BB', ...positive };
-    if (['error', 'sac_bunt_error', 'sac_fly_error', 'advance_on_error'].includes(t)) {
-      return { tag: 'ERROR', badge: 'bg-amber-50 text-amber-900', border: 'border-l-amber-500' };
-    }
-    if (
-      ['stolen_base', 'caught_stealing', 'picked_off', 'defensive_indifference'].includes(t) ||
-      (!ab.result && ab.betweenEvents.some((e) =>
-        ['stolen_base', 'caught_stealing', 'picked_off', 'defensive_indifference'].includes(e.eventType),
-      ))
-    ) {
-      return { tag: 'RUNNER', ...neutral };
-    }
-    if (
-      ['ground_out', 'fly_out', 'line_out', 'pop_out', 'bunt_out', 'strikeout', 'strikeout_swinging', 'strikeout_looking', 'double_play', 'triple_play', 'fielders_choice'].includes(t)
-    ) {
-      return { tag: 'OUT', ...negative };
-    }
-    if (!ab.result && ab.betweenEvents.length > 0) return { tag: 'RUNNER', ...neutral };
-    return { tag: 'PLAY', ...neutral };
-  };
-
   const renderBattingTable = (teamName: string, lineup: LineupEntry[], batting: BattingBoxScore[]) => {
     const battingMap: Record<number, BattingBoxScore> = {};
     for (const b of batting) battingMap[b.playerId] = b;
@@ -1049,12 +993,6 @@ export function LiveGameClient({
     );
   };
 
-  const baseStateFromEvent = (evt?: GameEvent | null) => ({
-    first: Boolean(evt?.runnerFirstId ?? evt?.runnerFirstName),
-    second: Boolean(evt?.runnerSecondId ?? evt?.runnerSecondName),
-    third: Boolean(evt?.runnerThirdId ?? evt?.runnerThirdName),
-  });
-
   const pitchSymbol = (evt: GameEvent): 'B' | 'S' | 'F' | 'X' | 'P' => {
     const detail = String(evt.eventDetail || '').toLowerCase();
     if (detail === 'ball') return 'B';
@@ -1131,63 +1069,13 @@ export function LiveGameClient({
     return entries.length > 0 ? `Runners: ${entries.join('; ')}` : '';
   };
 
-  const BaseDiamond = ({ first, second, third, compact = false }: { first: boolean; second: boolean; third: boolean; compact?: boolean }) => (
-    <svg viewBox="0 0 50 50" className={`${compact ? 'h-7 w-7' : 'h-9 w-9'} shrink-0`} aria-label="Runners on base">
-      <rect x="19" y="2" width="12" height="12" rx="1.5" transform="rotate(45 25 8)"
-        fill={second ? '#0a7d0a' : '#e8e8e8'} stroke={second ? '#066306' : '#ccc'} strokeWidth="1" />
-      <rect x="35" y="18" width="12" height="12" rx="1.5" transform="rotate(45 41 24)"
-        fill={first ? '#0a7d0a' : '#e8e8e8'} stroke={first ? '#066306' : '#ccc'} strokeWidth="1" />
-      <rect x="3" y="18" width="12" height="12" rx="1.5" transform="rotate(45 9 24)"
-        fill={third ? '#0a7d0a' : '#e8e8e8'} stroke={third ? '#066306' : '#ccc'} strokeWidth="1" />
-    </svg>
-  );
-
-  const OutsIndicator = ({ outs, compact = false }: { outs: number; compact?: boolean }) => {
-    const o = Math.max(0, Math.min(3, outs));
-    return (
-      <div
-        className={`flex items-center justify-end ${compact ? 'gap-0.5' : 'gap-1'}`}
-        aria-label={`${o} out${o === 1 ? '' : 's'} after this play`}
-        title="Outs in inning (after this play)"
-      >
-        {[0, 1, 2].map(i => (
-          <span
-            key={i}
-            className={`${compact ? 'h-1.5 w-1.5 border' : 'h-2 w-2 border'} rounded-full ${
-              i < o ? 'border-rose-600 bg-rose-600' : 'border-border bg-surface'
-            }`}
-          />
-        ))}
-      </div>
-    );
-  };
-
-  const pitchSymbolTone = (s: 'B' | 'S' | 'F' | 'X' | 'P'): string => {
-    switch (s) {
-      case 'B':
-        return 'text-emerald-600';
-      case 'S':
-        return 'text-red-600';
-      case 'F':
-        return 'text-amber-600';
-      case 'X':
-        return 'text-text';
-      case 'P':
-        return 'text-text-faint';
-    }
-  };
-
   const PitchLetterStrip = ({ symbols, max = 24 }: { symbols: ('B' | 'S' | 'F' | 'X' | 'P')[]; max?: number }) => {
     const truncated = symbols.length > max;
     const slice = truncated ? symbols.slice(0, max) : symbols;
     return (
-      <span className="font-mono text-[11px] font-semibold tracking-[0.2em] inline-flex flex-wrap items-center gap-x-1 gap-y-0.5">
-        {slice.map((s, i) => (
-          <span key={i} className={pitchSymbolTone(s)}>
-            {s}
-          </span>
-        ))}
-        {truncated && <span className="text-gray-400 font-normal tracking-normal">…</span>}
+      <span className="font-mono text-xs tracking-wider text-text-muted">
+        {slice.join(' ')}
+        {truncated ? ' …' : ''}
       </span>
     );
   };
@@ -1525,15 +1413,6 @@ export function LiveGameClient({
     );
   };
 
-  const awayAhead = displayScore.away > displayScore.home;
-  const homeAhead = displayScore.home > displayScore.away;
-  const scoreEmphasis = (teamLeading: boolean) =>
-    status === 'final' && teamLeading
-      ? 'text-text'
-      : status === 'final' && !teamLeading && (awayAhead || homeAhead)
-        ? 'text-text-muted'
-        : 'text-text';
-
   return (
     <div className="min-h-screen">
       {/* Header */}
@@ -1542,19 +1421,13 @@ export function LiveGameClient({
           <Link href="/schedule" className="text-sm text-text-muted transition-colors hover:text-text">← Schedule</Link>
           <div className="flex items-center gap-2">
             {status === 'live' && (
-              <span className="flex items-center gap-1.5 rounded border border-live/30 bg-live/10 px-2 py-0.5 text-[10px] font-bold uppercase text-live">
-                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-live" />
-                Live
-              </span>
+              <span className="text-xs font-semibold text-live">Live</span>
             )}
             {status === 'final' && (
-              <span className="rounded border border-border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-text-faint">
-                Final
-              </span>
+              <span className="text-xs text-text-muted">Final</span>
             )}
             {viewerCount > 0 && (
-              <span className="flex items-center gap-1 text-[10px] text-text-faint">
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+              <span className="text-xs text-text-faint">
                 {viewerCount} watching
               </span>
             )}
@@ -1563,95 +1436,54 @@ export function LiveGameClient({
       </div>
 
       <div className="mx-auto max-w-6xl px-4 py-4">
-        <div className="overflow-hidden rounded-xl border border-border bg-surface">
+        <div className="border border-border bg-surface">
         {/* Scoreboard */}
-        <div className="px-4 py-5 sm:px-6">
-            <div className="flex flex-col gap-5">
-              {/* Main scores row */}
-              <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 sm:gap-6">
-                {/* Away */}
-                <div className="flex min-w-0 items-center justify-end gap-2 sm:gap-3">
-                  <ScoreboardTeamLogo
-                    name={game.awayTeamName}
-                    shortName={game.awayTeamShortName}
-                    logoUrl={game.awayTeamLogoUrl}
-                  />
-                  <div className="min-w-0 text-right">
-                    <div className="text-[10px] font-semibold uppercase tracking-widest text-text-faint">Away</div>
-                    <div className="truncate font-sans text-sm font-semibold leading-snug text-text sm:text-base">{game.awayTeamName}</div>
-                  </div>
-                  <div className={`shrink-0 font-sans text-4xl font-bold tabular-nums tracking-tight sm:text-5xl ${scoreEmphasis(awayAhead)}`}>
-                    {displayScore.away}
-                  </div>
+        <div className="px-4 py-4 sm:px-5">
+            <div className="flex flex-col gap-3">
+              {status === 'live' && (
+                <div className="flex items-center gap-3 text-sm">
+                  <span className="font-semibold text-text">
+                    {displayHalf === 'top' ? 'Top' : 'Bottom'} {ordinalInning(displayInning)}
+                  </span>
+                  <svg viewBox="0 0 50 50" className="h-5 w-5" aria-hidden>
+                    <rect x="19" y="2" width="12" height="12" transform="rotate(45 25 8)"
+                      fill={displayBases.second ? '#111' : '#fff'} stroke="#666" strokeWidth="1.5" />
+                    <rect x="35" y="18" width="12" height="12" transform="rotate(45 41 24)"
+                      fill={displayBases.first ? '#111' : '#fff'} stroke="#666" strokeWidth="1.5" />
+                    <rect x="3" y="18" width="12" height="12" transform="rotate(45 9 24)"
+                      fill={displayBases.third ? '#111' : '#fff'} stroke="#666" strokeWidth="1.5" />
+                  </svg>
+                  <span className="text-text-muted">
+                    {displayOuts === 1 ? '1 out' : `${displayOuts} outs`}
+                  </span>
                 </div>
+              )}
 
-                {/* Inning / status + live widgets */}
-                <div className="flex min-w-[5.5rem] flex-col items-center justify-center gap-1.5 px-1">
-                  {status === 'live' ? (
-                    <>
-                      <div className="text-lg font-bold tabular-nums text-emerald-700 sm:text-xl">
-                        {displayHalf === 'top' ? '▲' : '▼'} {displayInning}
-                      </div>
-                      <svg viewBox="0 0 50 50" className="h-9 w-9 sm:h-10 sm:w-10" aria-hidden>
-                        <rect x="19" y="2" width="12" height="12" rx="1.5" transform="rotate(45 25 8)"
-                          fill={displayBases.second ? '#059669' : '#e2e8f0'} stroke="#94a3b8" strokeWidth="1" />
-                        <rect x="35" y="18" width="12" height="12" rx="1.5" transform="rotate(45 41 24)"
-                          fill={displayBases.first ? '#059669' : '#e2e8f0'} stroke="#94a3b8" strokeWidth="1" />
-                        <rect x="3" y="18" width="12" height="12" rx="1.5" transform="rotate(45 9 24)"
-                          fill={displayBases.third ? '#059669' : '#e2e8f0'} stroke="#94a3b8" strokeWidth="1" />
-                      </svg>
-                      <div className="flex gap-1.5" aria-label={`${displayOuts} out${displayOuts === 1 ? '' : 's'}`}>
-                        {[0, 1, 2].map(i => (
-                          <div
-                            key={i}
-                            className={`h-2.5 w-2.5 rounded-full border-2 ${
-                              i < displayOuts ? 'border-amber-500 bg-amber-500' : 'border-border bg-surface'
-                            }`}
-                          />
-                        ))}
-                      </div>
-                    </>
-                  ) : (
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-text-faint">
-                      {status}
-                    </span>
-                  )}
-                </div>
-
-                {/* Home */}
-                <div className="flex min-w-0 items-center justify-start gap-2 sm:gap-3">
-                  <div className={`shrink-0 font-sans text-4xl font-bold tabular-nums tracking-tight sm:text-5xl ${scoreEmphasis(homeAhead)}`}>
-                    {displayScore.home}
-                  </div>
-                  <div className="min-w-0 text-left">
-                    <div className="text-[10px] font-semibold uppercase tracking-widest text-text-faint">Home</div>
-                    <div className="truncate font-sans text-sm font-semibold leading-snug text-text sm:text-base">{game.homeTeamName}</div>
-                  </div>
-                  <ScoreboardTeamLogo
-                    name={game.homeTeamName}
-                    shortName={game.homeTeamShortName}
-                    logoUrl={game.homeTeamLogoUrl}
-                  />
-                </div>
-              </div>
-
-              {/* Line score */}
-              <div className="overflow-x-auto border-t border-border pt-3 mt-1">
-                <table className="w-full min-w-[20rem] table-fixed text-xs font-mono text-text-muted sm:text-sm">
+              <div className="overflow-x-auto">
+                <table className="w-max min-w-full text-xs font-mono text-text-muted sm:text-sm">
                   <thead>
                     <tr className="text-text-faint">
-                      <th className="w-[40%] min-w-[0] py-1.5 pl-2 pr-1 text-left align-bottom font-sans text-[10px] font-semibold uppercase tracking-wide sm:w-[36%]">Team</th>
+                      <th className="sticky left-0 z-10 min-w-[9rem] bg-surface py-1.5 pr-3 text-left align-bottom" />
                       {Array.from({ length: maxInnings }, (_, i) => (
-                        <th key={i} className="w-[2.25rem] px-0 py-1.5 text-center font-medium tabular-nums sm:w-10">{i + 1}</th>
+                        <th key={i} className="w-8 px-0 py-1.5 text-center font-medium tabular-nums sm:w-10">{i + 1}</th>
                       ))}
-                      <th className="w-8 border-l border-border py-1.5 text-center font-bold text-text sm:w-9">R</th>
-                      <th className="w-8 py-1.5 text-center font-bold text-text sm:w-9">H</th>
-                      <th className="w-8 py-1.5 text-center font-bold text-text sm:w-9">E</th>
+                      <th className="hidden w-8 border-l border-border py-1.5 text-center font-bold text-text sm:table-cell sm:w-9">R</th>
+                      <th className="hidden w-8 py-1.5 text-center font-bold text-text sm:table-cell sm:w-9">H</th>
+                      <th className="hidden w-8 py-1.5 text-center font-bold text-text sm:table-cell sm:w-9">E</th>
                     </tr>
                   </thead>
                   <tbody>
                     <tr className="border-t border-border-light">
-                      <td className="text-left align-middle px-2 py-2 font-sans text-[11px] font-semibold leading-snug text-text sm:text-xs sm:leading-tight">{game.awayTeamName}</td>
+                      <td className="sticky left-0 z-10 min-w-[9rem] bg-surface py-1.5 pr-3 text-left align-middle font-sans text-sm text-text">
+                        <span className="flex min-w-0 items-baseline justify-between gap-3 sm:justify-start">
+                          <span className="flex min-w-0 items-center gap-2 font-semibold">
+                            <ScoreboardTeamLogo logoUrl={game.awayTeamLogoUrl} />
+                            <span className="truncate">{game.awayTeamName}</span>
+                          </span>
+                          <span className="shrink-0 text-base font-bold tabular-nums sm:hidden">{displayScore.away}</span>
+                        </span>
+                        <div className="text-[11px] text-text-muted sm:hidden">{awayTeamHitsDisplay} H · {errorCounts.away} E</div>
+                      </td>
                   {Array.from({ length: maxInnings }, (_, i) => {
                     const hasVal = i < awayLineScore.length;
                     const isCurrent = status === 'live' && i + 1 === displayInning && displayHalf === 'top';
@@ -1662,12 +1494,21 @@ export function LiveGameClient({
                       </td>
                     );
                   })}
-                  <td className="border-l border-border py-2 text-center text-base font-bold tabular-nums text-text">{displayScore.away}</td>
-                  <td className="py-2 text-center tabular-nums text-text-muted">{awayTeamHitsDisplay}</td>
-                  <td className="py-2 text-center tabular-nums text-text-muted">{errorCounts.away}</td>
+                  <td className="hidden border-l border-border py-2 text-center text-base font-bold tabular-nums text-text sm:table-cell">{displayScore.away}</td>
+                  <td className="hidden py-2 text-center tabular-nums text-text-muted sm:table-cell">{awayTeamHitsDisplay}</td>
+                  <td className="hidden py-2 text-center tabular-nums text-text-muted sm:table-cell">{errorCounts.away}</td>
                 </tr>
                 <tr className="border-t border-border-light">
-                  <td className="text-left align-middle px-2 py-2 font-sans text-[11px] font-semibold leading-snug text-text sm:text-xs sm:leading-tight">{game.homeTeamName}</td>
+                  <td className="sticky left-0 z-10 min-w-[9rem] bg-surface py-1.5 pr-3 text-left align-middle font-sans text-sm text-text">
+                    <span className="flex min-w-0 items-baseline justify-between gap-3 sm:justify-start">
+                      <span className="flex min-w-0 items-center gap-2 font-semibold">
+                        <ScoreboardTeamLogo logoUrl={game.homeTeamLogoUrl} />
+                        <span className="truncate">{game.homeTeamName}</span>
+                      </span>
+                      <span className="shrink-0 text-base font-bold tabular-nums sm:hidden">{displayScore.home}</span>
+                    </span>
+                    <div className="text-[11px] text-text-muted sm:hidden">{homeTeamHitsDisplay} H · {errorCounts.home} E</div>
+                  </td>
                   {Array.from({ length: maxInnings }, (_, i) => {
                     const hasVal = i < homeLineScore.length;
                     const isCurrent = status === 'live' && i + 1 === displayInning && displayHalf === 'bot';
@@ -1691,25 +1532,45 @@ export function LiveGameClient({
         </div>
 
         {/* Tab bar */}
-        <div className="flex border-t border-border bg-surface-alt/60">
+        <div className="flex flex-wrap items-end justify-between gap-x-3 border-t border-border px-2">
+          <div className="flex gap-1">
           {([
-            { key: 'plays' as Tab, label: 'Play-by-Play' },
-            { key: 'boxscore' as Tab, label: 'Box Score' },
+            { key: 'plays' as Tab, label: 'Plays' },
+            { key: 'boxscore' as Tab, label: 'Box score' },
             { key: 'pitching' as Tab, label: 'Pitching' },
           ]).map(t => (
             <button
               key={t.key}
               type="button"
               onClick={() => setTab(t.key)}
-              className={`flex-1 py-2.5 text-[11px] font-bold uppercase tracking-wide sm:text-xs border-b-2 transition-colors ${
+              className={`px-4 py-2 text-sm border-b-2 ${
                 tab === t.key
-                  ? 'border-accent bg-surface text-text'
-                  : 'border-transparent text-text-faint hover:text-text-muted'
+                  ? 'border-text font-semibold text-text'
+                  : 'border-transparent text-text-muted hover:text-text'
               }`}
             >
               {t.label}
             </button>
           ))}
+          </div>
+          {tab === 'plays' && (
+            <div className="flex gap-3 pb-2 pr-2 text-xs">
+              <button
+                type="button"
+                onClick={() => setPlayMode('compact')}
+                className={playMode === 'compact' ? 'font-semibold text-text underline underline-offset-2' : 'text-text-muted hover:text-text'}
+              >
+                Summary
+              </button>
+              <button
+                type="button"
+                onClick={() => setPlayMode('expanded')}
+                className={playMode === 'expanded' ? 'font-semibold text-text underline underline-offset-2' : 'text-text-muted hover:text-text'}
+              >
+                Pitch by pitch
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Tab content */}
@@ -1717,44 +1578,24 @@ export function LiveGameClient({
           {/* PLAY-BY-PLAY */}
           {tab === 'plays' && (
             <div>
-              <div className="mb-4 flex items-center justify-end">
-                <div className="inline-flex overflow-hidden rounded-md border border-border text-[10px] font-bold uppercase tracking-wide">
-                  <button
-                    type="button"
-                    onClick={() => setPlayMode('compact')}
-                    className={`px-2.5 py-1 ${playMode === 'compact' ? 'bg-text text-surface' : 'bg-surface text-text-faint hover:text-text-muted'}`}
-                  >
-                    Compact
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPlayMode('expanded')}
-                    className={`border-l border-border px-2.5 py-1 ${playMode === 'expanded' ? 'bg-text text-surface' : 'bg-surface text-text-faint hover:text-text-muted'}`}
-                  >
-                    Expanded
-                  </button>
-                </div>
-              </div>
               {loading ? (
-                <p className="text-sm text-text-muted">Loading...</p>
+                <p className="text-sm text-text-muted">Loading plays.</p>
               ) : groupedAtBats.length === 0 ? (
-                <p className="text-sm text-text-muted">No plays recorded yet</p>
+                <p className="text-sm text-text-muted">No plays yet.</p>
               ) : (
-                <div className="space-y-5">
+                <div>
                   {groupedAtBats.map(group => (
                     <div key={group.key}>
-                      {/* Inning header */}
-                      <div className="mb-2 mt-3 flex items-center gap-2 rounded-md bg-surface-alt px-2.5 py-1.5 first:mt-0">
-                        <span className="text-[11px] font-bold text-text">
+                      <div className="-mx-4 border-y border-border bg-surface-alt px-4 py-1.5 sm:-mx-5 sm:px-5">
+                        <span className="text-sm font-semibold text-text">
                           {group.half === 'top' ? 'Top' : 'Bottom'} {ordinalInning(group.inning)}
                         </span>
-                        <span className="truncate text-[10px] text-text-faint">
+                        <span className="ml-2 text-sm text-text-muted">
                           {group.half === 'top' ? game.awayTeamName : game.homeTeamName}
                         </span>
                       </div>
 
-                      {/* At-bats in this inning-half (newest first, cumulative outs) */}
-                      <div className="divide-y divide-border-light">
+                      <div>
                         {(() => {
                           const absChronological = [...group.atBats].reverse();
                           const cumOuts: number[] = [];
@@ -1777,8 +1618,6 @@ export function LiveGameClient({
                                 })
                               : null;
                             const stateEvt = result ?? ab.betweenEvents[ab.betweenEvents.length - 1] ?? ab.pitches[ab.pitches.length - 1] ?? null;
-                            const bases = baseStateFromEvent(stateEvt);
-                            const tone = playTone(ab);
                             const runnerSummary = compactRunnerSummary(ab);
                             const pitchSymbols: ('B' | 'S' | 'F' | 'X' | 'P')[] = ab.pitches.map(pitchSymbol);
                             if (result) {
@@ -1805,105 +1644,62 @@ export function LiveGameClient({
                                 }
                               }
                             }
-                            /** Must match PitchLetterStrip length (includes synthetic B / X for result). */
-                            const displayedPitchCount = pitchSymbols.length;
                             const pitchBreakdown = derivePitchBreakdown(ab);
                             const cardKey = `${group.key}-${abIdx}-${ab.result?.id ?? 'runner'}`;
-                            const showPitchDetails = playMode === 'expanded' || Boolean(openPitchCards[cardKey]);
-                            const isCompact = playMode === 'compact';
                             const isSystemRow = result?.eventType === 'substitution' || result?.eventType === 'adjust_score' || result?.eventType === 'place_runner_second';
-                            const isCompactSystemRow = isCompact && isSystemRow;
-                            const metaParts = [
-                              !isSystemRow && displayedPitchCount > 0 ? `${displayedPitchCount} pitch${displayedPitchCount === 1 ? '' : 'es'}` : null,
-                              !isSystemRow ? formatted?.subtitle || null : null,
-                            ].filter(Boolean);
+                            const scoring = (result?.runsScored ?? 0) > 0;
+                            const title = formatted
+                              ? formatted.title
+                              : ab.pitches.length > 0
+                                ? `${ab.batterName} at bat`
+                                : stateEvt
+                                  ? formatPlayByPlay(stateEvt, fmtPbpCtx).title
+                                  : `${ab.batterName} play`;
 
                             return (
-                              <div
-                                key={`ab-${abIdx}`}
-                                className={`border-l-2 ${tone.border} ${isSystemRow ? 'bg-surface-alt/80' : ''} ${isCompactSystemRow ? 'py-1.5 pl-2.5' : isCompact ? 'py-2 pl-3' : 'py-2.5 pl-3'}`}
-                              >
-                                <div className={`flex items-start justify-between ${isCompact ? 'gap-2' : 'gap-3'}`}>
-                                  <div className="min-w-0 flex-1">
-                                    <div className={`flex flex-wrap items-center gap-1.5 ${isCompact ? 'mb-0.5' : 'mb-1'}`}>
-                                      <span className={`rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${tone.badge}`}>
-                                        {tone.tag}
-                                      </span>
-                                      {!isCompact && displayedPitchCount > 0 && (
-                                        <span className="text-[9px] text-text-faint">
-                                          {displayedPitchCount} pitch{displayedPitchCount === 1 ? '' : 'es'}
-                                        </span>
-                                      )}
-                                    </div>
-                                    <div className={`${isCompactSystemRow ? 'text-[12px] font-semibold' : isCompact ? 'text-[13px] font-semibold' : 'text-[14px] font-semibold'} leading-snug text-text`}>
-                                      {formatted
-                                        ? formatted.title
-                                        : ab.pitches.length > 0
-                                          ? `${ab.batterName} at bat`
-                                          : stateEvt
-                                            ? formatPlayByPlay(stateEvt, fmtPbpCtx).title
-                                            : `${ab.batterName} play`}
-                                    </div>
-                                    <div className={`${isCompact ? 'mt-0.5 text-[10px]' : 'mt-1 text-[10px]'} text-text-muted`}>
-                                      {metaParts.join(' · ')}
-                                    </div>
+                              <div key={`ab-${abIdx}`} className="border-b border-border-light py-2">
+                                <div className="flex items-baseline justify-between gap-4">
+                                  <div className={`min-w-0 text-sm leading-snug ${scoring ? 'font-semibold text-text' : isSystemRow ? 'italic text-text-muted' : 'text-text'}`}>
+                                    {title}
                                   </div>
-                                  {!isCompactSystemRow && (
-                                  <div className={`flex shrink-0 ${isCompact ? 'items-center gap-1 pt-0' : 'flex-col items-end gap-1.5 pt-0.5'}`}>
-                                    <BaseDiamond first={bases.first} second={bases.second} third={bases.third} compact={isCompact} />
-                                    <OutsIndicator outs={outsAfter} compact={isCompact} />
-                                  </div>
+                                  {!isSystemRow && (
+                                    <div className="shrink-0 text-xs tabular-nums text-text-faint">
+                                      {outsAfter === 1 ? '1 out' : `${outsAfter} outs`}
+                                    </div>
                                   )}
                                 </div>
-                                {!isCompact && (
-                                <div className="mt-2.5 text-[10px] text-gray-700 flex flex-wrap items-center gap-x-3 gap-y-1">
-                                  {pitchSymbols.length > 0 && (
-                                    <PitchLetterStrip symbols={pitchSymbols} max={8} />
-                                  )}
-                                  {playMode === 'expanded' && formatted?.chips?.map((chip, ci) => (
-                                    <span key={ci}>{chip}</span>
-                                  ))}
-                                </div>
+                                {playMode === 'expanded' && pitchSymbols.length > 1 && (
+                                  <div className="mt-1">
+                                    <PitchLetterStrip symbols={pitchSymbols} />
+                                  </div>
                                 )}
-
-                                {pitchBreakdown.rows.length > 0 && playMode === 'expanded' && (
-                                  <div className="mt-1.5">
-                                    {showPitchDetails && (
-                                      <div className="mt-1.5 pl-2 border-l border-gray-200 space-y-1.5">
-                                        <div className="text-[10px] uppercase tracking-[0.1em] text-gray-500">At-bat detail</div>
-                                        {pitchBreakdown.rows.map((row, ri) => (
-                                          <div key={`${cardKey}-pitch-${ri}`} className="text-[11px] text-gray-800">
-                                            <span className="text-gray-600">Pitch {row.pitchNo}</span>
-                                            <span className="mx-1.5 text-gray-400">-</span>
-                                            <span>{row.label}</span>
-                                            {row.runnerNotes.map((note, ni) => (
-                                              <div key={`${cardKey}-pitch-${ri}-runner-${ni}`} className="text-[10px] text-gray-600 ml-4 mt-0.5">
-                                                {note}
-                                              </div>
-                                            ))}
+                                {pitchBreakdown.rows.length > 1 && playMode === 'expanded' && (
+                                  <div className="mt-1.5 space-y-1">
+                                    {pitchBreakdown.rows.map((row, ri) => (
+                                      <div key={`${cardKey}-pitch-${ri}`} className="text-xs text-text-muted">
+                                        <span className="tabular-nums text-text-faint">{row.pitchNo}.</span>{' '}
+                                        <span>{row.label}</span>
+                                        {row.runnerNotes.map((note, ni) => (
+                                          <div key={`${cardKey}-pitch-${ri}-runner-${ni}`} className="ml-4 text-text-faint">
+                                            {note}
                                           </div>
                                         ))}
                                       </div>
-                                    )}
+                                    ))}
                                   </div>
                                 )}
-
                                 {playMode === 'compact' && runnerSummary && (
-                                  <div className="mt-1 text-[10px] text-gray-600">{runnerSummary}</div>
+                                  <div className="mt-0.5 text-xs text-text-muted">{runnerSummary.replace(/^Runners: /, '')}</div>
                                 )}
-
-                                {playMode === 'expanded' && ab.betweenEvents.length > 0 && (
-                                  <div className="mt-1.5 space-y-1">
+                                {playMode === 'expanded' && ab.betweenEvents.length > 0 && pitchBreakdown.rows.length === 0 && (
+                                  <div className="mt-1 space-y-0.5">
                                     {ab.betweenEvents.map((re, rei) => {
                                       const reFormatted = formatPlayByPlay(re, fmtPbpCtx);
                                       return (
-                                        <div key={`re-${rei}`} className="text-[11px] text-gray-700 flex items-start gap-1.5">
-                                          <span className="text-gray-500 mt-px">↳</span>
-                                          <div>
-                                            <span>{reFormatted.title}</span>
-                                            {re.runsScored > 0 && <span className="text-gray-600 ml-1">({re.runsScored} run{re.runsScored > 1 ? 's' : ''})</span>}
-                                            {re.outsRecorded > 0 && <span className="text-gray-600 ml-1">({re.outsRecorded} out{re.outsRecorded > 1 ? 's' : ''})</span>}
-                                          </div>
+                                        <div key={`re-${rei}`} className="text-xs text-text-muted">
+                                          {reFormatted.title}
+                                          {re.runsScored > 0 && <span> ({re.runsScored} run{re.runsScored > 1 ? 's' : ''})</span>}
+                                          {re.outsRecorded > 0 && <span> ({re.outsRecorded} out{re.outsRecorded > 1 ? 's' : ''})</span>}
                                         </div>
                                       );
                                     })}
