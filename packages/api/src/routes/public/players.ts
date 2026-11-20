@@ -17,8 +17,10 @@ import {
   playerGameBatting, playerGamePitching, playerGameFielding, gameEvents,
   teams, seasons, games, leagues,
 } from '../../db/schema/index.js';
-import { eq, and, desc, sql, isNotNull } from 'drizzle-orm';
+import { eq, and, desc, sql, isNotNull, inArray } from 'drizzle-orm';
 import { rowsFromExecute } from '../../lib/pg-result.js';
+import { seasonLeagueFields, seasonWithPlayoffDefaults } from '../../lib/season-playoff-response.js';
+import { getSeasonsColumnFlagsCached } from '../../lib/seasons-playoff-columns-cache.js';
 import { formatOpponentBattingAvgPitch } from '../../lib/opponent-batting-avg.js';
 import { accoladesForPlayer } from '../../lib/season-honors.js';
 
@@ -220,6 +222,108 @@ export async function playersRoutes(app: FastifyInstance) {
     } catch (err) {
       request.log.error(err);
       return reply.status(500).send({ message: 'Failed to fetch player' });
+    }
+  });
+
+  // GET /:slug/seasons - seasons this player was rostered for or appeared in
+  app.get<{ Params: { slug: string } }>('/:slug/seasons', async (request, reply) => {
+    try {
+      const [player] = await db
+        .select({ id: players.id, isActive: players.isActive })
+        .from(players)
+        .where(eq(players.slug, request.params.slug))
+        .limit(1);
+
+      if (!player || !player.isActive) {
+        return reply.status(404).send({ message: 'Player not found' });
+      }
+
+      const seasonIdRows = await db.execute(sql`
+        SELECT DISTINCT season_id
+        FROM (
+          SELECT season_id FROM player_seasons WHERE player_id = ${player.id}
+          UNION
+          SELECT season_id FROM player_season_batting WHERE player_id = ${player.id}
+          UNION
+          SELECT season_id FROM player_season_pitching WHERE player_id = ${player.id}
+          UNION
+          SELECT season_id FROM player_season_fielding WHERE player_id = ${player.id}
+          UNION
+          SELECT l.season_id
+          FROM player_game_batting pgb
+          JOIN games g ON g.id = pgb.game_id
+          JOIN leagues l ON l.id = g.league_id
+          WHERE pgb.player_id = ${player.id}
+          UNION
+          SELECT l.season_id
+          FROM player_game_pitching pgp
+          JOIN games g ON g.id = pgp.game_id
+          JOIN leagues l ON l.id = g.league_id
+          WHERE pgp.player_id = ${player.id}
+          UNION
+          SELECT l.season_id
+          FROM player_game_fielding pgf
+          JOIN games g ON g.id = pgf.game_id
+          JOIN leagues l ON l.id = g.league_id
+          WHERE pgf.player_id = ${player.id}
+          UNION
+          SELECT l.season_id
+          FROM game_lineups gl
+          JOIN games g ON g.id = gl.game_id
+          JOIN leagues l ON l.id = g.league_id
+          WHERE gl.player_id = ${player.id}
+        ) participated
+        WHERE season_id IS NOT NULL
+      `);
+      const seasonIds = rowsFromExecute<{ season_id: number }>(seasonIdRows)
+        .map((row) => Number(row.season_id))
+        .filter((id) => Number.isInteger(id) && id > 0);
+
+      if (seasonIds.length === 0) {
+        return reply.send([]);
+      }
+
+      const flags = await getSeasonsColumnFlagsCached();
+      const result = await db
+        .select({
+          id: seasons.id,
+          name: seasons.name,
+          year: seasons.year,
+          isActive: seasons.isActive,
+          ...(flags.hasSeasonKindOptionals
+            ? { seasonKind: seasons.seasonKind, parentSeasonId: seasons.parentSeasonId }
+            : {}),
+          ...(flags.hasPlayoffOptionals
+            ? {
+                hasPlayoffs: seasons.hasPlayoffs,
+                regularSeasonGamesPerTeam: seasons.regularSeasonGamesPerTeam,
+                playoffSettings: seasons.playoffSettings,
+              }
+            : {}),
+          ...(flags.hasLeagueLevel
+            ? { leagueLevel: seasons.leagueLevel, youthRules: seasons.youthRules }
+            : {}),
+        })
+        .from(seasons)
+        .where(inArray(seasons.id, seasonIds))
+        .orderBy(desc(seasons.year), desc(seasons.id));
+
+      return reply.send(
+        result.map((season) => {
+          const row = season as Record<string, unknown>;
+          return {
+            ...seasonWithPlayoffDefaults(flags.hasPlayoffOptionals, row),
+            seasonKind: flags.hasSeasonKindOptionals ? String(row.seasonKind ?? 'regular') : 'regular',
+            ...seasonLeagueFields(row),
+            parentSeasonId: flags.hasSeasonKindOptionals
+              ? ((row.parentSeasonId as number | null | undefined) ?? null)
+              : null,
+          };
+        }),
+      );
+    } catch (err) {
+      request.log.error(err);
+      return reply.status(500).send({ message: 'Failed to fetch player seasons' });
     }
   });
 

@@ -30,7 +30,7 @@ export default async function PlayerProfilePage({ params }: Props) {
   }
   let seasons: { id: number; name: string; year: number }[] = [];
   try {
-    seasons = await apiFetch('/api/public/stats/seasons');
+    seasons = await apiFetch(`/api/public/players/${slug}/seasons`);
     seasons = Array.isArray(seasons) ? seasons : [];
   } catch {}
   try {
