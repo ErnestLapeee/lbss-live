@@ -39,6 +39,7 @@ export function useGameSocket(gameId: number | null, apiUrl: string) {
   const socketRef = useRef<Socket | null>(null);
   const [connected, setConnected] = useState(false);
   const [gameState, setGameState] = useState<GameState | null>(null);
+  const [gameStatus, setGameStatus] = useState<string | null>(null);
   const [lastEvent, setLastEvent] = useState<GameUpdatePayload['event'] | null>(null);
   const [updateSeq, setUpdateSeq] = useState(0);
   const [isFinal, setIsFinal] = useState(false);
@@ -64,11 +65,17 @@ export function useGameSocket(gameId: number | null, apiUrl: string) {
     socket.on('game:update', (data: GameUpdatePayload) => {
       setUpdateSeq((seq) => seq + 1);
       if (data.state) setGameState(data.state);
+      if (data.status) {
+        setGameStatus(data.status);
+        if (data.status === 'final') setIsFinal(true);
+      }
       if (data.event) setLastEvent(data.event);
     });
 
     socket.on('game:final', (data: GameFinalPayload) => {
       setIsFinal(true);
+      setGameStatus('final');
+      setUpdateSeq((seq) => seq + 1);
       setGameState(prev => prev ? { ...prev, homeScore: data.homeScore, awayScore: data.awayScore } : prev);
     });
 
@@ -93,5 +100,5 @@ export function useGameSocket(gameId: number | null, apiUrl: string) {
     return () => disconnect();
   }, [connect, disconnect]);
 
-  return { connected, gameState, lastEvent, updateSeq, isFinal, viewerCount, setGameState };
+  return { connected, gameState, gameStatus, lastEvent, updateSeq, isFinal, viewerCount, setGameState };
 }

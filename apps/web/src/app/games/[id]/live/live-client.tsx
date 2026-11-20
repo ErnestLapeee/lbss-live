@@ -285,7 +285,7 @@ export function LiveGameClient({
   const [tab, setTab] = useState<Tab>('plays');
   const [playMode, setPlayMode] = useState<'compact' | 'expanded'>('compact');
   const [openPitchCards, setOpenPitchCards] = useState<Record<string, boolean>>({});
-  const { connected, gameState, updateSeq, isFinal, viewerCount } = useGameSocket(gameId, apiBase);
+  const { connected, gameState, gameStatus, updateSeq, isFinal, viewerCount } = useGameSocket(gameId, apiBase);
 
   /** Refetch only when SSR could not provide events; live updates still arrive via socket/polling below. */
   useEffect(() => {
@@ -318,18 +318,22 @@ export function LiveGameClient({
     });
   }, [connected, gameId]);
 
-  // Re-fetch when the API broadcasts a game update (new event, lineup correction, score adjustment, etc.).
+  // Re-fetch when the API broadcasts a game update (new event, lineup correction, score adjustment, status/final change).
   // Debounced so a burst of updates (pitch + play + substitution) costs one refetch per viewer, not one each.
   useEffect(() => {
     if (updateSeq === 0) return;
     const timer = setTimeout(() => {
       Promise.all([
+        fetch(`/api/proxy/public/games/${gameId}`)
+          .then(async (r) => (r.ok ? r.json() : null))
+          .catch(() => null),
         fetchPublicGameEvents(gameId),
         fetchPublicJsonArray(`/api/proxy/public/games/${gameId}/lineups`),
         fetchPublicJsonArray(`/api/proxy/public/games/${gameId}/boxscore`),
         fetchPublicJsonArray(`/api/proxy/public/games/${gameId}/pitching-boxscore`),
         fetchPublicJsonArray(`/api/proxy/public/games/${gameId}/fielding-boxscore`),
-      ]).then(([evts, lineupRows, box, pbox, fbox]) => {
+      ]).then(([gData, evts, lineupRows, box, pbox, fbox]) => {
+        if (gData && typeof gData === 'object' && gData.id) setGame(gData);
         if (evts !== null) setEvents(normalizeGameEvents(evts) as GameEvent[]);
         if (lineupRows !== null) setLineups(lineupRows as LineupEntry[]);
         if (box !== null) setBattingBox(box);
@@ -342,7 +346,7 @@ export function LiveGameClient({
 
   // Polling: live games when disconnected, OR still no events while connected (recover stuck empty PBP)
   const needsLivePolling =
-    game?.status === 'live' && !isFinal && !(connected && events.length > 0);
+    (gameStatus ?? game?.status) === 'live' && !isFinal && !(connected && events.length > 0);
 
   const pollLiveGame = useCallback(async () => {
     try {
@@ -496,7 +500,7 @@ export function LiveGameClient({
     [events, lineups],
   );
 
-  const status = isFinal ? 'final' : game?.status ?? 'scheduled';
+  const status = isFinal ? 'final' : (gameStatus ?? game?.status ?? 'scheduled');
 
   // Group events by at-bat for play-by-play
   const groupedAtBats = useMemo(() => {

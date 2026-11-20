@@ -16,10 +16,29 @@ import {
   playoffSeries,
 } from '../../db/schema/index.js';
 import { eq, and, sql, inArray, desc } from 'drizzle-orm';
-import { finalizeGame, recomputeSeasonBatting, recomputeSeasonPitching, recomputeSeasonFielding, recomputeStandings } from '../../services/finalize-game.js';
+import {
+  finalizeGame,
+  FinalizeGameError,
+  recomputeSeasonBatting,
+  recomputeSeasonPitching,
+  recomputeSeasonFielding,
+  recomputeStandings,
+  type ScoringDbConnection,
+} from '../../services/finalize-game.js';
 import { firstRowFromExecute } from '../../lib/pg-result.js';
 import { gamesTableHasOfficialColumns } from '../../lib/games-official-columns.js';
 import { isStatistician } from '../../lib/statistician-guards.js';
+import { lockScoringGame } from '../../lib/scoring-game-lock.js';
+import { gameTransitionError, normalizeGameStatus } from '../../lib/game-lifecycle.js';
+import { getIO } from '../../app.js';
+
+class AdminGameAbortError extends Error {
+  readonly statusCode: number;
+  constructor(statusCode: number, message: string) {
+    super(message);
+    this.statusCode = statusCode;
+  }
+}
 
 function pgErrorMessage(err: unknown): string {
   if (!err || typeof err !== 'object') return err instanceof Error ? err.message : String(err);
@@ -57,11 +76,12 @@ async function assertGameTeamsInLeague(
   leagueId: number,
   homeTeamId: number,
   awayTeamId: number,
+  conn: ScoringDbConnection = db,
 ): Promise<{ ok: true } | { ok: false; message: string }> {
   if (homeTeamId === awayTeamId) {
     return { ok: false, message: 'Home and away must be different teams' };
   }
-  const rows = await db.select({ teamId: leagueTeams.teamId }).from(leagueTeams).where(eq(leagueTeams.leagueId, leagueId));
+  const rows: Array<{ teamId: number }> = await conn.select({ teamId: leagueTeams.teamId }).from(leagueTeams).where(eq(leagueTeams.leagueId, leagueId));
   const allowed = new Set(rows.map((r) => r.teamId));
   if (!allowed.has(homeTeamId)) {
     return {
@@ -81,8 +101,8 @@ async function assertGameTeamsInLeague(
 }
 
 export async function adminGamesRoutes(app: FastifyInstance) {
-  async function getSeasonIdForLeague(leagueId: number): Promise<number | null> {
-    const seasonResult = await db.execute(
+  async function getSeasonIdForLeague(leagueId: number, conn: ScoringDbConnection = db): Promise<number | null> {
+    const seasonResult = await conn.execute(
       sql`SELECT s.id FROM seasons s JOIN leagues l ON l.season_id = s.id WHERE l.id = ${leagueId} LIMIT 1`
     );
     const row = firstRowFromExecute<{ id: number }>(seasonResult);
@@ -309,79 +329,118 @@ export async function adminGamesRoutes(app: FastifyInstance) {
         return reply.status(400).send({ message: 'Invalid game id' });
       }
 
-      const [existing] = await db.select(adminGameListSelect).from(games).where(eq(games.id, id)).limit(1);
-      if (!existing) {
-        return reply.status(404).send({ message: 'Game not found' });
-      }
-
-      if (
-        isStatistician(request) &&
-        (Boolean(existing.isFinalized) || String(existing.status) === 'final')
-      ) {
-        return reply.status(403).send({
-          message: 'Scorers cannot edit completed or finalized games.',
-        });
-      }
-
       const body = request.body ?? {};
-      if (isStatistician(request) && body.status !== undefined && String(body.status) === 'final') {
-        return reply.status(403).send({
-          message: 'Scorers cannot set a game to final status. Ask an admin to finalize.',
-        });
-      }
-      const nextLeagueId = body.leagueId !== undefined ? Number(body.leagueId) : existing.leagueId;
-      const nextHome = body.homeTeamId !== undefined ? Number(body.homeTeamId) : existing.homeTeamId;
-      const nextAway = body.awayTeamId !== undefined ? Number(body.awayTeamId) : existing.awayTeamId;
-      if (
-        !Number.isFinite(nextLeagueId) ||
-        !Number.isFinite(nextHome) ||
-        !Number.isFinite(nextAway) ||
-        nextLeagueId <= 0 ||
-        nextHome <= 0 ||
-        nextAway <= 0
-      ) {
-        return reply.status(400).send({ message: 'leagueId, homeTeamId, and awayTeamId must be valid positive numbers' });
-      }
+      const game = await db.transaction(async (tx) => {
+        await lockScoringGame(tx, id);
+        const [existing] = await tx.select(adminGameListSelect).from(games).where(eq(games.id, id)).limit(1);
+        if (!existing) {
+          throw new AdminGameAbortError(404, 'Game not found');
+        }
 
-      const members = await assertGameTeamsInLeague(nextLeagueId, nextHome, nextAway);
-      if (!members.ok) {
-        return reply.status(400).send({ message: members.message });
-      }
+        if (
+          isStatistician(request) &&
+          (Boolean(existing.isFinalized) || String(existing.status) === 'final')
+        ) {
+          throw new AdminGameAbortError(403, 'Scorers cannot edit completed or finalized games.');
+        }
 
-      const updateData: Record<string, unknown> = {};
-      if (body.leagueId !== undefined) updateData.leagueId = body.leagueId;
-      if (body.homeTeamId !== undefined) updateData.homeTeamId = body.homeTeamId;
-      if (body.awayTeamId !== undefined) updateData.awayTeamId = body.awayTeamId;
-      if (body.scheduledAt !== undefined)
-        updateData.scheduledAt = new Date(body.scheduledAt);
-      if (body.venue !== undefined) updateData.venue = body.venue;
-      if (body.status !== undefined) updateData.status = body.status;
-      if (body.playoffSeriesId !== undefined) updateData.playoffSeriesId = body.playoffSeriesId;
+        const nextStatus = body.status !== undefined ? normalizeGameStatus(body.status) : null;
+        if (body.status !== undefined) {
+          if (!nextStatus) {
+            throw new AdminGameAbortError(400, `Invalid game status: ${String(body.status)}`);
+          }
+          if (isStatistician(request) && nextStatus === 'final') {
+            throw new AdminGameAbortError(403, 'Scorers cannot set a game to final status. Ask an admin to finalize.');
+          }
+          if (nextStatus !== existing.status) {
+            const transitionErr = gameTransitionError({
+              currentStatus: existing.status,
+              targetStatus: nextStatus,
+              isFinalized: existing.isFinalized,
+              source: 'admin',
+            });
+            if (transitionErr) {
+              throw new AdminGameAbortError(409, transitionErr);
+            }
+          }
+        }
 
-      const [updated] = await db
-        .update(games)
-        .set({ ...updateData, updatedAt: new Date() })
-        .where(eq(games.id, id))
-        .returning({ id: games.id });
+        const nextLeagueId = body.leagueId !== undefined ? Number(body.leagueId) : existing.leagueId;
+        const nextHome = body.homeTeamId !== undefined ? Number(body.homeTeamId) : existing.homeTeamId;
+        const nextAway = body.awayTeamId !== undefined ? Number(body.awayTeamId) : existing.awayTeamId;
+        if (
+          !Number.isFinite(nextLeagueId) ||
+          !Number.isFinite(nextHome) ||
+          !Number.isFinite(nextAway) ||
+          nextLeagueId <= 0 ||
+          nextHome <= 0 ||
+          nextAway <= 0
+        ) {
+          throw new AdminGameAbortError(400, 'leagueId, homeTeamId, and awayTeamId must be valid positive numbers');
+        }
 
-      if (!updated) {
-        return reply.status(404).send({ message: 'Game not found' });
-      }
+        const identityChanged =
+          nextLeagueId !== existing.leagueId ||
+          nextHome !== existing.homeTeamId ||
+          nextAway !== existing.awayTeamId;
+        if (identityChanged) {
+          if (existing.isFinalized || existing.status === 'live' || existing.status === 'suspended' || existing.status === 'final') {
+            throw new AdminGameAbortError(409, 'Teams and league cannot be changed once a game has started or been finalized');
+          }
+          const [existingEvent] = await tx
+            .select({ id: gameEvents.id })
+            .from(gameEvents)
+            .where(and(eq(gameEvents.gameId, id), eq(gameEvents.isDeleted, false)))
+            .limit(1);
+          if (existingEvent) {
+            throw new AdminGameAbortError(409, 'Teams and league cannot be changed after scoring events have been recorded');
+          }
+        }
 
-      const [game] = await db
-        .select(adminGameListSelect)
-        .from(games)
-        .where(eq(games.id, id))
-        .limit(1);
+        const members = await assertGameTeamsInLeague(nextLeagueId, nextHome, nextAway, tx);
+        if (!members.ok) {
+          throw new AdminGameAbortError(400, members.message);
+        }
+
+        const updateData: Record<string, unknown> = {};
+        if (body.leagueId !== undefined) updateData.leagueId = nextLeagueId;
+        if (body.homeTeamId !== undefined) updateData.homeTeamId = nextHome;
+        if (body.awayTeamId !== undefined) updateData.awayTeamId = nextAway;
+        if (body.scheduledAt !== undefined)
+          updateData.scheduledAt = new Date(body.scheduledAt);
+        if (body.venue !== undefined) updateData.venue = body.venue;
+        if (nextStatus !== null) updateData.status = nextStatus;
+        if (body.playoffSeriesId !== undefined) updateData.playoffSeriesId = body.playoffSeriesId;
+
+        const [updated] = await tx
+          .update(games)
+          .set({ ...updateData, updatedAt: new Date() })
+          .where(eq(games.id, id))
+          .returning({ id: games.id });
+
+        if (!updated) {
+          throw new AdminGameAbortError(404, 'Game not found');
+        }
+
+        const [refetched] = await tx
+          .select(adminGameListSelect)
+          .from(games)
+          .where(eq(games.id, id))
+          .limit(1);
+        return refetched;
+      });
 
       return reply.send(game);
     } catch (err) {
+      if (err instanceof AdminGameAbortError) {
+        return reply.status(err.statusCode).send({ message: err.message });
+      }
       request.log.error(err);
       return reply.status(500).send({ message: 'Failed to update game' });
     }
   });
 
-  // DELETE /:id - delete game and all related data, then recompute season stats
+  // DELETE /:id - delete game and all related data, then recompute season stats atomically
   app.delete<{ Params: { id: string } }>('/:id', async (request, reply) => {
     try {
       if (isStatistician(request)) {
@@ -392,55 +451,42 @@ export async function adminGamesRoutes(app: FastifyInstance) {
         return reply.status(400).send({ message: 'Invalid game id' });
       }
 
-      const [game] = await db
-        .select(adminGameListSelect)
-        .from(games)
-        .where(eq(games.id, id))
-        .limit(1);
-
-      if (!game) {
-        return reply.status(404).send({ message: 'Game not found' });
-      }
-
-      const leagueId = game.leagueId;
-
       await db.transaction(async (tx) => {
+        await lockScoringGame(tx, id);
+        const [game] = await tx
+          .select(adminGameListSelect)
+          .from(games)
+          .where(eq(games.id, id))
+          .limit(1);
+
+        if (!game) {
+          throw new AdminGameAbortError(404, 'Game not found');
+        }
+
+        const leagueId = game.leagueId;
         await tx.delete(playerGameFielding).where(eq(playerGameFielding.gameId, id));
         await tx.delete(playerGamePitching).where(eq(playerGamePitching.gameId, id));
         await tx.delete(playerGameBatting).where(eq(playerGameBatting.gameId, id));
         await tx.delete(gameEvents).where(eq(gameEvents.gameId, id));
         await tx.delete(gameLineups).where(eq(gameLineups.gameId, id));
         await tx.delete(games).where(eq(games.id, id));
-      });
 
-      // Recompute season aggregates if the game belonged to a league
-      if (leagueId) {
-        try {
-          const seasonId = await getSeasonIdForLeague(leagueId);
-
+        if (leagueId) {
+          const seasonId = await getSeasonIdForLeague(leagueId, tx);
           if (seasonId) {
-            // Delete stale season rows then recompute from remaining games
-            await db.delete(playerSeasonBatting).where(eq(playerSeasonBatting.seasonId, seasonId));
-            await db.delete(playerSeasonPitching).where(eq(playerSeasonPitching.seasonId, seasonId));
-            await db.delete(playerSeasonFielding).where(eq(playerSeasonFielding.seasonId, seasonId));
-
-            await recomputeSeasonBatting(seasonId);
-            await recomputeSeasonPitching(seasonId);
-            await recomputeSeasonFielding(seasonId);
+            await recomputeSeasonBatting(seasonId, tx);
+            await recomputeSeasonPitching(seasonId, tx);
+            await recomputeSeasonFielding(seasonId, tx);
           }
-
-          // Recompute standings
-          await recomputeStandings(leagueId);
-        } catch (recomputeErr) {
-          request.log.error(recomputeErr, 'Failed to recompute season stats after game delete');
-          return reply.status(500).send({
-            message: 'Game deleted, but recomputing season stats failed. Re-finalize a game in this season to rebuild stats.',
-          });
+          await recomputeStandings(leagueId, tx);
         }
-      }
+      });
 
       return reply.send({ message: 'Game deleted' });
     } catch (err) {
+      if (err instanceof AdminGameAbortError) {
+        return reply.status(err.statusCode).send({ message: err.message });
+      }
       request.log.error(err);
       return reply.status(500).send({ message: 'Failed to delete game' });
     }
@@ -459,8 +505,19 @@ export async function adminGamesRoutes(app: FastifyInstance) {
 
       const user = request.user;
       const result = await finalizeGame(id, user?.id);
+      try {
+        getIO().to(`game:${id}`).emit('game:final', {
+          gameId: id,
+          homeScore: result.homeScore,
+          awayScore: result.awayScore,
+          status: 'final',
+        });
+      } catch {}
       return reply.send(result);
     } catch (err: any) {
+      if (err instanceof FinalizeGameError) {
+        return reply.status(err.statusCode).send({ message: err.message });
+      }
       request.log.error(err);
       return reply.status(500).send({ message: err.message || 'Failed to finalize game' });
     }
@@ -500,9 +557,7 @@ export async function adminGamesRoutes(app: FastifyInstance) {
       if (isNaN(id) || isNaN(playerId)) return reply.status(400).send({ message: 'Invalid id' });
 
       const body = request.body ?? {};
-
-      const [game] = await db.select(adminGameListSelect).from(games).where(eq(games.id, id)).limit(1);
-      if (!game) return reply.status(404).send({ message: 'Game not found' });
+      let updates: Record<string, any> = {};
 
       if (kind === 'batting') {
         const allowed: Record<string, (v: any) => any> = {
@@ -536,10 +591,8 @@ export async function adminGamesRoutes(app: FastifyInstance) {
           catcherInterference: (v) => Number(v) || 0,
           groundedIntoTriplePlay: (v) => Number(v) || 0,
         };
-        const updates: Record<string, any> = {};
         for (const [k, fn] of Object.entries(allowed)) if (k in body) updates[k] = fn(body[k]);
         if (Object.keys(updates).length === 0) return reply.status(400).send({ message: 'No valid fields' });
-        await db.update(playerGameBatting).set(updates).where(and(eq(playerGameBatting.gameId, id), eq(playerGameBatting.playerId, playerId)));
       } else if (kind === 'pitching') {
         const allowed: Record<string, (v: any) => any> = {
           inningsPitched: (v) => String(v ?? '0'),
@@ -571,10 +624,8 @@ export async function adminGamesRoutes(app: FastifyInstance) {
           strikeoutsLooking: (v) => Number(v) || 0,
           strikeoutsSwinging: (v) => Number(v) || 0,
         };
-        const updates: Record<string, any> = {};
         for (const [k, fn] of Object.entries(allowed)) if (k in body) updates[k] = fn(body[k]);
         if (Object.keys(updates).length === 0) return reply.status(400).send({ message: 'No valid fields' });
-        await db.update(playerGamePitching).set(updates).where(and(eq(playerGamePitching.gameId, id), eq(playerGamePitching.playerId, playerId)));
       } else {
         const allowed: Record<string, (v: any) => any> = {
           position: (v) => (v == null || v === '' ? null : Number(v)),
@@ -589,20 +640,32 @@ export async function adminGamesRoutes(app: FastifyInstance) {
           catcherCaughtStealing: (v) => Number(v) || 0,
           pickoffs: (v) => Number(v) || 0,
         };
-        const updates: Record<string, any> = {};
         for (const [k, fn] of Object.entries(allowed)) if (k in body) updates[k] = fn(body[k]);
         if (Object.keys(updates).length === 0) return reply.status(400).send({ message: 'No valid fields' });
-        await db.update(playerGameFielding).set(updates).where(and(eq(playerGameFielding.gameId, id), eq(playerGameFielding.playerId, playerId)));
       }
 
-      // Manual stat edits are explicit overrides until the next event-derived recompute.
-      const seasonId = await getSeasonIdForLeague(game.leagueId);
-      if (seasonId) {
-        await recomputeSeasonBatting(seasonId);
-        await recomputeSeasonPitching(seasonId);
-        await recomputeSeasonFielding(seasonId);
-      }
-      await recomputeStandings(game.leagueId);
+      await db.transaction(async (tx) => {
+        await lockScoringGame(tx, id);
+        const [game] = await tx.select(adminGameListSelect).from(games).where(eq(games.id, id)).limit(1);
+        if (!game) throw new AdminGameAbortError(404, 'Game not found');
+
+        if (kind === 'batting') {
+          await tx.update(playerGameBatting).set(updates).where(and(eq(playerGameBatting.gameId, id), eq(playerGameBatting.playerId, playerId)));
+        } else if (kind === 'pitching') {
+          await tx.update(playerGamePitching).set(updates).where(and(eq(playerGamePitching.gameId, id), eq(playerGamePitching.playerId, playerId)));
+        } else {
+          await tx.update(playerGameFielding).set(updates).where(and(eq(playerGameFielding.gameId, id), eq(playerGameFielding.playerId, playerId)));
+        }
+
+        // Manual stat edits are explicit overrides until the next event-derived recompute.
+        const seasonId = await getSeasonIdForLeague(game.leagueId, tx);
+        if (seasonId) {
+          await recomputeSeasonBatting(seasonId, tx);
+          await recomputeSeasonPitching(seasonId, tx);
+          await recomputeSeasonFielding(seasonId, tx);
+        }
+        await recomputeStandings(game.leagueId, tx);
+      });
 
       return reply.send({
         success: true,
@@ -610,6 +673,9 @@ export async function adminGamesRoutes(app: FastifyInstance) {
         message: 'Manual stat line saved. Later event edits/finalization recomputes can overwrite this row.',
       });
     } catch (err) {
+      if (err instanceof AdminGameAbortError) {
+        return reply.status(err.statusCode).send({ message: err.message });
+      }
       request.log.error(err);
       return reply.status(500).send({ message: 'Failed to update game stats' });
     }

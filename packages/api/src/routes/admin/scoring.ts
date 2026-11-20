@@ -16,18 +16,22 @@ import {
 import { eq, and, or, asc, desc, gt, max, sql, inArray } from 'drizzle-orm';
 import type { InferSelectModel } from 'drizzle-orm';
 import { getIO } from '../../app.js';
-import { finalizeGame } from '../../services/finalize-game.js';
+import { finalizeGame, finalizeGameInTransaction, FinalizeGameError } from '../../services/finalize-game.js';
 import { firstRowFromExecute } from '../../lib/pg-result.js';
 import { gamesTableHasOfficialColumns } from '../../lib/games-official-columns.js';
 import { slugify } from '../../utils/slugify.js';
+import { lockScoringGame } from '../../lib/scoring-game-lock.js';
+import { gameTransitionError } from '../../lib/game-lifecycle.js';
 import {
-  isBetweenPitchEvent,
   isNumberedFielder,
   isKnownEventType,
   isPlateAppearanceEvent,
   lineupRulesForSeason,
-  remapBasesForSubstitutionDetail,
+  reduceGameState,
   validateLineupEntries,
+  type EventType,
+  type GameEvent,
+  type GameState,
   type LineupRules,
 } from '@lbss/shared';
 import { getSeasonsColumnFlagsCached } from '../../lib/seasons-playoff-columns-cache.js';
@@ -39,10 +43,10 @@ function jsonbNumberArray(v: unknown): number[] {
   return v.map((x) => Number(x)).filter((n) => Number.isFinite(n));
 }
 
-async function lineupRulesForLeague(leagueId: number): Promise<LineupRules> {
+async function lineupRulesForLeague(leagueId: number, conn: any = db): Promise<LineupRules> {
   const flags = await getSeasonsColumnFlagsCached();
   if (!flags.hasLeagueLevel) return lineupRulesForSeason('adult', null);
-  const [row] = await db
+  const [row] = await conn
     .select({ leagueLevel: seasons.leagueLevel, youthRules: seasons.youthRules })
     .from(leagues)
     .innerJoin(seasons, eq(seasons.id, leagues.seasonId))
@@ -59,22 +63,6 @@ function jsonbStringArray(v: unknown): string[] {
 function uniqueNumberArray(v: unknown): number[] {
   if (!Array.isArray(v)) return [];
   return [...new Set(v.map((x) => Number(x)).filter((n) => Number.isFinite(n)))];
-}
-
-// ── Game state reducer (inline for speed) ──
-
-interface GameState {
-  inning: number;
-  half: 'top' | 'bot';
-  outs: number;
-  homeScore: number;
-  awayScore: number;
-  bases: { first: number | null; second: number | null; third: number | null };
-  homeLineScore: number[];
-  awayLineScore: number[];
-  eventCount: number;
-  balls: number;
-  strikes: number;
 }
 
 function normalizeHalf(h: string | undefined): 'top' | 'bot' {
@@ -220,110 +208,35 @@ function validateScoringEventPayload(
   return { ok: true, normalizedErrorsOnPlay };
 }
 
-function computeGameState(events: any[]): GameState {
-  const state: GameState = {
-    inning: 1, half: 'top', outs: 0, homeScore: 0, awayScore: 0,
-    bases: { first: null, second: null, third: null },
-    homeLineScore: [0], awayLineScore: [],
-    eventCount: 0,
-    balls: 0, strikes: 0,
+function toSharedGameEvent(row: any): GameEvent {
+  return {
+    id: Number(row.id ?? 0),
+    gameId: Number(row.gameId ?? 0),
+    eventNumber: Number(row.eventNumber ?? 0),
+    inning: Number(row.inning ?? 1),
+    half: normalizeHalf(row.half),
+    batterId: row.batterId ?? null,
+    pitcherId: row.pitcherId ?? null,
+    eventType: String(row.eventType ?? 'other') as EventType,
+    eventDetail: row.eventDetail ?? null,
+    rbi: Number(row.rbi ?? 0),
+    runsScored: Number(row.runsScored ?? 0),
+    outsRecorded: Number(row.outsRecorded ?? 0),
+    errorsOnPlay: Number(row.errorsOnPlay ?? 0),
+    balls: Number(row.balls ?? 0),
+    strikes: Number(row.strikes ?? 0),
+    runnerFirstId: row.runnerFirstId ?? null,
+    runnerSecondId: row.runnerSecondId ?? null,
+    runnerThirdId: row.runnerThirdId ?? null,
+    runnersScored: jsonbNumberArray(row.runnersScored),
+    isDeleted: Boolean(row.isDeleted),
+    createdAt: row.createdAt instanceof Date ? row.createdAt.toISOString() : String(row.createdAt ?? ''),
+    createdBy: row.createdBy ?? null,
   };
+}
 
-  const sorted = events
-    .filter((e: any) => !e.isDeleted)
-    .sort((a: any, b: any) => a.eventNumber - b.eventNumber);
-
-  for (const event of sorted) {
-    // Pitch events only update the count; they don't affect bases/outs/score
-    if (event.eventType === 'pitch') {
-      const detail = (event.eventDetail || '').toLowerCase();
-      if (detail === 'ball') state.balls = Math.min(3, state.balls + 1);
-      else if (detail === 'foul') { if (state.strikes < 2) state.strikes++; }
-      else if (detail === 'strike' || detail === 'called_strike' || detail === 'swinging_strike') {
-        state.strikes = Math.min(2, state.strikes + 1);
-      }
-      state.eventCount++;
-      continue;
-    }
-
-    // Manual correction: deltas vs. play-by-play totals (logged as an event so state stays consistent)
-    if (event.eventType === 'adjust_score') {
-      let detail: { homeDelta?: number; awayDelta?: number } = {};
-      try {
-        detail = JSON.parse(event.eventDetail || '{}') as typeof detail;
-      } catch { /* ignore */ }
-      const homeDelta = Number(detail.homeDelta) || 0;
-      const awayDelta = Number(detail.awayDelta) || 0;
-      state.homeScore += homeDelta;
-      state.awayScore += awayDelta;
-      const inn = Math.max(1, event.inning || 1);
-      if (homeDelta !== 0) {
-        while (state.homeLineScore.length < inn) state.homeLineScore.push(0);
-        state.homeLineScore[inn - 1] += homeDelta;
-      }
-      if (awayDelta !== 0) {
-        while (state.awayLineScore.length < inn) state.awayLineScore.push(0);
-        state.awayLineScore[inn - 1] += awayDelta;
-      }
-      state.eventCount++;
-      continue;
-    }
-
-    // Roster change: pinch-runner / PH / defensive swap — remap runner IDs on bases when the outgoing player is on base
-    if (event.eventType === 'substitution') {
-      state.bases = remapBasesForSubstitutionDetail(state.bases, event.eventDetail);
-      state.eventCount++;
-      continue;
-    }
-
-    const runs = event.runsScored || 0;
-
-    if (event.half === 'top') {
-      state.awayScore += runs;
-      while (state.awayLineScore.length < event.inning) state.awayLineScore.push(0);
-      state.awayLineScore[event.inning - 1] += runs;
-    } else {
-      state.homeScore += runs;
-      while (state.homeLineScore.length < event.inning) state.homeLineScore.push(0);
-      state.homeLineScore[event.inning - 1] += runs;
-    }
-
-    state.outs = state.outs + (event.outsRecorded || 0);
-    state.bases = {
-      first: event.runnerFirstId ?? null,
-      second: event.runnerSecondId ?? null,
-      third: event.runnerThirdId ?? null,
-    };
-
-    // Reset count for at-bat-concluding events (not runner events between pitches)
-    if (!isBetweenPitchEvent(event.eventType)) {
-      state.balls = 0;
-      state.strikes = 0;
-    }
-
-    if (state.outs >= 3 || event.eventType === 'end_half_inning') {
-      state.outs = 0;
-      state.bases = { first: null, second: null, third: null };
-      state.balls = 0;
-      state.strikes = 0;
-      if (event.half === 'top') {
-        state.half = 'bot';
-        while (state.homeLineScore.length < event.inning) state.homeLineScore.push(0);
-      } else {
-        state.half = 'top';
-        state.inning = event.inning + 1;
-        while (state.awayLineScore.length < event.inning + 1) state.awayLineScore.push(0);
-        while (state.homeLineScore.length < event.inning + 1) state.homeLineScore.push(0);
-      }
-    } else {
-      state.inning = event.inning;
-      state.half = event.half;
-    }
-
-    state.eventCount++;
-  }
-
-  return state;
+export function computeGameState(events: any[]): GameState {
+  return reduceGameState(events.map(toSharedGameEvent));
 }
 
 function validateScoringEventTimeline(events: any[]): { ok: true } | { ok: false; message: string } {
@@ -560,13 +473,14 @@ export async function adminScoringRoutes(app: FastifyInstance) {
     gameId: number,
     changes: PositionSwapChange[] | undefined,
     direction: 'undo' | 'redo',
+    conn: any = db,
   ) {
     if (!Array.isArray(changes)) return;
     for (const change of changes) {
       const playerId = Number(change.playerId);
       const position = direction === 'undo' ? Number(change.oldPosition) : Number(change.newPosition);
       if (!Number.isFinite(playerId) || !Number.isFinite(position)) continue;
-      await db.update(gameLineups)
+      await conn.update(gameLineups)
         .set({ position })
         .where(and(
           eq(gameLineups.gameId, gameId),
@@ -577,7 +491,11 @@ export async function adminScoringRoutes(app: FastifyInstance) {
   }
 
   /** Undo DB lineup changes for substitution events (soft-deleted event must still be readable from `eventDetail`). */
-  async function revertSubstitutionLineupChanges(gameId: number, eventDetail: string | null) {
+  async function revertSubstitutionLineupChanges(
+    gameId: number,
+    eventDetail: string | null,
+    conn: any = db,
+  ) {
     let detail: {
       kind?: string;
       outPlayerId?: number;
@@ -590,12 +508,12 @@ export async function adminScoringRoutes(app: FastifyInstance) {
       return;
     }
     if (detail.kind === 'position_swap') {
-      await applyPositionSwapChanges(gameId, detail.changes, 'undo');
+      await applyPositionSwapChanges(gameId, detail.changes, 'undo', conn);
       return;
     }
     if (detail.kind !== 'player_change' || !detail.outPlayerId || !detail.inPlayerId) return;
 
-    const [inRow] = await db
+    const [inRow] = await conn
       .select({ id: gameLineups.id })
       .from(gameLineups)
       .where(
@@ -609,10 +527,10 @@ export async function adminScoringRoutes(app: FastifyInstance) {
       .limit(1);
 
     if (inRow) {
-      await db.delete(gameLineups).where(eq(gameLineups.id, inRow.id));
+      await conn.delete(gameLineups).where(eq(gameLineups.id, inRow.id));
     }
 
-    const [outRow] = await db
+    const [outRow] = await conn
       .select({ id: gameLineups.id })
       .from(gameLineups)
       .where(
@@ -626,7 +544,7 @@ export async function adminScoringRoutes(app: FastifyInstance) {
       .limit(1);
 
     if (outRow) {
-      await db
+      await conn
         .update(gameLineups)
         .set({
           isActive: true,
@@ -640,6 +558,7 @@ export async function adminScoringRoutes(app: FastifyInstance) {
   async function redoSubstitutionLineupChanges(
     gameId: number,
     event: { eventDetail: string | null; inning: number | null; half: string | null },
+    conn: any = db,
   ): Promise<{ ok: true } | { ok: false; message: string }> {
     let detail: {
       kind?: string;
@@ -656,7 +575,7 @@ export async function adminScoringRoutes(app: FastifyInstance) {
     }
 
     if (detail.kind === 'position_swap') {
-      await applyPositionSwapChanges(gameId, detail.changes, 'redo');
+      await applyPositionSwapChanges(gameId, detail.changes, 'redo', conn);
       return { ok: true };
     }
 
@@ -674,25 +593,29 @@ export async function adminScoringRoutes(app: FastifyInstance) {
         position: detail.position ?? null,
         inning: event.inning ?? 1,
         half: String(event.half ?? 'top'),
-      });
+      }, conn);
     }
 
     return { ok: true };
   }
 
-  async function rebuildSubstitutionLineupState(gameId: number, extraAppliedDeletedEventId?: number) {
-    const substitutions = await db.select()
+  async function rebuildSubstitutionLineupState(
+    gameId: number,
+    extraAppliedDeletedEventId?: number,
+    conn: any = db,
+  ) {
+    const substitutions: Array<typeof gameEvents.$inferSelect> = await conn.select()
       .from(gameEvents)
       .where(and(eq(gameEvents.gameId, gameId), eq(gameEvents.eventType, 'substitution')))
       .orderBy(gameEvents.eventNumber);
 
     const appliedBeforeRebuild = substitutions.filter((event) => !event.isDeleted || event.id === extraAppliedDeletedEventId);
     for (const event of [...appliedBeforeRebuild].sort((a, b) => b.eventNumber - a.eventNumber)) {
-      await revertSubstitutionLineupChanges(gameId, event.eventDetail);
+      await revertSubstitutionLineupChanges(gameId, event.eventDetail, conn);
     }
 
     for (const event of substitutions.filter((event) => !event.isDeleted).sort((a, b) => a.eventNumber - b.eventNumber)) {
-      const r = await redoSubstitutionLineupChanges(gameId, event);
+      const r = await redoSubstitutionLineupChanges(gameId, event, conn);
       if (!r.ok) throw new Error(r.message || 'Cannot rebuild substitutions');
     }
   }
@@ -721,10 +644,10 @@ export async function adminScoringRoutes(app: FastifyInstance) {
     updatedAt: Date | string;
   }
 
-  async function getGameCore(gameId: number): Promise<GameCoreRow | null> {
+  async function getGameCore(gameId: number, conn: any = db): Promise<GameCoreRow | null> {
     const hasOfficialCols = await gamesTableHasOfficialColumns();
     const res = hasOfficialCols
-      ? await db.execute(sql`
+      ? await conn.execute(sql`
         SELECT
           id,
           league_id as "leagueId",
@@ -750,7 +673,7 @@ export async function adminScoringRoutes(app: FastifyInstance) {
         WHERE id = ${gameId}
         LIMIT 1
       `)
-      : await db.execute(sql`
+      : await conn.execute(sql`
         SELECT
           id,
           league_id as "leagueId",
@@ -1342,8 +1265,11 @@ export async function adminScoringRoutes(app: FastifyInstance) {
     try {
       const gameId = parseInt(request.params.gameId, 10);
       const { teamId, lineup } = request.body;
+      if (Number.isNaN(gameId)) return reply.status(400).send({ message: 'Invalid game id' });
 
-      const [game] = await db
+      await db.transaction(async (tx) => {
+      await lockScoringGame(tx, gameId);
+      const [game] = await tx
         .select({
           status: games.status,
           isFinalized: games.isFinalized,
@@ -1354,31 +1280,31 @@ export async function adminScoringRoutes(app: FastifyInstance) {
         .from(games)
         .where(eq(games.id, gameId))
         .limit(1);
-      if (!game) return reply.status(404).send({ message: 'Game not found' });
+      if (!game) throw new ScoringAbortReply(404, 'Game not found');
       if (game.isFinalized || game.status === 'live') {
-        return reply.status(400).send({ message: 'Lineups cannot be rewritten after a game is live or finalized. Use substitutions or event edits so stats can replay correctly.' });
+        throw new ScoringAbortReply(400, 'Lineups cannot be rewritten after a game is live or finalized. Use substitutions or event edits so stats can replay correctly.');
       }
       if (teamId !== game.homeTeamId && teamId !== game.awayTeamId) {
-        return reply.status(400).send({ message: 'Lineup team must be one of the two teams in this game' });
+        throw new ScoringAbortReply(400, 'Lineup team must be one of the two teams in this game');
       }
 
       const entries = lineup ?? [];
-      const lineupError = validateLineupEntries(entries, await lineupRulesForLeague(game.leagueId));
-      if (lineupError) return reply.status(400).send({ message: lineupError });
+      const lineupError = validateLineupEntries(entries, await lineupRulesForLeague(game.leagueId, tx));
+      if (lineupError) throw new ScoringAbortReply(400, lineupError);
       const lineupPlayerIds = entries
         .map((entry) => (entry.playerId == null ? null : Number(entry.playerId)))
         .filter((id): id is number => id != null);
 
       if (lineupPlayerIds.length > 0) {
-        const [leagueContext] = await db
+        const [leagueContext] = await tx
           .select({ seasonId: leagues.seasonId })
           .from(leagues)
           .where(eq(leagues.id, game.leagueId))
           .limit(1);
         if (!leagueContext?.seasonId) {
-          return reply.status(400).send({ message: 'Game league has no season' });
+          throw new ScoringAbortReply(400, 'Game league has no season');
         }
-        const rosterRows = await db
+        const rosterRows = await tx
           .select({ playerId: playerSeasons.playerId })
           .from(playerSeasons)
           .where(and(
@@ -1389,13 +1315,11 @@ export async function adminScoringRoutes(app: FastifyInstance) {
         const rosterPlayerIds = new Set(rosterRows.map((row) => row.playerId));
         const nonRosterPlayer = lineupPlayerIds.find((id) => !rosterPlayerIds.has(id));
         if (nonRosterPlayer != null) {
-          return reply.status(400).send({
-            message: `Player #${nonRosterPlayer} is not on this team roster for the game season`,
-          });
+          throw new ScoringAbortReply(400, `Player #${nonRosterPlayer} is not on this team roster for the game season`);
         }
 
         const opponentTeamId = teamId === game.homeTeamId ? game.awayTeamId : game.homeTeamId;
-        const [opponentConflict] = await db
+        const [opponentConflict] = await tx
           .select({ playerId: gameLineups.playerId })
           .from(gameLineups)
           .where(and(
@@ -1407,18 +1331,18 @@ export async function adminScoringRoutes(app: FastifyInstance) {
           .limit(1);
 
         if (opponentConflict) {
-          return reply.status(400).send({ message: 'The same player cannot be active for both teams in one game' });
+          throw new ScoringAbortReply(400, 'The same player cannot be active for both teams in one game');
         }
       }
 
       // Delete existing lineup for this team in this game
-      await db.delete(gameLineups).where(
+      await tx.delete(gameLineups).where(
         and(eq(gameLineups.gameId, gameId), eq(gameLineups.teamId, teamId))
       );
 
       // Insert new lineup
       if (entries.length > 0) {
-        await db.insert(gameLineups).values(
+        await tx.insert(gameLineups).values(
           entries.map(entry => {
             const pidRaw = entry.playerId;
             const vacant = pidRaw == null;
@@ -1434,9 +1358,13 @@ export async function adminScoringRoutes(app: FastifyInstance) {
           })
         );
       }
+      });
 
       return reply.send({ success: true });
     } catch (err) {
+      if (err instanceof ScoringAbortReply) {
+        return reply.status(err.statusCode).send({ message: err.message });
+      }
       request.log.error(err);
       return reply.status(500).send({ message: 'Failed to set lineup' });
     }
@@ -1449,6 +1377,7 @@ export async function adminScoringRoutes(app: FastifyInstance) {
   }>('/:gameId/start', async (request, reply) => {
     try {
       const gameId = parseInt(request.params.gameId, 10);
+      if (Number.isNaN(gameId)) return reply.status(400).send({ message: 'Invalid game id' });
       const umpire = String(request.body?.umpire ?? '').trim();
       const officialScorer = String(request.body?.officialScorer ?? '').trim();
       const hasOfficialCols = await gamesTableHasOfficialColumns();
@@ -1465,8 +1394,32 @@ export async function adminScoringRoutes(app: FastifyInstance) {
         updatedAt: games.updatedAt,
       } as const;
 
-      const [game] = hasOfficialCols
-        ? await db
+      const game = await db.transaction(async (tx) => {
+        await lockScoringGame(tx, gameId);
+        const [current] = await tx.select({
+          status: games.status,
+          isFinalized: games.isFinalized,
+          homeTeamId: games.homeTeamId,
+          awayTeamId: games.awayTeamId,
+        }).from(games).where(eq(games.id, gameId)).limit(1);
+        if (!current) throw new ScoringAbortReply(404, 'Game not found');
+        const transitionError = gameTransitionError({
+          currentStatus: current.status,
+          targetStatus: 'live',
+          isFinalized: current.isFinalized,
+          source: 'start',
+        });
+        if (transitionError) throw new ScoringAbortReply(409, transitionError);
+        const lineupTeams = await tx.select({ teamId: gameLineups.teamId })
+          .from(gameLineups)
+          .where(and(eq(gameLineups.gameId, gameId), eq(gameLineups.isActive, true)));
+        const lineupTeamIds = new Set(lineupTeams.map((row) => row.teamId));
+        if (!lineupTeamIds.has(current.homeTeamId) || !lineupTeamIds.has(current.awayTeamId)) {
+          throw new ScoringAbortReply(400, 'Both teams need an active lineup before the game can start');
+        }
+
+        const [updated] = hasOfficialCols
+        ? await tx
             .update(games)
             .set({
               status: 'live',
@@ -1483,7 +1436,7 @@ export async function adminScoringRoutes(app: FastifyInstance) {
               umpire: games.umpire,
               officialScorer: games.officialScorer,
             })
-        : await db
+        : await tx
             .update(games)
             .set({
               status: 'live',
@@ -1494,13 +1447,17 @@ export async function adminScoringRoutes(app: FastifyInstance) {
             })
             .where(eq(games.id, gameId))
             .returning(baseReturning);
-
-      if (!game) return reply.status(404).send({ message: 'Game not found' });
+        if (!updated) throw new ScoringAbortReply(404, 'Game not found');
+        return updated;
+      });
 
       try { getIO().to(`game:${gameId}`).emit('game:update', { status: 'live', inning: 1, half: 'top' }); } catch {}
 
       return reply.send(game);
     } catch (err) {
+      if (err instanceof ScoringAbortReply) {
+        return reply.status(err.statusCode).send({ message: err.message });
+      }
       request.log.error(err);
       return reply.status(500).send({ message: 'Failed to start game' });
     }
@@ -1510,9 +1467,31 @@ export async function adminScoringRoutes(app: FastifyInstance) {
   app.post<{ Params: { gameId: string } }>('/:gameId/pause', async (request, reply) => {
     try {
       const gameId = parseInt(request.params.gameId, 10);
-      await db.update(games).set({ status: 'suspended', updatedAt: new Date() }).where(eq(games.id, gameId));
+      if (Number.isNaN(gameId)) return reply.status(400).send({ message: 'Invalid game id' });
+      await db.transaction(async (tx) => {
+        await lockScoringGame(tx, gameId);
+        const [game] = await tx.select({ status: games.status, isFinalized: games.isFinalized })
+          .from(games)
+          .where(eq(games.id, gameId))
+          .limit(1);
+        if (!game) throw new ScoringAbortReply(404, 'Game not found');
+        const transitionError = gameTransitionError({
+          currentStatus: game.status,
+          targetStatus: 'suspended',
+          isFinalized: game.isFinalized,
+          source: 'pause',
+        });
+        if (transitionError) throw new ScoringAbortReply(409, transitionError);
+        await tx.update(games)
+          .set({ status: 'suspended', updatedAt: new Date() })
+          .where(eq(games.id, gameId));
+      });
+      try { getIO().to(`game:${gameId}`).emit('game:update', { status: 'suspended' }); } catch {}
       return reply.send({ success: true });
     } catch (err) {
+      if (err instanceof ScoringAbortReply) {
+        return reply.status(err.statusCode).send({ message: err.message });
+      }
       request.log.error(err);
       return reply.status(500).send({ message: 'Failed to pause game' });
     }
@@ -1522,9 +1501,31 @@ export async function adminScoringRoutes(app: FastifyInstance) {
   app.post<{ Params: { gameId: string } }>('/:gameId/resume', async (request, reply) => {
     try {
       const gameId = parseInt(request.params.gameId, 10);
-      await db.update(games).set({ status: 'live', updatedAt: new Date() }).where(eq(games.id, gameId));
+      if (Number.isNaN(gameId)) return reply.status(400).send({ message: 'Invalid game id' });
+      await db.transaction(async (tx) => {
+        await lockScoringGame(tx, gameId);
+        const [game] = await tx.select({ status: games.status, isFinalized: games.isFinalized })
+          .from(games)
+          .where(eq(games.id, gameId))
+          .limit(1);
+        if (!game) throw new ScoringAbortReply(404, 'Game not found');
+        const transitionError = gameTransitionError({
+          currentStatus: game.status,
+          targetStatus: 'live',
+          isFinalized: game.isFinalized,
+          source: 'resume',
+        });
+        if (transitionError) throw new ScoringAbortReply(409, transitionError);
+        await tx.update(games)
+          .set({ status: 'live', updatedAt: new Date() })
+          .where(eq(games.id, gameId));
+      });
+      try { getIO().to(`game:${gameId}`).emit('game:update', { status: 'live' }); } catch {}
       return reply.send({ success: true });
     } catch (err) {
+      if (err instanceof ScoringAbortReply) {
+        return reply.status(err.statusCode).send({ message: err.message });
+      }
       request.log.error(err);
       return reply.status(500).send({ message: 'Failed to resume game' });
     }
@@ -1586,6 +1587,7 @@ export async function adminScoringRoutes(app: FastifyInstance) {
       let result: { event: InferSelectModel<typeof gameEvents>; state: GameState } | { duplicate: true };
       try {
         result = await db.transaction(async (tx) => {
+          await lockScoringGame(tx, gameId);
           if (!(await claimClientOp(tx, gameId, clientOpId))) {
             return { duplicate: true as const };
           }
@@ -1604,7 +1606,7 @@ export async function adminScoringRoutes(app: FastifyInstance) {
               .where(eq(games.id, gameId))
               .limit(1);
             if (!eventGame) throw new ScoringAbortReply(404, 'Game not found');
-            if (!(await lineupRulesForLeague(eventGame.leagueId)).youth) {
+            if (!(await lineupRulesForLeague(eventGame.leagueId, tx)).youth) {
               throw new ScoringAbortReply(400, 'Only Jaunieši games can end a half-inning without recording the remaining outs');
             }
           }
@@ -1680,10 +1682,22 @@ export async function adminScoringRoutes(app: FastifyInstance) {
             })
             .where(eq(games.id, gameId));
 
+          const [game] = await tx
+            .select({ isFinalized: games.isFinalized })
+            .from(games)
+            .where(eq(games.id, gameId))
+            .limit(1);
+          if (game?.isFinalized) {
+            await finalizeGameInTransaction(tx, gameId, user?.id, { recompute: true });
+          }
+
           return { event, state };
         });
       } catch (err) {
         if (err instanceof ScoringAbortReply) {
+          return reply.status(err.statusCode).send({ message: err.message });
+        }
+        if (err instanceof FinalizeGameError) {
           return reply.status(err.statusCode).send({ message: err.message });
         }
         if (pgUniqueViolationCode(err)) {
@@ -1713,9 +1727,6 @@ export async function adminScoringRoutes(app: FastifyInstance) {
         });
       } catch {}
 
-      const [game] = await db.select({ isFinalized: games.isFinalized }).from(games).where(eq(games.id, gameId)).limit(1);
-      if (game?.isFinalized) await finalizeGame(gameId, user?.id, { recompute: true });
-
       return reply.send({ event, state });
     } catch (err) {
       request.log.error(err);
@@ -1727,61 +1738,72 @@ export async function adminScoringRoutes(app: FastifyInstance) {
   app.post<{ Params: { gameId: string }; Body: { clientOpId?: string; targetEventNumber?: number } }>('/:gameId/undo', async (request, reply) => {
     try {
       const gameId = parseInt(request.params.gameId, 10);
+      if (Number.isNaN(gameId)) return reply.status(400).send({ message: 'Invalid game id' });
       const targetEventNumber = Number(request.body?.targetEventNumber);
-
-      // Get last non-deleted event
-      const [lastEvent] = await db.select()
-        .from(gameEvents)
-        .where(and(eq(gameEvents.gameId, gameId), eq(gameEvents.isDeleted, false)))
-        .orderBy(desc(gameEvents.eventNumber))
-        .limit(1);
-
-      if (!lastEvent || (Number.isFinite(targetEventNumber) && targetEventNumber > 0 && lastEvent.eventNumber !== targetEventNumber)) {
-        if (Number.isFinite(targetEventNumber) && targetEventNumber > 0) {
-          const [already] = await db.select({ id: gameEvents.id }).from(gameEvents)
-            .where(and(eq(gameEvents.gameId, gameId), eq(gameEvents.eventNumber, targetEventNumber), eq(gameEvents.isDeleted, true)))
-            .limit(1);
-          if (already) return reply.send({ success: true, duplicate: true });
-        }
-        if (!lastEvent) return reply.status(400).send({ message: 'No events to undo' });
-        return reply.status(409).send({ message: 'The last play does not match this phone. Refresh the game.' });
-      }
-
-      const claimed = await db.transaction(async (tx) => {
-        if (!(await claimClientOp(tx, gameId, request.body?.clientOpId))) return false;
-        await tx.update(gameEvents).set({ isDeleted: true }).where(eq(gameEvents.id, lastEvent.id));
-        return true;
-      });
-      if (!claimed) return reply.send({ success: true, duplicate: true });
-
-      if (lastEvent.eventType === 'substitution' && lastEvent.eventDetail) {
-        await revertSubstitutionLineupChanges(gameId, lastEvent.eventDetail);
-      }
-
-      // Recompute state
-      const allEvents = await db.select().from(gameEvents)
-        .where(and(eq(gameEvents.gameId, gameId), eq(gameEvents.isDeleted, false)))
-        .orderBy(gameEvents.eventNumber);
-
-      const state = computeGameState(allEvents);
-
-      await db.update(games).set({
-        homeScore: state.homeScore,
-        awayScore: state.awayScore,
-        currentInning: state.inning,
-        currentHalf: state.half,
-        currentOuts: state.outs,
-        updatedAt: new Date(),
-      }).where(eq(games.id, gameId));
-
-      try { getIO().to(`game:${gameId}`).emit('game:update', { state }); } catch {}
-
       const user = request.user;
-      const [game] = await db.select({ isFinalized: games.isFinalized }).from(games).where(eq(games.id, gameId)).limit(1);
-      if (game?.isFinalized) await finalizeGame(gameId, user?.id, { recompute: true });
+      const result = await db.transaction(async (tx) => {
+        await lockScoringGame(tx, gameId);
+        if (!(await claimClientOp(tx, gameId, request.body?.clientOpId))) {
+          return { duplicate: true as const };
+        }
 
-      return reply.send({ undone: lastEvent.eventNumber, undoneType: lastEvent.eventType, state });
+        const [lastEvent] = await tx.select()
+          .from(gameEvents)
+          .where(and(eq(gameEvents.gameId, gameId), eq(gameEvents.isDeleted, false)))
+          .orderBy(desc(gameEvents.eventNumber))
+          .limit(1);
+
+        if (!lastEvent || (Number.isFinite(targetEventNumber) && targetEventNumber > 0 && lastEvent.eventNumber !== targetEventNumber)) {
+          if (Number.isFinite(targetEventNumber) && targetEventNumber > 0) {
+            const [already] = await tx.select({ id: gameEvents.id }).from(gameEvents)
+              .where(and(eq(gameEvents.gameId, gameId), eq(gameEvents.eventNumber, targetEventNumber), eq(gameEvents.isDeleted, true)))
+              .limit(1);
+            if (already) return { duplicate: true as const };
+          }
+          if (!lastEvent) throw new ScoringAbortReply(400, 'No events to undo');
+          throw new ScoringAbortReply(409, 'The last play does not match this phone. Refresh the game.');
+        }
+
+        await tx.update(gameEvents).set({ isDeleted: true }).where(eq(gameEvents.id, lastEvent.id));
+        if (lastEvent.eventType === 'substitution' && lastEvent.eventDetail) {
+          await revertSubstitutionLineupChanges(gameId, lastEvent.eventDetail, tx);
+        }
+
+        const allEvents = await tx.select().from(gameEvents)
+          .where(and(eq(gameEvents.gameId, gameId), eq(gameEvents.isDeleted, false)))
+          .orderBy(gameEvents.eventNumber);
+        const state = computeGameState(allEvents);
+        await tx.update(games).set({
+          homeScore: state.homeScore,
+          awayScore: state.awayScore,
+          currentInning: state.inning,
+          currentHalf: state.half,
+          currentOuts: state.outs,
+          updatedAt: new Date(),
+        }).where(eq(games.id, gameId));
+        const [game] = await tx.select({ isFinalized: games.isFinalized })
+          .from(games).where(eq(games.id, gameId)).limit(1);
+        if (game?.isFinalized) {
+          await finalizeGameInTransaction(tx, gameId, user?.id, { recompute: true });
+        }
+        return {
+          lastEvent,
+          state,
+        };
+      });
+      if ('duplicate' in result) return reply.send({ success: true, duplicate: true });
+
+      try { getIO().to(`game:${gameId}`).emit('game:update', { state: result.state }); } catch {}
+
+      return reply.send({
+        undone: result.lastEvent.eventNumber,
+        undoneType: result.lastEvent.eventType,
+        state: result.state,
+      });
     } catch (err) {
+      if (err instanceof ScoringAbortReply) {
+        return reply.status(err.statusCode).send({ message: err.message });
+      }
       request.log.error(err);
       return reply.status(500).send({ message: 'Failed to undo' });
     }
@@ -1791,66 +1813,81 @@ export async function adminScoringRoutes(app: FastifyInstance) {
   app.post<{ Params: { gameId: string }; Body: { clientOpId?: string; targetEventNumber?: number } }>('/:gameId/redo', async (request, reply) => {
     try {
       const gameId = parseInt(request.params.gameId, 10);
+      if (Number.isNaN(gameId)) return reply.status(400).send({ message: 'Invalid game id' });
       const targetEventNumber = Number(request.body?.targetEventNumber);
-      if (Number.isFinite(targetEventNumber) && targetEventNumber > 0) {
-        const [target] = await db.select().from(gameEvents)
-          .where(and(eq(gameEvents.gameId, gameId), eq(gameEvents.eventNumber, targetEventNumber)))
-          .limit(1);
-        if (target && !target.isDeleted) return reply.send({ success: true, duplicate: true });
-      }
-
-      // Undo removes from the top, so redo must restore the lowest deleted event above the active tail.
-      const [activeTail] = await db.select({ maxNumber: sql<number | null>`MAX(${gameEvents.eventNumber})` })
-        .from(gameEvents)
-        .where(and(eq(gameEvents.gameId, gameId), eq(gameEvents.isDeleted, false)));
-      const activeMax = activeTail?.maxNumber != null ? Number(activeTail.maxNumber) : 0;
-
-      const [lastDeleted] = await db.select()
-        .from(gameEvents)
-        .where(and(
-          eq(gameEvents.gameId, gameId),
-          eq(gameEvents.isDeleted, true),
-          gt(gameEvents.eventNumber, activeMax),
-        ))
-        .orderBy(asc(gameEvents.eventNumber))
-        .limit(1);
-
-      if (!lastDeleted) return reply.status(400).send({ message: 'No events to redo' });
-
-      if (lastDeleted.eventType === 'substitution' && lastDeleted.eventDetail) {
-        const r = await redoSubstitutionLineupChanges(gameId, lastDeleted);
-        if (!r.ok) {
-          return reply.status(400).send({ message: r.message || 'Cannot redo substitution' });
-        }
-      }
-
-      await db.update(gameEvents)
-        .set({ isDeleted: false })
-        .where(eq(gameEvents.id, lastDeleted.id));
-
-      const allEvents = await db.select().from(gameEvents)
-        .where(and(eq(gameEvents.gameId, gameId), eq(gameEvents.isDeleted, false)))
-        .orderBy(gameEvents.eventNumber);
-
-      const state = computeGameState(allEvents);
-
-      await db.update(games).set({
-        homeScore: state.homeScore,
-        awayScore: state.awayScore,
-        currentInning: state.inning,
-        currentHalf: state.half,
-        currentOuts: state.outs,
-        updatedAt: new Date(),
-      }).where(eq(games.id, gameId));
-
-      try { getIO().to(`game:${gameId}`).emit('game:update', { state }); } catch {}
-
       const user = request.user;
-      const [game] = await db.select({ isFinalized: games.isFinalized }).from(games).where(eq(games.id, gameId)).limit(1);
-      if (game?.isFinalized) await finalizeGame(gameId, user?.id, { recompute: true });
+      const result = await db.transaction(async (tx) => {
+        await lockScoringGame(tx, gameId);
+        if (!(await claimClientOp(tx, gameId, request.body?.clientOpId))) {
+          return { duplicate: true as const };
+        }
+        if (Number.isFinite(targetEventNumber) && targetEventNumber > 0) {
+          const [target] = await tx.select().from(gameEvents)
+            .where(and(eq(gameEvents.gameId, gameId), eq(gameEvents.eventNumber, targetEventNumber)))
+            .limit(1);
+          if (target && !target.isDeleted) return { duplicate: true as const };
+        }
 
-      return reply.send({ redone: lastDeleted.eventNumber, redoneType: lastDeleted.eventType, state });
+        const [activeTail] = await tx.select({ maxNumber: sql<number | null>`MAX(${gameEvents.eventNumber})` })
+          .from(gameEvents)
+          .where(and(eq(gameEvents.gameId, gameId), eq(gameEvents.isDeleted, false)));
+        const activeMax = activeTail?.maxNumber != null ? Number(activeTail.maxNumber) : 0;
+        const [lastDeleted] = await tx.select()
+          .from(gameEvents)
+          .where(and(
+            eq(gameEvents.gameId, gameId),
+            eq(gameEvents.isDeleted, true),
+            gt(gameEvents.eventNumber, activeMax),
+          ))
+          .orderBy(asc(gameEvents.eventNumber))
+          .limit(1);
+        if (!lastDeleted) throw new ScoringAbortReply(400, 'No events to redo');
+
+        if (lastDeleted.eventType === 'substitution' && lastDeleted.eventDetail) {
+          const replayed = await redoSubstitutionLineupChanges(gameId, lastDeleted, tx);
+          if (!replayed.ok) {
+            throw new ScoringAbortReply(400, replayed.message || 'Cannot redo substitution');
+          }
+        }
+        await tx.update(gameEvents)
+          .set({ isDeleted: false })
+          .where(eq(gameEvents.id, lastDeleted.id));
+
+        const allEvents = await tx.select().from(gameEvents)
+          .where(and(eq(gameEvents.gameId, gameId), eq(gameEvents.isDeleted, false)))
+          .orderBy(gameEvents.eventNumber);
+        const state = computeGameState(allEvents);
+        await tx.update(games).set({
+          homeScore: state.homeScore,
+          awayScore: state.awayScore,
+          currentInning: state.inning,
+          currentHalf: state.half,
+          currentOuts: state.outs,
+          updatedAt: new Date(),
+        }).where(eq(games.id, gameId));
+        const [game] = await tx.select({ isFinalized: games.isFinalized })
+          .from(games).where(eq(games.id, gameId)).limit(1);
+        if (game?.isFinalized) {
+          await finalizeGameInTransaction(tx, gameId, user?.id, { recompute: true });
+        }
+        return {
+          lastDeleted,
+          state,
+        };
+      });
+      if ('duplicate' in result) return reply.send({ success: true, duplicate: true });
+
+      try { getIO().to(`game:${gameId}`).emit('game:update', { state: result.state }); } catch {}
+
+      return reply.send({
+        redone: result.lastDeleted.eventNumber,
+        redoneType: result.lastDeleted.eventType,
+        state: result.state,
+      });
     } catch (err) {
+      if (err instanceof ScoringAbortReply) {
+        return reply.status(err.statusCode).send({ message: err.message });
+      }
       request.log.error(err);
       return reply.status(500).send({ message: 'Failed to redo' });
     }
@@ -1865,12 +1902,17 @@ export async function adminScoringRoutes(app: FastifyInstance) {
       const gameId = parseInt(request.params.gameId, 10);
       const eventId = parseInt(request.params.eventId, 10);
       const body = request.body;
+      if (Number.isNaN(gameId) || Number.isNaN(eventId)) {
+        return reply.status(400).send({ message: 'Invalid game or event id' });
+      }
 
-      const [existing] = await db.select().from(gameEvents)
+      const result = await db.transaction(async (tx) => {
+      await lockScoringGame(tx, gameId);
+      const [existing] = await tx.select().from(gameEvents)
         .where(and(eq(gameEvents.id, eventId), eq(gameEvents.gameId, gameId)))
         .limit(1);
-      if (!existing) return reply.status(404).send({ message: 'Event not found' });
-      if (existing.isDeleted) return reply.status(400).send({ message: 'Deleted events cannot be edited; redo the event first' });
+      if (!existing) throw new ScoringAbortReply(404, 'Event not found');
+      if (existing.isDeleted) throw new ScoringAbortReply(400, 'Deleted events cannot be edited; redo the event first');
 
       const allowedFields: Record<string, (v: any) => any> = {
         inning: (v) => Math.max(1, Math.floor(Number(v)) || 1),
@@ -1913,10 +1955,10 @@ export async function adminScoringRoutes(app: FastifyInstance) {
       }
 
       if (Object.keys(updates).length === 0) {
-        return reply.status(400).send({ message: 'No valid fields to update' });
+        throw new ScoringAbortReply(400, 'No valid fields to update');
       }
       if (existing.eventType === 'substitution' || updates.eventType === 'substitution') {
-        return reply.status(400).send({ message: 'Substitution events cannot be edited here; delete and re-enter the substitution so lineup state stays synchronized' });
+        throw new ScoringAbortReply(400, 'Substitution events cannot be edited here; delete and re-enter the substitution so lineup state stays synchronized');
       }
 
       const candidate = {
@@ -1935,35 +1977,33 @@ export async function adminScoringRoutes(app: FastifyInstance) {
         putoutFielderIds: 'putoutFielderIds' in updates ? updates.putoutFielderIds : uniqueNumberArray(existing.putoutFielderIds),
       };
       if (candidate.eventType === 'end_half_inning' && Number(candidate.outsRecorded) === 0) {
-        const [eventGame] = await db
+        const [eventGame] = await tx
           .select({ leagueId: games.leagueId })
           .from(games)
           .where(eq(games.id, gameId))
           .limit(1);
-        if (!eventGame) return reply.status(404).send({ message: 'Game not found' });
-        if (!(await lineupRulesForLeague(eventGame.leagueId)).youth) {
-          return reply.status(400).send({
-            message: 'Only Jaunieši games can end a half-inning without recording the remaining outs',
-          });
+        if (!eventGame) throw new ScoringAbortReply(404, 'Game not found');
+        if (!(await lineupRulesForLeague(eventGame.leagueId, tx)).youth) {
+          throw new ScoringAbortReply(400, 'Only Jaunieši games can end a half-inning without recording the remaining outs');
         }
       }
-      const previousEvents = await db.select().from(gameEvents)
+      const previousEvents = await tx.select().from(gameEvents)
         .where(and(eq(gameEvents.gameId, gameId), eq(gameEvents.isDeleted, false), sql`${gameEvents.eventNumber} < ${existing.eventNumber}`))
         .orderBy(gameEvents.eventNumber);
       const eventValidation = validateScoringEventPayload(candidate, { expectedState: computeGameState(previousEvents), strictState: true, requirePickoffPutout: true });
-      if (!eventValidation.ok) return reply.status(400).send({ message: eventValidation.message });
+      if (!eventValidation.ok) throw new ScoringAbortReply(400, eventValidation.message);
       if ('errorFielderIds' in updates || 'errorsOnPlay' in updates) {
         updates.errorsOnPlay = eventValidation.normalizedErrorsOnPlay;
       }
 
-      const activeEventsBeforeUpdate = await db.select().from(gameEvents)
+      const activeEventsBeforeUpdate = await tx.select().from(gameEvents)
         .where(and(eq(gameEvents.gameId, gameId), eq(gameEvents.isDeleted, false)))
         .orderBy(gameEvents.eventNumber);
       const activeEventsAfterUpdate = activeEventsBeforeUpdate.map((event) =>
         event.id === eventId ? { ...event, ...updates } : event,
       );
       const timelineValidation = validateScoringEventTimeline(activeEventsAfterUpdate);
-      if (!timelineValidation.ok) return reply.status(400).send({ message: timelineValidation.message });
+      if (!timelineValidation.ok) throw new ScoringAbortReply(400, timelineValidation.message);
 
       // Basic validation / normalization for scorer attribution.
       if ('runnersScored' in updates || 'runnerScoredReasons' in updates || 'runsScored' in updates) {
@@ -1981,11 +2021,11 @@ export async function adminScoringRoutes(app: FastifyInstance) {
         const rr = Array.isArray(nextReasons) ? nextReasons : [];
 
         if (rr.length !== 0 && rr.length !== rs.length) {
-          return reply.status(400).send({ message: 'runnerScoredReasons length must match runnersScored length (or be empty)' });
+          throw new ScoringAbortReply(400, 'runnerScoredReasons length must match runnersScored length (or be empty)');
         }
         // Enforce consistency: runsScored should match the number of scorers when provided.
         if (rs.length !== nextRunsScored) {
-          return reply.status(400).send({ message: `runsScored (${nextRunsScored}) must equal runnersScored length (${rs.length})` });
+          throw new ScoringAbortReply(400, `runsScored (${nextRunsScored}) must equal runnersScored length (${rs.length})`);
         }
         // If reasons omitted, default to on_play for each scorer.
         if (rr.length === 0 && rs.length > 0 && 'runnerScoredReasons' in updates) {
@@ -1993,15 +2033,15 @@ export async function adminScoringRoutes(app: FastifyInstance) {
         }
       }
 
-      await db.update(gameEvents).set(updates).where(eq(gameEvents.id, eventId));
+      await tx.update(gameEvents).set(updates).where(eq(gameEvents.id, eventId));
 
-      const allEvents = await db.select().from(gameEvents)
+      const allEvents = await tx.select().from(gameEvents)
         .where(and(eq(gameEvents.gameId, gameId), eq(gameEvents.isDeleted, false)))
         .orderBy(gameEvents.eventNumber);
 
       const state = computeGameState(allEvents);
 
-      await db.update(games).set({
+      await tx.update(games).set({
         homeScore: state.homeScore,
         awayScore: state.awayScore,
         currentInning: state.inning,
@@ -2010,14 +2050,20 @@ export async function adminScoringRoutes(app: FastifyInstance) {
         updatedAt: new Date(),
       }).where(eq(games.id, gameId));
 
-      try { getIO().to(`game:${gameId}`).emit('game:update', { state }); } catch {}
+      const [game] = await tx.select({ isFinalized: games.isFinalized })
+        .from(games).where(eq(games.id, gameId)).limit(1);
+      if (game?.isFinalized) {
+        await finalizeGameInTransaction(tx, gameId, request.user?.id, { recompute: true });
+      }
+      return { state };
+      });
 
-      const user = request.user;
-      const [game] = await db.select({ isFinalized: games.isFinalized }).from(games).where(eq(games.id, gameId)).limit(1);
-      if (game?.isFinalized) await finalizeGame(gameId, user?.id, { recompute: true });
-
-      return reply.send({ updated: eventId, state });
+      try { getIO().to(`game:${gameId}`).emit('game:update', { state: result.state }); } catch {}
+      return reply.send({ updated: eventId, state: result.state });
     } catch (err) {
+      if (err instanceof ScoringAbortReply) {
+        return reply.status(err.statusCode).send({ message: err.message });
+      }
       request.log.error(err);
       return reply.status(500).send({ message: 'Failed to edit event' });
     }
@@ -2028,43 +2074,51 @@ export async function adminScoringRoutes(app: FastifyInstance) {
     try {
       const gameId = parseInt(request.params.gameId, 10);
       const eventId = parseInt(request.params.eventId, 10);
-
-      const [existing] = await db.select().from(gameEvents)
-        .where(and(eq(gameEvents.id, eventId), eq(gameEvents.gameId, gameId)))
-        .limit(1);
-      if (!existing) return reply.status(404).send({ message: 'Event not found' });
-
-      await db.update(gameEvents)
-        .set({ isDeleted: true })
-        .where(eq(gameEvents.id, eventId));
-
-      if (existing.eventType === 'substitution') {
-        await rebuildSubstitutionLineupState(gameId, existing.id);
+      if (Number.isNaN(gameId) || Number.isNaN(eventId)) {
+        return reply.status(400).send({ message: 'Invalid game or event id' });
       }
 
-      const allEvents = await db.select().from(gameEvents)
-        .where(and(eq(gameEvents.gameId, gameId), eq(gameEvents.isDeleted, false)))
-        .orderBy(gameEvents.eventNumber);
+      const result = await db.transaction(async (tx) => {
+        await lockScoringGame(tx, gameId);
+        const [existing] = await tx.select().from(gameEvents)
+          .where(and(eq(gameEvents.id, eventId), eq(gameEvents.gameId, gameId)))
+          .limit(1);
+        if (!existing) throw new ScoringAbortReply(404, 'Event not found');
 
-      const state = computeGameState(allEvents);
+        await tx.update(gameEvents)
+          .set({ isDeleted: true })
+          .where(eq(gameEvents.id, eventId));
+        if (existing.eventType === 'substitution') {
+          await rebuildSubstitutionLineupState(gameId, existing.id, tx);
+        }
 
-      await db.update(games).set({
-        homeScore: state.homeScore,
-        awayScore: state.awayScore,
-        currentInning: state.inning,
-        currentHalf: state.half,
-        currentOuts: state.outs,
-        updatedAt: new Date(),
-      }).where(eq(games.id, gameId));
+        const allEvents = await tx.select().from(gameEvents)
+          .where(and(eq(gameEvents.gameId, gameId), eq(gameEvents.isDeleted, false)))
+          .orderBy(gameEvents.eventNumber);
+        const state = computeGameState(allEvents);
+        await tx.update(games).set({
+          homeScore: state.homeScore,
+          awayScore: state.awayScore,
+          currentInning: state.inning,
+          currentHalf: state.half,
+          currentOuts: state.outs,
+          updatedAt: new Date(),
+        }).where(eq(games.id, gameId));
+        const [game] = await tx.select({ isFinalized: games.isFinalized })
+          .from(games).where(eq(games.id, gameId)).limit(1);
+        if (game?.isFinalized) {
+          await finalizeGameInTransaction(tx, gameId, request.user?.id, { recompute: true });
+        }
+        return { state };
+      });
 
-      try { getIO().to(`game:${gameId}`).emit('game:update', { state }); } catch {}
+      try { getIO().to(`game:${gameId}`).emit('game:update', { state: result.state }); } catch {}
 
-      const user = request.user;
-      const [game] = await db.select({ isFinalized: games.isFinalized }).from(games).where(eq(games.id, gameId)).limit(1);
-      if (game?.isFinalized) await finalizeGame(gameId, user?.id, { recompute: true });
-
-      return reply.send({ deleted: eventId, state });
+      return reply.send({ deleted: eventId, state: result.state });
     } catch (err) {
+      if (err instanceof ScoringAbortReply) {
+        return reply.status(err.statusCode).send({ message: err.message });
+      }
       request.log.error(err);
       return reply.status(500).send({ message: 'Failed to delete event' });
     }
@@ -2116,51 +2170,54 @@ export async function adminScoringRoutes(app: FastifyInstance) {
       const user = request.user;
       const halfNorm = normalizeHalf(half);
       const inningNum = Math.max(1, Math.floor(Number(inning)) || 1);
-      const [gameForRules] = await db
-        .select({ leagueId: games.leagueId })
-        .from(games)
-        .where(eq(games.id, gameId))
-        .limit(1);
-      if (!gameForRules) return reply.status(404).send({ message: 'Game not found' });
-      const substitutionRules = await lineupRulesForLeague(gameForRules.leagueId);
-      const normalizedPosition = position == null ? null : Number(position);
-      if (
-        (normalizedPosition == null && !substitutionRules.youth) ||
-        (normalizedPosition != null &&
-          (substitutionRules.youth
-            ? !isNumberedFielder(normalizedPosition)
-            : !Number.isInteger(normalizedPosition) || normalizedPosition < 1 || normalizedPosition > 10))
-      ) {
-        return reply.status(400).send({
-          message: substitutionRules.youth
-            ? 'Jaunieši substitutions use positions 1–9, an extra fielder spot, or bats only'
-            : 'Substitutions require a defensive position 1–10',
-        });
-      }
-
-      const nameRows = await db.select({
-        id: players.id,
-        firstName: players.firstName,
-        lastName: players.lastName,
-      }).from(players).where(inArray(players.id, [outPlayerId, inPlayerId]));
-      const outRow = nameRows.find((r) => r.id === outPlayerId);
-      const inRow = nameRows.find((r) => r.id === inPlayerId);
-      const outName = `${outRow?.firstName ?? ''} ${outRow?.lastName ?? ''}`.trim() || `Player #${outPlayerId}`;
-      const inName = `${inRow?.firstName ?? ''} ${inRow?.lastName ?? ''}`.trim() || `Player #${inPlayerId}`;
-
-      const detail = JSON.stringify({
-        kind: 'player_change',
-        subKind,
-        position: normalizedPosition,
-        teamId,
-        outPlayerId,
-        inPlayerId,
-        outName,
-        inName,
-      });
-
       const newState = await db.transaction(async (tx) => {
+        await lockScoringGame(tx, gameId);
         if (!(await claimClientOp(tx, gameId, request.body.clientOpId))) return { duplicate: true as const };
+
+        const [gameForRules] = await tx
+          .select({ leagueId: games.leagueId, isFinalized: games.isFinalized })
+          .from(games)
+          .where(eq(games.id, gameId))
+          .limit(1);
+        if (!gameForRules) throw new ScoringAbortReply(404, 'Game not found');
+        const substitutionRules = await lineupRulesForLeague(gameForRules.leagueId, tx);
+        const normalizedPosition = position == null ? null : Number(position);
+        if (
+          (normalizedPosition == null && !substitutionRules.youth) ||
+          (normalizedPosition != null &&
+            (substitutionRules.youth
+              ? !isNumberedFielder(normalizedPosition)
+              : !Number.isInteger(normalizedPosition) || normalizedPosition < 1 || normalizedPosition > 10))
+        ) {
+          throw new ScoringAbortReply(
+            400,
+            substitutionRules.youth
+              ? 'Jaunieši substitutions use positions 1–9, an extra fielder spot, or bats only'
+              : 'Substitutions require a defensive position 1–10',
+          );
+        }
+
+        const nameRows = await tx.select({
+          id: players.id,
+          firstName: players.firstName,
+          lastName: players.lastName,
+        }).from(players).where(inArray(players.id, [outPlayerId, inPlayerId]));
+        const outRow = nameRows.find((r) => r.id === outPlayerId);
+        const inRow = nameRows.find((r) => r.id === inPlayerId);
+        const outName = `${outRow?.firstName ?? ''} ${outRow?.lastName ?? ''}`.trim() || `Player #${outPlayerId}`;
+        const inName = `${inRow?.firstName ?? ''} ${inRow?.lastName ?? ''}`.trim() || `Player #${inPlayerId}`;
+
+        const detail = JSON.stringify({
+          kind: 'player_change',
+          subKind,
+          position: normalizedPosition,
+          teamId,
+          outPlayerId,
+          inPlayerId,
+          outName,
+          inName,
+        });
+
         await clearRedoTail(gameId, tx);
 
         const allEventsBefore = await tx.select().from(gameEvents)
@@ -2221,20 +2278,25 @@ export async function adminScoringRoutes(app: FastifyInstance) {
           updatedAt: new Date(),
         }).where(eq(games.id, gameId));
 
-        return state;
+        const [game] = await tx.select({ isFinalized: games.isFinalized })
+          .from(games).where(eq(games.id, gameId)).limit(1);
+        if (game?.isFinalized) {
+          await finalizeGameInTransaction(tx, gameId, user?.id, { recompute: true });
+        }
+        return { state };
       });
 
       if ('duplicate' in newState) return reply.send({ success: true, duplicate: true });
 
       try {
-        getIO().to(`game:${gameId}`).emit('game:update', { state: newState });
+        getIO().to(`game:${gameId}`).emit('game:update', { state: newState.state });
       } catch {}
-
-      const [game] = await db.select({ isFinalized: games.isFinalized }).from(games).where(eq(games.id, gameId)).limit(1);
-      if (game?.isFinalized) await finalizeGame(gameId, user?.id, { recompute: true });
 
       return reply.send({ success: true });
     } catch (err) {
+      if (err instanceof ScoringAbortReply) {
+        return reply.status(err.statusCode).send({ message: err.message });
+      }
       if (err instanceof Error && err.message.startsWith('SUBSTITUTION_VALIDATION:')) {
         return reply.status(400).send({ message: err.message.replace('SUBSTITUTION_VALIDATION:', '') });
       }
@@ -2262,29 +2324,31 @@ export async function adminScoringRoutes(app: FastifyInstance) {
         playerId: Number(change.playerId),
         newPosition: Number(change.newPosition),
       }));
-      const [swapGame] = await db
-        .select({ leagueId: games.leagueId })
-        .from(games)
-        .where(eq(games.id, gameId))
-        .limit(1);
-      if (!swapGame) return reply.status(404).send({ message: 'Game not found' });
-      const swapRules = await lineupRulesForLeague(swapGame.leagueId);
-      if (normalizedChanges.some((change) =>
-        !Number.isInteger(change.playerId) ||
-        !Number.isInteger(change.newPosition) ||
-        (swapRules.youth
-          ? !isNumberedFielder(change.newPosition)
-          : change.newPosition < 1 || change.newPosition > 10)
-      )) {
-        return reply.status(400).send({ message: 'Position changes must include valid player IDs and positions' });
-      }
       if (new Set(normalizedChanges.map((change) => change.playerId)).size !== normalizedChanges.length) {
         return reply.status(400).send({ message: 'Each player can only appear once in a position change' });
       }
 
       const user = request.user;
       const newState = await db.transaction(async (tx) => {
+        await lockScoringGame(tx, gameId);
         if (!(await claimClientOp(tx, gameId, request.body.clientOpId))) return { duplicate: true as const };
+
+        const [swapGame] = await tx
+          .select({ leagueId: games.leagueId })
+          .from(games)
+          .where(eq(games.id, gameId))
+          .limit(1);
+        if (!swapGame) throw new ScoringAbortReply(404, 'Game not found');
+        const swapRules = await lineupRulesForLeague(swapGame.leagueId, tx);
+        if (normalizedChanges.some((change) =>
+          !Number.isInteger(change.playerId) ||
+          !Number.isInteger(change.newPosition) ||
+          (swapRules.youth
+            ? !isNumberedFielder(change.newPosition)
+            : change.newPosition < 1 || change.newPosition > 10)
+        )) {
+          throw new ScoringAbortReply(400, 'Position changes must include valid player IDs and positions');
+        }
         const snapshots: Array<{
           playerId: number;
           teamId: number;
@@ -2421,20 +2485,25 @@ export async function adminScoringRoutes(app: FastifyInstance) {
           updatedAt: new Date(),
         }).where(eq(games.id, gameId));
 
-        return stateAfter;
+        const [game] = await tx.select({ isFinalized: games.isFinalized })
+          .from(games).where(eq(games.id, gameId)).limit(1);
+        if (game?.isFinalized) {
+          await finalizeGameInTransaction(tx, gameId, user?.id, { recompute: true });
+        }
+        return { state: stateAfter };
       });
 
       if ('duplicate' in newState) return reply.send({ success: true, duplicate: true });
 
       try {
-        getIO().to(`game:${gameId}`).emit('game:update', { state: newState });
+        getIO().to(`game:${gameId}`).emit('game:update', { state: newState.state });
       } catch {}
-
-      const [game] = await db.select({ isFinalized: games.isFinalized }).from(games).where(eq(games.id, gameId)).limit(1);
-      if (game?.isFinalized) await finalizeGame(gameId, user?.id, { recompute: true });
 
       return reply.send({ success: true });
     } catch (err) {
+      if (err instanceof ScoringAbortReply) {
+        return reply.status(err.statusCode).send({ message: err.message });
+      }
       if (err instanceof Error && err.message.startsWith('POSITION_SWAP_VALIDATION:')) {
         return reply.status(400).send({ message: err.message.replace('POSITION_SWAP_VALIDATION:', '') });
       }
@@ -2456,33 +2525,33 @@ function boundedScore(raw: unknown): number {
   }>('/:gameId/adjust-score', async (request, reply) => {
     try {
       const gameId = parseInt(request.params.gameId, 10);
+      if (Number.isNaN(gameId)) return reply.status(400).send({ message: 'Invalid game id' });
       const user = request.user;
       const targetHome = boundedScore(request.body?.homeScore);
       const targetAway = boundedScore(request.body?.awayScore);
 
-      const allEvents = await db.select().from(gameEvents)
-        .where(and(eq(gameEvents.gameId, gameId), eq(gameEvents.isDeleted, false)))
-        .orderBy(gameEvents.eventNumber);
+      const result = await db.transaction(async (tx) => {
+        await lockScoringGame(tx, gameId);
+        if (!(await claimClientOp(tx, gameId, request.body?.clientOpId))) {
+          return { duplicate: true as const };
+        }
+        const allEvents = await tx.select().from(gameEvents)
+          .where(and(eq(gameEvents.gameId, gameId), eq(gameEvents.isDeleted, false)))
+          .orderBy(gameEvents.eventNumber);
+        const state = computeGameState(allEvents);
+        const homeDelta = targetHome - state.homeScore;
+        const awayDelta = targetAway - state.awayScore;
+        if (homeDelta === 0 && awayDelta === 0) {
+          return { noOp: true as const, state };
+        }
 
-      const state = computeGameState(allEvents);
-      const homeDelta = targetHome - state.homeScore;
-      const awayDelta = targetAway - state.awayScore;
-
-      if (homeDelta === 0 && awayDelta === 0) {
-        return reply.send({ success: true, noOp: true, state });
-      }
-
-      await clearRedoTail(gameId);
-
-      const [maxEvt] = await db
-        .select({ maxNum: max(gameEvents.eventNumber) })
-        .from(gameEvents)
-        .where(eq(gameEvents.gameId, gameId));
-      const eventNumber = ((maxEvt?.maxNum as number) || 0) + 1;
-
-      const detail = JSON.stringify({ homeDelta, awayDelta });
-      const inserted = await db.transaction(async (tx) => {
-        if (!(await claimClientOp(tx, gameId, request.body?.clientOpId))) return false;
+        await clearRedoTail(gameId, tx);
+        const [maxEvt] = await tx
+          .select({ maxNum: max(gameEvents.eventNumber) })
+          .from(gameEvents)
+          .where(eq(gameEvents.gameId, gameId));
+        const eventNumber = ((maxEvt?.maxNum as number) || 0) + 1;
+        const detail = JSON.stringify({ homeDelta, awayDelta });
         await tx.insert(gameEvents).values({
           gameId,
           eventNumber,
@@ -2505,33 +2574,33 @@ function boundedScore(raw: unknown): number {
           runnerScoredReasons: [],
           createdBy: user?.id ?? null,
         });
-        return true;
+        const allAfter = await tx.select().from(gameEvents)
+          .where(and(eq(gameEvents.gameId, gameId), eq(gameEvents.isDeleted, false)))
+          .orderBy(gameEvents.eventNumber);
+        const newState = computeGameState(allAfter);
+        await tx.update(games).set({
+          homeScore: newState.homeScore,
+          awayScore: newState.awayScore,
+          currentInning: newState.inning,
+          currentHalf: newState.half,
+          currentOuts: newState.outs,
+          updatedAt: new Date(),
+        }).where(eq(games.id, gameId));
+        const [game] = await tx.select({ isFinalized: games.isFinalized })
+          .from(games).where(eq(games.id, gameId)).limit(1);
+        if (game?.isFinalized) {
+          await finalizeGameInTransaction(tx, gameId, user?.id, { recompute: true });
+        }
+        return { state: newState };
       });
-      if (!inserted) return reply.send({ success: true, duplicate: true });
-
-      const allAfter = await db.select().from(gameEvents)
-        .where(and(eq(gameEvents.gameId, gameId), eq(gameEvents.isDeleted, false)))
-        .orderBy(gameEvents.eventNumber);
-
-      const newState = computeGameState(allAfter);
-
-      await db.update(games).set({
-        homeScore: newState.homeScore,
-        awayScore: newState.awayScore,
-        currentInning: newState.inning,
-        currentHalf: newState.half,
-        currentOuts: newState.outs,
-        updatedAt: new Date(),
-      }).where(eq(games.id, gameId));
+      if ('duplicate' in result) return reply.send({ success: true, duplicate: true });
+      if ('noOp' in result) return reply.send({ success: true, noOp: true, state: result.state });
 
       try {
-        getIO().to(`game:${gameId}`).emit('game:update', { state: newState });
+        getIO().to(`game:${gameId}`).emit('game:update', { state: result.state });
       } catch {}
 
-      const [game] = await db.select({ isFinalized: games.isFinalized }).from(games).where(eq(games.id, gameId)).limit(1);
-      if (game?.isFinalized) await finalizeGame(gameId, user?.id, { recompute: true });
-
-      return reply.send({ success: true, state: newState });
+      return reply.send({ success: true, state: result.state });
     } catch (err) {
       request.log.error(err);
       return reply.status(500).send({ message: 'Failed to adjust score' });
@@ -2552,59 +2621,9 @@ function boundedScore(raw: unknown): number {
         return reply.status(400).send({ message: 'Invalid game id' });
       }
 
-      const [game] = await db
-        .select({
-          status: games.status,
-          isFinalized: games.isFinalized,
-          homeTeamId: games.homeTeamId,
-          awayTeamId: games.awayTeamId,
-          leagueId: games.leagueId,
-        })
-        .from(games)
-        .where(eq(games.id, gameId))
-        .limit(1);
-      if (!game) return reply.status(404).send({ message: 'Game not found' });
-      if (game.isFinalized) {
-        return reply.status(400).send({ message: 'Cannot change lineup after the game is finalized' });
-      }
-      if (game.status !== 'live' && game.status !== 'suspended') {
-        return reply
-          .status(400)
-          .send({ message: 'Active lineup can only be edited while the game is live or suspended' });
-      }
-
       const body = request.body ?? {};
       const homeRows = Array.isArray(body.home) ? body.home : [];
       const awayRows = Array.isArray(body.away) ? body.away : [];
-
-      const rules = await lineupRulesForLeague(game.leagueId);
-
-      function validateSide(
-        label: string,
-        rows: Array<{ id: number; playerId: number | null; battingOrder: number; position: number | null }>,
-      ): string | null {
-        if (rows.length === 0) return `${label}: lineup cannot be empty`;
-        const ids = rows.map((r) => Number(r.id));
-        if (ids.some((id) => !Number.isInteger(id) || id <= 0)) return `${label}: invalid lineup row id`;
-        if (new Set(ids).size !== ids.length) return `${label}: duplicate lineup row id`;
-
-        const realPids: number[] = [];
-        for (const r of rows) {
-          if (r.playerId == null) continue;
-          const pid = Number(r.playerId);
-          if (!Number.isInteger(pid) || pid <= 0) return `${label}: invalid player id`;
-          realPids.push(pid);
-        }
-        if (new Set(realPids).size !== realPids.length) return `${label}: duplicate player in payload`;
-
-        const lineupError = validateLineupEntries(rows, rules);
-        return lineupError ? `${label}: ${lineupError}` : null;
-      }
-
-      const errH = validateSide('Home', homeRows);
-      if (errH) return reply.status(400).send({ message: errH });
-      const errA = validateSide('Away', awayRows);
-      if (errA) return reply.status(400).send({ message: errA });
 
       const homePlayerIds = homeRows
         .map((row) => row.playerId == null ? null : Number(row.playerId))
@@ -2618,73 +2637,104 @@ function boundedScore(raw: unknown): number {
         return reply.status(400).send({ message: 'The same player cannot be active for both teams in one game' });
       }
 
-      const [leagueContext] = await db
-        .select({ seasonId: leagues.seasonId })
-        .from(leagues)
-        .where(eq(leagues.id, game.leagueId))
-        .limit(1);
-      if (!leagueContext?.seasonId) {
-        return reply.status(400).send({ message: 'Game league has no season' });
-      }
-      const requestedPlayerIds = [...homePlayerIds, ...awayPlayerIds];
-      if (requestedPlayerIds.length > 0) {
-        const rosterRows = await db
-          .select({ playerId: playerSeasons.playerId, teamId: playerSeasons.teamId })
-          .from(playerSeasons)
-          .where(and(
-            eq(playerSeasons.seasonId, leagueContext.seasonId),
-            inArray(playerSeasons.playerId, requestedPlayerIds),
-            inArray(playerSeasons.teamId, [game.homeTeamId, game.awayTeamId]),
-          ));
-        const rosterKeys = new Set(rosterRows.map((row) => `${row.teamId}:${row.playerId}`));
-        const invalidHome = homePlayerIds.find((id) => !rosterKeys.has(`${game.homeTeamId}:${id}`));
-        if (invalidHome != null) {
-          return reply.status(400).send({ message: `Home player #${invalidHome} is not on the game-season roster` });
-        }
-        const invalidAway = awayPlayerIds.find((id) => !rosterKeys.has(`${game.awayTeamId}:${id}`));
-        if (invalidAway != null) {
-          return reply.status(400).send({ message: `Away player #${invalidAway} is not on the game-season roster` });
-        }
-      }
-
-      const activeHome = await db
-        .select({ id: gameLineups.id })
-        .from(gameLineups)
-        .where(
-          and(
-            eq(gameLineups.gameId, gameId),
-            eq(gameLineups.teamId, game.homeTeamId),
-            eq(gameLineups.isActive, true),
-          ),
-        );
-      const activeAway = await db
-        .select({ id: gameLineups.id })
-        .from(gameLineups)
-        .where(
-          and(
-            eq(gameLineups.gameId, gameId),
-            eq(gameLineups.teamId, game.awayTeamId),
-            eq(gameLineups.isActive, true),
-          ),
-        );
-
-      const expectedHomeIds = new Set(activeHome.map((r) => r.id));
-      const expectedAwayIds = new Set(activeAway.map((r) => r.id));
       const bodyHomeIds = new Set(homeRows.map((r) => Number(r.id)));
       const bodyAwayIds = new Set(awayRows.map((r) => Number(r.id)));
 
-      if (expectedHomeIds.size !== bodyHomeIds.size || ![...expectedHomeIds].every((id) => bodyHomeIds.has(id))) {
-        return reply.status(400).send({
-          message: 'Home payload must list exactly one entry per active lineup row (same row ids as the server)',
-        });
-      }
-      if (expectedAwayIds.size !== bodyAwayIds.size || ![...expectedAwayIds].every((id) => bodyAwayIds.has(id))) {
-        return reply.status(400).send({
-          message: 'Away payload must list exactly one entry per active lineup row (same row ids as the server)',
-        });
-      }
-
       await db.transaction(async (tx) => {
+        await lockScoringGame(tx, gameId);
+        const [lockedGame] = await tx.select({
+          status: games.status,
+          isFinalized: games.isFinalized,
+          homeTeamId: games.homeTeamId,
+          awayTeamId: games.awayTeamId,
+          leagueId: games.leagueId,
+        }).from(games).where(eq(games.id, gameId)).limit(1);
+        if (!lockedGame) throw new ScoringAbortReply(404, 'Game not found');
+        if (lockedGame.isFinalized) {
+          throw new ScoringAbortReply(400, 'Cannot change lineup after the game is finalized');
+        }
+        if (lockedGame.status !== 'live' && lockedGame.status !== 'suspended') {
+          throw new ScoringAbortReply(400, 'Active lineup can only be edited while the game is live or suspended');
+        }
+
+        const rules = await lineupRulesForLeague(lockedGame.leagueId, tx);
+
+        function validateSide(
+          label: string,
+          rows: Array<{ id: number; playerId: number | null; battingOrder: number; position: number | null }>,
+        ): string | null {
+          if (rows.length === 0) return `${label}: lineup cannot be empty`;
+          const ids = rows.map((r) => Number(r.id));
+          if (ids.some((id) => !Number.isInteger(id) || id <= 0)) return `${label}: invalid lineup row id`;
+          if (new Set(ids).size !== ids.length) return `${label}: duplicate lineup row id`;
+
+          const realPids: number[] = [];
+          for (const r of rows) {
+            if (r.playerId == null) continue;
+            const pid = Number(r.playerId);
+            if (!Number.isInteger(pid) || pid <= 0) return `${label}: invalid player id`;
+            realPids.push(pid);
+          }
+          if (new Set(realPids).size !== realPids.length) return `${label}: duplicate player in payload`;
+
+          const lineupError = validateLineupEntries(rows, rules);
+          return lineupError ? `${label}: ${lineupError}` : null;
+        }
+
+        const errH = validateSide('Home', homeRows);
+        if (errH) throw new ScoringAbortReply(400, errH);
+        const errA = validateSide('Away', awayRows);
+        if (errA) throw new ScoringAbortReply(400, errA);
+
+        const [leagueContext] = await tx
+          .select({ seasonId: leagues.seasonId })
+          .from(leagues)
+          .where(eq(leagues.id, lockedGame.leagueId))
+          .limit(1);
+        if (!leagueContext?.seasonId) {
+          throw new ScoringAbortReply(400, 'Game league has no season');
+        }
+        const requestedPlayerIds = [...homePlayerIds, ...awayPlayerIds];
+        if (requestedPlayerIds.length > 0) {
+          const rosterRows = await tx
+            .select({ playerId: playerSeasons.playerId, teamId: playerSeasons.teamId })
+            .from(playerSeasons)
+            .where(and(
+              eq(playerSeasons.seasonId, leagueContext.seasonId),
+              inArray(playerSeasons.playerId, requestedPlayerIds),
+              inArray(playerSeasons.teamId, [lockedGame.homeTeamId, lockedGame.awayTeamId]),
+            ));
+          const rosterKeys = new Set(rosterRows.map((row) => `${row.teamId}:${row.playerId}`));
+          const invalidHome = homePlayerIds.find((id) => !rosterKeys.has(`${lockedGame.homeTeamId}:${id}`));
+          if (invalidHome != null) {
+            throw new ScoringAbortReply(400, `Home player #${invalidHome} is not on the game-season roster`);
+          }
+          const invalidAway = awayPlayerIds.find((id) => !rosterKeys.has(`${lockedGame.awayTeamId}:${id}`));
+          if (invalidAway != null) {
+            throw new ScoringAbortReply(400, `Away player #${invalidAway} is not on the game-season roster`);
+          }
+        }
+
+        const [lockedHome, lockedAway] = await Promise.all([
+          tx.select({ id: gameLineups.id }).from(gameLineups).where(and(
+            eq(gameLineups.gameId, gameId),
+            eq(gameLineups.teamId, lockedGame.homeTeamId),
+            eq(gameLineups.isActive, true),
+          )),
+          tx.select({ id: gameLineups.id }).from(gameLineups).where(and(
+            eq(gameLineups.gameId, gameId),
+            eq(gameLineups.teamId, lockedGame.awayTeamId),
+            eq(gameLineups.isActive, true),
+          )),
+        ]);
+        const lockedHomeIds = new Set(lockedHome.map((row) => row.id));
+        const lockedAwayIds = new Set(lockedAway.map((row) => row.id));
+        if (lockedHomeIds.size !== bodyHomeIds.size || ![...lockedHomeIds].every((id) => bodyHomeIds.has(id))) {
+          throw new ScoringAbortReply(409, 'Home lineup changed while this form was open. Refresh and try again.');
+        }
+        if (lockedAwayIds.size !== bodyAwayIds.size || ![...lockedAwayIds].every((id) => bodyAwayIds.has(id))) {
+          throw new ScoringAbortReply(409, 'Away lineup changed while this form was open. Refresh and try again.');
+        }
         for (const row of homeRows) {
           await tx
             .update(gameLineups)
@@ -2697,7 +2747,7 @@ function boundedScore(raw: unknown): number {
               and(
                 eq(gameLineups.id, row.id),
                 eq(gameLineups.gameId, gameId),
-                eq(gameLineups.teamId, game.homeTeamId),
+                eq(gameLineups.teamId, lockedGame.homeTeamId),
                 eq(gameLineups.isActive, true),
               ),
             );
@@ -2714,7 +2764,7 @@ function boundedScore(raw: unknown): number {
               and(
                 eq(gameLineups.id, row.id),
                 eq(gameLineups.gameId, gameId),
-                eq(gameLineups.teamId, game.awayTeamId),
+                eq(gameLineups.teamId, lockedGame.awayTeamId),
                 eq(gameLineups.isActive, true),
               ),
             );
@@ -2727,6 +2777,9 @@ function boundedScore(raw: unknown): number {
 
       return reply.send({ success: true });
     } catch (err) {
+      if (err instanceof ScoringAbortReply) {
+        return reply.status(err.statusCode).send({ message: err.message });
+      }
       request.log.error(err);
       return reply.status(500).send({ message: 'Failed to update active lineup' });
     }
@@ -2736,22 +2789,25 @@ function boundedScore(raw: unknown): number {
   app.post<{ Params: { gameId: string } }>('/:gameId/finalize', async (request, reply) => {
     try {
       const gameId = parseInt(request.params.gameId, 10);
+      if (Number.isNaN(gameId)) return reply.status(400).send({ message: 'Invalid game id' });
       const user = request.user;
 
       const result = await finalizeGame(gameId, user?.id);
 
       try {
-        const finalGame = await getGameCore(gameId);
         getIO().to(`game:${gameId}`).emit('game:final', {
           gameId,
-          homeScore: finalGame?.homeScore,
-          awayScore: finalGame?.awayScore,
+          homeScore: result.homeScore,
+          awayScore: result.awayScore,
           status: 'final',
         });
       } catch {}
 
       return reply.send(result);
     } catch (err: any) {
+      if (err instanceof FinalizeGameError) {
+        return reply.status(err.statusCode).send({ message: err.message });
+      }
       request.log.error(err);
       return reply.status(500).send({ message: err.message || 'Failed to finalize game' });
     }

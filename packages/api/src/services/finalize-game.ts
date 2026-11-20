@@ -21,6 +21,18 @@ import {
   pickoffCreditPlayerId,
 } from '@lbss/shared';
 import { firstRowFromExecute, rowsFromExecute } from '../lib/pg-result.js';
+import { lockScoringGame } from '../lib/scoring-game-lock.js';
+import { gameTransitionError } from '../lib/game-lifecycle.js';
+
+export type ScoringDbConnection = any;
+
+export class FinalizeGameError extends Error {
+  readonly statusCode: number;
+  constructor(statusCode: number, message: string) {
+    super(message);
+    this.statusCode = statusCode;
+  }
+}
 
 /* ═══════════════════════════════════════════════════════════════
    Event-type classification helpers (MLB Rules 9.02 – 9.16)
@@ -281,28 +293,62 @@ function scoreDeltasFromEvent(e: any): { home: number; away: number } {
    Main finalize function
    ═══════════════════════════════════════════════════════════════ */
 
-export type FinalizeGameOptions = { recompute?: boolean };
+export type FinalizeGameOptions = {
+  recompute?: boolean;
+  /** Test-only hook invoked inside the transaction after derived rows & game lock, before season/standings recompute completes. */
+  beforeCommitHook?: (conn: ScoringDbConnection) => Promise<void> | void;
+};
 
 export async function finalizeGame(gameId: number, userId?: number, options?: FinalizeGameOptions) {
-  const [game] = await db
+  return db.transaction(async (tx) => {
+    await lockScoringGame(tx, gameId);
+    return finalizeGameInTransaction(tx, gameId, userId, options);
+  });
+}
+
+export async function finalizeGameInTransaction(
+  conn: ScoringDbConnection,
+  gameId: number,
+  userId?: number,
+  options?: FinalizeGameOptions,
+) {
+  const [game] = await conn
     .select(finalizeGameRowSelect)
     .from(games)
     .where(eq(games.id, gameId))
     .limit(1);
-  if (!game) throw new Error('Game not found');
-  if (game.isFinalized && !options?.recompute) throw new Error('Game already finalized');
+  if (!game) throw new FinalizeGameError(404, 'Game not found');
 
-  const events = await db
+  if (options?.recompute) {
+    if (!game.isFinalized) {
+      throw new FinalizeGameError(409, 'Cannot recompute an unfinalized game');
+    }
+  } else {
+    const transitionError = gameTransitionError({
+      currentStatus: game.status,
+      targetStatus: 'final',
+      isFinalized: game.isFinalized,
+      source: 'finalize',
+    });
+    if (transitionError) {
+      throw new FinalizeGameError(409, transitionError);
+    }
+  }
+
+  const events: Array<typeof gameEvents.$inferSelect> = await conn
     .select()
     .from(gameEvents)
     .where(and(eq(gameEvents.gameId, gameId), eq(gameEvents.isDeleted, false)))
     .orderBy(gameEvents.eventNumber);
 
-  const lineups = await db.select().from(gameLineups).where(eq(gameLineups.gameId, gameId));
+  const lineups: Array<typeof gameLineups.$inferSelect> = await conn
+    .select()
+    .from(gameLineups)
+    .where(eq(gameLineups.gameId, gameId));
 
-  await db.delete(playerGameBatting).where(eq(playerGameBatting.gameId, gameId));
-  await db.delete(playerGamePitching).where(eq(playerGamePitching.gameId, gameId));
-  await db.delete(playerGameFielding).where(eq(playerGameFielding.gameId, gameId));
+  await conn.delete(playerGameBatting).where(eq(playerGameBatting.gameId, gameId));
+  await conn.delete(playerGamePitching).where(eq(playerGamePitching.gameId, gameId));
+  await conn.delete(playerGameFielding).where(eq(playerGameFielding.gameId, gameId));
 
   const playerTeamMap = new Map<number, number>();
   for (const entry of lineups) {
@@ -358,7 +404,7 @@ export async function finalizeGame(gameId: number, userId?: number, options?: Fi
       groundedIntoTriplePlay,
     } = line;
 
-    await db
+    await conn
       .insert(playerGameBatting)
       .values({
         gameId,
@@ -499,7 +545,7 @@ export async function finalizeGame(gameId: number, userId?: number, options?: Fi
     const isStarter = lineups.some(l => l.playerId === pitcherId && l.isStarter && l.position === 1);
     const gameScoreVal = 50 + outsRecorded - 2 * (hitsAllowed + walksAllowed) - earnedRuns + pStrikeouts;
 
-    await db
+    await conn
       .insert(playerGamePitching)
       .values({
         gameId, playerId: pitcherId, teamId,
@@ -549,7 +595,7 @@ export async function finalizeGame(gameId: number, userId?: number, options?: Fi
   }
 
   /* ── Pitcher Win / Loss decisions ── */
-  await assignPitcherDecisions(gameId, game, eventsForPitching, lineups, pitcherAgg, playerTeamMap);
+  await assignPitcherDecisions(conn, gameId, game, eventsForPitching, lineups, pitcherAgg, playerTeamMap);
 
   /* ── Per-game FIELDING stats ── */
 
@@ -751,7 +797,7 @@ export async function finalizeGame(gameId: number, userId?: number, options?: Fi
       inningsVal = 0;
     }
 
-    await db
+    await conn
       .insert(playerGameFielding)
       .values({
         gameId, playerId: pid, teamId,
@@ -774,56 +820,47 @@ export async function finalizeGame(gameId: number, userId?: number, options?: Fi
       });
   }
 
-  let lockedGame = false;
-  let seasonIdVal: number | undefined;
-  try {
-    /* ── Lock game before aggregate recompute so this game is included in season totals. ── */
-    if (!options?.recompute) {
-      await db
-        .update(games)
-        .set({
-          isFinalized: true,
-          status: 'final',
-          finalizedAt: new Date(),
-          finalizedBy: userId ?? null,
-          updatedAt: new Date(),
-        })
-        .where(eq(games.id, gameId));
-      lockedGame = true;
-    }
-
-    /* ── Recompute season aggregates ── */
-    const seasonResult = await db.execute(
-      sql`SELECT s.id FROM seasons s JOIN leagues l ON l.season_id = s.id WHERE l.id = ${game.leagueId} LIMIT 1`
-    );
-    seasonIdVal = firstRowFromExecute<{ id: number }>(seasonResult)?.id;
-
-    if (seasonIdVal) {
-      await recomputeSeasonBatting(seasonIdVal);
-      await recomputeSeasonPitching(seasonIdVal);
-      await recomputeSeasonFielding(seasonIdVal);
-    } else {
-      throw new Error(`Could not find seasonId for leagueId=${game.leagueId}. Season stats were not recomputed.`);
-    }
-
-    await recomputeStandings(game.leagueId);
-  } catch (err) {
-    if (lockedGame) {
-      await db
-        .update(games)
-        .set({
-          isFinalized: false,
-          status: game.status ?? 'live',
-          finalizedAt: null,
-          finalizedBy: null,
-          updatedAt: new Date(),
-        })
-        .where(eq(games.id, gameId));
-    }
-    throw err;
+  /* ── Lock game before aggregate recompute so this game is included in season totals. ── */
+  if (!options?.recompute) {
+    await conn
+      .update(games)
+      .set({
+        isFinalized: true,
+        status: 'final',
+        finalizedAt: new Date(),
+        finalizedBy: userId ?? null,
+        updatedAt: new Date(),
+      })
+      .where(eq(games.id, gameId));
   }
 
-  return { success: true, gameId, seasonRecomputed: !!seasonIdVal };
+  /* ── Recompute season aggregates ── */
+  const seasonResult = await conn.execute(
+    sql`SELECT s.id FROM seasons s JOIN leagues l ON l.season_id = s.id WHERE l.id = ${game.leagueId} LIMIT 1`
+  );
+  const seasonIdVal = firstRowFromExecute<{ id: number }>(seasonResult)?.id;
+
+  if (seasonIdVal) {
+    await recomputeSeasonBatting(seasonIdVal, conn);
+    await recomputeSeasonPitching(seasonIdVal, conn);
+    await recomputeSeasonFielding(seasonIdVal, conn);
+  } else {
+    throw new Error(`Could not find seasonId for leagueId=${game.leagueId}. Season stats were not recomputed.`);
+  }
+
+  await recomputeStandings(game.leagueId, conn);
+
+  if (options?.beforeCommitHook) {
+    await options.beforeCommitHook(conn);
+  }
+
+  return {
+    success: true,
+    gameId,
+    seasonRecomputed: !!seasonIdVal,
+    homeScore: game.homeScore ?? 0,
+    awayScore: game.awayScore ?? 0,
+  };
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -864,6 +901,7 @@ function resolvePitcherOfRecord(
 }
 
 async function assignPitcherDecisions(
+  conn: ScoringDbConnection,
   gameId: number,
   game: any,
   events: any[],
@@ -876,7 +914,7 @@ async function assignPitcherDecisions(
   if (homeScore === awayScore) return; // tie, no decision
 
   // Clear any previous decisions for this game (important when re-finalizing / backfilling).
-  await db.update(playerGamePitching)
+  await conn.update(playerGamePitching)
     .set({ decision: null })
     .where(eq(playerGamePitching.gameId, gameId));
 
@@ -971,7 +1009,7 @@ async function assignPitcherDecisions(
   );
 
   if (winPitcherId) {
-    await db.update(playerGamePitching)
+    await conn.update(playerGamePitching)
       .set({ decision: 'W' })
       .where(and(
         eq(playerGamePitching.gameId, gameId),
@@ -979,7 +1017,7 @@ async function assignPitcherDecisions(
       ));
   }
   if (losePitcherId) {
-    await db.update(playerGamePitching)
+    await conn.update(playerGamePitching)
       .set({ decision: 'L' })
       .where(and(
         eq(playerGamePitching.gameId, gameId),
@@ -992,8 +1030,8 @@ async function assignPitcherDecisions(
    Season aggregate recomputation
    ═══════════════════════════════════════════════════════════════ */
 
-export async function recomputeSeasonBatting(seasonId: number) {
-  await db.execute(sql`
+export async function recomputeSeasonBatting(seasonId: number, conn: ScoringDbConnection = db) {
+  await conn.execute(sql`
     INSERT INTO player_season_batting (
       player_id, team_id, season_id, games, plate_appearances, at_bats,
       hits, singles, doubles, triples, home_runs, rbi, runs, walks, strikeouts,
@@ -1102,7 +1140,7 @@ export async function recomputeSeasonBatting(seasonId: number) {
       babip = EXCLUDED.babip,
       last_computed_at = NOW()
   `);
-  await db.execute(sql`
+  await conn.execute(sql`
     DELETE FROM player_season_batting psb
     WHERE psb.season_id = ${seasonId}
       AND NOT EXISTS (
@@ -1125,13 +1163,13 @@ export async function recomputeSeasonBatting(seasonId: number) {
   `);
 }
 
-export async function recomputeSeasonPitching(seasonId: number) {
+export async function recomputeSeasonPitching(seasonId: number, conn: ScoringDbConnection = db) {
   // IP is stored in baseball notation (7.1 = 7⅓ innings, 6.2 = 6⅔).
   // We must convert to total outs before summing, then convert back.
   // total_outs = TRUNC(ip)*3 + ROUND((ip - TRUNC(ip))*10)
   // ip_display  = TRUNC(total_outs/3) + (total_outs%3)*0.1
   // For rate stats: actual_innings = total_outs / 3.0
-  await db.execute(sql`
+  await conn.execute(sql`
     WITH pitcher_agg AS (
       SELECT
         pgp.player_id, pgp.team_id, l.season_id,
@@ -1291,7 +1329,7 @@ export async function recomputeSeasonPitching(seasonId: number) {
       babip = EXCLUDED.babip,
       last_computed_at = NOW()
   `);
-  await db.execute(sql`
+  await conn.execute(sql`
     DELETE FROM player_season_pitching psp
     WHERE psp.season_id = ${seasonId}
       AND NOT EXISTS (
@@ -1314,8 +1352,8 @@ export async function recomputeSeasonPitching(seasonId: number) {
   `);
 }
 
-export async function recomputeSeasonFielding(seasonId: number) {
-  await db.execute(sql`
+export async function recomputeSeasonFielding(seasonId: number, conn: ScoringDbConnection = db) {
+  await conn.execute(sql`
     WITH fielding_agg AS (
       SELECT
         pgf.player_id,
@@ -1379,7 +1417,7 @@ export async function recomputeSeasonFielding(seasonId: number) {
       fielding_pct = EXCLUDED.fielding_pct,
       last_computed_at = NOW()
   `);
-  await db.execute(sql`
+  await conn.execute(sql`
     DELETE FROM player_season_fielding psf
     WHERE psf.season_id = ${seasonId}
       AND NOT EXISTS (
@@ -1402,8 +1440,13 @@ export async function recomputeSeasonFielding(seasonId: number) {
   `);
 }
 
-export async function recomputeStandings(leagueId: number) {
-  const finalGames = await db
+export async function recomputeStandings(leagueId: number, conn: ScoringDbConnection = db) {
+  const finalGames: Array<{
+    homeTeamId: number;
+    awayTeamId: number;
+    homeScore: number | null;
+    awayScore: number | null;
+  }> = await conn
     .select(standingsFinalGameSelect)
     .from(games)
     .where(and(
@@ -1419,7 +1462,7 @@ export async function recomputeStandings(leagueId: number) {
       )`,
     ));
 
-  const leagueTeams = await db.execute(
+  const leagueTeams = await conn.execute(
     sql`SELECT t.id FROM teams t JOIN league_teams lt ON lt.team_id = t.id WHERE lt.league_id = ${leagueId}`
   );
   const teamIds = rowsFromExecute<{ id: number }>(leagueTeams).map((r) => r.id);
@@ -1468,7 +1511,7 @@ export async function recomputeStandings(leagueId: number) {
     const winPct = gamesPlayed > 0 ? (s.wins / (s.wins + s.losses || 1)).toFixed(3) : '0.000';
     const gb = ((bestWins - s.wins) + (s.losses - bestLosses)) / 2;
 
-    await db
+    await conn
       .insert(standings)
       .values({
         leagueId, teamId,

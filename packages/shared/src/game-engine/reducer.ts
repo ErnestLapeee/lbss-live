@@ -73,13 +73,14 @@ export function applyEvent(state: GameState, event: GameEvent): GameState {
     const awayDelta = Number(detail.awayDelta) || 0;
     next.homeScore += homeDelta;
     next.awayScore += awayDelta;
+    const inn = Math.max(1, event.inning || 1);
     if (homeDelta !== 0) {
-      while (next.homeLineScore.length < event.inning) next.homeLineScore.push(0);
-      next.homeLineScore[event.inning - 1] += homeDelta;
+      while (next.homeLineScore.length < inn) next.homeLineScore.push(0);
+      next.homeLineScore[inn - 1] += homeDelta;
     }
     if (awayDelta !== 0) {
-      while (next.awayLineScore.length < event.inning) next.awayLineScore.push(0);
-      next.awayLineScore[event.inning - 1] += awayDelta;
+      while (next.awayLineScore.length < inn) next.awayLineScore.push(0);
+      next.awayLineScore[inn - 1] += awayDelta;
     }
     next.eventCount = state.eventCount + 1;
     return next;
