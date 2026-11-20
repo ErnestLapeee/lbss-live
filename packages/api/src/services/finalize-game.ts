@@ -498,12 +498,17 @@ export async function finalizeGameInTransaction(
       inning: e.inning,
       half: e.half,
       pitcherId: e.pitcherId,
+      batterId: e.batterId,
       runsScored: e.runsScored,
       outsRecorded: e.outsRecorded,
       runnerScoredReasons: e.runnerScoredReasons as string[] | null,
       errorsOnPlay: e.errorsOnPlay,
       eventDetail: e.eventDetail,
       hitType: e.hitType,
+      runnerFirstId: e.runnerFirstId,
+      runnerSecondId: e.runnerSecondId,
+      runnerThirdId: e.runnerThirdId,
+      runnersScored: Array.isArray(e.runnersScored) ? e.runnersScored as number[] : [],
     })),
   );
 
@@ -539,6 +544,8 @@ export async function finalizeGameInTransaction(
     const pFlyOuts = a.flyOuts;
     const pStrikeoutsLooking = a.strikeoutsLooking;
     const pStrikeoutsSwinging = a.strikeoutsSwinging;
+    const inheritedRunners = a.inheritedRunners;
+    const inheritedRunnersScored = a.inheritedRunnersScored;
 
     const ip = inningsFromOuts(outsRecorded);
 
@@ -564,6 +571,8 @@ export async function finalizeGameInTransaction(
         groundOuts: pGroundOuts, flyOuts: pFlyOuts,
         strikeoutsLooking: pStrikeoutsLooking,
         strikeoutsSwinging: pStrikeoutsSwinging,
+        inheritedRunners,
+        inheritedRunnersScored,
         qualityStarts: 0,
         shutouts: 0,
         completeGames: 0,
@@ -586,6 +595,8 @@ export async function finalizeGameInTransaction(
           groundOuts: pGroundOuts, flyOuts: pFlyOuts,
           strikeoutsLooking: pStrikeoutsLooking,
           strikeoutsSwinging: pStrikeoutsSwinging,
+          inheritedRunners,
+          inheritedRunnersScored,
           qualityStarts: 0,
           shutouts: 0,
           completeGames: 0,

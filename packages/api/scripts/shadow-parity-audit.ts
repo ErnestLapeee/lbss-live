@@ -151,12 +151,17 @@ async function main() {
         inning: e.inning,
         half: e.half,
         pitcherId: e.pitcherId,
+        batterId: e.batterId,
         runsScored: e.runsScored,
         outsRecorded: e.outsRecorded,
         runnerScoredReasons: e.runnerScoredReasons as string[] | null,
         errorsOnPlay: e.errorsOnPlay,
         eventDetail: e.eventDetail,
         hitType: e.hitType,
+        runnerFirstId: e.runnerFirstId,
+        runnerSecondId: e.runnerSecondId,
+        runnerThirdId: e.runnerThirdId,
+        runnersScored: Array.isArray(e.runnersScored) ? e.runnersScored as number[] : [],
       })),
     );
     const storedPitchingByPlayer = new Map(storedPitching.map((r) => [r.playerId, r]));

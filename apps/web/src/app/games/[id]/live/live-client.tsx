@@ -678,12 +678,17 @@ export function LiveGameClient({
         inning: e.inning,
         half: e.half,
         pitcherId: e.pitcherId,
+        batterId: e.batterId,
         runsScored: e.runsScored,
         outsRecorded: e.outsRecorded,
         runnerScoredReasons: e.runnerScoredReasons ?? null,
         errorsOnPlay: e.errorsOnPlay ?? null,
         eventDetail: e.eventDetail,
         hitType: e.hitType ?? null,
+        runnerFirstId: e.runnerFirstId,
+        runnerSecondId: e.runnerSecondId,
+        runnerThirdId: e.runnerThirdId,
+        runnersScored: e.runnersScored,
       })),
     );
     const map: Record<

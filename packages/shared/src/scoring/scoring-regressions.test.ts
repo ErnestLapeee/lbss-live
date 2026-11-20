@@ -274,3 +274,356 @@ const ended = applyEvent(initialGameState(), {
   createdBy: null,
 });
 assert(ended.half === 'bot' && ended.outs === 0 && ended.inning === 1, 'ending a half with no extra outs still flips the inning');
+
+// ── Inherited runners (WBSC 18.4.1): charge the pitcher who allowed the runner to reach ──
+const bases = (first: number | null, second: number | null = null, third: number | null = null) => ({
+  runnerFirstId: first,
+  runnerSecondId: second,
+  runnerThirdId: third,
+});
+
+const inheritedScore = aggregatePitchingStatsByPitcher([
+  {
+    eventNumber: 1,
+    eventType: 'pitch',
+    inning: 1,
+    half: 'top',
+    pitcherId: 1,
+    batterId: 10,
+    runsScored: 0,
+    outsRecorded: 0,
+    eventDetail: 'ball',
+    ...bases(null),
+    runnersScored: [],
+  },
+  {
+    eventNumber: 2,
+    eventType: 'walk',
+    inning: 1,
+    half: 'top',
+    pitcherId: 1,
+    batterId: 10,
+    runsScored: 0,
+    outsRecorded: 0,
+    ...bases(10),
+    runnersScored: [],
+  },
+  {
+    eventNumber: 3,
+    eventType: 'pitch',
+    inning: 1,
+    half: 'top',
+    pitcherId: 2,
+    batterId: 20,
+    runsScored: 0,
+    outsRecorded: 0,
+    eventDetail: 'called_strike',
+    ...bases(10),
+    runnersScored: [],
+  },
+  {
+    eventNumber: 4,
+    eventType: 'single',
+    inning: 1,
+    half: 'top',
+    pitcherId: 2,
+    batterId: 20,
+    runsScored: 1,
+    outsRecorded: 0,
+    errorsOnPlay: 0,
+    ...bases(20),
+    runnersScored: [10],
+  },
+]);
+assert(inheritedScore.get(1)?.runsAllowed === 1 && inheritedScore.get(1)?.earnedRuns === 1, 'the pitcher who walked the runner is charged the earned run');
+assert(inheritedScore.get(1)?.inheritedRunners === 0 && inheritedScore.get(1)?.inheritedRunnersScored === 0, 'the starting pitcher does not inherit his own runner');
+assert(inheritedScore.get(2)?.runsAllowed === 0 && inheritedScore.get(2)?.earnedRuns === 0, 'the reliever who allows an inherited runner to score is not charged the run');
+assert(inheritedScore.get(2)?.inheritedRunners === 1 && inheritedScore.get(2)?.inheritedRunnersScored === 1, 'a reliever is charged IR and IRS when the inherited runner scores');
+assert((inheritedScore.get(1)?.earnedRuns ?? 0) + (inheritedScore.get(2)?.earnedRuns ?? 0) === 1, 'moving the run keeps the same earned-run total');
+
+const inheritedLeft = aggregatePitchingStatsByPitcher([
+  {
+    eventNumber: 1,
+    eventType: 'walk',
+    inning: 1,
+    half: 'top',
+    pitcherId: 1,
+    batterId: 10,
+    runsScored: 0,
+    outsRecorded: 0,
+    ...bases(10),
+    runnersScored: [],
+  },
+  {
+    eventNumber: 2,
+    eventType: 'strikeout',
+    inning: 1,
+    half: 'top',
+    pitcherId: 2,
+    batterId: 20,
+    runsScored: 0,
+    outsRecorded: 1,
+    ...bases(10),
+    runnersScored: [],
+  },
+]);
+assert(inheritedLeft.get(2)?.inheritedRunners === 1 && inheritedLeft.get(2)?.inheritedRunnersScored === 0, 'a runner left on base is inherited but not scored');
+assert(inheritedLeft.get(1)?.runsAllowed === 0 && inheritedLeft.get(2)?.runsAllowed === 0, 'a runner who does not score charges no run');
+
+const unearnedInherited = aggregatePitchingStatsByPitcher([
+  {
+    eventNumber: 1,
+    eventType: 'walk',
+    inning: 1,
+    half: 'top',
+    pitcherId: 1,
+    batterId: 10,
+    runsScored: 0,
+    outsRecorded: 0,
+    ...bases(10),
+    runnersScored: [],
+  },
+  {
+    eventNumber: 2,
+    eventType: 'advance_on_error',
+    inning: 1,
+    half: 'top',
+    pitcherId: 2,
+    batterId: 10,
+    runsScored: 1,
+    outsRecorded: 0,
+    ...bases(null),
+    runnersScored: [10],
+    runnerScoredReasons: ['advance_on_error'],
+  },
+]);
+assert(unearnedInherited.get(1)?.runsAllowed === 1 && unearnedInherited.get(1)?.earnedRuns === 0, 'an unearned inherited run stays unearned when it moves to the responsible pitcher');
+assert(unearnedInherited.get(2)?.runsAllowed === 0 && unearnedInherited.get(2)?.earnedRuns === 0 && unearnedInherited.get(2)?.inheritedRunnersScored === 1, 'the reliever keeps the IRS without the unearned run');
+
+const fielderChoice = aggregatePitchingStatsByPitcher([
+  {
+    eventNumber: 1,
+    eventType: 'walk',
+    inning: 1,
+    half: 'top',
+    pitcherId: 1,
+    batterId: 10,
+    runsScored: 0,
+    outsRecorded: 0,
+    ...bases(10),
+    runnersScored: [],
+  },
+  {
+    eventNumber: 2,
+    eventType: 'fielders_choice',
+    inning: 1,
+    half: 'top',
+    pitcherId: 2,
+    batterId: 20,
+    runsScored: 0,
+    outsRecorded: 1,
+    hitType: 'grounder',
+    ...bases(20),
+    runnersScored: [],
+  },
+  {
+    eventNumber: 3,
+    eventType: 'single',
+    inning: 1,
+    half: 'top',
+    pitcherId: 2,
+    batterId: 30,
+    runsScored: 1,
+    outsRecorded: 0,
+    errorsOnPlay: 0,
+    ...bases(30),
+    runnersScored: [20],
+  },
+]);
+assert(fielderChoice.get(1)?.runsAllowed === 1 && fielderChoice.get(1)?.earnedRuns === 1, 'a fielder\'s choice transfers the inherited runner\'s run to the original pitcher');
+assert(fielderChoice.get(2)?.runsAllowed === 0 && fielderChoice.get(2)?.earnedRuns === 0, 'the reliever is not charged for the transferred inherited runner');
+assert(fielderChoice.get(2)?.inheritedRunners === 1 && fielderChoice.get(2)?.inheritedRunnersScored === 1, 'the batter-runner stays inherited after the fielder\'s choice');
+
+const pinchRunner = aggregatePitchingStatsByPitcher([
+  {
+    eventNumber: 1,
+    eventType: 'walk',
+    inning: 1,
+    half: 'top',
+    pitcherId: 1,
+    batterId: 10,
+    runsScored: 0,
+    outsRecorded: 0,
+    ...bases(10),
+    runnersScored: [],
+  },
+  {
+    eventNumber: 2,
+    eventType: 'substitution',
+    inning: 1,
+    half: 'top',
+    pitcherId: null,
+    batterId: null,
+    runsScored: 0,
+    outsRecorded: 0,
+    eventDetail: JSON.stringify({ kind: 'player_change', outPlayerId: 10, inPlayerId: 55 }),
+    ...bases(10),
+    runnersScored: [],
+  },
+  {
+    eventNumber: 3,
+    eventType: 'single',
+    inning: 1,
+    half: 'top',
+    pitcherId: 2,
+    batterId: 30,
+    runsScored: 1,
+    outsRecorded: 0,
+    errorsOnPlay: 0,
+    ...bases(30),
+    runnersScored: [55],
+  },
+]);
+assert(pinchRunner.get(1)?.runsAllowed === 1 && pinchRunner.get(1)?.earnedRuns === 1, 'a pinch runner keeps the original runner\'s pitcher');
+assert(pinchRunner.get(2)?.inheritedRunners === 1 && pinchRunner.get(2)?.inheritedRunnersScored === 1, 'the reliever inherits the pinch runner');
+assert(pinchRunner.get(2)?.runsAllowed === 0, 'the pinch runner\'s run is not charged to the reliever');
+
+const legacyInherited = aggregatePitchingStatsByPitcher([
+  {
+    eventNumber: 1,
+    eventType: 'walk',
+    inning: 1,
+    half: 'top',
+    pitcherId: 1,
+    runsScored: 0,
+    outsRecorded: 0,
+  },
+  {
+    eventNumber: 2,
+    eventType: 'single',
+    inning: 1,
+    half: 'top',
+    pitcherId: 2,
+    runsScored: 1,
+    outsRecorded: 0,
+    errorsOnPlay: 0,
+  },
+]);
+assert(legacyInherited.get(2)?.runsAllowed === 1 && legacyInherited.get(2)?.earnedRuns === 1, 'events without base state still charge the run to the pitcher who threw it');
+assert(legacyInherited.get(1)?.runsAllowed === 0, 'events without base state do not move the run back to the previous pitcher');
+assert((legacyInherited.get(1)?.inheritedRunners ?? 0) === 0 && (legacyInherited.get(2)?.inheritedRunners ?? 0) === 0, 'events without base state do not invent inherited runners');
+assert((legacyInherited.get(1)?.inheritedRunnersScored ?? 0) === 0 && (legacyInherited.get(2)?.inheritedRunnersScored ?? 0) === 0, 'events without base state do not invent inherited runners scored');
+
+const historicalEmptyBases = aggregatePitchingStatsByPitcher([
+  {
+    eventNumber: 1,
+    eventType: 'walk',
+    inning: 1,
+    half: 'top',
+    pitcherId: 1,
+    runsScored: 0,
+    outsRecorded: 0,
+    ...bases(null),
+    runnersScored: [],
+  },
+  {
+    eventNumber: 2,
+    eventType: 'single',
+    inning: 1,
+    half: 'top',
+    pitcherId: 2,
+    runsScored: 1,
+    outsRecorded: 0,
+    errorsOnPlay: 0,
+    ...bases(null),
+    runnersScored: [],
+  },
+]);
+assert(historicalEmptyBases.get(2)?.runsAllowed === 1 && historicalEmptyBases.get(1)?.runsAllowed === 0, 'a run with no scored runner ids stays on the event pitcher');
+assert((historicalEmptyBases.get(2)?.inheritedRunners ?? 0) === 0, 'null bases with an unidentified run are not inherited runners');
+
+const sharedEarnedRun = aggregatePitchingStatsByPitcher([
+  {
+    eventNumber: 1,
+    eventType: 'walk',
+    inning: 1,
+    half: 'top',
+    pitcherId: 1,
+    batterId: 10,
+    runsScored: 0,
+    outsRecorded: 0,
+    ...bases(10),
+    runnersScored: [],
+  },
+  {
+    eventNumber: 2,
+    eventType: 'home_run',
+    inning: 1,
+    half: 'top',
+    pitcherId: 2,
+    batterId: 20,
+    runsScored: 2,
+    outsRecorded: 0,
+    errorsOnPlay: 0,
+    ...bases(null),
+    runnersScored: [10, 20],
+  },
+]);
+assert(sharedEarnedRun.get(1)?.runsAllowed === 1 && sharedEarnedRun.get(1)?.earnedRuns === 1, 'only the inherited runner\'s earned run moves to the pitcher who walked him');
+assert(sharedEarnedRun.get(2)?.runsAllowed === 1 && sharedEarnedRun.get(2)?.earnedRuns === 1, 'the reliever keeps the earned run scored by the batter he faced');
+assert(sharedEarnedRun.get(2)?.inheritedRunners === 1 && sharedEarnedRun.get(2)?.inheritedRunnersScored === 1, 'the homered inherited runner still counts as IRS');
+
+const choiceKeepsOtherRunner = aggregatePitchingStatsByPitcher([
+  {
+    eventNumber: 1,
+    eventType: 'walk',
+    inning: 1,
+    half: 'top',
+    pitcherId: 1,
+    batterId: 10,
+    runsScored: 0,
+    outsRecorded: 0,
+    ...bases(10),
+    runnersScored: [],
+  },
+  {
+    eventNumber: 2,
+    eventType: 'walk',
+    inning: 1,
+    half: 'top',
+    pitcherId: 2,
+    batterId: 20,
+    runsScored: 0,
+    outsRecorded: 0,
+    ...bases(20, 10),
+    runnersScored: [],
+  },
+  {
+    eventNumber: 3,
+    eventType: 'fielders_choice',
+    inning: 1,
+    half: 'top',
+    pitcherId: 2,
+    batterId: 30,
+    runsScored: 0,
+    outsRecorded: 1,
+    ...bases(30, null, 10),
+    runnersScored: [],
+  },
+  {
+    eventNumber: 4,
+    eventType: 'single',
+    inning: 1,
+    half: 'top',
+    pitcherId: 2,
+    batterId: 40,
+    runsScored: 2,
+    outsRecorded: 0,
+    errorsOnPlay: 0,
+    ...bases(40),
+    runnersScored: [10, 30],
+  },
+]);
+assert(choiceKeepsOtherRunner.get(1)?.runsAllowed === 1, 'the inherited runner who stays through a fielder\'s choice still belongs to the first pitcher');
+assert(choiceKeepsOtherRunner.get(2)?.runsAllowed === 1, 'retiring the reliever\'s own runner does not transfer that responsibility onto the batter');
+assert(choiceKeepsOtherRunner.get(2)?.inheritedRunners === 1 && choiceKeepsOtherRunner.get(2)?.inheritedRunnersScored === 1, 'only the runner on base at the pitching change is inherited');
